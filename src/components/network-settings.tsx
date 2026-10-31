@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { HoverTip } from "@/components/ui/tooltip";
 import { normalizeHttpProxy, proxyValidationError, type HttpProxy } from "@/lib/network";
+import { acceptProxyDraft, createProxyDraft, editProxyDraft, proxyDraftChanged, reconcileProxyDraft } from "@/lib/proxy-draft";
 
 const modes: { id: HttpProxy["mode"]; label: string; icon: LucideIcon }[] = [
   { id: "system", icon: MonitorIcon, get label() { return t("desktop.networkSettings.system_proxy"); } },
@@ -16,16 +17,19 @@ const modes: { id: HttpProxy["mode"]; label: string; icon: LucideIcon }[] = [
 export function NetworkSettings({ value, onSave }: { value: HttpProxy; onSave: (proxy: HttpProxy) => Promise<boolean> }) {
   useTranslation();
   const id = useId();
-  const [draft, setDraft] = useState(value);
+  const [state, setState] = useState(() => createProxyDraft(value));
+  const current = reconcileProxyDraft(state, value);
+  if (current !== state) setState(current);
+  const draft = current.value;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const busy = useRef(false);
   const next = normalizeHttpProxy(draft);
-  const changed = next.mode !== value.mode || next.url.trim() !== value.url;
+  const changed = proxyDraftChanged(current);
 
   function edit(patch: Partial<HttpProxy>) {
-    setDraft((current) => ({ ...current, ...patch }));
+    setState((current) => editProxyDraft(current, patch));
     setError(null);
     setSaved(false);
   }
@@ -39,7 +43,7 @@ export function NetworkSettings({ value, onSave }: { value: HttpProxy; onSave: (
     setError(null);
     try {
       const submitted = { ...next, url: next.mode === "manual" ? new URL(next.url.trim()).toString() : "" };
-      if (await onSave(submitted)) { setDraft(submitted); setSaved(true); }
+      if (await onSave(submitted)) { setState((current) => acceptProxyDraft(current, submitted)); setSaved(true); }
       else setError(t("desktop.networkSettings.could_not_save_the_proxy_your_entries_are"));
     } catch {
       setError(t("desktop.networkSettings.could_not_save_the_proxy_your_entries_are"));
