@@ -415,7 +415,8 @@
       "availableVersion": "{{version}} is available.",
       "downloadingTotal": "Downloading update: {{downloaded}} / {{total}} MB",
       "downloading": "Downloading update: {{downloaded}} MB",
-      "availableNotice": "Rebasely {{version}} is available"
+      "availableNotice": "Rebasely {{version}} is available",
+      "could_not_load_release_notes": "Could not format release notes. The original text is shown below."
     },
     "aboutDialog": {
       "a_unified_version_control_client": "A unified version control client."

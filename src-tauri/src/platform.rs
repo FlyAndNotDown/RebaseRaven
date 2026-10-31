@@ -130,7 +130,7 @@ pub(crate) fn reveal_path(path: &Path) -> AppResult<()> {
 }
 
 fn allowed_url(value: &str) -> AppResult<url::Url> {
-    if value.chars().any(char::is_control) {
+    if value.len() > 8192 || value.chars().any(char::is_control) {
         return Err(AppError::msg("The link is invalid."));
     }
     let parsed = url::Url::parse(value).map_err(|_| AppError::msg("The link is invalid."))?;
@@ -171,10 +171,12 @@ mod tests {
             "data:text/html,content",
             "https://alice:password@example.com/repo.git",
             "https://example.com/\nnext",
+            "https://example.com/\u{0000}next",
             "not a URL",
         ] {
             assert!(allowed_url(link).is_err(), "{link}");
         }
+        assert!(allowed_url(&format!("https://example.com/{}", "a".repeat(8192))).is_err());
     }
 
     #[test]
