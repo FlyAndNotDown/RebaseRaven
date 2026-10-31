@@ -1,17 +1,16 @@
 import { t, useTranslation } from "@/i18n";
 import { useId, useRef, useState } from "react";
-import { ChevronDownIcon, InfoIcon } from "lucide-react";
+import { CableIcon, InfoIcon, MonitorIcon, SlidersHorizontalIcon, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { HoverTip } from "@/components/ui/tooltip";
 import { normalizeHttpProxy, proxyValidationError, type HttpProxy } from "@/lib/network";
 
-const modes: { id: HttpProxy["mode"]; label: string }[] = [
-  { id: "system", get label() { return t("desktop.networkSettings.system_proxy"); } },
-  { id: "none", get label() { return t("desktop.networkSettings.no_proxy"); } },
-  { id: "manual", get label() { return t("desktop.networkSettings.manual_proxy"); } },
+const modes: { id: HttpProxy["mode"]; label: string; icon: LucideIcon }[] = [
+  { id: "system", icon: MonitorIcon, get label() { return t("desktop.networkSettings.system_proxy"); } },
+  { id: "none", icon: CableIcon, get label() { return t("desktop.networkSettings.no_proxy"); } },
+  { id: "manual", icon: SlidersHorizontalIcon, get label() { return t("desktop.networkSettings.manual_proxy"); } },
 ];
 
 export function NetworkSettings({ value, onSave }: { value: HttpProxy; onSave: (proxy: HttpProxy) => Promise<boolean> }) {
@@ -55,40 +54,38 @@ export function NetworkSettings({ value, onSave }: { value: HttpProxy; onSave: (
       <div className="flex items-center gap-1.5">
         <h3 id={`${id}-title`} className="text-sm font-medium">{t("desktop.networkSettings.client_network")}</h3>
         <HoverTip label={t("desktop.networkSettings.applies_to_application_http_requests_git_and_perforce")}>
-          <InfoIcon tabIndex={0} aria-label={t("desktop.networkSettings.about_client_network_settings")} className="size-3.5 text-muted-foreground" />
+          <Button variant="ghost" size="icon-xs" aria-label={t("desktop.networkSettings.about_client_network_settings")}><InfoIcon /></Button>
         </HoverTip>
       </div>
-      <div className="flex items-center justify-between gap-3">
-        <Label id={`${id}-mode`}>{t("desktop.networkSettings.proxy")}</Label>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" disabled={saving} aria-labelledby={`${id}-mode ${id}-choice`}>
-              <span id={`${id}-choice`}>{modes.find((mode) => mode.id === draft.mode)?.label}</span><ChevronDownIcon />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuRadioGroup value={draft.mode} onValueChange={(value) => {
-              if (value === "system" || value === "none" || value === "manual") edit({ mode: value });
-            }}>
-              {modes.map((mode) => <DropdownMenuRadioItem key={mode.id} value={mode.id} disabled={saving}>{mode.label}</DropdownMenuRadioItem>)}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-      {draft.mode === "manual" ? (
-        <div className="grid gap-2">
-          <Label htmlFor={`${id}-url`}>{t("desktop.networkSettings.proxy_url")}</Label>
-          <Input id={`${id}-url`} type="url" autoComplete="off" spellCheck={false} placeholder="http://127.0.0.1:8080" value={draft.url} disabled={saving} onChange={(event) => edit({ url: event.target.value })} aria-invalid={!!error} aria-describedby={error ? `${id}-error` : undefined} />
-          <p className="text-xs text-muted-foreground">{t("desktop.networkSettings.http_https_socks5_or_socks5h_credentials_are_not")}</p>
+      <form className="grid gap-4" noValidate onSubmit={(event) => { event.preventDefault(); if (changed) void apply(); }}>
+        <fieldset disabled={saving} className="min-w-0">
+          <legend className="mb-2 text-sm">{t("desktop.networkSettings.proxy")}</legend>
+          <div className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/40 p-1">
+            {modes.map(({ id: mode, label, icon: Icon }) => (
+              <label key={mode} className="relative min-w-0 cursor-pointer has-disabled:cursor-default has-disabled:opacity-50">
+                <input type="radio" className="peer sr-only" name={`${id}-mode`} value={mode} checked={draft.mode === mode} onChange={() => edit({ mode })} />
+                <span className="flex min-h-12 items-center justify-center gap-2 rounded-md px-2 py-2 text-xs text-muted-foreground transition-colors hover:bg-background/60 peer-checked:bg-background peer-checked:text-foreground peer-checked:shadow-xs peer-checked:ring-1 peer-checked:ring-border peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50">
+                  <Icon aria-hidden="true" className="size-4 shrink-0" /><span>{label}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        {draft.mode === "manual" ? (
+          <div className="grid gap-2">
+            <Label htmlFor={`${id}-url`}>{t("desktop.networkSettings.proxy_url")}</Label>
+            <Input id={`${id}-url`} type="url" className="font-mono text-xs" autoComplete="off" autoCapitalize="off" spellCheck={false} placeholder="http://127.0.0.1:8080" value={draft.url} disabled={saving} onChange={(event) => edit({ url: event.target.value })} aria-invalid={!!error} aria-describedby={`${id}-hint${error ? ` ${id}-error` : ""}`} />
+            <p id={`${id}-hint`} className="text-xs leading-relaxed text-muted-foreground">{t("desktop.networkSettings.http_https_socks5_or_socks5h_credentials_are_not")}</p>
+          </div>
+        ) : draft.mode === "system" ? (
+          <p className="text-xs leading-relaxed text-muted-foreground">{t("desktop.networkSettings.uses_operating_system_proxy_settings_on_windows_and")}</p>
+        ) : null}
+        {error ? <p id={`${id}-error`} role="alert" className="text-xs text-destructive">{error}</p> : null}
+        <div className="flex min-h-7 items-center justify-end gap-3">
+          {saved ? <span role="status" className="text-xs text-muted-foreground">{t("desktop.networkSettings.proxy_saved")}</span> : null}
+          <Button type="submit" size="sm" disabled={saving || !changed}>{saving ? t("desktop.networkSettings.saving") : t("desktop.networkSettings.apply_proxy")}</Button>
         </div>
-      ) : draft.mode === "system" ? (
-        <p className="text-xs text-muted-foreground">{t("desktop.networkSettings.uses_operating_system_proxy_settings_on_windows_and")}</p>
-      ) : null}
-      {error ? <p id={`${id}-error`} role="alert" className="text-xs text-destructive">{error}</p> : null}
-      <div className="flex items-center gap-3">
-        <Button variant="outline" size="sm" disabled={saving || !changed} onClick={() => void apply()}>{saving ? t("desktop.networkSettings.saving") : t("desktop.networkSettings.apply_proxy")}</Button>
-        {saved ? <span role="status" className="text-xs text-muted-foreground">{t("desktop.networkSettings.proxy_saved")}</span> : null}
-      </div>
+      </form>
     </section>
   );
 }
