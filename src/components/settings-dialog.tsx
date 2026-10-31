@@ -940,6 +940,7 @@ function ExecutableRemovalMenu({ paths, onRemove }: { paths: string[]; onRemove:
       <DropdownMenuSubContent className="max-h-72 max-w-96 overflow-y-auto [scrollbar-width:thin]">
         {paths.map((path) => (
           <DropdownMenuItem key={path} onSelect={() => onRemove(path)}>
+            <Trash2Icon />
             <GitExecutableLabel path={path} />
           </DropdownMenuItem>
         ))}
