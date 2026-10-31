@@ -108,7 +108,7 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
       <a className="site-skip" href="#main">{t("nav.skip")}</a>
       <header className="site-header site-container">
         <a className="site-brand" href={rootPage ? "./" : "../"} aria-label={t("nav.home")}>
-          <AppMark className="size-8" iconClassName="size-4" /><span>Rebasely</span>
+          <AppMark className="size-8" src={`${rootPage ? "./" : "../"}assets/mark.png`} /><span>Rebasely</span>
         </a>
         <nav className="site-navigation" aria-label={t("nav.main")}>
           <Button variant="ghost" size="sm" asChild className="overview-link"><a href="#features">{t("nav.features")}</a></Button>

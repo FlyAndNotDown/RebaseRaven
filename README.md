@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="site/public/assets/mark.svg" width="80" height="80" alt="Rebasely logo">
+  <img src="site/public/assets/mark.png" width="80" height="80" alt="Rebasely logo">
 </p>
 
 <h1 align="center">Rebasely</h1>

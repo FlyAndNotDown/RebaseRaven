@@ -26,7 +26,7 @@ export function AboutDialog({
       <DialogContent className="gap-0 p-0 sm:max-w-[24rem]">
         <div className="px-7 pt-7 pr-12 pb-7">
           <div className="flex items-center gap-3.5">
-            <AppMark className="size-10 shrink-0" iconClassName="size-5" />
+            <AppMark className="size-10" />
             <div className="flex min-w-0 items-baseline gap-2">
               <DialogTitle className="text-2xl leading-none font-medium tracking-tight">
                 <span className="sr-only">{t("desktop.appMenu.about")}{" "}</span>
