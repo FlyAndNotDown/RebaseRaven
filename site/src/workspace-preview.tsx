@@ -1,8 +1,10 @@
 import { useTranslation } from "react-i18next";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { FolderTreeIcon, GitBranchIcon, MenuIcon, MinusIcon, RotateCcwIcon, SquareIcon, XIcon } from "lucide-react";
+import { MenuIcon, MinusIcon, RotateCcwIcon, SquareIcon, XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { VcsIcon } from "@/components/vcs-icon";
 import { desktopPlatform } from "@/lib/desktop-platform";
 import { GitDemo } from "./demo-git";
 
@@ -33,16 +35,24 @@ export function WorkspacePreview() {
     return () => { current = false; };
   }, [perforceRequested, perforceAttempt]);
 
+  function reset() {
+    setGeneration((current) => current + 1);
+    setNotice(t("demo.resetNotice"));
+  }
+
   return (
     <>
       <Tabs value={repository} onValueChange={(value) => { setRepository(value); if (value === "perforce") setPerforceRequested(true); setNotice(value === "git" ? t("demo.gitIntro") : t("demo.p4Intro")); }} className="workspace-preview" data-platform={platform}>
         {platform === "linux" ? <div className="demo-system-frame" aria-hidden="true">Rebasely</div> : null}
         <div className="demo-titlebar">
           {platform === "macos" ? <span className="demo-traffic-lights" aria-hidden="true"><i /><i /><i /></span> : null}
-          <span className="demo-options" aria-hidden="true"><MenuIcon /></span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild><Button size="icon-sm" variant="ghost" className="demo-options" aria-label={t("demo.menu")}><MenuIcon /></Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="start"><DropdownMenuItem onSelect={reset}><RotateCcwIcon />{t("demo.reset")}</DropdownMenuItem></DropdownMenuContent>
+          </DropdownMenu>
           <TabsList aria-label={t("demo.repositories")} className="demo-repository-tabs">
-            <TabsTrigger value="git"><GitBranchIcon /><span>atlas</span><span className="demo-vcs-label">Git</span></TabsTrigger>
-            <TabsTrigger value="perforce"><FolderTreeIcon /><span>studio</span><span className="demo-vcs-label">Perforce</span></TabsTrigger>
+            <TabsTrigger value="git"><VcsIcon vcs="git" /><span>atlas</span><span className="demo-vcs-label">Git</span></TabsTrigger>
+            <TabsTrigger value="perforce"><VcsIcon vcs="perforce" /><span>studio</span><span className="demo-vcs-label">Perforce</span></TabsTrigger>
           </TabsList>
           {platform === "windows" ? <span className="demo-window-controls" aria-hidden="true"><MinusIcon /><SquareIcon /><XIcon /></span> : null}
         </div>
@@ -54,7 +64,7 @@ export function WorkspacePreview() {
           </div> : null}
         </TabsContent>
       </Tabs>
-      <div className="site-demo-help"><p role="status" aria-live="polite">{notice}</p><Button size="sm" variant="ghost" onClick={() => { setGeneration((current) => current + 1); setNotice(t("demo.resetNotice")); }}><RotateCcwIcon />{t("demo.reset")}</Button></div>
+      <div className="site-demo-help"><p role="status" aria-live="polite">{notice}</p><Button size="sm" variant="ghost" onClick={reset}><RotateCcwIcon />{t("demo.reset")}</Button></div>
     </>
   );
 }
