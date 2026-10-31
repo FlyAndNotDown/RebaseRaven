@@ -780,7 +780,7 @@ const CommitRow = memo(function CommitRow({
           <ExactTime time={commit.timestamp} />
         </button>
       </ContextMenuTrigger>
-      <ContextMenuContent className="w-48">
+      <ContextMenuContent className="min-w-48">
         {multi ? (
           <MultiCommitMenu getCommits={getSelectedCommits} onAction={onAction} />
         ) : (
@@ -823,7 +823,7 @@ const CommitRow = memo(function CommitRow({
         <ContextMenuSub>
           <ContextMenuSubTrigger>
             <CopyIcon />{t("git.ui.copy")}</ContextMenuSubTrigger>
-          <ContextMenuSubContent className="w-44">
+          <ContextMenuSubContent className="min-w-44">
             <ContextMenuItem onClick={() => void copyText(commit.authorName, t("git.ui.copied_author"))}>
               <UserIcon />{t("git.ui.author")}</ContextMenuItem>
             {commit.authorEmail ? (

@@ -407,7 +407,7 @@ export function P4Pending() {
                             onPointerDown={beginPointer}
                             menu={
                               changeShelved.length === 0 ? undefined : (
-                              <ContextMenuContent className="w-36">
+                              <ContextMenuContent className="min-w-36">
                                 <ContextMenuItem
                                   disabled={p4.busy}
                                   onClick={() => {
@@ -690,7 +690,7 @@ function PendingFiles({
           <HoverTip className="max-w-lg" label={tip}>
             <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
           </HoverTip>
-          <ContextMenuContent className="w-36">
+          <ContextMenuContent className="min-w-36">
             <ContextMenuItem onClick={() => resolve(file.depotPath)}>
               <GitMergeIcon />{t("p4.resolve")}</ContextMenuItem>
           </ContextMenuContent>

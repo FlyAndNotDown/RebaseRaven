@@ -206,7 +206,7 @@ export function RepoStructure({ onReady }: { onReady?: (repoPath: string) => voi
                     </button>
                   </ContextMenuTrigger>
                   </HoverTip>
-                  <ContextMenuContent className="w-48">
+                  <ContextMenuContent className="min-w-48">
                     {module.state !== "uninitialized" ? (
                       <ContextMenuItem onClick={() => void openPath(joinPath(repoPath, module.path), "git")}>
                         <AppWindowIcon />{t("git.ui.open_in_a_new_tab")}</ContextMenuItem>
@@ -257,7 +257,7 @@ export function RepoStructure({ onReady }: { onReady?: (repoPath: string) => voi
               />
             </div>
           </ContextMenuTrigger>
-          <ContextMenuContent className="w-44">
+          <ContextMenuContent className="min-w-44">
             <HoverTip label={canAddWorktree ? undefined : t("git.ui.create_a_commit_first")}>
               <span className="block">
                 <ContextMenuItem disabled={busy || !canAddWorktree} aria-description={canAddWorktree ? undefined : t("git.ui.create_a_commit_first")} onClick={() => setAdding(true)}>
@@ -292,7 +292,7 @@ export function RepoStructure({ onReady }: { onReady?: (repoPath: string) => voi
                   </button>
                 </ContextMenuTrigger>
                 </HoverTip>
-                <ContextMenuContent className="w-48">
+                <ContextMenuContent className="min-w-48">
                   {!tree.current && !tree.prunable ? (
                     <ContextMenuItem onClick={() => void openPath(tree.path, "git")}>
                       <AppWindowIcon />{t("git.ui.open_in_a_new_tab")}</ContextMenuItem>

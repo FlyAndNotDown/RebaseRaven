@@ -223,7 +223,7 @@ export function P4Files() {
         <ContextMenuSub>
           <ContextMenuSubTrigger>
             <FolderSearchIcon />{t("p4.showIn")}</ContextMenuSubTrigger>
-          <ContextMenuSubContent className="w-40">
+          <ContextMenuSubContent className="min-w-40">
             {mode === "workspace" ? (
               <ContextMenuItem onClick={() => void revealLocation(entry, "depot")}>
                 <FolderTreeIcon />{t("p4.depot")}</ContextMenuItem>
