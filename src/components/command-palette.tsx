@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
 import { normalizeRepoPath } from "@/lib/format";
 import { fuzzyScore } from "@/lib/fuzzy";
-import { SHORTCUTS, formatCombo, isEditableTarget, matchesCombo, type ShortcutId } from "@/lib/shortcuts";
+import { SHORTCUTS, formatCombo, isComposingKey, isEditableTarget, matchesCombo, type ShortcutId } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 import { WELCOME_TAB_ID, useGitPick } from "@/state/git-context";
 import { asVcs } from "@/state/session";
@@ -280,6 +280,10 @@ function PaletteBody({ commands, onRun }: { commands: Command[]; onRun: (command
         <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
         <input
           autoFocus
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
           value={query}
           placeholder={t("desktop.commandPalette.type_a_command_branch_or_repository")}
           aria-label={t("desktop.commandPalette.command")}
@@ -289,6 +293,7 @@ function PaletteBody({ commands, onRun }: { commands: Command[]; onRun: (command
             setActive(0);
           }}
           onKeyDown={(event) => {
+            if (isComposingKey(event.nativeEvent)) return;
             if (event.key === "ArrowDown" || event.key === "ArrowUp") {
               event.preventDefault();
               const step = event.key === "ArrowDown" ? 1 : -1;

@@ -363,6 +363,8 @@ function FitText({
       ref={ref}
       value={value}
       spellCheck={false}
+      autoCorrect="off"
+      autoCapitalize="off"
       wrap="off"
       rows={1}
       onChange={(event) => {
