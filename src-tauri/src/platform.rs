@@ -8,6 +8,28 @@ use std::process::Stdio;
 
 use crate::error::{AppError, AppResult};
 
+#[cfg(windows)]
+mod windows_probe;
+#[cfg(windows)]
+pub(crate) use windows_probe::{spawn_probe_command, ProbeProcessTreeGuard};
+
+#[cfg(not(windows))]
+pub(crate) struct ProbeProcessTreeGuard;
+
+#[cfg(not(windows))]
+impl ProbeProcessTreeGuard {
+    pub(crate) fn terminate(&self, pid: u32) -> bool {
+        kill_process_tree(pid)
+    }
+}
+
+#[cfg(not(windows))]
+pub(crate) fn spawn_probe_command(
+    command: &mut Command,
+) -> std::io::Result<(std::process::Child, ProbeProcessTreeGuard)> {
+    Ok((command.spawn()?, ProbeProcessTreeGuard))
+}
+
 // Preserve WKWebView's opaque painting path; document CSS supplies the theme.
 #[cfg(target_os = "macos")]
 pub(crate) fn configure_main_webview(config: &mut tauri::Config) {

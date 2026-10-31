@@ -8,6 +8,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
@@ -209,7 +210,13 @@ struct ConfigFile {
 pub fn detect_repository(path: &str) -> AppResult<RepoDetection> {
     let start = existing_dir(path)?;
     let git = git_root(&start)?;
-    let p4 = match p4_connection(&start) {
+    let deadline = Instant::now() + Duration::from_millis(1_500);
+    let p4 = match p4_connection_with(
+        &start,
+        find_config(&start),
+        cli::active_p4().is_some(),
+        |env, args| cli::run_p4_probe(env, args, deadline),
+    ) {
         Ok(value) => value,
         Err(err) if err.to_string() == P4_MISSING && git.is_some() => None,
         Err(err) => return Err(err),
@@ -3299,8 +3306,21 @@ fn push_history_range(args: &mut Vec<String>, before: Option<i64>) {
 }
 
 fn p4_connection(start: &Path) -> AppResult<Option<P4Connection>> {
-    let config = find_config(start);
-    if cli::active_p4().is_none() {
+    p4_connection_with(
+        start,
+        find_config(start),
+        cli::active_p4().is_some(),
+        |env, args| run_ok(env, args, None),
+    )
+}
+
+fn p4_connection_with(
+    start: &Path,
+    config: Option<ConfigFile>,
+    available: bool,
+    mut run: impl FnMut(&P4Env, &[&str]) -> AppResult<String>,
+) -> AppResult<Option<P4Connection>> {
+    if !available {
         if config.as_ref().is_some_and(config_is_workspace) {
             return Err(AppError::msg(P4_MISSING));
         }
@@ -3308,19 +3328,14 @@ fn p4_connection(start: &Path) -> AppResult<Option<P4Connection>> {
     }
     let env = match &config {
         Some(config) if config_is_workspace(config) => env_from_config(start, config),
-        _ => ambient_env(start),
+        _ => ambient_env(start, &mut run),
     };
-    match info_connection(start, &env) {
-        Ok(found) => Ok(found),
+    match run(&env, &["-ztag", "info"]) {
+        Ok(stdout) => Ok(connection_from_info(start, &env, &stdout)),
         Err(_) => Ok(config
             .filter(config_is_workspace)
             .map(|config| connection_from_config(&config))),
     }
-}
-
-fn info_connection(start: &Path, env: &P4Env) -> AppResult<Option<P4Connection>> {
-    let stdout = run_ok(env, &["-ztag", "info"], None)?;
-    Ok(connection_from_info(start, env, &stdout))
 }
 
 fn connection_from_info(start: &Path, env: &P4Env, stdout: &str) -> Option<P4Connection> {
@@ -3349,7 +3364,7 @@ fn connection_from_info(start: &Path, env: &P4Env, stdout: &str) -> Option<P4Con
     })
 }
 
-fn ambient_env(start: &Path) -> P4Env {
+fn ambient_env(start: &Path, run: &mut impl FnMut(&P4Env, &[&str]) -> AppResult<String>) -> P4Env {
     let mut env = P4Env {
         cwd: start.to_path_buf(),
         port: String::new(),
@@ -3357,7 +3372,7 @@ fn ambient_env(start: &Path) -> P4Env {
         client: String::new(),
         charset: String::new(),
     };
-    if let Ok(text) = run_ok(&env, &["set"], None) {
+    if let Ok(text) = run(&env, &["set"]) {
         let map = parse_p4_set(&text);
         env.port = map.get("P4PORT").cloned().unwrap_or_default();
         env.user = map.get("P4USER").cloned().unwrap_or_default();
@@ -3460,13 +3475,26 @@ fn read_config(path: &Path) -> Option<BTreeMap<String, String>> {
 }
 
 fn git_root(start: &Path) -> AppResult<Option<String>> {
-    match crate::git::discover(&start.to_string_lossy()) {
-        Ok(repo) => Ok(Some(strip_verbatim_prefix(
-            &repo.workdir().to_string_lossy(),
-        ))),
+    let found = crate::git::open_for_detection(start)
+        .map(|repo| strip_verbatim_prefix(&repo.workdir().to_string_lossy()));
+    git_root_result(start, found)
+}
+
+fn git_root_result(start: &Path, found: AppResult<String>) -> AppResult<Option<String>> {
+    match found {
+        Ok(root) => Ok(Some(root)),
         Err(err) if err.to_string() == crate::error::GIT_MISSING => Ok(find_git_dir(start)),
-        Err(err) if err.to_string().contains("Bare repositories") => Err(err),
-        Err(_) => Ok(None),
+        Err(err)
+            if err
+                .to_string()
+                .starts_with("fatal: not a git repository (or any of the parent directories):")
+                || err.to_string().starts_with(
+                    "fatal: not a git repository (or any parent up to mount point ",
+                ) =>
+        {
+            Ok(None)
+        }
+        Err(err) => Err(err),
     }
 }
 
@@ -3739,6 +3767,172 @@ mod tests {
             .iter()
             .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
             .collect()
+    }
+
+    fn discovery_config(root: &Path) -> ConfigFile {
+        ConfigFile {
+            directory: root.to_path_buf(),
+            values: BTreeMap::from([
+                ("P4PORT".into(), "ssl:perforce.example.com:1666".into()),
+                ("P4USER".into(), "alice".into()),
+                ("P4CLIENT".into(), "dev-pc".into()),
+            ]),
+        }
+    }
+
+    #[test]
+    fn discovery_ignores_unreachable_ambient_servers_but_keeps_explicit_workspace_hints() {
+        let temporary = TestDirectory::new("discovery-unreachable");
+        let mut calls = Vec::new();
+        let found = p4_connection_with(&temporary.0, None, true, |env, args| {
+            calls.push(
+                args.iter()
+                    .map(|value| value.to_string())
+                    .collect::<Vec<_>>(),
+            );
+            if args == ["set"] {
+                Ok("P4PORT=ssl:perforce.example.com:1666 (set)\nP4CLIENT=other-pc (set)\n".into())
+            } else {
+                assert_eq!(env.client, "other-pc");
+                Err(AppError::msg("Perforce workspace discovery timed out."))
+            }
+        })
+        .unwrap();
+        assert!(found.is_none());
+        assert_eq!(calls, [vec!["set"], vec!["-ztag", "info"]]);
+
+        let found = p4_connection_with(
+            &temporary.0,
+            Some(discovery_config(&temporary.0)),
+            true,
+            |_, args| {
+                assert_eq!(args, ["-ztag", "info"]);
+                Err(AppError::msg("Perforce workspace discovery timed out."))
+            },
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(found.root, temporary.0.to_string_lossy());
+        assert_eq!(found.port, "ssl:perforce.example.com:1666");
+        assert_eq!(found.client, "dev-pc");
+    }
+
+    #[test]
+    fn discovery_handles_expired_settings_and_missing_optional_p4() {
+        let temporary = TestDirectory::new("discovery-local");
+        assert!(p4_connection_with(&temporary.0, None, false, |_, _| panic!(
+            "missing CLI was launched"
+        ))
+        .unwrap()
+        .is_none());
+        assert_eq!(
+            p4_connection_with(
+                &temporary.0,
+                Some(discovery_config(&temporary.0)),
+                false,
+                |_, _| panic!("missing CLI was launched")
+            )
+            .unwrap_err()
+            .to_string(),
+            P4_MISSING
+        );
+        let mut calls = 0;
+        assert!(p4_connection_with(&temporary.0, None, true, |_, _| {
+            calls += 1;
+            Err(AppError::msg("Perforce workspace discovery timed out."))
+        })
+        .unwrap()
+        .is_none());
+        assert_eq!(calls, 2);
+    }
+
+    #[test]
+    fn reachable_ambient_discovery_preserves_same_and_nested_root_selection() {
+        let temporary = TestDirectory::new("discovery-roots");
+        let inner = temporary.0.join("inner");
+        let selected = inner.join("src");
+        fs::create_dir_all(&selected).unwrap();
+        let root = temporary.0.to_string_lossy().into_owned();
+        let inner = inner.to_string_lossy().into_owned();
+        let selected_text = selected.to_string_lossy().into_owned();
+        for (git_root, p4_root, expected) in [
+            (root.as_str(), root.as_str(), "ambiguous"),
+            (inner.as_str(), root.as_str(), "git"),
+            (root.as_str(), inner.as_str(), "perforce"),
+        ] {
+            let found = p4_connection_with(&selected, None, true, |env, args| {
+                if args == ["set"] {
+                    Ok("P4PORT=ssl:perforce.example.com:1666 (set)\nP4USER=alice (set)\nP4CLIENT=dev-pc (set)\n".into())
+                } else {
+                    assert_eq!(env.port, "ssl:perforce.example.com:1666");
+                    Ok(format!("... clientName dev-pc\n... clientRoot {p4_root}\n... userName alice\n... serverAddress identity.example.com:1666\n"))
+                }
+            }).unwrap().unwrap();
+            let found =
+                pick_closer(&selected, selected_text.clone(), git_root.into(), found).unwrap();
+            assert!(
+                matches!(
+                    (&found, expected),
+                    (RepoDetection::Ambiguous { .. }, "ambiguous")
+                        | (RepoDetection::Git { .. }, "git")
+                        | (RepoDetection::Perforce { .. }, "perforce")
+                ),
+                "{found:?}"
+            );
+        }
+        assert!(
+            p4_connection_with(&temporary.0, None, true, |_, args| {
+                Ok(if args == ["set"] {
+                    String::new()
+                } else {
+                    format!(
+                        "... clientName other-pc\n... clientRoot {}\n",
+                        selected.display()
+                    )
+                })
+            })
+            .unwrap()
+            .is_none(),
+            "an unrelated workspace must not claim a Git folder"
+        );
+    }
+
+    #[test]
+    fn git_discovery_only_treats_absent_repositories_as_an_optional_match() {
+        let temporary = TestDirectory::new("discovery-git-errors");
+        assert!(git_root_result(
+            &temporary.0,
+            Err(AppError::msg(
+                "fatal: not a git repository (or any of the parent directories): .git"
+            ))
+        )
+        .unwrap()
+        .is_none());
+        assert!(git_root_result(
+            &temporary.0,
+            Err(AppError::msg("fatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary.")),
+        ).unwrap().is_none());
+        for message in [
+            "Bare repositories are not supported yet",
+            "fatal: bad config line 1",
+            "fatal: not a git repository: /work/missing.git",
+            "fatal: detected dubious ownership in repository",
+            "Could not start Git",
+        ] {
+            let error = git_root_result(&temporary.0, Err(AppError::msg(message))).unwrap_err();
+            assert_eq!(error.to_string(), message);
+        }
+        fs::write(
+            temporary.0.join(".git"),
+            "gitdir: /work/shared.git/worktrees/example\n",
+        )
+        .unwrap();
+        assert_eq!(
+            git_root_result(&temporary.0, Err(AppError::msg(crate::error::GIT_MISSING)))
+                .unwrap()
+                .unwrap(),
+            temporary.0.to_string_lossy()
+        );
     }
 
     #[cfg(windows)]
