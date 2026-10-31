@@ -38,12 +38,13 @@ export function DemoFileRow({ file, active, onSelect, action, actionLabel, onAct
   );
 }
 
-export function DiffPane({ file, hunks = file.hunks, actionLabel, onHunkAction, emptyAction }: {
+export function DiffPane({ file, hunks = file.hunks, actionLabel, onHunkAction, emptyAction, scopeLabel }: {
   file: DemoFile;
   hunks?: DemoHunk[];
   actionLabel?: string;
   onHunkAction?: (hunk: DemoHunk) => void;
   emptyAction?: ReactNode;
+  scopeLabel?: string;
 }) {
   const { t } = useTranslation();
   const [mode, setMode] = useState<"unified" | "split">("unified");
@@ -52,10 +53,10 @@ export function DiffPane({ file, hunks = file.hunks, actionLabel, onHunkAction, 
       <PaneHeader><span className="demo-path"><FileIcon />{file.path}</span><span className="demo-language">TypeScript</span></PaneHeader>
       <div className="demo-diff-toolbar">
         <SegmentedControl label={t("demo.diffLayout")} value={mode} onChange={setMode} options={[{ value: "unified", label: t("demo.unified") }, { value: "split", label: t("demo.split") }]} />
-        <span className="demo-diff-scope">{actionLabel ? t("demo.workingChanges") : t("demo.readOnly")}</span>
+        <span className="demo-diff-scope">{scopeLabel ?? (actionLabel ? t("demo.workingChanges") : t("demo.readOnly"))}</span>
       </div>
       {hunks.length ? (
-        <ScrollArea className="demo-code-scroll" gutter={false} viewportClassName="demo-code-viewport" aria-label={t("demo.diffLines")} tabIndex={0}>
+        <ScrollArea className="demo-code-scroll" gutter={false} viewportClassName="demo-code-viewport focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring" viewportProps={{ role: "region", "aria-label": t("demo.diffLines"), tabIndex: 0 }}>
           <div className={cn("demo-code", mode === "split" && "demo-code-split")}>
             {hunks.map((hunk) => (
               <div key={hunk.id} className="demo-hunk">

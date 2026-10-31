@@ -12,9 +12,9 @@ import { laneColor, type GraphRow } from "@/lib/commit-graph";
 import { allHunkIds, demoCommits, demoFiles, type DemoCommit, type DemoFile } from "./demo-data";
 import { DemoFileRow, DiffPane, EmptyPane, PaneHeader } from "./demo-shared";
 import { DEMO_GRAPH_ROW_HEIGHT, demoGraphPath, demoGraphSegments, demoGraphWidth, demoGraphX, layoutDemoHistoryGraph } from "./demo-history-graph";
+import { reconcileDemoSelection, type DemoFileScope } from "./demo-selection";
 
 type GitView = "changes" | "history" | "stash" | "files";
-type FileScope = "unstaged" | "staged";
 const views = [
   { value: "changes", label: "demo.changes", icon: CircleDotIcon },
   { value: "history", label: "demo.history", icon: HistoryIcon },
@@ -28,7 +28,7 @@ export function GitDemo({ onNotice }: { onNotice: (notice: string) => void }) {
   const [remaining, setRemaining] = useState(() => new Set(allHunkIds));
   const [staged, setStaged] = useState<Set<string>>(() => new Set());
   const [fileId, setFileId] = useState("navigation");
-  const [scope, setScope] = useState<FileScope>("unstaged");
+  const [scope, setScope] = useState<DemoFileScope>("unstaged");
   const [message, setMessage] = useState(t("demo.sampleMessage"));
   const [commits, setCommits] = useState(demoCommits);
   const [historyHash, setHistoryHash] = useState(demoCommits[0].hash);
@@ -48,18 +48,19 @@ export function GitDemo({ onNotice }: { onNotice: (notice: string) => void }) {
       viewButtons.current[view]?.focus();
     }
   }, [view]);
-  const file = demoFiles.find((item) => item.id === fileId) ?? demoFiles[0];
+  const selection = reconcileDemoSelection(demoFiles, remaining, staged, { fileId, scope });
+  const file = demoFiles.find((item) => item.id === selection?.fileId);
   const changed = demoFiles.filter((item) => item.hunks.some((hunk) => remaining.has(hunk.id)));
   const stagedFiles = changed.filter((item) => item.hunks.some((hunk) => staged.has(hunk.id)));
   const unstagedFiles = changed.filter((item) => item.hunks.some((hunk) => remaining.has(hunk.id) && !staged.has(hunk.id)));
-  const hunks = file.hunks.filter((hunk) => remaining.has(hunk.id) && staged.has(hunk.id) === (scope === "staged"));
+  const hunks = file?.hunks.filter((hunk) => remaining.has(hunk.id) && staged.has(hunk.id) === (selection?.scope === "staged")) ?? [];
 
-  function selectFile(next: DemoFile, nextScope: FileScope) {
+  function selectFile(next: DemoFile, nextScope: DemoFileScope) {
     setFileId(next.id);
     setScope(nextScope);
   }
 
-  function moveHunks(ids: string[], nextScope: FileScope) {
+  function moveHunks(ids: string[], nextScope: DemoFileScope) {
     setStaged((current) => {
       const next = new Set(current);
       for (const id of ids) {
@@ -99,7 +100,7 @@ export function GitDemo({ onNotice }: { onNotice: (notice: string) => void }) {
               <ScrollArea className="demo-file-scroll" gutter={false}>
                 {([['unstaged', unstagedFiles], ['staged', stagedFiles]] as const).map(([group, items]) => <section className="demo-file-group" key={group} aria-label={group === "staged" ? t("demo.stagedFiles") : t("demo.unstagedFiles")}>
                   <h4><ChevronDownIcon />{group === "staged" ? t("demo.staged") : t("demo.unstaged")}<span>{items.length}</span></h4>
-                  {items.map((item) => <DemoFileRow key={item.id} file={item} active={fileId === item.id && scope === group} selectRef={fileId === item.id && scope === group ? focusSelectedFile : undefined} onSelect={() => selectFile(item, group)} action={group === "staged" ? "unstage" : "stage"} actionLabel={t(group === "staged" ? "demo.unstageFile" : "demo.stageFile", { path: item.path })} onAction={() => { pendingFileFocus.current = true; setFileId(item.id); moveHunks(item.hunks.filter((hunk) => remaining.has(hunk.id)).map((hunk) => hunk.id), group === "staged" ? "unstaged" : "staged"); }} />)}
+                  {items.map((item) => <DemoFileRow key={item.id} file={item} active={selection?.fileId === item.id && selection.scope === group} selectRef={selection?.fileId === item.id && selection.scope === group ? focusSelectedFile : undefined} onSelect={() => selectFile(item, group)} action={group === "staged" ? "unstage" : "stage"} actionLabel={t(group === "staged" ? "demo.unstageFile" : "demo.stageFile", { path: item.path })} onAction={() => { pendingFileFocus.current = true; setFileId(item.id); moveHunks(item.hunks.filter((hunk) => remaining.has(hunk.id)).map((hunk) => hunk.id), group === "staged" ? "unstaged" : "staged"); }} />)}
                   {!items.length ? <p className="demo-group-empty">{group === "staged" ? t("demo.stagePrompt") : t("demo.noUnstaged")}</p> : null}
                 </section>)}
               </ScrollArea>
@@ -109,7 +110,7 @@ export function GitDemo({ onNotice }: { onNotice: (notice: string) => void }) {
                 <div><span>{t("demo.stagedCount", { count: stagedFiles.length })}</span><Button type="submit" size="sm" disabled={!staged.size || !message.trim()}>{t("demo.commit")}</Button></div>
               </form>
             </div>
-            {changed.length ? <DiffPane file={file} hunks={hunks} actionLabel={scope === "staged" ? t("demo.unstageHunk") : t("demo.stageHunk")} onHunkAction={(hunk) => moveHunks([hunk.id], scope === "staged" ? "unstaged" : "staged")} /> : <EmptyPane title={t("demo.clean")} detail={t("demo.commitInHistory")}><Button size="sm" variant="outline" onClick={() => { pendingViewFocus.current = true; setView("history"); }}>{t("demo.viewHistory")}</Button></EmptyPane>}
+            {selection && file ? <DiffPane file={file} hunks={hunks} scopeLabel={t(selection.scope === "staged" ? "demo.staged" : "demo.workingChanges")} actionLabel={selection.scope === "staged" ? t("demo.unstageHunk") : t("demo.stageHunk")} onHunkAction={(hunk) => moveHunks([hunk.id], selection.scope === "staged" ? "unstaged" : "staged")} /> : <EmptyPane title={t("demo.clean")} detail={t("demo.commitInHistory")}><Button size="sm" variant="outline" onClick={() => { pendingViewFocus.current = true; setView("history"); }}>{t("demo.viewHistory")}</Button></EmptyPane>}
           </div>
         </TabsContent>
         <TabsContent value="history" className="demo-view-panel"><GitHistory commits={commits} selectedHash={historyHash} onSelect={setHistoryHash} /></TabsContent>
@@ -166,5 +167,5 @@ export function FilesDemo({ perforce = false }: { perforce?: boolean }) {
   const { t } = useTranslation();
   const [fileId, setFileId] = useState("navigation");
   const file = demoFiles.find((item) => item.id === fileId) ?? demoFiles[0];
-  return <div className="demo-split"><div className="demo-file-pane"><PaneHeader>{perforce ? t("demo.workspace") : t("demo.files")}</PaneHeader><div className="demo-tree-folder"><ChevronDownIcon /><FolderTreeIcon />{perforce ? "//depot/main/src" : "src"}</div>{demoFiles.map((item) => <DemoFileRow key={item.id} file={item} active={file.id === item.id} onSelect={() => setFileId(item.id)} />)}</div><section className="demo-diff"><PaneHeader><span className="demo-path">{file.path}</span><span className="demo-language">TypeScript</span></PaneHeader><ScrollArea className="demo-code-scroll" gutter={false} aria-label={t("demo.contents", { path: file.path })} tabIndex={0}><div className="demo-code">{file.hunks.flatMap((hunk) => hunk.lines).filter((line) => line.after !== undefined).map((line, index) => <div className="demo-code-row" key={index}><span className="demo-line-number">{line.newNumber}</span><code>{line.after}</code></div>)}</div></ScrollArea></section></div>;
+  return <div className="demo-split"><div className="demo-file-pane"><PaneHeader>{perforce ? t("demo.workspace") : t("demo.files")}</PaneHeader><div className="demo-tree-folder"><ChevronDownIcon /><FolderTreeIcon />{perforce ? "//depot/main/src" : "src"}</div>{demoFiles.map((item) => <DemoFileRow key={item.id} file={item} active={file.id === item.id} onSelect={() => setFileId(item.id)} />)}</div><section className="demo-diff"><PaneHeader><span className="demo-path">{file.path}</span><span className="demo-language">TypeScript</span></PaneHeader><ScrollArea className="demo-code-scroll" gutter={false} viewportClassName="demo-code-viewport focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring" viewportProps={{ role: "region", "aria-label": t("demo.contents", { path: file.path }), tabIndex: 0 }}><div className="demo-code">{file.hunks.flatMap((hunk) => hunk.lines).filter((line) => line.after !== undefined).map((line, index) => <div className="demo-code-row" key={index}><span className="demo-line-number">{line.newNumber}</span><code>{line.after}</code></div>)}</div></ScrollArea></section></div>;
 }
