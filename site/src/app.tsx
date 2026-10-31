@@ -3,6 +3,7 @@ import {
   ArrowDownToLineIcon,
   ArrowUpRightIcon,
   ChevronRightIcon,
+  ChevronDownIcon,
   CodeXmlIcon,
   CommandIcon,
   GitBranchIcon,
@@ -106,25 +107,27 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
   return (
     <>
       <a className="site-skip" href="#main">{t("nav.skip")}</a>
-      <header className="site-header site-container">
-        <a className="site-brand" href={rootPage ? "./" : "../"} aria-label={t("nav.home")}>
-          <AppMark className="size-8" src={`${rootPage ? "./" : "../"}assets/mark.png`} /><span>Rebasely</span>
-        </a>
-        <nav className="site-navigation" aria-label={t("nav.main")}>
-          <Button variant="ghost" size="sm" asChild className="overview-link"><a href="#features">{t("nav.features")}</a></Button>
-          <Button variant="ghost" size="sm" asChild className="overview-link"><a href="#workflows">{t("nav.workflow")}</a></Button>
-          <Button variant="ghost" size="sm" asChild className="overview-link"><a href="#start">{t("nav.start")}</a></Button>
-          <HoverTip label={t("nav.source")}><Button variant="ghost" size="icon-sm" asChild className="site-source-link"><a href={REPOSITORY} aria-label={t("nav.source")}><CodeXmlIcon /></a></Button></HoverTip>
-          <LanguageMenu rootPage={rootPage} />
-          <ThemeMenu />
-          <Button size="sm" asChild className="site-nav-download"><a href={LATEST_RELEASE_URL} onClick={openDownload}>{t("nav.download")}<ArrowDownToLineIcon /></a></Button>
-        </nav>
-      </header>
+      <div className="site-header-shell">
+        <header className="site-header site-container">
+          <a className="site-brand" href={rootPage ? "./" : "../"} aria-label={t("nav.home")}>
+            <AppMark className="site-brand-mark size-9" src={`${rootPage ? "./" : "../"}assets/mark.png`} /><span translate="no">Rebasely</span>
+          </a>
+          <nav className="site-navigation" aria-label={t("nav.main")}>
+            <Button variant="ghost" size="sm" asChild className="overview-link"><a href="#features">{t("nav.features")}</a></Button>
+            <Button variant="ghost" size="sm" asChild className="overview-link"><a href="#workflows">{t("nav.workflow")}</a></Button>
+            <Button variant="ghost" size="sm" asChild className="overview-link overview-link-start"><a href="#start">{t("nav.start")}</a></Button>
+            <HoverTip label={t("nav.source")}><Button variant="ghost" size="icon-sm" asChild className="site-source-link"><a href={REPOSITORY} aria-label={t("nav.source")}><CodeXmlIcon /></a></Button></HoverTip>
+            <LanguageMenu rootPage={rootPage} />
+            <ThemeMenu />
+            <Button size="sm" asChild className="site-nav-download"><a href={LATEST_RELEASE_URL} onClick={openDownload}>{t("nav.download")}<ArrowDownToLineIcon /></a></Button>
+          </nav>
+        </header>
+      </div>
 
       <main id="main" className="site-container">
         <section className="site-hero" aria-labelledby="hero-title">
           <p className="site-eyebrow">{t("hero.eyebrow")}</p>
-          <h1 id="hero-title">{t("hero.title").split("\n").map((line, index) => <span key={line} className={index ? "site-hero-title-secondary" : undefined}>{line}</span>)}</h1>
+          <h1 id="hero-title">{t("hero.title").split("\n").map((line, index) => <span key={line} className={index ? "site-hero-title-secondary" : undefined}>{index ? ` ${line}` : line}</span>)}</h1>
           <p className="site-hero-description">{t("hero.description")}</p>
           <div className="site-actions">
             <Button size="lg" asChild><a href={LATEST_RELEASE_URL} onClick={openDownload}><ArrowDownToLineIcon />{t("hero.download")}</a></Button>
@@ -136,15 +139,11 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
         <section id="features" className="site-workspace" aria-labelledby="workspace-title">
           <div className="site-preview-label">
             <div><p className="site-eyebrow">{t("preview.eyebrow")}</p><h2 id="workspace-title">{t("preview.title")}</h2></div>
-            <p>{t("preview.intro")}</p>
+            <p>{t("preview.label")}</p>
           </div>
           <div className="site-preview-frame">
             <noscript className="site-preview-caption">{t("preview.noscript")}</noscript>
             <WorkspacePreview />
-          </div>
-          <div className="site-preview-guides">
-            <div><GitBranchIcon aria-hidden="true" /><p><strong>Git</strong>{t("preview.gitGuide")}</p></div>
-            <div><LayersIcon aria-hidden="true" /><p><strong>Perforce</strong>{t("preview.p4Guide")}</p></div>
           </div>
           <p className="site-preview-caption">{t("preview.caption")}</p>
         </section>
@@ -167,15 +166,20 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
             <h2 id="capabilities-title">{t("capabilities.title")}</h2>
             <p>{t("capabilities.intro")}</p>
           </div>
-          <table className="site-capability-table">
-            <caption className="sr-only">{t("capabilities.caption")}</caption>
-            <thead><tr><th scope="col">{t("capabilities.category")}</th><th scope="col"><GitBranchIcon aria-hidden="true" />Git</th><th scope="col"><LayersIcon aria-hidden="true" />Perforce</th></tr></thead>
-            <tbody>{["review", "organize", "history", "advanced", "tools"].map((kind) => <tr key={kind}>
-              <th scope="row">{t(`capabilities.${kind}.title`)}</th>
-              <td data-label="Git">{t(`capabilities.${kind}.git`)}</td>
-              <td data-label="Perforce">{t(`capabilities.${kind}.p4`)}</td>
-            </tr>)}</tbody>
-          </table>
+          <details className="site-capability-details">
+            <summary>{t("capabilities.toggle")}<ChevronDownIcon aria-hidden="true" /></summary>
+            <div className="site-capability-content">
+              <table className="site-capability-table">
+                <caption className="sr-only">{t("capabilities.caption")}</caption>
+                <thead><tr><th scope="col">{t("capabilities.category")}</th><th scope="col"><GitBranchIcon aria-hidden="true" />Git</th><th scope="col"><LayersIcon aria-hidden="true" />Perforce</th></tr></thead>
+                <tbody>{["review", "organize", "history", "advanced", "tools"].map((kind) => <tr key={kind}>
+                  <th scope="row">{t(`capabilities.${kind}.title`)}</th>
+                  <td data-label="Git">{t(`capabilities.${kind}.git`)}</td>
+                  <td data-label="Perforce">{t(`capabilities.${kind}.p4`)}</td>
+                </tr>)}</tbody>
+              </table>
+            </div>
+          </details>
         </section>
 
         <section className="site-tooling site-section" aria-labelledby="tooling-title">
@@ -197,13 +201,13 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
         </section>
 
         <section className="site-download" aria-labelledby="download-title">
-          <div><p className="site-eyebrow">Rebasely</p><h2 id="download-title">{t("download.title")}</h2><p>{t("download.body")}</p></div>
+          <div className="site-download-content"><AppMark className="size-14" src={`${rootPage ? "./" : "../"}assets/mark.png`} /><div><p className="site-eyebrow" translate="no">Rebasely</p><h2 id="download-title">{t("download.title")}</h2><p>{t("download.body")}</p></div></div>
           <Button size="lg" asChild><a href={LATEST_RELEASE_URL} onClick={openDownload}>{t("download.action")}<ArrowDownToLineIcon /></a></Button>
         </section>
       </main>
 
       <footer className="site-footer site-container">
-        <div className="site-footer-brand"><a href={rootPage ? "./" : "../"}>Rebasely</a><p>{t("footer.tagline")}</p></div>
+        <div className="site-footer-brand"><a href={rootPage ? "./" : "../"} translate="no">Rebasely</a><p>{t("footer.tagline")}</p></div>
         <nav aria-label={t("nav.footer")}><a href={`${REPOSITORY}/issues`}>{t("nav.feedback")}</a><a href={`${REPOSITORY}/blob/dev/CONTRIBUTING.md`}>{t("nav.contribute")}</a><a href={`${REPOSITORY}/blob/dev/LICENSE`}>{t("nav.license")}</a></nav>
         <div className="site-footer-languages">{SITE_LOCALES.map((locale) => <a key={locale} href={localeHref(locale, rootPage)} hrefLang={locale} onClick={() => rememberSiteLanguage(locale)}>{t(`language.${locale}`)}</a>)}</div>
       </footer>
@@ -238,5 +242,5 @@ function DownloadDialog({ open, onOpenChange, returnFocusTo, state, onRefresh }:
   const { t } = useTranslation();
   const downloads = state.kind === "ready" ? state.downloads : null;
   const complete = downloads?.macos && downloads.windows;
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="sm:max-w-md" onCloseAutoFocus={(event) => { event.preventDefault(); returnFocusTo.current?.focus(); }}><DialogHeader><DialogTitle>{t("download.dialog.title")}</DialogTitle><DialogDescription>{t("download.dialog.body")}</DialogDescription></DialogHeader><div className="grid gap-1">{[{ label: "macOS", detail: "Apple Silicon", format: "DMG", icon: LaptopIcon, url: downloads?.macos }, { label: "Windows", detail: "x64", format: t("download.installer"), icon: MonitorIcon, url: downloads?.windows }].map(({ label, detail, format, icon: Icon, url }) => <Button key={label} variant="ghost" asChild className="h-auto justify-start gap-3 px-2 py-3"><a href={url ?? LATEST_RELEASE_URL}><Icon className="size-5 text-muted-foreground" /><span className="grid min-w-0 flex-1 gap-1 text-left"><span>{label}<span className="ml-1 text-xs font-normal text-muted-foreground">{detail}</span></span><span className="text-xs font-normal text-muted-foreground">{url ? format : t("download.viewLatest")}</span></span>{url ? <ArrowDownToLineIcon className="text-muted-foreground" /> : <ChevronRightIcon className="text-muted-foreground" />}</a></Button>)}</div><div className="flex items-center gap-3"><p role={state.kind === "error" ? "alert" : "status"} className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">{state.kind === "pending" ? t("download.finding") : state.kind === "error" ? t("download.error") : complete ? t("download.version", { version: downloads.tag }) : t("download.choose")}</p><Button size="sm" variant="ghost" disabled={state.kind === "pending"} onClick={onRefresh}><RefreshCwIcon />{t(state.kind === "error" ? "download.retry" : "download.refresh")}</Button></div><p className="text-xs leading-relaxed text-muted-foreground">{t("download.requires")}</p><DialogFooter className="items-center sm:justify-between"><Button variant="ghost" size="sm" asChild><a href={`${REPOSITORY}/blob/dev/docs/development.md`}>{t("download.build")}</a></Button><Button size="sm" asChild><a href={LATEST_RELEASE_URL}>{t("download.latest")}<ArrowUpRightIcon /></a></Button></DialogFooter></DialogContent></Dialog>;
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="site-download-dialog max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain sm:max-w-md" onCloseAutoFocus={(event) => { event.preventDefault(); returnFocusTo.current?.focus(); }}><DialogHeader><DialogTitle>{t("download.dialog.title")}</DialogTitle><DialogDescription>{t("download.dialog.body")}</DialogDescription></DialogHeader><div className="grid gap-1">{[{ label: "macOS", detail: "Apple Silicon", format: "DMG", icon: LaptopIcon, url: downloads?.macos }, { label: "Windows", detail: "x64", format: t("download.installer"), icon: MonitorIcon, url: downloads?.windows }].map(({ label, detail, format, icon: Icon, url }) => <Button key={label} variant="ghost" asChild className="h-auto justify-start gap-3 px-2 py-3"><a href={url ?? LATEST_RELEASE_URL}><Icon className="size-5 text-muted-foreground" /><span className="grid min-w-0 flex-1 gap-1 text-left"><span>{label}<span className="ml-1 text-xs font-normal text-muted-foreground">{detail}</span></span><span className="text-xs font-normal text-muted-foreground">{url ? format : t("download.viewLatest")}</span></span>{url ? <ArrowDownToLineIcon className="text-muted-foreground" /> : <ChevronRightIcon className="text-muted-foreground" />}</a></Button>)}</div><div className="flex items-center gap-3"><p role={state.kind === "error" ? "alert" : "status"} className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">{state.kind === "pending" ? t("download.finding") : state.kind === "error" ? t("download.error") : complete ? t("download.version", { version: downloads.tag }) : t("download.choose")}</p><Button size="sm" variant="ghost" disabled={state.kind === "pending"} onClick={onRefresh}><RefreshCwIcon />{t(state.kind === "error" ? "download.retry" : "download.refresh")}</Button></div><p className="text-xs leading-relaxed text-muted-foreground">{t("download.requires")}</p><DialogFooter className="items-center sm:justify-between"><Button variant="ghost" size="sm" asChild><a href={`${REPOSITORY}/blob/dev/docs/development.md`}>{t("download.build")}</a></Button><Button size="sm" asChild><a href={LATEST_RELEASE_URL}>{t("download.latest")}<ArrowUpRightIcon /></a></Button></DialogFooter></DialogContent></Dialog>;
 }
