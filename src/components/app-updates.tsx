@@ -1,5 +1,5 @@
 import { formatNumber, t, useTranslation } from "@/i18n";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { ArrowDownToLineIcon, CheckIcon, RefreshCwIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -9,6 +9,14 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { HoverTip } from "@/components/ui/tooltip";
 import { updateBusy, type UpdateSnapshot } from "@/state/app-updates";
 import { appUpdates, useAppUpdates } from "@/state/use-app-updates";
+import { errorMessage, gitApi } from "@/lib/git";
+
+type NotesRenderer = typeof import("@/components/release-notes").default;
+let cachedNotesRenderer: NotesRenderer | null = null;
+
+function openReleaseNoteLink(url: string) {
+  void gitApi.openExternalUrl(url).catch((error: unknown) => toast.error(errorMessage(error)));
+}
 
 function versionLabel(value: string) {
   return `v${value.replace(/^v/, "")}`;
@@ -82,6 +90,7 @@ export function AppUpdateBanner() {
 export function UpdatesSettings() {
   useTranslation();
   const state = useAppUpdates();
+  const [notesOpen, setNotesOpen] = useState(false);
   const busy = updateBusy(state);
   const update = state.update;
   const canInstall = update && ["available", "error"].includes(state.status);
@@ -131,11 +140,11 @@ export function UpdatesSettings() {
         ) : null}
       </div>
       {update?.notes ? (
-        <details className="text-xs text-muted-foreground">
+        <details className="text-xs text-muted-foreground" onToggle={(event) => setNotesOpen(event.currentTarget.open)}>
           <summary className="w-fit cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-ring">{t("desktop.appUpdates.release_notes")}</summary>
-          <ScrollArea className="mt-2 rounded-md border bg-muted/30" viewportClassName="max-h-32" scrollbars="vertical">
-            <p className="whitespace-pre-wrap break-words p-3 text-xs">{update.notes}</p>
-          </ScrollArea>
+          {notesOpen ? <ScrollArea className="mt-2 rounded-lg border bg-muted/30" viewportClassName="max-h-64 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50" viewportProps={{ role: "region", "aria-label": t("desktop.appUpdates.release_notes"), tabIndex: 0 }} scrollbars="vertical">
+            <ReleaseNotesContent notes={update.notes} />
+          </ScrollArea> : null}
         </details>
       ) : null}
       {canInstall ? (
@@ -146,4 +155,30 @@ export function UpdatesSettings() {
       ) : null}
     </section>
   );
+}
+
+
+function ReleaseNotesContent({ notes }: { notes: string }) {
+  const [Renderer, setRenderer] = useState<NotesRenderer | null>(() => cachedNotesRenderer);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (Renderer) return;
+    let current = true;
+    void import("@/components/release-notes").then((module) => {
+      cachedNotesRenderer = module.default;
+      if (current) setRenderer(() => module.default);
+    }, () => { if (current) setFailed(true); });
+    return () => { current = false; };
+  }, [Renderer, attempt]);
+
+  if (Renderer) return <Renderer notes={notes} label={t("desktop.appUpdates.release_notes")} onOpenLink={openReleaseNoteLink} />;
+  if (!failed) return <p role="status" className="p-3">{t("common.loading")}</p>;
+  return <div className="p-3">
+    <div role="alert" className="mb-3 flex items-start gap-3">
+      <p className="min-w-0 flex-1 leading-relaxed">{t("desktop.appUpdates.could_not_load_release_notes")}</p>
+      <Button size="xs" variant="outline" onClick={() => { setFailed(false); setAttempt((value) => value + 1); }}>{t("common.retry")}</Button>
+    </div>
+    <p className="whitespace-pre-wrap break-words text-foreground">{notes}</p>
+  </div>;
 }

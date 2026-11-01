@@ -179,7 +179,7 @@ function StashRow({
         </button>
       </ContextMenuTrigger>
       </HoverTip>
-      <ContextMenuContent className="w-36">
+      <ContextMenuContent className="min-w-36">
         <ContextMenuItem onClick={onApply}>
           <CheckIcon />{t("git.ui.apply")}</ContextMenuItem>
         <ContextMenuItem onClick={onPop}>

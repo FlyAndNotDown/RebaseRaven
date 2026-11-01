@@ -6,12 +6,12 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::error::{AppError, AppResult, P4_LOGIN, P4_MISSING};
 
@@ -399,6 +399,118 @@ pub fn run_p4_ok(env: &P4Env, args: &[&str], input: Option<&str>) -> AppResult<S
     result
 }
 
+// Passive repository discovery must never wait for an unrelated server or a
+// selected executable wrapper. Keep its limits separate from user operations.
+const PROBE_OUTPUT_LIMIT: usize = 65_536;
+const PROBE_TIMEOUT: &str = "Perforce workspace discovery timed out.";
+
+pub(super) fn run_p4_probe(env: &P4Env, args: &[&str], deadline: Instant) -> AppResult<String> {
+    if !matches!(args, ["set"] | ["-ztag", "info"]) {
+        return Err(AppError::msg("That command is not a repository probe."));
+    }
+    let mut command = prepared(require_p4()?, env, args);
+    probe_output(&mut command, deadline).and_then(finish)
+}
+
+/// Own the child until its result is collected, so a deadline never targets a
+/// recycled PID after an exited parent leaves its helpers holding the pipes.
+struct ProbeProcess {
+    child: Child,
+    tree: crate::platform::ProbeProcessTreeGuard,
+    reaped: bool,
+}
+
+impl Drop for ProbeProcess {
+    fn drop(&mut self) {
+        if !self.reaped {
+            self.tree.terminate(self.child.id());
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+}
+
+fn probe_output(command: &mut Command, deadline: Instant) -> AppResult<std::process::Output> {
+    if Instant::now() >= deadline {
+        return Err(AppError::msg(PROBE_TIMEOUT));
+    }
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let (child, tree) = crate::platform::spawn_probe_command(command)
+        .map_err(|err| p4_start_error(command.get_program(), err))?;
+    probe_child(child, tree, deadline)
+}
+
+fn probe_child(
+    child: Child,
+    tree: crate::platform::ProbeProcessTreeGuard,
+    deadline: Instant,
+) -> AppResult<std::process::Output> {
+    let mut process = ProbeProcess {
+        child,
+        tree,
+        reaped: false,
+    };
+    let (sender, receiver) = mpsc::channel();
+    for (stdout, pipe) in [
+        (
+            true,
+            Box::new(process.child.stdout.take().expect("piped stdout")) as Box<dyn Read + Send>,
+        ),
+        (
+            false,
+            Box::new(process.child.stderr.take().expect("piped stderr")) as Box<dyn Read + Send>,
+        ),
+    ] {
+        let sender = sender.clone();
+        thread::spawn(move || {
+            let mut bytes = Vec::with_capacity(PROBE_OUTPUT_LIMIT + 1);
+            let result = pipe
+                .take((PROBE_OUTPUT_LIMIT + 1) as u64)
+                .read_to_end(&mut bytes);
+            let _ = sender.send((stdout, result.map(|_| bytes)));
+        });
+    }
+    drop(sender);
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    for _ in 0..2 {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let (is_stdout, bytes) = receiver
+            .recv_timeout(remaining)
+            .map_err(|_| AppError::msg(PROBE_TIMEOUT))?;
+        let bytes = bytes?;
+        if bytes.len() > PROBE_OUTPUT_LIMIT {
+            return Err(AppError::msg(
+                "Perforce workspace discovery output is too large.",
+            ));
+        }
+        if is_stdout {
+            stdout = bytes;
+        } else {
+            stderr = bytes;
+        }
+    }
+    let status = loop {
+        if let Some(status) = process.child.try_wait()? {
+            process.reaped = true;
+            break status;
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(AppError::msg(PROBE_TIMEOUT));
+        }
+        thread::sleep(remaining.min(Duration::from_millis(5)));
+    };
+    Ok(std::process::Output {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
 /// `p4 diff` can exit non-zero when the files differ. A diff body is still a result.
 pub fn run_p4_diff(env: &P4Env, args: &[&str]) -> AppResult<String> {
     let output = run_p4(env, args, None)?;
@@ -683,6 +795,90 @@ mod tests {
     };
     use std::path::Path;
     use std::sync::Arc;
+
+    #[cfg(unix)]
+    #[test]
+    fn discovery_deadline_cancels_children_and_helpers_holding_output_pipes() {
+        use std::process::Stdio;
+        use std::time::{Duration, Instant};
+
+        let temporary = tempfile::tempdir().unwrap();
+        let marker = temporary.path().join("helper-survived");
+        let mut command = crate::platform::background_command("/bin/sh");
+        command
+            .args([
+                "-c",
+                "(sleep 0.2; printf orphan > \"$1\") & exit 0",
+                "probe-fixture",
+            ])
+            .arg(&marker)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let (child, tree) = crate::platform::spawn_probe_command(&mut command).unwrap();
+        let pid = child.id();
+        let started = Instant::now();
+        let error =
+            super::probe_child(child, tree, started + Duration::from_millis(75)).unwrap_err();
+        assert_eq!(error.to_string(), super::PROBE_TIMEOUT);
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert!(nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid as i32), None).is_err());
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(
+            !marker.exists(),
+            "the probe left its pipe-holding helper running"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn discovery_bounds_output_and_keeps_successful_output_intact() {
+        use std::time::{Duration, Instant};
+
+        let mut command = crate::platform::background_command("/bin/sh");
+        command.args(["-c", "printf 'workspace\\n'; printf 'diagnostic\\n' >&2"]);
+        let output =
+            super::probe_output(&mut command, Instant::now() + Duration::from_secs(2)).unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"workspace\n");
+        assert_eq!(output.stderr, b"diagnostic\n");
+
+        for pipe in ["", " >&2"] {
+            let mut command = crate::platform::background_command("/bin/sh");
+            command.args([
+                "-c",
+                &format!("while :; do printf '0123456789abcdef0123456789abcdef'{pipe}; done"),
+            ]);
+            let error = super::probe_output(&mut command, Instant::now() + Duration::from_secs(2))
+                .unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                "Perforce workspace discovery output is too large."
+            );
+        }
+    }
+
+    #[test]
+    fn discovery_does_not_launch_after_its_shared_deadline_or_accept_mutations() {
+        let mut command = crate::platform::background_command("not-a-probe-executable");
+        let error = super::probe_output(&mut command, std::time::Instant::now()).unwrap_err();
+        assert_eq!(error.to_string(), super::PROBE_TIMEOUT);
+        let env = P4Env {
+            cwd: std::path::PathBuf::new(),
+            port: String::new(),
+            user: String::new(),
+            client: String::new(),
+            charset: String::new(),
+        };
+        for args in [
+            &["set", "P4PORT=other.example.com:1666"][..],
+            &["trust", "-y"][..],
+            &["sync"][..],
+        ] {
+            let error = super::run_p4_probe(&env, args, std::time::Instant::now()).unwrap_err();
+            assert_eq!(error.to_string(), "That command is not a repository probe.");
+        }
+    }
 
     #[test]
     fn workspace_commands_override_the_launch_directory_and_connection() {

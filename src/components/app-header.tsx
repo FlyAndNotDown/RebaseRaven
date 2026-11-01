@@ -13,6 +13,8 @@ import {
   ChevronDownIcon,
   CodeXmlIcon,
   FolderOpenIcon,
+  GitBranchIcon,
+  GlobeIcon,
   PlusIcon,
   SquareTerminalIcon,
   XIcon,
@@ -170,7 +172,7 @@ export function AppHeader() {
                     onClick={() => void checkoutBranch(branch.name)}
                   >
                     <span className="min-w-4">
-                      {branch.isHead ? <CheckIcon className="size-3.5" /> : null}
+                      {branch.isHead ? <CheckIcon className="size-3.5" /> : <GitBranchIcon className="size-3.5" />}
                     </span>
                     <span className="truncate font-mono">{branch.name}</span>
                   </DropdownMenuItem>
@@ -185,6 +187,7 @@ export function AppHeader() {
                           key={`remote:${branch.name}`}
                           onClick={() => void checkoutBranch(branch.name)}
                         >
+                          <GitBranchIcon />
                           <span className="truncate font-mono text-muted-foreground">
                             {branch.name}
                           </span>
@@ -193,6 +196,7 @@ export function AppHeader() {
                     : remoteGroups.map(([remoteName, branches]) => (
                         <DropdownMenuSub key={remoteName}>
                           <DropdownMenuSubTrigger>
+                            <GlobeIcon />
                             <span className="truncate font-mono">{remoteName}</span>
                           </DropdownMenuSubTrigger>
                           <DropdownMenuSubContent className="w-80 p-0">
@@ -646,11 +650,13 @@ function VirtualBranchList({
               <button
                 key={branch.name}
                 type="button"
-                className="flex w-full items-center truncate px-3 text-left font-mono text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                className="flex w-full min-w-0 items-center gap-2 px-3 text-left font-mono text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                 style={{ height: row }}
+                title={branch.name}
                 onClick={() => onPick(branch.name)}
               >
-                {shortRemoteName(branch.name, remoteName)}
+                <GitBranchIcon aria-hidden="true" className="size-3.5 shrink-0" />
+                <span className="truncate">{shortRemoteName(branch.name, remoteName)}</span>
               </button>
             ))}
             <div style={{ height: rows.after }} />

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="site/public/assets/mark.svg" width="80" height="80" alt="Rebasely 标志">
+  <img src="site/public/assets/mark.png" width="80" height="80" alt="Rebasely 标志">
 </p>
 
 <h1 align="center">Rebasely</h1>
@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://flyandnotdown.github.io/Rebasely/zh-CN/">官网</a> ·
+  <a href="https://rebasely.flyandnotdown.com/zh-CN/">官网</a> ·
   <a href="https://github.com/FlyAndNotDown/Rebasely/releases/latest">下载</a> ·
   <a href="README.md">English</a>
 </p>
@@ -37,7 +37,7 @@ Tauri 和 Rust 构建。在专注的工作区中审阅细节、理解历史，�
 | 重命名分支、设置上游和编辑远端地址 | 重命名或移动文件、锁定提交和撤销修订 |
 | 合并、变基和挑选提交 | 在经典工作区中预览单文件集成 |
 
-试试[互动 Git 与 Perforce 演示](https://flyandnotdown.github.io/Rebasely/zh-CN/#features)。
+试试[互动 Git 与 Perforce 演示](https://rebasely.flyandnotdown.com/zh-CN/#features)。
 演示使用虚构数据，不会修改真实仓库。
 
 ## 开始使用

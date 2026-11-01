@@ -1,20 +1,21 @@
 import { useTranslation } from "react-i18next";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
-import { ArchiveIcon, ChevronDownIcon, CircleDotIcon, FolderTreeIcon, GitBranchIcon, HistoryIcon, SettingsIcon } from "lucide-react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { ArchiveIcon, ChevronDownIcon, CircleDotIcon, FolderTreeIcon, GitBranchIcon, HistoryIcon, ListIcon, SearchIcon, SettingsIcon, TagIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { HoverTip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { laneColor, type GraphRow } from "@/lib/commit-graph";
 import { allHunkIds, demoCommits, demoFiles, type DemoCommit, type DemoFile } from "./demo-data";
 import { DemoFileRow, DiffPane, EmptyPane, PaneHeader } from "./demo-shared";
 import { DEMO_GRAPH_ROW_HEIGHT, demoGraphPath, demoGraphSegments, demoGraphWidth, demoGraphX, layoutDemoHistoryGraph } from "./demo-history-graph";
+import { reconcileDemoSelection, type DemoFileScope } from "./demo-selection";
 
 type GitView = "changes" | "history" | "stash" | "files";
-type FileScope = "unstaged" | "staged";
 const views = [
   { value: "changes", label: "demo.changes", icon: CircleDotIcon },
   { value: "history", label: "demo.history", icon: HistoryIcon },
@@ -28,7 +29,9 @@ export function GitDemo({ onNotice }: { onNotice: (notice: string) => void }) {
   const [remaining, setRemaining] = useState(() => new Set(allHunkIds));
   const [staged, setStaged] = useState<Set<string>>(() => new Set());
   const [fileId, setFileId] = useState("navigation");
-  const [scope, setScope] = useState<FileScope>("unstaged");
+  const [scope, setScope] = useState<DemoFileScope>("unstaged");
+  const [tree, setTree] = useState(false);
+  const [openGroups, setOpenGroups] = useState({ unstaged: true, staged: true });
   const [message, setMessage] = useState(t("demo.sampleMessage"));
   const [commits, setCommits] = useState(demoCommits);
   const [historyHash, setHistoryHash] = useState(demoCommits[0].hash);
@@ -36,30 +39,32 @@ export function GitDemo({ onNotice }: { onNotice: (notice: string) => void }) {
   const viewButtons = useRef<Partial<Record<GitView, HTMLButtonElement | null>>>({});
   const pendingViewFocus = useRef(false);
   const pendingFileFocus = useRef(false);
-  const focusSelectedFile = useCallback((node: HTMLButtonElement | null) => {
-    if (node && pendingFileFocus.current) {
-      pendingFileFocus.current = false;
-      node.focus();
-    }
-  }, []);
+  const selectedFileButton = useRef<HTMLButtonElement | null>(null);
+  useLayoutEffect(() => {
+    if (!pendingFileFocus.current) return;
+    pendingFileFocus.current = false;
+    const button = selectedFileButton.current;
+    if (view === "changes" && button && !button.closest("[hidden]")) button.focus();
+  });
   useLayoutEffect(() => {
     if (pendingViewFocus.current) {
       pendingViewFocus.current = false;
       viewButtons.current[view]?.focus();
     }
   }, [view]);
-  const file = demoFiles.find((item) => item.id === fileId) ?? demoFiles[0];
+  const selection = reconcileDemoSelection(demoFiles, remaining, staged, { fileId, scope });
+  const file = demoFiles.find((item) => item.id === selection?.fileId);
   const changed = demoFiles.filter((item) => item.hunks.some((hunk) => remaining.has(hunk.id)));
   const stagedFiles = changed.filter((item) => item.hunks.some((hunk) => staged.has(hunk.id)));
   const unstagedFiles = changed.filter((item) => item.hunks.some((hunk) => remaining.has(hunk.id) && !staged.has(hunk.id)));
-  const hunks = file.hunks.filter((hunk) => remaining.has(hunk.id) && staged.has(hunk.id) === (scope === "staged"));
+  const hunks = file?.hunks.filter((hunk) => remaining.has(hunk.id) && staged.has(hunk.id) === (selection?.scope === "staged")) ?? [];
 
-  function selectFile(next: DemoFile, nextScope: FileScope) {
+  function selectFile(next: DemoFile, nextScope: DemoFileScope) {
     setFileId(next.id);
     setScope(nextScope);
   }
 
-  function moveHunks(ids: string[], nextScope: FileScope) {
+  function moveHunks(ids: string[], nextScope: DemoFileScope) {
     setStaged((current) => {
       const next = new Set(current);
       for (const id of ids) {
@@ -69,6 +74,7 @@ export function GitDemo({ onNotice }: { onNotice: (notice: string) => void }) {
       return next;
     });
     setScope(nextScope);
+    setOpenGroups((current) => ({ ...current, [nextScope]: true }));
     onNotice(nextScope === "staged" ? t("demo.stagedNotice") : t("demo.unstagedNotice"));
   }
 
@@ -92,34 +98,40 @@ export function GitDemo({ onNotice }: { onNotice: (notice: string) => void }) {
           <TabsList aria-label={t("demo.gitViews")}>{views.map(({ value, label, icon: Icon }) => <HoverTip key={value} label={t(label)} side="right"><TabsTrigger ref={(node) => { viewButtons.current[value] = node; }} value={value} aria-label={t(label)}><Icon /></TabsTrigger></HoverTip>)}</TabsList>
           <span className="demo-settings" aria-hidden="true"><SettingsIcon /></span>
         </div>
-        <TabsContent value="changes" className="demo-view-panel">
+        <TabsContent forceMount hidden={view !== "changes"} value="changes" className="demo-view-panel">
           <div className="demo-split">
             <div className="demo-file-pane">
-              <PaneHeader><span>{t("demo.changedFiles", { count: changed.length })}</span><span className="demo-muted">{t("demo.changes")}</span></PaneHeader>
+              <PaneHeader><span className="demo-muted">{t("demo.changedFiles", { count: changed.length })}</span><SegmentedControl label={t("demo.fileLayout")} dense value={tree ? "tree" : "list"} onChange={(value) => setTree(value === "tree")} options={[{ value: "list", label: <ListIcon />, tip: t("demo.list") }, { value: "tree", label: <FolderTreeIcon />, tip: t("demo.tree") }]} /></PaneHeader>
               <ScrollArea className="demo-file-scroll" gutter={false}>
                 {([['unstaged', unstagedFiles], ['staged', stagedFiles]] as const).map(([group, items]) => <section className="demo-file-group" key={group} aria-label={group === "staged" ? t("demo.stagedFiles") : t("demo.unstagedFiles")}>
-                  <h4><ChevronDownIcon />{group === "staged" ? t("demo.staged") : t("demo.unstaged")}<span>{items.length}</span></h4>
-                  {items.map((item) => <DemoFileRow key={item.id} file={item} active={fileId === item.id && scope === group} selectRef={fileId === item.id && scope === group ? focusSelectedFile : undefined} onSelect={() => selectFile(item, group)} action={group === "staged" ? "unstage" : "stage"} actionLabel={t(group === "staged" ? "demo.unstageFile" : "demo.stageFile", { path: item.path })} onAction={() => { pendingFileFocus.current = true; setFileId(item.id); moveHunks(item.hunks.filter((hunk) => remaining.has(hunk.id)).map((hunk) => hunk.id), group === "staged" ? "unstaged" : "staged"); }} />)}
-                  {!items.length ? <p className="demo-group-empty">{group === "staged" ? t("demo.stagePrompt") : t("demo.noUnstaged")}</p> : null}
+                  <div className="demo-file-group-heading">
+                    <h4><button type="button" onClick={() => setOpenGroups((current) => ({ ...current, [group]: !current[group] }))} aria-expanded={openGroups[group]} aria-controls={`demo-git-${group}`}><ChevronDownIcon className={openGroups[group] ? undefined : "-rotate-90"} /><span>{group === "staged" ? t("demo.staged") : t("demo.changes")}</span><span>{items.length}</span></button></h4>
+                    {items.length ? <Button size="xs" variant="ghost" onClick={() => { pendingFileFocus.current = true; setFileId(items.find((item) => item.id === selection?.fileId)?.id ?? items[0].id); moveHunks(items.flatMap((item) => item.hunks.filter((hunk) => remaining.has(hunk.id)).map((hunk) => hunk.id)), group === "staged" ? "unstaged" : "staged"); }}>{t(group === "staged" ? "demo.unstageAll" : "demo.stageAll")}</Button> : null}
+                  </div>
+                  <div id={`demo-git-${group}`} hidden={!openGroups[group]} className={tree ? "demo-file-tree" : undefined}>
+                    {tree && items.length ? <div className="demo-tree-folder"><ChevronDownIcon /><FolderTreeIcon />src</div> : null}
+                    {items.map((item) => <DemoFileRow key={item.id} file={item} directory={!tree} active={selection?.fileId === item.id && selection.scope === group} selectRef={selection?.fileId === item.id && selection.scope === group ? selectedFileButton : undefined} onSelect={() => selectFile(item, group)} action={group === "staged" ? "unstage" : "stage"} actionLabel={t(group === "staged" ? "demo.unstageFile" : "demo.stageFile", { path: item.path })} onAction={() => { pendingFileFocus.current = true; setFileId(item.id); moveHunks(item.hunks.filter((hunk) => remaining.has(hunk.id)).map((hunk) => hunk.id), group === "staged" ? "unstaged" : "staged"); }} />)}
+                    {!items.length ? <p className="demo-group-empty">{group === "staged" ? t("demo.stagePrompt") : t("demo.noUnstaged")}</p> : null}
+                  </div>
                 </section>)}
               </ScrollArea>
               <form className="demo-compose" onSubmit={(event) => { event.preventDefault(); commit(); }}>
                 <label className="sr-only" htmlFor="demo-commit-message">{t("demo.message")}</label>
                 <Textarea id="demo-commit-message" value={message} maxLength={120} onChange={(event) => setMessage(event.target.value)} placeholder={t("demo.messagePlaceholder")} rows={2} />
-                <div><span>{t("demo.stagedCount", { count: stagedFiles.length })}</span><Button type="submit" size="sm" disabled={!staged.size || !message.trim()}>{t("demo.commit")}</Button></div>
+                <div><span>{t("demo.stagedCount", { count: stagedFiles.length })}</span><Button type="submit" disabled={!staged.size || !message.trim()}>{t("demo.commit")}</Button></div>
               </form>
             </div>
-            {changed.length ? <DiffPane file={file} hunks={hunks} actionLabel={scope === "staged" ? t("demo.unstageHunk") : t("demo.stageHunk")} onHunkAction={(hunk) => moveHunks([hunk.id], scope === "staged" ? "unstaged" : "staged")} /> : <EmptyPane title={t("demo.clean")} detail={t("demo.commitInHistory")}><Button size="sm" variant="outline" onClick={() => { pendingViewFocus.current = true; setView("history"); }}>{t("demo.viewHistory")}</Button></EmptyPane>}
+            {selection && file ? <DiffPane file={file} hunks={hunks} scopeLabel={t(selection.scope === "staged" ? "demo.staged" : "demo.workingChanges")} actionLabel={selection.scope === "staged" ? t("demo.unstageHunk") : t("demo.stageHunk")} onHunkAction={(hunk) => moveHunks([hunk.id], selection.scope === "staged" ? "unstaged" : "staged")} /> : <EmptyPane title={t("demo.clean")} detail={t("demo.commitInHistory")}><Button size="sm" variant="outline" onClick={() => { pendingViewFocus.current = true; setView("history"); }}>{t("demo.viewHistory")}</Button></EmptyPane>}
           </div>
         </TabsContent>
-        <TabsContent value="history" className="demo-view-panel"><GitHistory commits={commits} selectedHash={historyHash} onSelect={setHistoryHash} /></TabsContent>
-        <TabsContent value="stash" className="demo-view-panel">
+        <TabsContent forceMount hidden={view !== "history"} value="history" className="demo-view-panel"><GitHistory commits={commits} selectedHash={historyHash} onSelect={setHistoryHash} /></TabsContent>
+        <TabsContent forceMount hidden={view !== "stash"} value="stash" className="demo-view-panel">
           <div className="demo-split">
             <div className="demo-file-pane"><PaneHeader>{t("demo.stash")}</PaneHeader>{stashApplied ? <EmptyPane title={t("demo.stashApplied")} detail={t("demo.stashDetail")}><Button size="sm" variant="outline" onClick={() => { pendingViewFocus.current = true; setView("changes"); }}>{t("demo.viewChanges")}</Button></EmptyPane> : <><div className="demo-stash-summary"><ArchiveIcon /><strong>{t("demo.sampleStash")}</strong><span>{t("demo.stashTime")}</span><Button size="sm" variant="outline" onClick={() => { setRemaining(new Set(allHunkIds)); setStaged(new Set()); setStashApplied(true); setFileId("navigation"); setScope("unstaged"); pendingViewFocus.current = true; setView("changes"); onNotice(t("demo.stashNotice")); }}>{t("demo.applyStash")}</Button></div><DemoFileRow file={demoFiles[0]} active onSelect={() => setFileId("navigation")} /></>}</div>
             <DiffPane file={demoFiles[0]} />
           </div>
         </TabsContent>
-        <TabsContent value="files" className="demo-view-panel"><FilesDemo /></TabsContent>
+        <TabsContent forceMount hidden={view !== "files"} value="files" className="demo-view-panel"><FilesDemo /></TabsContent>
       </Tabs>
     </>
   );
@@ -137,11 +149,11 @@ function GitHistory({ commits, selectedHash, onSelect }: { commits: DemoCommit[]
   const file = files.find((item) => item.id === pickedFile) ?? files[0];
   return (
     <div className="demo-history">
-      <aside className="demo-branches" aria-label={t("demo.illustrativeBranches")}><PaneHeader>{t("demo.branches")}</PaneHeader><p>{t("demo.local")}</p><div className="selected"><GitBranchIcon />main<span>HEAD</span></div><div><GitBranchIcon />feature/search</div><p>{t("demo.remotes")}</p><div><ChevronDownIcon />origin</div><div><GitBranchIcon />main</div><p>{t("demo.tags")}</p><div>◇ <span>v1.0.0</span></div></aside>
+      <aside className="demo-branches" aria-label={t("demo.illustrativeBranches")}><PaneHeader>{t("demo.branches")}</PaneHeader><p>{t("demo.local")}</p><div className="selected"><GitBranchIcon />main<span>HEAD</span></div><div><GitBranchIcon />feature/search</div><p>{t("demo.remotes")}</p><div><ChevronDownIcon />origin</div><div><GitBranchIcon />main</div><p>{t("demo.tags")}</p><div><TagIcon /><span>v1.0.0</span></div></aside>
       <div className="demo-history-main">
-        <PaneHeader><span>{t("demo.history")}</span><Input aria-label={t("demo.filterCommitsLabel")} placeholder={t("demo.filterCommits")} value={query} onChange={(event) => setQuery(event.target.value)} className="demo-history-filter" /></PaneHeader>
+        <PaneHeader><div className="demo-history-search"><SearchIcon aria-hidden="true" /><Input aria-label={t("demo.filterCommitsLabel")} placeholder={t("demo.filterCommits")} value={query} onChange={(event) => setQuery(event.target.value)} className="demo-history-filter" /></div></PaneHeader>
         <ScrollArea className="demo-history-list" gutter={false}>
-          {filtered.map((commit, index) => <button type="button" key={commit.hash} className={cn("demo-commit-row", selected?.hash === commit.hash && "selected")} aria-pressed={selected?.hash === commit.hash} onClick={() => onSelect(commit.hash)}><DemoHistoryGraph row={graph[index]} previous={graph[index - 1]} width={graphWidth} selected={selected?.hash === commit.hash} /><span className="demo-commit-summary">{commit.ref ? <span className="demo-ref">{commit.ref}</span> : null}{commit.summary}</span><code>{commit.hash}</code><time>{t(commit.time)}</time></button>)}
+          {filtered.map((commit, index) => <button type="button" key={commit.hash} className={cn("demo-commit-row", selected?.hash === commit.hash && "selected")} aria-pressed={selected?.hash === commit.hash} onClick={() => onSelect(commit.hash)}><DemoHistoryGraph row={graph[index]} previous={graph[index - 1]} width={graphWidth} selected={selected?.hash === commit.hash} /><span className="demo-commit-summary">{commit.ref ? <span className={cn("demo-ref", commit.ref === "main" && "demo-ref-head")}>{commit.ref}</span> : null}{commit.summary}</span><code>{commit.hash}</code><time>{t(commit.time)}</time></button>)}
           {!filtered.length ? <p className="demo-no-results">{t("demo.noCommits")}</p> : null}
         </ScrollArea>
         {selected && file ? <div className="demo-history-detail"><div className="demo-history-files"><PaneHeader>{t("demo.changedFilesLabel")} <span>{files.length}</span></PaneHeader>{files.map((item) => <DemoFileRow key={item.id} file={item} active={file.id === item.id} onSelect={() => setPickedFile(item.id)} />)}<div className="demo-commit-meta"><strong>{selected.summary}</strong><span>{selected.hash} · Alice · {t(selected.time)}</span></div></div><div className="demo-history-diff"><div className="demo-mobile-file-picker"><label htmlFor="demo-history-file">{t("demo.changedFile")}</label><select id="demo-history-file" value={file.id} onChange={(event) => setPickedFile(event.target.value)}>{files.map((item) => <option key={item.id} value={item.id}>{item.path}</option>)}</select></div><DiffPane file={file} hunks={selected.hunkIds ? file.hunks.filter((hunk) => selected.hunkIds?.includes(hunk.id)) : file.hunks} /></div></div> : <EmptyPane title={t("demo.noCommits")} detail={t("demo.tryCommit")} />}
@@ -166,5 +178,5 @@ export function FilesDemo({ perforce = false }: { perforce?: boolean }) {
   const { t } = useTranslation();
   const [fileId, setFileId] = useState("navigation");
   const file = demoFiles.find((item) => item.id === fileId) ?? demoFiles[0];
-  return <div className="demo-split"><div className="demo-file-pane"><PaneHeader>{perforce ? t("demo.workspace") : t("demo.files")}</PaneHeader><div className="demo-tree-folder"><ChevronDownIcon /><FolderTreeIcon />{perforce ? "//depot/main/src" : "src"}</div>{demoFiles.map((item) => <DemoFileRow key={item.id} file={item} active={file.id === item.id} onSelect={() => setFileId(item.id)} />)}</div><section className="demo-diff"><PaneHeader><span className="demo-path">{file.path}</span><span className="demo-language">TypeScript</span></PaneHeader><ScrollArea className="demo-code-scroll" gutter={false} aria-label={t("demo.contents", { path: file.path })} tabIndex={0}><div className="demo-code">{file.hunks.flatMap((hunk) => hunk.lines).filter((line) => line.after !== undefined).map((line, index) => <div className="demo-code-row" key={index}><span className="demo-line-number">{line.newNumber}</span><code>{line.after}</code></div>)}</div></ScrollArea></section></div>;
+  return <div className="demo-split"><div className="demo-file-pane"><PaneHeader>{perforce ? t("demo.workspace") : t("demo.files")}</PaneHeader><div className="demo-tree-folder"><ChevronDownIcon /><FolderTreeIcon />{perforce ? "//depot/main/src" : "src"}</div>{demoFiles.map((item) => <DemoFileRow key={item.id} file={item} directory={false} perforce={perforce} active={file.id === item.id} onSelect={() => setFileId(item.id)} />)}</div><section className="demo-diff"><PaneHeader><span className="demo-path">{file.path}</span><span className="demo-language">TypeScript</span></PaneHeader><ScrollArea className="demo-code-scroll" gutter={false} viewportClassName="demo-code-viewport focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring" viewportProps={{ role: "region", "aria-label": t("demo.contents", { path: file.path }), tabIndex: 0 }}><div className="demo-code">{file.hunks.flatMap((hunk) => hunk.lines).filter((line) => line.after !== undefined).map((line, index) => <div className="demo-code-row" key={index}><span className="demo-line-number">{line.newNumber}</span><code>{line.after}</code></div>)}</div></ScrollArea></section></div>;
 }

@@ -1,7 +1,7 @@
 const REPOSITORY_URL = "https://github.com/FlyAndNotDown/Rebasely";
 const DOWNLOAD_URL = `${REPOSITORY_URL}/releases/latest`;
 const SUPPORTED_SYSTEMS = ["macOS (Apple Silicon)", "Windows (x64)"];
-const SITE_URL = "https://flyandnotdown.github.io/Rebasely/";
+const SITE_URL = "https://rebasely.flyandnotdown.com/";
 
 function decodeText(value) {
   return value.replace(/&(?:#(x[\da-f]+|\d+)|(amp|quot|apos|lt|gt|nbsp));/gi, (entity, numeric, named) => {
@@ -48,6 +48,18 @@ function validSiteUrl(value) {
     const url = new URL(value);
     return url.protocol === "https:" && !url.username && !url.password && !url.search && !url.hash && url.pathname.endsWith("/");
   } catch { return false; }
+}
+
+export function validateSiteRouting({ cname = "", robots = "" }) {
+  const violations = [];
+  if (cname.trim() !== new URL(SITE_URL).hostname) {
+    violations.push("CNAME: the custom domain must match the canonical website host");
+  }
+  const sitemaps = [...robots.matchAll(/^sitemap:[\t ]*(\S+)[\t ]*$/gim)].map((match) => match[1]);
+  if (sitemaps.length !== 1 || sitemaps[0] !== `${SITE_URL}sitemap.xml`) {
+    violations.push("robots.txt: advertise the canonical website sitemap once");
+  }
+  return violations;
 }
 
 export function validateSiteDocument({ html, sitemap, files, filename = "index.html" }) {

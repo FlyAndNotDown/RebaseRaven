@@ -3,6 +3,7 @@ import { useMemo, useState, type KeyboardEvent, type MouseEvent } from "react";
 import {
   AppWindowIcon,
   ArchiveIcon,
+  ArrowUpFromLineIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   Columns2Icon,
@@ -765,7 +766,7 @@ export function ChangesPane() {
                     className="whitespace-nowrap"
                     disabled={!canCommitAndPush}
                     onClick={submitCommitAndPush}
-                  >{t("git.ui.commit_and_push")}</DropdownMenuItem>
+                  ><ArrowUpFromLineIcon />{t("git.ui.commit_and_push")}</DropdownMenuItem>
                   <DropdownMenuCheckboxItem
                     checked={amend}
                     disabled={!canAmend}

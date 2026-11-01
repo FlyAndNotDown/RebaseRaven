@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="site/public/assets/mark.svg" width="80" height="80" alt="Rebasely logo">
+  <img src="site/public/assets/mark.png" width="80" height="80" alt="Rebasely logo">
 </p>
 
 <h1 align="center">Rebasely</h1>
@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://flyandnotdown.github.io/Rebasely/en/">Website</a> ·
+  <a href="https://rebasely.flyandnotdown.com/en/">Website</a> ·
   <a href="https://github.com/FlyAndNotDown/Rebasely/releases/latest">Download</a> ·
   <a href="README.zh-CN.md">Chinese</a>
 </p>
@@ -42,7 +42,7 @@ and prepare your next change in one focused workspace.
 | Rename branches, set upstreams, and edit remote URLs | Rename or move files, lock submissions, and undo revisions |
 | Merge, rebase, and cherry-pick commits | Preview single-file integration in classic workspaces |
 
-Try the [interactive Git and Perforce demo](https://flyandnotdown.github.io/Rebasely/en/#features).
+Try the [interactive Git and Perforce demo](https://rebasely.flyandnotdown.com/en/#features).
 It uses invented data and never changes a real repository.
 
 ## Get started

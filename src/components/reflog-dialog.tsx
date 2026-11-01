@@ -1,6 +1,6 @@
 import { t, useTranslation } from "@/i18n";
 import { useEffect, useState } from "react";
-import { EllipsisIcon } from "lucide-react";
+import { ArrowDownToLineIcon, EllipsisIcon, FileDiffIcon, GitBranchIcon, HistoryIcon, ListChecksIcon, RotateCcwIcon, Trash2Icon } from "lucide-react";
 import { CreateBranchDialog } from "@/components/create-ref-dialogs";
 import { Button } from "@/components/ui/button";
 import { HoverTip } from "@/components/ui/tooltip";
@@ -133,23 +133,23 @@ function ReflogList({ onClose }: { onClose: () => void }) {
                       onClose();
                       void selectCommit(entry.id);
                     }}
-                  >{t("git.ui.show_in_history")}</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setBranchFrom(entry)}>{t("git.ui.create_branch_here")}</DropdownMenuItem>
+                  ><HistoryIcon />{t("git.ui.show_in_history")}</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setBranchFrom(entry)}><GitBranchIcon />{t("git.ui.create_branch_here")}</DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => {
                       onClose();
                       void checkoutDetached(entry.id);
                     }}
-                  >{t("git.ui.check_out_without_a_branch")}</DropdownMenuItem>
+                  ><ArrowDownToLineIcon />{t("git.ui.check_out_without_a_branch")}</DropdownMenuItem>
                   {branch ? (
                     <>
                       <DropdownMenuSeparator />
                       <DropdownMenuSub>
-                        <DropdownMenuSubTrigger>{t("git.dynamic.resetHere", { branch })}</DropdownMenuSubTrigger>
+                        <DropdownMenuSubTrigger><RotateCcwIcon />{t("git.dynamic.resetHere", { branch })}</DropdownMenuSubTrigger>
                         <DropdownMenuSubContent>
-                          <DropdownMenuItem onClick={() => reset(entry, "soft")}>{t("git.ui.soft_keep_changes_staged")}</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => reset(entry, "mixed")}>{t("git.ui.mixed_keep_changes_unstaged")}</DropdownMenuItem>
-                          <DropdownMenuItem variant="destructive" onClick={() => reset(entry, "hard")}>{t("git.ui.hard_discard_changes")}</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => reset(entry, "soft")}><ListChecksIcon />{t("git.ui.soft_keep_changes_staged")}</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => reset(entry, "mixed")}><FileDiffIcon />{t("git.ui.mixed_keep_changes_unstaged")}</DropdownMenuItem>
+                          <DropdownMenuItem variant="destructive" onClick={() => reset(entry, "hard")}><Trash2Icon />{t("git.ui.hard_discard_changes")}</DropdownMenuItem>
                         </DropdownMenuSubContent>
                       </DropdownMenuSub>
                     </>

@@ -797,8 +797,13 @@ export function GitProvider({ children }: { children: ReactNode }) {
       openPerforcePath(path);
       return;
     }
+    const pendingKey = `detect\n${normalizeRepoPath(path)}`;
+    if (openingPathsRef.current.has(pendingKey)) return;
+    openingPathsRef.current.add(pendingKey);
     try {
-      const detected = await p4Api.detectRepository(path);
+      const detected = await runActivity(t("operations.opening_repository"), path, () =>
+        p4Api.detectRepository(path),
+      );
       if (detected.kind === "git") {
         await openGitPath(detected.path);
         return;
@@ -820,8 +825,10 @@ export function GitProvider({ children }: { children: ReactNode }) {
       toast.error(t("operations.no_git_repository_or_perforce_workspace_found_at", { value: path }));
     } catch (error) {
       reportError(error);
+    } finally {
+      openingPathsRef.current.delete(pendingKey);
     }
-  }, [openGitPath, openPerforcePath, setKindPrompt]);
+  }, [openGitPath, openPerforcePath, runActivity, setKindPrompt]);
 
   const chooseRepoKind = useCallback((vcs: VcsKind) => {
     const prompt = kindPromptRef.current;

@@ -940,6 +940,11 @@ async fn open_mailto(email: String) -> AppResult<()> {
 }
 
 #[tauri::command]
+async fn open_external_url(url: String) -> AppResult<()> {
+    blocking(move || platform::open_url(&url)).await
+}
+
+#[tauri::command]
 async fn reveal_in_file_manager(path: String) -> AppResult<()> {
     blocking(move || git::reveal_in_file_manager(&path)).await
 }
@@ -1837,6 +1842,7 @@ pub fn run() {
             set_local_git_identity,
             open_in_file_manager,
             open_mailto,
+            open_external_url,
             reveal_in_file_manager,
             ignore_patterns,
             list_terminals,

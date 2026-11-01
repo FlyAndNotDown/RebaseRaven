@@ -1,4 +1,4 @@
-export const ANALYTICS_BRIDGE_URL = "https://flyandnotdown.github.io/Rebasely/analytics/";
+export const ANALYTICS_BRIDGE_URL = "https://rebasely.flyandnotdown.com/analytics/";
 
 export const ANALYTICS_PANES = [
   "welcome", "git_changes", "git_history", "git_stash", "git_files",

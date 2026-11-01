@@ -26,7 +26,7 @@ export function WelcomeScreen() {
     <ScrollArea className="h-full">
       <main className="mx-auto w-full max-w-5xl px-8 py-10 lg:px-12 lg:py-14">
         <div className="mb-10 flex items-center gap-3">
-          <AppMark className="size-11" iconClassName="size-6" />
+          <AppMark className="size-11" />
           <div>
             <p className="text-sm font-medium">Rebasely</p>
             <p className="text-xs text-muted-foreground">{t("desktop.welcomeScreen.a_unified_version_control_client")}</p>

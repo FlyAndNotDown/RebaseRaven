@@ -8,6 +8,28 @@ use std::process::Stdio;
 
 use crate::error::{AppError, AppResult};
 
+#[cfg(windows)]
+mod windows_probe;
+#[cfg(windows)]
+pub(crate) use windows_probe::{spawn_probe_command, ProbeProcessTreeGuard};
+
+#[cfg(not(windows))]
+pub(crate) struct ProbeProcessTreeGuard;
+
+#[cfg(not(windows))]
+impl ProbeProcessTreeGuard {
+    pub(crate) fn terminate(&self, pid: u32) -> bool {
+        kill_process_tree(pid)
+    }
+}
+
+#[cfg(not(windows))]
+pub(crate) fn spawn_probe_command(
+    command: &mut Command,
+) -> std::io::Result<(std::process::Child, ProbeProcessTreeGuard)> {
+    Ok((command.spawn()?, ProbeProcessTreeGuard))
+}
+
 // Preserve WKWebView's opaque painting path; document CSS supplies the theme.
 #[cfg(target_os = "macos")]
 pub(crate) fn configure_main_webview(config: &mut tauri::Config) {
@@ -21,8 +43,11 @@ pub(crate) fn configure_main_webview(config: &mut tauri::Config) {
         window.decorations = true;
         window.title_bar_style = tauri::TitleBarStyle::Overlay;
         window.hidden_title = true;
+        // Wry adds the button frame height to this vertical inset. With the
+        // standard 14-point controls, its container matches the 44-point web
+        // titlebar rather than positioning the controls above the tab centers.
         window.traffic_light_position =
-            Some(tauri::utils::config::LogicalPosition { x: 16.0, y: 22.0 });
+            Some(tauri::utils::config::LogicalPosition { x: 16.0, y: 30.0 });
     }
 }
 
@@ -127,7 +152,7 @@ pub(crate) fn reveal_path(path: &Path) -> AppResult<()> {
 }
 
 fn allowed_url(value: &str) -> AppResult<url::Url> {
-    if value.chars().any(char::is_control) {
+    if value.len() > 8192 || value.chars().any(char::is_control) {
         return Err(AppError::msg("The link is invalid."));
     }
     let parsed = url::Url::parse(value).map_err(|_| AppError::msg("The link is invalid."))?;
@@ -168,10 +193,12 @@ mod tests {
             "data:text/html,content",
             "https://alice:password@example.com/repo.git",
             "https://example.com/\nnext",
+            "https://example.com/\u{0000}next",
             "not a URL",
         ] {
             assert!(allowed_url(link).is_err(), "{link}");
         }
+        assert!(allowed_url(&format!("https://example.com/{}", "a".repeat(8192))).is_err());
     }
 
     #[test]

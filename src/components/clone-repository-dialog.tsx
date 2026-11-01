@@ -1,7 +1,7 @@
 import { t, useTranslation } from "@/i18n";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ChevronDownIcon, FolderOpenIcon, Loader2Icon } from "lucide-react";
+import { ChevronDownIcon, FolderOpenIcon, FolderTreeIcon, Loader2Icon, PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import { ActivityBar } from "@/components/activity-meter";
 import { Button } from "@/components/ui/button";
@@ -496,6 +496,7 @@ function P4CloneForm({
               <DropdownMenuContent align="start" className="max-h-80 w-(--radix-dropdown-menu-trigger-width)">
                 {(clients ?? []).map((item) => (
                   <DropdownMenuItem key={item.name} onClick={() => setClient(item.name)}>
+                    <FolderTreeIcon />
                     <span className="flex min-w-0 flex-col">
                       <span className="truncate font-mono">{item.name}</span>
                       <span className="truncate font-mono text-[11px] text-muted-foreground">
@@ -505,7 +506,7 @@ function P4CloneForm({
                   </DropdownMenuItem>
                 ))}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => void startCreate()}>{t("common.create")}</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void startCreate()}><PlusIcon />{t("common.create")}</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

@@ -59,6 +59,112 @@ fn other_branch(repo: &Repository, except: &str) -> String {
 }
 
 #[test]
+fn passive_discovery_uses_c_locale_without_changing_git_commands() {
+    const CHILD_ENV: &str = "REBASELY_GIT_LOCALE_TEST_CHILD";
+    const ROOT_ENV: &str = "REBASELY_GIT_LOCALE_TEST_ROOT";
+    if std::env::var_os(CHILD_ENV).as_deref() != Some(std::ffi::OsStr::new("1")) {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().join("workspace");
+        fs::create_dir(&root).unwrap();
+        let mut command = crate::platform::background_command(std::env::current_exe().unwrap());
+        command.args([
+            "--exact",
+            "git::tests::passive_discovery_uses_c_locale_without_changing_git_commands",
+            "--nocapture",
+        ]);
+        command
+            .env(CHILD_ENV, "1")
+            .env(ROOT_ENV, &root)
+            .env("LC_ALL", "zh_CN.UTF-8")
+            .env("LANG", "fr_FR.UTF-8")
+            .env("LANGUAGE", "zh_CN:fr")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", temporary.path().join("global.config"))
+            .env("GIT_CONFIG_COUNT", "0")
+            .env("GIT_CEILING_DIRECTORIES", temporary.path())
+            .env("GIT_TRACE2_EVENT", temporary.path().join("probe.trace"))
+            .env("GIT_TRACE2_ENV_VARS", "LC_ALL,LANG,LANGUAGE");
+        for key in [
+            "GIT_DIR",
+            "GIT_WORK_TREE",
+            "GIT_COMMON_DIR",
+            "GIT_INDEX_FILE",
+            "GIT_OBJECT_DIRECTORY",
+            "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+            "GIT_TEMPLATE_DIR",
+        ] {
+            command.env_remove(key);
+        }
+        let output = command.output().unwrap();
+        assert!(
+            output.status.success(),
+            "isolated locale test failed:\n{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
+
+    let root = PathBuf::from(std::env::var_os(ROOT_ENV).unwrap());
+    let missing = open_for_detection(&root).unwrap_err().to_string();
+    assert!(
+        missing.starts_with("fatal: not a git repository"),
+        "{missing}"
+    );
+    // Trace2 observes the actual Git child's environment, so this assertion
+    // does not depend on a machine having translated Git catalogs installed.
+    let trace = fs::read_to_string(std::env::var_os("GIT_TRACE2_EVENT").unwrap()).unwrap();
+    let observed: HashMap<String, String> = trace
+        .lines()
+        .filter_map(|line| {
+            let event: serde_json::Value = serde_json::from_str(line).ok()?;
+            if event["event"] != "def_param" {
+                return None;
+            }
+            Some((
+                event["param"].as_str()?.to_string(),
+                event["value"].as_str()?.to_string(),
+            ))
+        })
+        .collect();
+    for key in ["LC_ALL", "LANG", "LANGUAGE"] {
+        assert_eq!(observed.get(key).map(String::as_str), Some("C"), "{key}");
+    }
+    run_git_stdout(&root, &["-c", "init.templateDir=", "init"]).unwrap();
+    let repo = open_for_detection(&root).unwrap();
+    assert_eq!(
+        fs::canonicalize(repo.workdir()).unwrap(),
+        fs::canonicalize(&root).unwrap()
+    );
+
+    let ordinary = run_git(
+        &root,
+        &[
+            "-c",
+            "alias.fixture-locale=!printf '%s' \"$LC_ALL|$LANG|$LANGUAGE\"",
+            "fixture-locale",
+        ],
+    )
+    .unwrap();
+    assert!(ordinary.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&ordinary.stdout),
+        "zh_CN.UTF-8|fr_FR.UTF-8|zh_CN:fr"
+    );
+    for (key, expected) in [
+        ("LC_ALL", "zh_CN.UTF-8"),
+        ("LANG", "fr_FR.UTF-8"),
+        ("LANGUAGE", "zh_CN:fr"),
+    ] {
+        assert_eq!(std::env::var(key).unwrap(), expected);
+    }
+
+    fs::write(root.join(".git/config"), "[invalid\n").unwrap();
+    let broken = open_for_detection(&root).unwrap_err().to_string();
+    assert!(broken.contains("bad config line"), "{broken}");
+}
+
+#[test]
 fn stash_diff_includes_tracked_and_untracked_files() {
     let (root, mut repo) = temp_repo();
     commit_file(&repo, &root, "tracked.txt", "base\n", "init");

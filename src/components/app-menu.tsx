@@ -78,7 +78,7 @@ export function AppMenu() {
           </TooltipTrigger>
           <TooltipContent>{t("desktop.appMenu.options")}</TooltipContent>
         </Tooltip>
-        <DropdownMenuContent align="start" className="w-56">
+        <DropdownMenuContent align="start" className="min-w-56">
           <DropdownMenuItem onSelect={() => void openFolder()}>
             <FolderOpenIcon />
             {t("desktop.appMenu.open_local_repository")}</DropdownMenuItem>

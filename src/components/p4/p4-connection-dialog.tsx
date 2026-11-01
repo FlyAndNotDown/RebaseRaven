@@ -1,6 +1,6 @@
 import { t, useTranslation } from "@/i18n";
 import { useState } from "react";
-import { ChevronDownIcon, Loader2Icon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon, Loader2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -141,6 +141,7 @@ const charsets = [
               <DropdownMenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width)">
                 {charsets.map((item) => (
                   <DropdownMenuItem key={item.id || "default"} onClick={() => setCharset(item.id)}>
+                    <span className="min-w-4">{charset === item.id ? <CheckIcon className="size-3.5" /> : null}</span>
                     {item.label}
                   </DropdownMenuItem>
                 ))}

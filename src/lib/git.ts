@@ -314,6 +314,7 @@ export const gitApi = {
     call<GitIdentity>("set_local_git_identity", { repoPath, identity }),
   openInFileManager: (path: string) => call<void>("open_in_file_manager", { path }),
   openMailto: (email: string) => call<void>("open_mailto", { email }),
+  openExternalUrl: (url: string) => call<void>("open_external_url", { url }),
   revealInFileManager: (path: string) => call<void>("reveal_in_file_manager", { path }),
   ignorePatterns: (repoPath: string, patterns: string[]) =>
     call<WorkspaceSnapshot>("ignore_patterns", { repoPath, patterns }),

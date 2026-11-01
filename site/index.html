@@ -3,8 +3,7 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="google-site-verification" content="w321P8EUJzd-rLU1yeoxR9dI2Q0_yoooeiJNkZ2dY_A" />
-    <meta name="theme-color" content="#171717">
+    <meta name="theme-color" content="#0a0a0a">
     <script>
       (() => {
         let theme = "dark";
@@ -17,11 +16,12 @@
         const dark = theme === "dark" || (theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
         document.documentElement.classList.toggle("dark", dark);
         document.documentElement.style.colorScheme = dark ? "dark" : "light";
+        document.querySelector('meta[name="theme-color"]').content = dark ? "#0a0a0a" : "#fafafa";
         document.documentElement.dataset.siteTheme = theme;
       })();
     </script>
     <!--site-metadata-->
-    <link rel="icon" type="image/svg+xml" href="./assets/mark.svg">
+    <link rel="icon" type="image/png" sizes="256x256" href="./assets/mark.png">
   </head>
   <body>
     <div id="root"></div>

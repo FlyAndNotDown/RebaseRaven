@@ -749,7 +749,7 @@ function TreeRows({
                   />
                 </div>
               </ContextMenuTrigger>
-              <ContextMenuContent className="w-44">
+              <ContextMenuContent className="min-w-44">
                 <ContextMenuItem onClick={() => onCheckout({ name, isHead: false, isRemote: false, upstream: null })}>
                   <ArrowDownToLineIcon />{t("git.sidebar.checkout")}</ContextMenuItem>
                 {onPushTag && remotes && remotes.length > 0 ? (
@@ -837,7 +837,7 @@ function TreeRows({
                   />
                 </div>
               </ContextMenuTrigger>
-              <ContextMenuContent className="w-48">
+              <ContextMenuContent className="min-w-48">
                 {picked && onCompareBranches && onShowBranches && onHideBranches && onDeleteBranches ? (
                   <MultiBranchMenu
                     branches={picked}
@@ -948,7 +948,7 @@ function TreeRows({
             {remoteName && (onFetchRemote || onDeleteRemote || onEditRemote) ? (
               <ContextMenu>
                 <ContextMenuTrigger asChild>{folderRow}</ContextMenuTrigger>
-                <ContextMenuContent className="w-44">
+                <ContextMenuContent className="min-w-44">
                   {onFetchRemote ? (
                     <ContextMenuItem onClick={() => onFetchRemote(remoteName)}>
                       <DownloadIcon />{t("git.sidebar.fetch")}</ContextMenuItem>

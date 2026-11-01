@@ -415,7 +415,8 @@
       "availableVersion": "{{version}} 可用。",
       "downloadingTotal": "正在下载更新：{{downloaded}} / {{total}} MB",
       "downloading": "正在下载更新：{{downloaded}} MB",
-      "availableNotice": "Rebasely {{version}} 可用"
+      "availableNotice": "Rebasely {{version}} 可用",
+      "could_not_load_release_notes": "无法格式化更新说明，下方仍可查看原文。"
     },
     "aboutDialog": {
       "a_unified_version_control_client": "统一的版本控制客户端。"

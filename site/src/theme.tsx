@@ -14,11 +14,12 @@ function readTheme(): Theme {
   return isTheme(value) ? value : "dark";
 }
 
-function applyTheme(theme: Theme) {
+export function applyTheme(theme: Theme) {
   const dark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   document.documentElement.classList.toggle("dark", dark);
   document.documentElement.style.colorScheme = dark ? "dark" : "light";
   document.documentElement.dataset.siteTheme = theme;
+  document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute("content", dark ? "#0a0a0a" : "#fafafa");
 }
 
 function setTheme(theme: Theme) {
@@ -31,8 +32,9 @@ function setTheme(theme: Theme) {
   window.dispatchEvent(new Event(CHANGE_EVENT));
 }
 
-function subscribe(onChange: () => void) {
+export function subscribe(onChange: () => void) {
   const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
+  applyTheme(readTheme());
   function onSystemTheme() {
     if (readTheme() === "system") applyTheme("system");
   }
