@@ -28,7 +28,7 @@ describe("official Google tag adapter", () => {
       page_title: "Rebasely desktop", page_location: ANALYTICS_BRIDGE_URL, page_referrer: "",
       ignore_referrer: true, allow_google_signals: false, allow_ad_personalization_signals: false,
       cookie_flags: "SameSite=None;Secure",
-      cookie_prefix: "rebasely_app", cookie_path: "/analytics/", cookie_expires: 0, cookie_update: false,
+      cookie_prefix: "rebasely_app", cookie_domain: "none", cookie_path: "/analytics/", cookie_expires: 0, cookie_update: false,
     });
     expect(analyticsEventParameters(init, {
       type: "event", generation: init.generation, event: "pane_view", pane: "git_history",
