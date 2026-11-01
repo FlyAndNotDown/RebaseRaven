@@ -113,4 +113,5 @@ jobs:
         env:
           GOOGLE_ACCESS_TOKEN: ${{ steps.google.outputs.access_token }}
           SITE_URL: ${{ needs.deploy.outputs.page_url }}
+          SEARCH_CONSOLE_PROPERTY: ${{ vars.GOOGLE_SEARCH_CONSOLE_PROPERTY }}
         run: node scripts/submit-sitemap.mjs
