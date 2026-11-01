@@ -1,7 +1,7 @@
 import { LATEST_RELEASE_URL, REPOSITORY_URL } from "./release-downloads.ts";
 import { siteResources, type SiteLocale } from "./i18n.ts";
 
-export const SITE_URL = "https://flyandnotdown.github.io/Rebasely/";
+export const SITE_URL = "https://rebasely.flyandnotdown.com/";
 
 export function softwareApplication(locale: SiteLocale = "en", rootPage = true) {
   const copy = siteResources[locale];

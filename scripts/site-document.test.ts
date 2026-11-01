@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { validateSiteDocument } from "./site-document.mjs";
+import { validateSiteDocument, validateSiteRouting } from "./site-document.mjs";
 
-const canonical = "https://flyandnotdown.github.io/Rebasely/";
+const canonical = "https://rebasely.flyandnotdown.com/";
 const download = "https://github.com/FlyAndNotDown/Rebasely/releases/latest";
 const product = {
   "@context": "https://schema.org",
@@ -76,5 +76,28 @@ describe("published website document", () => {
     const violations = validateSiteDocument(value);
     expect(violations).toHaveLength(5);
     expect(violations.every((message: string) => message.includes("Pages output must not contain"))).toBe(true);
+  });
+});
+
+describe("published custom-domain routing", () => {
+  it("accepts the canonical host and its discoverable sitemap", () => {
+    expect(validateSiteRouting({
+      cname: "rebasely.flyandnotdown.com\n",
+      robots: `User-agent: *\nAllow: /\n\nSitemap: ${canonical}sitemap.xml\n`,
+    })).toEqual([]);
+  });
+
+  it("rejects a missing or mismatched custom host and obsolete sitemap locations", () => {
+    expect(validateSiteRouting({})).toHaveLength(2);
+    expect(validateSiteRouting({
+      cname: "www.example.com\n",
+      robots: "Sitemap: https://site.example.com/sitemap.xml\n",
+    })).toEqual(expect.arrayContaining([
+      expect.stringContaining("CNAME:"), expect.stringContaining("robots.txt:"),
+    ]));
+    expect(validateSiteRouting({
+      cname: "rebasely.flyandnotdown.com\n",
+      robots: `Sitemap: ${canonical}sitemap.xml\nSitemap: ${canonical}sitemap.xml\n`,
+    })).toContainEqual(expect.stringContaining("advertise the canonical website sitemap once"));
   });
 });

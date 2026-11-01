@@ -16,7 +16,7 @@ export function analyticsConfiguration(init: AnalyticsInit) {
     allow_ad_personalization_signals: false,
     cookie_flags: "SameSite=None;Secure",
     cookie_prefix: "rebasely_app",
-    cookie_path: "/Rebasely/analytics/",
+    cookie_path: new URL(ANALYTICS_BRIDGE_URL).pathname,
     cookie_expires: 0,
     cookie_update: false,
   } as const;
