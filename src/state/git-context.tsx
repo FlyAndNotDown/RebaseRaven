@@ -2051,6 +2051,8 @@ export function GitProvider({ children }: { children: ReactNode }) {
       } catch {
         // Offline, signed out, or cancelled: the next manual fetch will say why.
       } finally {
+        // Slow or failed attempts still wait a full interval before retrying.
+        lastFetchRef.current[key] = Date.now();
         fetchingRef.current.delete(key);
       }
     },
