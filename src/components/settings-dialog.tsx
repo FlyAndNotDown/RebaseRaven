@@ -555,7 +555,23 @@ function SettingsForm() {
           ) : section === "diagnostics" ? (
             <>
               <DialogHeader><DialogTitle>{t("desktop.settingsDialog.diagnostics")}</DialogTitle><DialogDescription>{t("desktop.settingsDialog.inspect_and_export_local_diagnostics")}</DialogDescription></DialogHeader>
-              <div className="mt-6"><DiagnosticsSettings /></div>
+              <div className="mt-6 grid gap-8">
+                <DiagnosticsSettings />
+                <FieldGroup title={t("analytics.title")}>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={prefs.analyticsEnabled && analyticsAllowed}
+                      disabled={analyticsSaving}
+                      aria-describedby="analytics-disclosure"
+                      onCheckedChange={(checked) => { void changeAnalytics(checked === true); }}
+                    />
+                    <span>{t("analytics.enabled")}</span>
+                  </label>
+                  <p id="analytics-disclosure" className="text-xs leading-relaxed text-muted-foreground">{t("analytics.disclosure")}</p>
+                  {analyticsSaving ? <p className="text-xs text-muted-foreground" role="status">{t("analytics.saving")}</p> : null}
+                  {analyticsSaveFailed ? <p className="text-sm text-destructive" role="alert">{t("analytics.saveFailed")}</p> : null}
+                </FieldGroup>
+              </div>
             </>
           ) : (
             <>
@@ -596,20 +612,6 @@ function SettingsForm() {
                       if (!await persistPrefs({ avatarProvider })) throw new Error("Could not save the avatar provider.");
                     }}
                   />
-                </FieldGroup>
-                <FieldGroup title={t("analytics.title")}>
-                  <label className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={prefs.analyticsEnabled && analyticsAllowed}
-                      disabled={analyticsSaving}
-                      aria-describedby="analytics-disclosure"
-                      onCheckedChange={(checked) => { void changeAnalytics(checked === true); }}
-                    />
-                    <span>{t("analytics.enabled")}</span>
-                  </label>
-                  <p id="analytics-disclosure" className="text-xs leading-relaxed text-muted-foreground">{t("analytics.disclosure")}</p>
-                  {analyticsSaving ? <p className="text-xs text-muted-foreground" role="status">{t("analytics.saving")}</p> : null}
-                  {analyticsSaveFailed ? <p className="text-sm text-destructive" role="alert">{t("analytics.saveFailed")}</p> : null}
                 </FieldGroup>
                 <FieldGroup title={t("desktop.settingsDialog.external_editor")}>
                   <AppPicker

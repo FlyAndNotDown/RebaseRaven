@@ -60,7 +60,7 @@ your browser language and includes a language switcher. English is the fallback.
 Usage analytics is enabled by default. Google Analytics receives a random
 installation ID, coarse app usage and foreground time, and basic device
 information. Repository content, paths, and credentials are excluded. Turn it
-off in **Settings → General → Share usage analytics**.
+off in **Settings → Diagnostics → Share usage analytics**.
 
 Diagnostic files stay on your device and are not uploaded automatically.
 Remote repository operations connect to the servers you configure.

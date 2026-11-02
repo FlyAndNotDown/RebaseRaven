@@ -1,7 +1,8 @@
 import { t, useTranslation } from "@/i18n";
 import { useId, useRef, useState } from "react";
-import { CableIcon, InfoIcon, MonitorIcon, SlidersHorizontalIcon, type LucideIcon } from "lucide-react";
+import { CableIcon, ChevronDownIcon, InfoIcon, MonitorIcon, SlidersHorizontalIcon, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { HoverTip } from "@/components/ui/tooltip";
@@ -27,6 +28,8 @@ export function NetworkSettings({ value, onSave }: { value: HttpProxy; onSave: (
   const busy = useRef(false);
   const next = normalizeHttpProxy(draft);
   const changed = proxyDraftChanged(current);
+  const selectedMode = modes.find((mode) => mode.id === draft.mode) ?? modes[0];
+  const ModeIcon = selectedMode.icon;
 
   function edit(patch: Partial<HttpProxy>) {
     setState((current) => editProxyDraft(current, patch));
@@ -62,19 +65,38 @@ export function NetworkSettings({ value, onSave }: { value: HttpProxy; onSave: (
         </HoverTip>
       </div>
       <form className="grid gap-4" noValidate onSubmit={(event) => { event.preventDefault(); if (changed) void apply(); }}>
-        <fieldset disabled={saving} className="min-w-0">
-          <legend className="mb-2 text-sm">{t("desktop.networkSettings.proxy")}</legend>
-          <div className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/40 p-1">
-            {modes.map(({ id: mode, label, icon: Icon }) => (
-              <label key={mode} className="relative min-w-0 cursor-pointer has-disabled:cursor-default has-disabled:opacity-50">
-                <input type="radio" className="peer sr-only" name={`${id}-mode`} value={mode} checked={draft.mode === mode} onChange={() => edit({ mode })} />
-                <span className="flex min-h-12 items-center justify-center gap-2 rounded-md px-2 py-2 text-xs text-muted-foreground transition-colors hover:bg-background/60 peer-checked:bg-background peer-checked:text-foreground peer-checked:shadow-xs peer-checked:ring-1 peer-checked:ring-border peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50">
-                  <Icon aria-hidden="true" className="size-4 shrink-0" /><span>{label}</span>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Label id={`${id}-mode-label`} htmlFor={`${id}-mode`}>{t("desktop.networkSettings.proxy")}</Label>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                id={`${id}-mode`}
+                variant="outline"
+                size="sm"
+                className="w-44 max-w-full justify-between font-normal"
+                aria-labelledby={`${id}-mode-label ${id}-mode-choice`}
+                disabled={saving}
+              >
+                <span id={`${id}-mode-choice`} className="flex min-w-0 items-center gap-2">
+                  <ModeIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{selectedMode.label}</span>
                 </span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
+                <ChevronDownIcon className="size-3.5 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-(--radix-dropdown-menu-trigger-width)">
+              <DropdownMenuRadioGroup value={draft.mode} onValueChange={(mode) => {
+                if (!busy.current && (mode === "system" || mode === "none" || mode === "manual")) edit({ mode });
+              }}>
+                {modes.map(({ id: mode, label, icon: Icon }) => (
+                  <DropdownMenuRadioItem key={mode} value={mode} disabled={saving}>
+                    <Icon aria-hidden="true" className="size-3.5" />{label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
         {draft.mode === "manual" ? (
           <div className="grid gap-2">
             <Label htmlFor={`${id}-url`}>{t("desktop.networkSettings.proxy_url")}</Label>
