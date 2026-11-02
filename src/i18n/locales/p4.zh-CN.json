@@ -258,5 +258,21 @@
     "locked": "已锁定所选文件的提交",
     "unlocked": "已解锁所选文件"
   },
-  "noTextDifferences": "没有文本差异"
+  "noTextDifferences": "没有文本差异",
+  "editChangelist": "编辑变更列表",
+  "changeDialog": {
+    "editTitle": "编辑变更列表",
+    "submitTitle": "提交变更列表",
+    "editDescription": "更新此待处理变更列表的描述。",
+    "defaultDescription": "将默认变更列表及其已签出文件保存为编号变更列表。",
+    "submitDescription": "使用以下描述提交此变更列表中所有已签出的文件。",
+    "openedFiles_one": "{{count}} 个已签出文件",
+    "openedFiles_other": "{{count}} 个已签出文件",
+    "unavailable": "此变更列表已不在待处理列表中。请关闭此对话框并刷新工作区。",
+    "failed": "无法保存或提交此变更列表。请查看操作错误后重试。",
+    "revertTitle": "还原变更列表 {{id}}？",
+    "revertDescription_one": "放弃 {{count}} 个文件中已签出的修改。新增文件保留在磁盘上，搁置内容保留在服务器上。",
+    "revertDescription_other": "放弃 {{count}} 个文件中已签出的修改。新增文件保留在磁盘上，搁置内容保留在服务器上。",
+    "revertFailed": "无法还原文件。请查看操作错误后重试。"
+  }
 }

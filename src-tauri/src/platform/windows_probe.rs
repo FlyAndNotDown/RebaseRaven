@@ -54,6 +54,26 @@ impl ProbeProcessTreeGuard {
         // This private job contains only the suspended probe and its descendants.
         unsafe { TerminateJobObject(self.job.as_raw_handle(), 1) != 0 }
     }
+
+    /// Completed commands may have detached maintenance or credential helpers.
+    /// Let them finish normally once the launcher and both output pipes end.
+    pub(crate) fn disarm(&self) -> io::Result<()> {
+        let limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        // Clearing the private job's kill-on-close flag does not detach or
+        // change membership while cancellation still owns the open job handle.
+        if unsafe {
+            SetInformationJobObject(
+                self.job.as_raw_handle(),
+                JobObjectExtendedLimitInformation,
+                (&limits as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast(),
+                size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            )
+        } == 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
 }
 
 pub(crate) fn spawn_probe_command(
@@ -263,12 +283,17 @@ mod tests {
 
     #[test]
     fn closing_job_ends_pipe_holders_after_parent_exit_without_harming_other_processes() {
-        assert_pipe_helper_cleanup(false);
+        assert_pipe_helper_cleanup(false, false);
     }
 
     #[test]
     fn terminating_job_ends_pipe_holders_before_the_job_handle_closes() {
-        assert_pipe_helper_cleanup(true);
+        assert_pipe_helper_cleanup(true, false);
+    }
+
+    #[test]
+    fn disarming_a_completed_commands_job_preserves_its_helpers() {
+        assert_pipe_helper_cleanup(false, true);
     }
 
     fn assert_helper_stopped(helper: &OwnedTestProcess) {
@@ -280,7 +305,7 @@ mod tests {
         );
     }
 
-    fn assert_pipe_helper_cleanup(terminate: bool) {
+    fn assert_pipe_helper_cleanup(terminate: bool, disarm: bool) {
         let temporary = tempfile::tempdir().unwrap();
         let independent_directory = tempfile::tempdir().unwrap();
         let mut independent = OwnedTestChild(
@@ -336,7 +361,18 @@ mod tests {
             WAIT_TIMEOUT
         );
 
-        if terminate {
+        if disarm {
+            tree.disarm().unwrap();
+            drop(tree);
+            assert_eq!(
+                unsafe { WaitForSingleObject(helper.0.as_raw_handle(), 0) },
+                WAIT_TIMEOUT,
+                "normal completion must let its detached helper finish"
+            );
+            assert!(independent.0.try_wait().unwrap().is_none());
+            // End only this fixture so its inherited pipes can drain below.
+            drop(helper);
+        } else if terminate {
             assert!(tree.terminate(parent.0.id()));
             assert_helper_stopped(&helper);
             assert!(independent.0.try_wait().unwrap().is_none());

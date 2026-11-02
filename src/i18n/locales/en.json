@@ -94,7 +94,8 @@
       "refresh_in_the_background": "Refresh in the background",
       "client_connection_settings": "Client connection settings.",
       "inspect_and_export_local_diagnostics": "Inspect and export local diagnostics.",
-      "updates_appearance_and_external_apps": "Updates, appearance, and external apps.",
+      "appearance_and_external_apps": "Appearance and external apps.",
+      "version_updates_and_project_links": "Version, updates, and project links.",
       "appearance": "Appearance",
       "theme": "Theme",
       "external_editor": "External Editor",
@@ -272,7 +273,10 @@
       "password": "Password",
       "optional": "Optional",
       "check_connection": "Check connection",
-      "connected_to": "Connected to",
+      "checking_connection": "Checking connection…",
+      "connection_check_succeeded": "Connection successful",
+      "connection_check_failed": "Connection failed",
+      "connection_preferences_not_saved": "Connected, but could not save connection preferences: {{message}}",
       "client": "Client",
       "select_a_client": "Select a client",
       "check_the_connection_first": "Check the connection first",
@@ -363,6 +367,9 @@
       "about_local_diagnostics": "About local diagnostics",
       "kept_on_this_device_share_an_exported_zip": "Kept on this device. Share an exported ZIP yourself.",
       "refresh_diagnostic_storage_usage": "Refresh diagnostic storage usage",
+      "storage_refreshed": "Storage usage refreshed",
+      "diagnostics_folder_opened": "Opened the diagnostics folder",
+      "issues_opened": "Opened Issues",
       "reading_diagnostic_storage": "Reading diagnostic storage…",
       "storage_usage_unavailable": "Storage usage unavailable.",
       "exporting": "Exporting…",
@@ -370,6 +377,7 @@
       "open_issues": "Open Issues",
       "zip_exported_unrecognized_diagnostic_entries_were_excluded": "ZIP exported. Unrecognized diagnostic entries were excluded.",
       "zip_exported_review_it_before_sharing_in_an": "ZIP exported. Review it before sharing in an issue.",
+      "review_export_before_sharing": "Review the exported ZIP before sharing it in an issue.",
       "could_not_export_diagnostics_choose_a_writable_zip": "Could not export diagnostics. Choose a writable ZIP file and try again.",
       "could_not_open_the_diagnostics_folder_try_again": "Could not open the diagnostics folder. Try again.",
       "could_not_open_issues_try_again": "Could not open Issues. Try again.",
@@ -418,8 +426,11 @@
       "availableNotice": "Rebasely {{version}} is available",
       "could_not_load_release_notes": "Could not format release notes. The original text is shown below."
     },
-    "aboutDialog": {
-      "a_unified_version_control_client": "A unified version control client."
+    "aboutSettings": {
+      "a_unified_version_control_client": "A unified version control client.",
+      "developer": "Developer",
+      "github_repository": "GitHub repository",
+      "open_github_repository": "Open GitHub repository"
     },
     "askpassDialog": {
       "confirm_connection": "Confirm connection",

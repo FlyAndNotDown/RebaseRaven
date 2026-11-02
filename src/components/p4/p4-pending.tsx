@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { ArchiveIcon, ArchiveRestoreIcon, ChevronDownIcon, GitMergeIcon, Loader2Icon, LockIcon, LockOpenIcon, PlusIcon, Trash2Icon, Undo2Icon } from "lucide-react";
+import { ArchiveIcon, ArchiveRestoreIcon, ChevronDownIcon, GitMergeIcon, Loader2Icon, PencilIcon, PlusIcon, SendIcon, Trash2Icon, Undo2Icon } from "lucide-react";
 import { ChangeBadge } from "@/components/p4/change-badge";
+import { P4ChangeDialog, type ChangeDialogRequest } from "@/components/p4/p4-change-dialog";
 import { FileStatusIcon } from "@/components/p4/file-status-icon";
 import { FileStatusTip, fileStatusText } from "@/components/p4/file-status-tip";
 import { P4Diff } from "@/components/p4/p4-diff";
@@ -27,14 +28,15 @@ import { changeSummary, depotBase, p4ActionStatus } from "@/lib/p4";
 import { HoverTip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useP4 } from "@/state/p4-context";
+import { pendingChangeDescription } from "@/state/p4-session";
+import type { P4Changelist } from "@/types/p4";
 import { t, useTranslation } from "@/i18n";
 
 export function P4Pending() {
   const { t } = useTranslation();
   const p4 = useP4();
-  const selected = p4.pending.find((change) => change.id === p4.selectedChange) ?? null;
-  const opened = selected?.files.filter((file) => !file.shelved) ?? [];
   const [creating, setCreating] = useState(false);
+  const [changeDialog, setChangeDialog] = useState<ChangeDialogRequest | null>(null);
   const [deletingChange, setDeletingChange] = useState<string | null>(null);
   const [deleteFailed, setDeleteFailed] = useState(false);
   const [expanded, setExpanded] = useState<Set<string> | null>(null);
@@ -52,6 +54,15 @@ export function P4Pending() {
   const currentResolve = resolving ?? p4.resolveRequest;
   const resolvingPath = currentResolve?.change === p4.selectedChange ? currentResolve.path : null;
   const openChanges = expanded ?? new Set(p4.selectedChange ? [p4.selectedChange] : []);
+  const dialogChange = changeDialog ? p4.pending.find((change) => change.id === changeDialog.id) : null;
+
+  function openChangeDialog(change: P4Changelist, mode: ChangeDialogRequest["mode"]) {
+    setChangeDialog({
+      id: change.id,
+      description: pendingChangeDescription(p4, change.id),
+      mode,
+    });
+  }
 
   function closeResolution() {
     setResolving(null);
@@ -210,13 +221,6 @@ export function P4Pending() {
     const canShelve = targets.some((item) => item.change !== "default");
     return (
       <ContextMenuContent className="min-w-44">
-        <ContextMenuItem disabled={p4.busy} onClick={() => void p4.lockFiles(targets, true)}>
-          <LockIcon />{t("p4.lock.action")}
-        </ContextMenuItem>
-        <ContextMenuItem disabled={p4.busy} onClick={() => void p4.lockFiles(targets, false)}>
-          <LockOpenIcon />{t("p4.lock.unlock")}
-        </ContextMenuItem>
-        <ContextMenuSeparator />
         {entry.status === "conflict" ? (
           <>
             <ContextMenuItem
@@ -339,6 +343,16 @@ export function P4Pending() {
                       </ContextMenuTrigger>
                       <ContextMenuContent className="min-w-56">
                         <ContextMenuItem
+                          disabled={p4.busy || changeOpened.length === 0}
+                          onClick={() => openChangeDialog(change, "submit")}
+                        >
+                          <SendIcon />{t("p4.submitChangelist")}
+                        </ContextMenuItem>
+                        <ContextMenuItem disabled={p4.busy} onClick={() => openChangeDialog(change, "edit")}>
+                          <PencilIcon />{t("p4.editChangelist")}
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem
                           disabled={p4.busy || change.id === "default" || changeOpened.length === 0}
                           onClick={() => {
                             p4.selectChange(change.id);
@@ -346,6 +360,18 @@ export function P4Pending() {
                           }}
                         >
                           <ArchiveIcon />{t("p4.shelve")}</ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem
+                          variant="destructive"
+                          disabled={p4.busy || changeOpened.length === 0}
+                          onClick={() => setRevertRequest({
+                            changeId: change.id,
+                            paths: changeOpened.map((file) => file.depotPath),
+                            wipe: [],
+                          })}
+                        >
+                          <Undo2Icon />{t("p4.revert")}
+                        </ContextMenuItem>
                         {change.id !== "default" && change.files.length === 0 ? (
                           <ContextMenuItem variant="destructive" disabled={p4.busy} onClick={() => { setDeletingChange(change.id); setDeleteFailed(false); }}>
                             <Trash2Icon />{t("p4.deleteChange.action")}
@@ -438,33 +464,6 @@ export function P4Pending() {
                 );
               })}
             </div>
-            <div className="shrink-0 border-t p-3">
-              <Textarea
-                disabled={p4.busy}
-                value={p4.description}
-                onChange={(event) => p4.setDescription(event.target.value)}
-                placeholder={t("p4.changelistDescription")}
-                className="min-h-20 text-sm"
-              />
-              <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={p4.busy || !p4.description.trim() || opened.length === 0}
-                  onClick={() => void p4.submitSelected()}
-                >
-                  {p4.busyKind === "submit" ? <Loader2Icon className="animate-spin" /> : null}
-                  {p4.busyKind === "submit" ? t("p4.submitting") : t("p4.submitChangelist")}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={p4.busy || opened.length === 0}
-                  onClick={() => setRevertRequest({ paths: opened.map((file) => file.depotPath), wipe: [] })}
-                >{t("p4.revert")}</Button>
-              </div>
-            </div>
           </div>
         </ResizablePanel>
         <ResizableHandle />
@@ -480,6 +479,19 @@ export function P4Pending() {
           )}
         </ResizablePanel>
       </ResizablePanelGroup>
+      {changeDialog ? (
+        <P4ChangeDialog
+          key={`${changeDialog.mode}:${changeDialog.id}`}
+          request={changeDialog}
+          openedCount={dialogChange?.files.filter((file) => !file.shelved).length ?? 0}
+          available={!!dialogChange}
+          busy={p4.busy}
+          onConfirm={(description) => changeDialog.mode === "submit"
+            ? p4.submitChange(changeDialog.id, description)
+            : p4.saveChange(changeDialog.id, description)}
+          onClose={() => setChangeDialog(null)}
+        />
+      ) : null}
       <NewChangeDialog
         open={creating}
         busy={p4.busy}
@@ -505,14 +517,19 @@ export function P4Pending() {
         </DialogContent>
       </Dialog>
       <RevertDialog
+        key={revertRequest ? JSON.stringify(revertRequest) : "closed"}
         request={revertRequest}
+        busy={p4.busy}
         onOpenChange={(open) => !open && setRevertRequest(null)}
-        onConfirm={() => {
+        onConfirm={async () => {
           const request = revertRequest;
-          setRevertRequest(null);
-          if (!request) return;
-          setPicked([]);
-          void p4.revertPaths(request.paths, request.wipe);
+          if (!request) return false;
+          const reverted = await p4.revertPaths(request.paths, request.wipe);
+          if (reverted) {
+            setRevertRequest(null);
+            setPicked([]);
+          }
+          return reverted;
         }}
       />
       <DeleteShelfDialog
@@ -538,7 +555,7 @@ type PendingFile = {
 
 type PendingDragFile = { change: string; path: string; shelved: boolean };
 
-type RevertRequest = { paths: string[]; wipe: string[] };
+type RevertRequest = { paths: string[]; wipe: string[]; changeId?: string };
 
 function openedSelection(
   pending: { id: string; files: PendingFile[] }[],
@@ -823,33 +840,54 @@ function DeleteShelfDialog({
 
 function RevertDialog({
   request,
+  busy,
   onOpenChange,
   onConfirm,
 }: {
   request: RevertRequest | null;
+  busy: boolean;
   onOpenChange: (open: boolean) => void;
-  onConfirm: () => void;
+  onConfirm: () => Promise<boolean>;
 }) {
   useTranslation();
+  const [working, setWorking] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const running = useRef(false);
   const restored = request?.paths.length ?? 0;
   const wiped = request?.wipe.length ?? 0;
   const count = restored + wiped;
   return (
-    <Dialog open={request !== null} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog open={request !== null} onOpenChange={(open) => !running.current && onOpenChange(open)}>
+      <DialogContent className="sm:max-w-md" showCloseButton={!working}>
         <DialogHeader>
-          <DialogTitle>{t("p4.revertTitle", { count })}</DialogTitle>
+          <DialogTitle>{request?.changeId
+            ? t("p4.changeDialog.revertTitle", { id: request.changeId === "default" ? t("p4.defaultChange") : request.changeId })
+            : t("p4.revertTitle", { count })}</DialogTitle>
           <DialogDescription>
-            {wiped === 0
+            {request?.changeId
+              ? t("p4.changeDialog.revertDescription", { count })
+              : wiped === 0
               ? t("p4.thisDiscardsTheOpenedChangesAndRestoresTheHaveRevisionAShelfOnTheServerIsLeftInPlace")
               : restored === 0
                 ? t("p4.thisRemovesTheAddedFilesFromTheChangelistAndDeletesThemFromDisk")
                 : t("p4.addedFilesAreDeletedFromDiskOtherOpenedFilesGoBackToTheRevisionYouHave")}
           </DialogDescription>
         </DialogHeader>
+        {failed ? <p role="alert" className="text-sm text-destructive">{t("p4.changeDialog.revertFailed")}</p> : null}
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("p4.cancel")}</Button>
-          <Button type="button" variant="destructive" onClick={onConfirm}>{t("p4.revert")}</Button>
+          <Button type="button" variant="outline" disabled={working} onClick={() => onOpenChange(false)}>{t("p4.cancel")}</Button>
+          <Button type="button" variant="destructive" disabled={busy || working || count === 0} onClick={async () => {
+            if (busy || running.current || count === 0) return;
+            running.current = true;
+            setWorking(true);
+            setFailed(false);
+            try {
+              if (!await onConfirm()) setFailed(true);
+            } finally {
+              running.current = false;
+              setWorking(false);
+            }
+          }}>{working ? <Loader2Icon className="animate-spin" /> : null}{t(working ? "p4.reverting" : "p4.revert")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

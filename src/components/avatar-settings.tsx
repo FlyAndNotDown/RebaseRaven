@@ -1,6 +1,6 @@
 import { t, useTranslation } from "@/i18n";
 import { useId, useRef, useState } from "react";
-import { ChevronDownIcon, InfoIcon } from "lucide-react";
+import { ChevronDownIcon, InfoIcon, LoaderCircleIcon, XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { HoverTip } from "@/components/ui/tooltip";
@@ -21,6 +21,7 @@ export function AvatarSettings({ provider, onSave }: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(false);
   const busy = useRef(false);
+  const errorText = error ? t("desktop.avatarSettings.could_not_save_the_avatar_provider_try_again") : "";
 
   async function select(next: AvatarProvider) {
     if (busy.current || next === provider) return;
@@ -41,11 +42,14 @@ export function AvatarSettings({ provider, onSave }: {
           </HoverTip>
         </div>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="min-w-32 justify-between" aria-labelledby={`${labelId} ${labelId}-choice`} disabled={saving}>
-              <span id={`${labelId}-choice`}>{saving ? t("desktop.networkSettings.saving") : PROVIDERS.find((item) => item.value === provider)?.label}</span><ChevronDownIcon />
-            </Button>
-          </DropdownMenuTrigger>
+          <HoverTip label={errorText}>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="min-w-32 justify-between" aria-labelledby={`${labelId} ${labelId}-choice`} aria-describedby={error ? `${labelId}-error` : undefined} disabled={saving}>
+                <span id={`${labelId}-choice`}>{saving ? t("desktop.networkSettings.saving") : PROVIDERS.find((item) => item.value === provider)?.label}</span>
+                {saving ? <LoaderCircleIcon className="motion-safe:animate-spin" aria-hidden="true" /> : error ? <XIcon className="text-destructive" aria-hidden="true" /> : <ChevronDownIcon aria-hidden="true" />}
+              </Button>
+            </DropdownMenuTrigger>
+          </HoverTip>
           <DropdownMenuContent align="end">
             <DropdownMenuRadioGroup value={provider} onValueChange={(value) => {
               if (value === "builtin" || value === "github" || value === "gitlab") void select(value);
@@ -56,7 +60,7 @@ export function AvatarSettings({ provider, onSave }: {
         </DropdownMenu>
       </div>
       <p role="status" className="text-xs text-muted-foreground">{provider === "builtin" ? t("desktop.avatarSettings.built_in_avatars_stay_offline") : t("desktop.avatarSettings.providerNotice", { provider: provider === "github" ? "GitHub" : "GitLab" })}</p>
-      {error ? <p role="alert" className="text-xs text-destructive">{t("desktop.avatarSettings.could_not_save_the_avatar_provider_try_again")}</p> : null}
+      <p id={`${labelId}-error`} role="alert" className="sr-only">{errorText}</p>
     </div>
   );
 }

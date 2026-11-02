@@ -1,9 +1,8 @@
 import { formatNumber, t, useTranslation } from "@/i18n";
 import { useEffect, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
-import { ArrowDownToLineIcon, CheckIcon, RefreshCwIcon } from "lucide-react";
+import { ArrowDownToLineIcon, CheckIcon, RefreshCwIcon, RotateCwIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
-import { version } from "../../package.json";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { HoverTip } from "@/components/ui/tooltip";
@@ -97,48 +96,60 @@ export function UpdatesSettings() {
   const percent = state.totalBytes && state.totalBytes > 0
     ? Math.min(100, Math.max(0, 100 * state.downloadedBytes / state.totalBytes))
     : null;
+  const checking = state.request === "check" || state.status === "checking";
+  const checkFailed = state.status === "error" && (state.lastRequest === "check" || !state.update);
+  const checkSucceeded = !checking && state.lastRequest === "check" && !state.error && ["current", "available"].includes(state.status);
+  const checkFeedback = checking ? t("desktop.appUpdates.checking_for_updates")
+    : checkFailed ? state.error || t("desktop.appUpdates.the_update_could_not_be_completed")
+    : checkSucceeded ? statusLabel(state) : null;
+  const hasUpdateWorkflow = ["downloading", "installing", "installed"].includes(state.status) || state.request === "install" || state.request === "restart";
+  const workflowLabel = state.request === "install" && state.status === "available"
+    ? t("desktop.appUpdates.preparing_update") : statusLabel(state);
+  const installFailed = state.status === "error" && state.lastRequest === "install";
+  const restartFailed = state.status === "installed" && !!state.error && state.lastRequest === "restart";
   return (
     <section aria-labelledby="updates-title" className="grid gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h3 id="updates-title" className="text-sm font-medium">{t("desktop.appUpdates.application_updates")}</h3>
-          <p className="mt-1 text-xs text-muted-foreground">{t("desktop.appUpdates.installed_version")}{" "}{versionLabel(version)}</p>
-        </div>
-        <HoverTip label={t("desktop.appUpdates.checks_at_startup_check_again_at_any_time")}>
-        <Button variant="outline" size="sm" disabled={busy || state.status === "installed"} onClick={() => void appUpdates.check()}>
-          <RefreshCwIcon className={state.request === "check" || state.status === "checking" ? "motion-safe:animate-spin" : ""} />
-          {state.request === "check" || state.status === "checking" ? t("desktop.appUpdates.checking") : t("desktop.appUpdates.check_for_updates")}
-        </Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 id="updates-title" className="text-sm font-medium">{t("desktop.appUpdates.application_updates")}</h3>
+        <HoverTip label={checkFeedback ?? t("desktop.appUpdates.checks_at_startup_check_again_at_any_time")}>
+          <span className="inline-flex">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy || state.status === "installed"}
+              aria-busy={checking}
+              aria-label={checkFeedback ? `${t("desktop.appUpdates.check_for_updates")}: ${checkFeedback}` : undefined}
+              onClick={() => void appUpdates.check()}
+            >
+              <span className="inline-flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
+                {checking ? <RefreshCwIcon className="motion-safe:animate-spin" /> : checkFailed ? <XIcon className="text-destructive" /> : checkSucceeded ? <CheckIcon /> : <RefreshCwIcon />}
+              </span>
+              {t("desktop.appUpdates.check_for_updates")}
+            </Button>
+          </span>
         </HoverTip>
       </div>
-      <div role={state.status === "error" ? "alert" : "status"} className="grid gap-2 text-sm">
-        <p className={state.status === "error" ? "text-destructive" : "text-muted-foreground"}>
-          {state.status === "current" ? <CheckIcon className="mr-1.5 inline size-3.5" /> : null}
-          {statusLabel(state)}
-        </p>
-        {state.error ? (
-          <details className="text-xs text-muted-foreground">
-            <summary className="w-fit cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-ring">{t("desktop.appUpdates.details")}</summary>
-            <p className="mt-2 break-words">{state.error}</p>
-          </details>
-        ) : null}
-        {state.status === "error" ? <p className="text-xs text-muted-foreground">{t("desktop.appUpdates.check_your_connection_and_try_again")}</p> : null}
-        {state.status === "downloading" ? (
-          <div
-            role="progressbar"
-            aria-label={t("desktop.appUpdates.update_download")}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={percent ?? undefined}
-            className="h-1.5 overflow-hidden rounded-full bg-muted"
-          >
+      <span role="status" className="sr-only">{checkFeedback}</span>
+      {hasUpdateWorkflow ? (
+        <div role="status" className="grid gap-2 text-sm text-muted-foreground">
+          <p>{workflowLabel}</p>
+          {state.status === "downloading" ? (
             <div
-              className={`h-full rounded-full bg-primary ${percent === null ? "motion-safe:animate-pulse" : ""}`}
-              style={{ width: `${percent ?? 100}%` }}
-            />
-          </div>
-        ) : null}
-      </div>
+              role="progressbar"
+              aria-label={t("desktop.appUpdates.update_download")}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={percent ?? undefined}
+              className="h-1.5 overflow-hidden rounded-full bg-muted"
+            >
+              <div
+                className={`h-full rounded-full bg-primary ${percent === null ? "motion-safe:animate-pulse" : ""}`}
+                style={{ width: `${percent ?? 100}%` }}
+              />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {update?.notes ? (
         <details className="text-xs text-muted-foreground" onToggle={(event) => setNotesOpen(event.currentTarget.open)}>
           <summary className="w-fit cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-ring">{t("desktop.appUpdates.release_notes")}</summary>
@@ -148,11 +159,27 @@ export function UpdatesSettings() {
         </details>
       ) : null}
       {canInstall ? (
-        <div><Button size="sm" disabled={busy} onClick={() => void appUpdates.install(update.version)}><ArrowDownToLineIcon />{t("desktop.appUpdates.update_to")}{" "}{versionLabel(update.version)}</Button></div>
+        <div>
+          <HoverTip label={installFailed ? state.error : undefined}>
+            <Button size="sm" disabled={busy} onClick={() => void appUpdates.install(update.version)}>
+              {installFailed ? <XIcon /> : <ArrowDownToLineIcon />}{t("desktop.appUpdates.update_to")}{" "}{versionLabel(update.version)}
+            </Button>
+          </HoverTip>
+        </div>
       ) : null}
       {state.status === "installed" ? (
-        <div><Button size="sm" disabled={busy} onClick={() => void appUpdates.restart()}>{t("desktop.appUpdates.restart_rebasely")}</Button></div>
+        <div>
+          <HoverTip label={restartFailed ? state.error : undefined}>
+            <Button size="sm" disabled={busy} onClick={() => void appUpdates.restart()}>
+              <span className="inline-flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
+                {state.request === "restart" ? <RotateCwIcon className="motion-safe:animate-spin" /> : restartFailed ? <XIcon /> : <RotateCwIcon />}
+              </span>
+              {t("desktop.appUpdates.restart_rebasely")}
+            </Button>
+          </HoverTip>
+        </div>
       ) : null}
+      <span role="status" className="sr-only">{installFailed || restartFailed ? state.error : null}</span>
     </section>
   );
 }

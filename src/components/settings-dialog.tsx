@@ -9,9 +9,11 @@ import {
   InfoIcon,
   KeyRoundIcon,
   ListIcon,
+  Loader2Icon,
   PlusIcon,
   SlidersHorizontalIcon,
   Trash2Icon,
+  XIcon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
@@ -41,7 +43,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { SshKeysSettings } from "@/components/ssh-keys-settings";
-import { UpdatesSettings } from "@/components/app-updates";
+import { AboutSettings } from "@/components/about-settings";
 import { NetworkSettings } from "@/components/network-settings";
 import { DiagnosticsSettings } from "@/components/diagnostics-settings";
 import { AvatarSettings } from "@/components/avatar-settings";
@@ -59,7 +61,7 @@ import { setAnalyticsSessionAllowed } from "@/lib/analytics";
 import type { AppPrefs, TerminalOption, ToolConfig } from "@/types/git";
 import { t, type LanguagePreference , useTranslation} from "@/i18n";
 
-type SettingsSection = "git" | "perforce" | "ssh" | "general" | "network" | "diagnostics";
+type SettingsSection = "git" | "perforce" | "ssh" | "general" | "network" | "diagnostics" | "about";
 type GuiTool = { id: string; name: string; installed: boolean };
 type ThemeChoice = "dark" | "light" | "system";
 
@@ -71,9 +73,11 @@ const themeOptions: { id: ThemeChoice; label: string }[] = [
 
 export function SettingsDialog({
   open,
+  initialSection = "general",
   onOpenChange,
 }: {
   open: boolean;
+  initialSection?: SettingsSection;
   onOpenChange: (open: boolean) => void;
 }) {
 
@@ -81,13 +85,13 @@ export function SettingsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex h-[min(40rem,calc(100vh-4rem))] w-[min(56rem,calc(100vw-4rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
         {/* Mounted on each open, so the fields load fresh every time. */}
-        <SettingsForm />
+        <SettingsForm open={open} initialSection={initialSection} />
       </DialogContent>
     </Dialog>
   );
 }
 
-function SettingsForm() {
+function SettingsForm({ open, initialSection }: { open: boolean; initialSection: SettingsSection }) {
   useTranslation();
   const { theme, setTheme } = useTheme();
   const { prefs, updatePrefs } = useGitPick(["prefs", "updatePrefs"]);
@@ -95,7 +99,13 @@ function SettingsForm() {
   const [analyticsSaving, setAnalyticsSaving] = useState(false);
   const [analyticsSaveFailed, setAnalyticsSaveFailed] = useState(false);
   const analyticsSaveBusy = useRef(false);
-  const [section, setSection] = useState<SettingsSection>("general");
+  const analyticsFeedback = analyticsSaving ? t("analytics.saving") : analyticsSaveFailed ? t("analytics.saveFailed") : null;
+  const [section, setSection] = useState<SettingsSection>(initialSection);
+  const [route, setRoute] = useState({ open, initialSection });
+  if (route.open !== open || route.initialSection !== initialSection) {
+    setRoute({ open, initialSection });
+    if (open) setSection(initialSection);
+  }
   const [reload, setReload] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [incomplete, setIncomplete] = useState(false);
@@ -390,6 +400,8 @@ function SettingsForm() {
           </NavButton>
           <NavButton active={section === "diagnostics"} icon={<ActivityIcon />} onClick={() => setSection("diagnostics")}>
             {t("desktop.settingsDialog.diagnostics")}</NavButton>
+          <NavButton active={section === "about"} icon={<InfoIcon />} onClick={() => setSection("about")}>
+            {t("desktop.appMenu.about")}</NavButton>
         </aside>
         <ScrollArea key={section} className="min-w-0 flex-1" scrollbars="vertical">
         <div className="p-6">
@@ -555,17 +567,51 @@ function SettingsForm() {
           ) : section === "diagnostics" ? (
             <>
               <DialogHeader><DialogTitle>{t("desktop.settingsDialog.diagnostics")}</DialogTitle><DialogDescription>{t("desktop.settingsDialog.inspect_and_export_local_diagnostics")}</DialogDescription></DialogHeader>
-              <div className="mt-6"><DiagnosticsSettings /></div>
+              <div className="mt-6 grid gap-8">
+                <DiagnosticsSettings />
+                <FieldGroup title={t("analytics.title")}>
+                  <div className="flex items-center gap-2">
+                    <label className="flex flex-1 items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={prefs.analyticsEnabled && analyticsAllowed}
+                        disabled={analyticsSaving}
+                        aria-describedby="analytics-disclosure"
+                        onCheckedChange={(checked) => { void changeAnalytics(checked === true); }}
+                      />
+                      <span>{t("analytics.enabled")}</span>
+                    </label>
+                    <HoverTip label={analyticsFeedback ?? undefined}>
+                      <span
+                        className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                        tabIndex={analyticsSaveFailed ? 0 : -1}
+                        role={analyticsFeedback ? "img" : undefined}
+                        aria-label={analyticsFeedback ?? undefined}
+                      >
+                        {analyticsSaving ? <Loader2Icon className="size-3.5 motion-safe:animate-spin" /> : analyticsSaveFailed ? <XIcon className="size-3.5 text-destructive" /> : null}
+                      </span>
+                    </HoverTip>
+                  </div>
+                  <p id="analytics-disclosure" className="text-xs leading-relaxed text-muted-foreground">{t("analytics.disclosure")}</p>
+                  <span role="status" className="sr-only">{analyticsFeedback}</span>
+                </FieldGroup>
+              </div>
+            </>
+          ) : section === "about" ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>{t("desktop.appMenu.about")}</DialogTitle>
+                <DialogDescription>{t("desktop.settingsDialog.version_updates_and_project_links")}</DialogDescription>
+              </DialogHeader>
+              <div className="mt-6"><AboutSettings /></div>
             </>
           ) : (
             <>
               <DialogHeader>
                 <DialogTitle>{t("desktop.settingsDialog.general")}</DialogTitle>
                 <DialogDescription>
-                  {t("desktop.settingsDialog.updates_appearance_and_external_apps")}</DialogDescription>
+                  {t("desktop.settingsDialog.appearance_and_external_apps")}</DialogDescription>
               </DialogHeader>
               <div className="mt-6 grid gap-8">
-                <UpdatesSettings />
                 <FieldGroup title={t("language.label")} hint={t("language.hint")}>
                   <SelectField<LanguagePreference>
                     id="language-choice"
@@ -596,20 +642,6 @@ function SettingsForm() {
                       if (!await persistPrefs({ avatarProvider })) throw new Error("Could not save the avatar provider.");
                     }}
                   />
-                </FieldGroup>
-                <FieldGroup title={t("analytics.title")}>
-                  <label className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={prefs.analyticsEnabled && analyticsAllowed}
-                      disabled={analyticsSaving}
-                      aria-describedby="analytics-disclosure"
-                      onCheckedChange={(checked) => { void changeAnalytics(checked === true); }}
-                    />
-                    <span>{t("analytics.enabled")}</span>
-                  </label>
-                  <p id="analytics-disclosure" className="text-xs leading-relaxed text-muted-foreground">{t("analytics.disclosure")}</p>
-                  {analyticsSaving ? <p className="text-xs text-muted-foreground" role="status">{t("analytics.saving")}</p> : null}
-                  {analyticsSaveFailed ? <p className="text-sm text-destructive" role="alert">{t("analytics.saveFailed")}</p> : null}
                 </FieldGroup>
                 <FieldGroup title={t("desktop.settingsDialog.external_editor")}>
                   <AppPicker

@@ -1,7 +1,7 @@
 import { t, useTranslation } from "@/i18n";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ChevronDownIcon, FolderOpenIcon, FolderTreeIcon, Loader2Icon, PlusIcon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon, FolderOpenIcon, FolderTreeIcon, Loader2Icon, PlugIcon, PlusIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 import { ActivityBar } from "@/components/activity-meter";
 import { Button } from "@/components/ui/button";
@@ -345,54 +345,75 @@ function P4CloneForm({
   const [port, setPort] = useState(prefs.p4Port);
   const [user, setUser] = useState(prefs.p4User);
   const [password, setPassword] = useState("");
-  const [checking, setChecking] = useState(false);
-  const [server, setServer] = useState("");
-  const [clients, setClients] = useState<P4ClientOption[] | null>(null);
   const [client, setClient] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
-  const mounted = useRef(false);
+  const credentials = useMemo(() => ({ port: port.trim(), user: user.trim(), password, charset: prefs.p4Charset }), [port, user, password, prefs.p4Charset]);
+  const [checkResult, setCheckResult] = useState<{
+    scope: P4Auth;
+    status: "checking" | "success" | "error";
+    clients: P4ClientOption[] | null;
+    error: string | null;
+  } | null>(null);
+  const currentCheck = checkResult?.scope === credentials ? checkResult : null;
+  const checking = currentCheck?.status === "checking";
+  const clients = currentCheck?.clients ?? null;
+  const [connectionCheck] = useState(createLatestRequest);
+  const checkingRequest = useRef(false);
+  const cancelCheck = useRef<(() => void) | null>(null);
   const latestPrefs = useRef(prefs);
-  const [connectionCheck] = useState(createExclusiveAction);
   const [mutation] = useState(createExclusiveAction);
-  useEffect(() => {
-    mounted.current = true;
-    return () => { mounted.current = false; };
-  }, []);
-  useEffect(() => { latestPrefs.current = prefs; }, [prefs]);
+  useLayoutEffect(() => () => {
+    cancelCheck.current?.();
+    checkingRequest.current = false;
+  }, [credentials]);
+  useLayoutEffect(() => { latestPrefs.current = prefs; }, [prefs]);
 
   function forgetCheck() {
-    setServer("");
-    setClients(null);
+    setCheckResult(null);
     setClient("");
   }
 
   function auth(): P4Auth {
-    return { port: port.trim(), user: user.trim(), password, charset: prefs.p4Charset };
+    return credentials;
   }
 
   const selected = clients?.find((item) => item.name === client) ?? null;
 
-  async function check() {
-    if (!port.trim() || !user.trim()) return;
-    await connectionCheck.run(async () => {
-      setChecking(true);
-      forgetCheck();
-      const credentials = auth();
-      try {
-        const checked = await p4Api.checkConnection(credentials);
-        if (!mounted.current) return;
-        setServer(checked.server);
-        setClients(checked.clients);
-        await updatePrefs({ ...latestPrefs.current, p4Port: credentials.port, p4User: credentials.user });
-      } catch (error) {
-        if (!mounted.current) return;
+  function check() {
+    if (!credentials.port || !credentials.user || checkingRequest.current) return;
+    checkingRequest.current = true;
+    setClient("");
+    setCheckResult({ scope: credentials, status: "checking", clients: null, error: null });
+    cancelCheck.current = connectionCheck.run(
+      () => p4Api.checkConnection(credentials),
+      (checked) => {
+        checkingRequest.current = false;
+        setCheckResult({ scope: credentials, status: "success", clients: checked.clients, error: null });
+        void updatePrefs({ ...latestPrefs.current, p4Port: credentials.port, p4User: credentials.user })
+          .catch((error: unknown) => toast.error(t("desktop.cloneRepositoryDialog.connection_preferences_not_saved", { message: errorMessage(error) })));
+      },
+      (error) => {
+        checkingRequest.current = false;
         const message = errorMessage(error);
-        toast.error(message === P4_LOGIN ? t("desktop.cloneRepositoryDialog.enter_the_password_for_this_user_and_try") : message);
-      } finally {
-        if (mounted.current) setChecking(false);
-      }
-    });
+        const detail = message === P4_LOGIN ? t("desktop.cloneRepositoryDialog.enter_the_password_for_this_user_and_try") : message;
+        setCheckResult({
+          scope: credentials,
+          status: "error",
+          clients: null,
+          error: detail,
+        });
+        toast.error(detail);
+      },
+    );
   }
+
+  const checkStatus = checking
+    ? t("desktop.cloneRepositoryDialog.checking_connection")
+    : currentCheck?.status === "success"
+      ? t("desktop.cloneRepositoryDialog.connection_check_succeeded")
+      : currentCheck?.status === "error"
+        ? t("desktop.cloneRepositoryDialog.connection_check_failed")
+        : "";
 
   async function openClient() {
     if (!selected || checking) return;
@@ -472,11 +493,23 @@ function P4CloneForm({
                 placeholder={t("desktop.cloneRepositoryDialog.optional")}
               />
             </div>
-            <Button type="button" variant="outline" disabled={cloning || checking || !port.trim() || !user.trim()} onClick={() => void check()}>
-              {checking ? <Loader2Icon className="animate-spin" /> : null}
+            <Button
+              type="button"
+              variant="outline"
+              disabled={cloning || checking || !port.trim() || !user.trim()}
+              aria-busy={checking}
+              aria-label={checkStatus ? `${t("desktop.cloneRepositoryDialog.check_connection")}: ${checkStatus}` : undefined}
+              title={currentCheck?.error || checkStatus || undefined}
+              onClick={check}
+            >
+              <span aria-hidden="true" className="inline-flex size-4 shrink-0 items-center justify-center">
+                {checking ? <Loader2Icon className="size-4 animate-spin motion-reduce:animate-none" />
+                  : currentCheck?.status === "success" ? <CheckIcon className="size-4" />
+                    : currentCheck?.status === "error" ? <XIcon className="size-4 text-destructive" /> : <PlugIcon className="size-4" />}
+              </span>
               {t("desktop.cloneRepositoryDialog.check_connection")}</Button>
           </div>
-          {server ? <p className="text-xs text-muted-foreground">{t("desktop.cloneRepositoryDialog.connected_to")}{" "}{server}</p> : null}
+          <span role="status" className="sr-only">{checkStatus}</span>
           <div className="grid gap-2">
             <Label>{t("desktop.cloneRepositoryDialog.client")}</Label>
             <DropdownMenu>

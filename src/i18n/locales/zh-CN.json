@@ -94,7 +94,8 @@
       "refresh_in_the_background": "后台刷新",
       "client_connection_settings": "客户端连接设置。",
       "inspect_and_export_local_diagnostics": "查看和导出本地诊断信息。",
-      "updates_appearance_and_external_apps": "更新、外观和外部应用。",
+      "appearance_and_external_apps": "外观和外部应用。",
+      "version_updates_and_project_links": "版本、更新与项目链接。",
       "appearance": "外观",
       "theme": "主题",
       "external_editor": "外部编辑器",
@@ -272,7 +273,10 @@
       "password": "密码",
       "optional": "可选",
       "check_connection": "检查连接",
-      "connected_to": "已连接到",
+      "checking_connection": "正在检查连接…",
+      "connection_check_succeeded": "连接成功",
+      "connection_check_failed": "连接失败",
+      "connection_preferences_not_saved": "连接成功，但无法保存连接偏好设置：{{message}}",
       "client": "客户端",
       "select_a_client": "选择客户端",
       "check_the_connection_first": "请先检查连接",
@@ -363,6 +367,9 @@
       "about_local_diagnostics": "关于本地诊断",
       "kept_on_this_device_share_an_exported_zip": "保存在此设备上。请自行分享导出的 ZIP 文件。",
       "refresh_diagnostic_storage_usage": "刷新诊断存储用量",
+      "storage_refreshed": "已刷新存储用量",
+      "diagnostics_folder_opened": "已打开诊断文件夹",
+      "issues_opened": "已打开问题反馈",
       "reading_diagnostic_storage": "正在读取诊断存储…",
       "storage_usage_unavailable": "存储用量不可用。",
       "exporting": "正在导出…",
@@ -370,6 +377,7 @@
       "open_issues": "打开问题反馈",
       "zip_exported_unrecognized_diagnostic_entries_were_excluded": "已导出 ZIP，未识别的诊断条目已排除。",
       "zip_exported_review_it_before_sharing_in_an": "已导出 ZIP，请在问题反馈中分享前先检查内容。",
+      "review_export_before_sharing": "在问题反馈中分享导出的 ZIP 前，请先检查内容。",
       "could_not_export_diagnostics_choose_a_writable_zip": "无法导出诊断信息。请选择可写入的 ZIP 文件后重试。",
       "could_not_open_the_diagnostics_folder_try_again": "无法打开诊断文件夹，请重试。",
       "could_not_open_issues_try_again": "无法打开问题反馈，请重试。",
@@ -418,8 +426,11 @@
       "availableNotice": "Rebasely {{version}} 可用",
       "could_not_load_release_notes": "无法格式化更新说明，下方仍可查看原文。"
     },
-    "aboutDialog": {
-      "a_unified_version_control_client": "统一的版本控制客户端。"
+    "aboutSettings": {
+      "a_unified_version_control_client": "统一的版本管理客户端。",
+      "developer": "开发者",
+      "github_repository": "GitHub 仓库",
+      "open_github_repository": "打开 GitHub 仓库"
     },
     "askpassDialog": {
       "confirm_connection": "确认连接",

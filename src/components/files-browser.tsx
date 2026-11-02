@@ -1,14 +1,15 @@
 import { t, useTranslation } from "@/i18n";
 import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { SquarePenIcon, XIcon } from "lucide-react";
+import { FolderOpenIcon, SquarePenIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 import { AuthorName, ExactTime } from "@/components/revision-meta";
 import { avatarColor, avatarInitial, avatarSeed } from "@/lib/avatar";
 import { DiffLines } from "@/components/diff-viewer";
-import { FileTree, FileTreeFilter, FilteredFileTree } from "@/components/file-tree";
+import { FileTreeFilter, FilteredFileTree, VirtualFileTree, type FileTreeEntry } from "@/components/file-tree";
 import { ImageDiff, isImagePath } from "@/components/image-diff";
 import { DiffSkeleton, FileTreeSkeleton } from "@/components/skeletons";
 import { Button } from "@/components/ui/button";
+import { ContextMenuContent, ContextMenuItem } from "@/components/ui/context-menu";
 import { HoverTip } from "@/components/ui/tooltip";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -36,7 +37,7 @@ export function FilesBrowser() {
   useTranslation();
   const shell = usePanelGroupLayout("files");
   const repoPath = useGitSelect((state) => state.snapshot?.repo.path ?? "");
-  const { openInEditor } = useGitPick(["openInEditor"]);
+  const { openInEditor, revealRepoFile } = useGitPick(["openInEditor", "revealRepoFile"]);
   const fileFocus = useGitSelect((state) => state.fileFocus);
   const [entries, setEntries] = useState<Record<string, DirEntry[]>>({});
   const [open, setOpen] = useState<Set<string>>(
@@ -73,17 +74,25 @@ export function FilesBrowser() {
     setOpen((current) => new Set([...current, ...ancestorDirs(fileFocus.path)]));
   }
   const entriesRef = useRef(entries);
+  const directoryLoads = useRef(new Map<string, Promise<void>>());
+  const directoryGeneration = useRef(0);
+  const [loadingDirs, setLoadingDirs] = useState<ReadonlySet<string>>(() => new Set([""]));
   useLayoutEffect(() => {
     entriesRef.current = entries;
   });
 
   const loadDir = useCallback(
-    async (dir: string, quiet = false) => {
-      if (!repoPath) return;
-      try {
-        const items = await gitApi.listDirectory(repoPath, dir);
+    (dir: string, quiet = false): Promise<void> => {
+      if (!repoPath) return Promise.resolve();
+      const pending = directoryLoads.current.get(dir);
+      if (pending) return pending;
+      const generation = directoryGeneration.current;
+      setLoadingDirs((current) => new Set(current).add(dir));
+      const request = gitApi.listDirectory(repoPath, dir).then((items) => {
+        if (generation !== directoryGeneration.current) return;
         setEntries((current) => ({ ...current, [dir]: items }));
-      } catch (error) {
+      }).catch((error) => {
+        if (generation !== directoryGeneration.current) return;
         if (!quiet) {
           toast.error(errorMessage(error));
           return;
@@ -93,25 +102,30 @@ export function FilesBrowser() {
           const { [dir]: _gone, ...rest } = current;
           return rest;
         });
-      }
+      }).finally(() => {
+        if (generation !== directoryGeneration.current) return;
+        directoryLoads.current.delete(dir);
+        setLoadingDirs((current) => {
+          const next = new Set(current);
+          next.delete(dir);
+          return next;
+        });
+      });
+      directoryLoads.current.set(dir, request);
+      return request;
     },
     [repoPath],
   );
 
   // The workspace remounts per repository, so the root is listed once here.
   useEffect(() => {
-    if (!repoPath) return;
-    let cancelled = false;
-    void gitApi
-      .listDirectory(repoPath, "")
-      .then((items) => {
-        if (!cancelled) setEntries((current) => ({ ...current, "": items }));
-      })
-      .catch((error) => toast.error(errorMessage(error)));
+    const requests = directoryLoads.current;
+    void loadDir("");
     return () => {
-      cancelled = true;
+      directoryGeneration.current += 1;
+      requests.clear();
     };
-  }, [repoPath]);
+  }, [loadDir]);
 
   // Folders opened on another view's behalf are listed here.
   useEffect(() => {
@@ -122,9 +136,24 @@ export function FilesBrowser() {
 
   useRepoChanged(repoPath, (changed) => {
     for (const dir of dirsToReload(repoPath, changed, Object.keys(entriesRef.current))) {
-      void loadDir(dir, true);
+      const pending = directoryLoads.current.get(dir);
+      // A watcher event can arrive while a listing is in flight. Refresh once
+      // afterwards so the first response cannot hide a newly created entry.
+      const generation = directoryGeneration.current;
+      if (pending) void pending.then(() => {
+        if (generation === directoryGeneration.current) void loadDir(dir, true);
+      });
+      else void loadDir(dir, true);
     }
   });
+
+  const fileMenu = (entry: FileTreeEntry) => (
+    <ContextMenuContent>
+      <ContextMenuItem onClick={() => void revealRepoFile(entry.path)}>
+        <FolderOpenIcon />{t("git.ui.reveal_in_file_manager")}
+      </ContextMenuItem>
+    </ContextMenuContent>
+  );
 
   const openBlameCommit = useCallback((commitId: string) => {
     setPin(commitId);
@@ -143,15 +172,23 @@ export function FilesBrowser() {
       <ResizablePanel id="files-tree" defaultSize="22%" minSize="14%" maxSize="40%">
         <div className="absolute inset-0 flex min-h-0 flex-col">
           <FileTreeFilter title={t("git-files.files")} query={query} onQuery={setQuery} />
-          <ScrollArea className="min-h-0 flex-1">
-            <div className={fileQuery.active ? "hidden" : undefined}>
-              <FileTree
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className={cn("flex min-h-0 flex-1 flex-col", fileQuery.active && "hidden")}>
+              {!entries[""] ? (
+                loadingDirs.has("") ? <FileTreeSkeleton fill /> : (
+                  <Button type="button" variant="ghost" size="sm" className="m-2" onClick={() => void loadDir("")}>
+                    {t("git.ui.retry")}
+                  </Button>
+                )
+              ) : <VirtualFileTree
                 dir=""
                 depth={0}
                 entries={entries}
                 open={open}
                 selected={path}
-                onToggle={async (dir) => {
+                loading={loadingDirs}
+                menu={fileMenu}
+                onToggle={(dir) => {
                   if (open.has(dir)) {
                     setOpen((current) => {
                       const next = new Set(current);
@@ -160,23 +197,25 @@ export function FilesBrowser() {
                     });
                     return;
                   }
-                  if (!entries[dir]) await loadDir(dir);
                   setOpen((current) => new Set(current).add(dir));
+                  if (!entries[dir]) void loadDir(dir);
                 }}
                 onOpenFile={(next) => {
                   setPath(next);
                   setPin(null);
                 }}
-              />
+              />}
             </div>
             {fileQuery.active ? (
               fileQuery.searching ? (
                 <FileTreeSkeleton fill />
               ) : (
                 <FilteredFileTree
+                  virtualized
                   nodes={searchNodes}
                   toPath={(relative) => relative}
                   selected={path}
+                  menu={fileMenu}
                   onOpenFile={(next) => {
                     setPath(next);
                     setPin(null);
@@ -198,7 +237,7 @@ export function FilesBrowser() {
                 />
               )
             ) : null}
-          </ScrollArea>
+          </div>
         </div>
       </ResizablePanel>
       <ResizableHandle />

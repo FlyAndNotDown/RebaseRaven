@@ -258,5 +258,21 @@
     "locked": "Locked selected files for submit",
     "unlocked": "Unlocked selected files"
   },
-  "noTextDifferences": "No text differences"
+  "noTextDifferences": "No text differences",
+  "editChangelist": "Edit changelist",
+  "changeDialog": {
+    "editTitle": "Edit changelist",
+    "submitTitle": "Submit changelist",
+    "editDescription": "Update the description of this pending changelist.",
+    "defaultDescription": "Save the default changelist as a numbered changelist, including its opened files.",
+    "submitDescription": "Submit all opened files in this changelist with the description below.",
+    "openedFiles_one": "{{count}} opened file",
+    "openedFiles_other": "{{count}} opened files",
+    "unavailable": "This changelist is no longer pending. Close this dialog and refresh the workspace.",
+    "failed": "The changelist could not be saved or submitted. Check the operation error and try again.",
+    "revertTitle": "Revert changelist {{id}}?",
+    "revertDescription_one": "Discard the opened changes in {{count}} file. Added files stay on disk. Shelved files stay on the server.",
+    "revertDescription_other": "Discard the opened changes in {{count}} files. Added files stay on disk. Shelved files stay on the server.",
+    "revertFailed": "The files could not be reverted. Check the operation error and try again."
+  }
 }

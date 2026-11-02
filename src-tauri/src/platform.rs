@@ -18,6 +18,10 @@ pub(crate) struct ProbeProcessTreeGuard;
 
 #[cfg(not(windows))]
 impl ProbeProcessTreeGuard {
+    pub(crate) fn disarm(&self) -> std::io::Result<()> {
+        Ok(())
+    }
+
     pub(crate) fn terminate(&self, pid: u32) -> bool {
         kill_process_tree(pid)
     }

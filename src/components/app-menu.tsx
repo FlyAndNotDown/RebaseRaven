@@ -2,7 +2,6 @@ import { t, useTranslation } from "@/i18n";
 import { useMemo, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ClockIcon, DownloadIcon, FolderOpenIcon, InfoIcon, LogOutIcon, MenuIcon, PlusIcon, SettingsIcon } from "lucide-react";
-import { AboutDialog } from "@/components/about-dialog";
 import { CloneRepositoryDialog, InitializeRepositoryDialog } from "@/components/lazy-dialogs";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,7 +32,6 @@ export function AppMenu() {
   const [tooltipOpen, setTooltipOpen] = useState(false);
   const [cloneOpen, setCloneOpen] = useState(false);
   const [initializeOpen, setInitializeOpen] = useState(false);
-  const [aboutOpen, setAboutOpen] = useState(false);
   const hovering = useRef(false);
   const menuOpenRef = useRef(false);
   const labels = useMemo(() => disambiguateRepoLabels(recents), [recents]);
@@ -123,7 +121,7 @@ export function AppMenu() {
           <DropdownMenuItem onSelect={() => setOpenPanel("settings")}>
             <SettingsIcon />
             {t("common.settings")}</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setAboutOpen(true)}>
+          <DropdownMenuItem onSelect={() => setOpenPanel("settings-about")}>
             <InfoIcon />
             {t("desktop.appMenu.about")}</DropdownMenuItem>
           <DropdownMenuSeparator />
@@ -134,7 +132,6 @@ export function AppMenu() {
       </DropdownMenu>
       <CloneRepositoryDialog open={cloneOpen} onOpenChange={setCloneOpen} />
       <InitializeRepositoryDialog open={initializeOpen} onOpenChange={setInitializeOpen} />
-      <AboutDialog open={aboutOpen} onOpenChange={setAboutOpen} />
     </div>
   );
 }
