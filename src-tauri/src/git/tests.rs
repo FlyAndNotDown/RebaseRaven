@@ -1976,6 +1976,32 @@ fn tags_go_through_git_and_reject_bad_names() {
 }
 
 #[test]
+fn directory_listing_sorts_folders_first_without_case() {
+    let (root, repo) = temp_repo();
+    for folder in ["z-folder", "A-folder"] {
+        fs::create_dir(root.join(folder)).unwrap();
+    }
+    for file in ["z-file.txt", "B-file.txt", "a-file.txt"] {
+        fs::write(root.join(file), "content\n").unwrap();
+    }
+    let entries = list_directory(&repo, "").unwrap();
+    assert_eq!(
+        entries
+            .iter()
+            .map(|entry| entry.name.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "A-folder",
+            "z-folder",
+            "a-file.txt",
+            "B-file.txt",
+            "z-file.txt"
+        ]
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn directory_listing_grays_ignored_paths_but_not_tracked_ones() {
     let (root, repo) = temp_repo();
     commit_file(
