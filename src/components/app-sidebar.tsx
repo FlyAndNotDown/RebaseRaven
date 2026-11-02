@@ -33,7 +33,7 @@ export function AppSidebar() {
     "openPanel",
     "setOpenPanel",
   ]);
-  const settingsOpen = openPanel === "settings";
+  const settingsOpen = openPanel === "settings" || openPanel === "settings-about";
   const setSettingsOpen = (open: boolean) => setOpenPanel(open ? "settings" : null);
   const p4 = useP4();
   const perforce = activeTab.kind === "repo" && activeTab.vcs === "perforce";
@@ -198,7 +198,7 @@ export function AppSidebar() {
           <TooltipContent side="right">{t("common.settings")}</TooltipContent>
         </Tooltip>
       </div>
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <SettingsDialog open={settingsOpen} initialSection={openPanel === "settings-about" ? "about" : "general"} onOpenChange={setSettingsOpen} />
     </nav>
   );
 }

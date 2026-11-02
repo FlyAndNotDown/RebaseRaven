@@ -1,6 +1,6 @@
 import { t, useTranslation } from "@/i18n";
 import { useId, useRef, useState } from "react";
-import { CableIcon, ChevronDownIcon, InfoIcon, MonitorIcon, SlidersHorizontalIcon, type LucideIcon } from "lucide-react";
+import { CableIcon, CheckIcon, ChevronDownIcon, InfoIcon, LoaderCircleIcon, MonitorIcon, SaveIcon, SlidersHorizontalIcon, XIcon, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -26,10 +26,13 @@ export function NetworkSettings({ value, onSave }: { value: HttpProxy; onSave: (
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const busy = useRef(false);
+  const urlInput = useRef<HTMLInputElement>(null);
   const next = normalizeHttpProxy(draft);
   const changed = proxyDraftChanged(current);
   const selectedMode = modes.find((mode) => mode.id === draft.mode) ?? modes[0];
   const ModeIcon = selectedMode.icon;
+  const feedback = saving ? t("desktop.networkSettings.saving")
+    : error ?? (saved ? t("desktop.networkSettings.proxy_saved") : "");
 
   function edit(patch: Partial<HttpProxy>) {
     setState((current) => editProxyDraft(current, patch));
@@ -40,10 +43,11 @@ export function NetworkSettings({ value, onSave }: { value: HttpProxy; onSave: (
   async function apply() {
     if (busy.current) return;
     const validation = proxyValidationError(next);
-    if (validation) { setError(validation); return; }
+    if (validation) { setError(validation); urlInput.current?.focus(); return; }
     busy.current = true;
     setSaving(true);
     setError(null);
+    setSaved(false);
     try {
       const submitted = { ...next, url: next.mode === "manual" ? new URL(next.url.trim()).toString() : "" };
       if (await onSave(submitted)) { setState((current) => acceptProxyDraft(current, submitted)); setSaved(true); }
@@ -100,17 +104,25 @@ export function NetworkSettings({ value, onSave }: { value: HttpProxy; onSave: (
         {draft.mode === "manual" ? (
           <div className="grid gap-2">
             <Label htmlFor={`${id}-url`}>{t("desktop.networkSettings.proxy_url")}</Label>
-            <Input id={`${id}-url`} type="url" className="font-mono text-xs" autoComplete="off" autoCapitalize="off" spellCheck={false} placeholder="http://127.0.0.1:8080" value={draft.url} disabled={saving} onChange={(event) => edit({ url: event.target.value })} aria-invalid={!!error} aria-describedby={`${id}-hint${error ? ` ${id}-error` : ""}`} />
+            <Input ref={urlInput} id={`${id}-url`} type="url" className="font-mono text-xs" autoComplete="off" autoCapitalize="off" spellCheck={false} placeholder="http://127.0.0.1:8080" value={draft.url} disabled={saving} onChange={(event) => edit({ url: event.target.value })} aria-invalid={!!error} aria-describedby={`${id}-hint${error ? ` ${id}-feedback` : ""}`} />
             <p id={`${id}-hint`} className="text-xs leading-relaxed text-muted-foreground">{t("desktop.networkSettings.http_https_socks5_or_socks5h_credentials_are_not")}</p>
           </div>
         ) : draft.mode === "system" ? (
           <p className="text-xs leading-relaxed text-muted-foreground">{t("desktop.networkSettings.uses_operating_system_proxy_settings_on_windows_and")}</p>
         ) : null}
-        {error ? <p id={`${id}-error`} role="alert" className="text-xs text-destructive">{error}</p> : null}
         <div className="flex min-h-7 items-center justify-end gap-3">
-          {saved ? <span role="status" className="text-xs text-muted-foreground">{t("desktop.networkSettings.proxy_saved")}</span> : null}
-          <Button type="submit" size="sm" disabled={saving || !changed}>{saving ? t("desktop.networkSettings.saving") : t("desktop.networkSettings.apply_proxy")}</Button>
+          <HoverTip label={feedback || t("desktop.networkSettings.apply_proxy")}>
+            <span className="inline-flex rounded-md focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50" tabIndex={!changed && saved ? 0 : undefined} role={!changed && saved ? "group" : undefined} aria-label={!changed && saved ? feedback : undefined}>
+              <Button type="submit" size="sm" disabled={saving || !changed} aria-busy={saving} aria-describedby={feedback ? `${id}-feedback` : undefined}>
+                {saving ? <LoaderCircleIcon className="motion-safe:animate-spin" aria-hidden="true" />
+                  : error ? <XIcon aria-hidden="true" />
+                  : saved ? <CheckIcon aria-hidden="true" /> : <SaveIcon aria-hidden="true" />}
+                {t("desktop.networkSettings.apply_proxy")}
+              </Button>
+            </span>
+          </HoverTip>
         </div>
+        <span id={`${id}-feedback`} role="status" aria-atomic="true" className="sr-only">{feedback}</span>
       </form>
     </section>
   );
