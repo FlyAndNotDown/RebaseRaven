@@ -71,6 +71,28 @@ export function updateP4Session(
   return next;
 }
 
+export function pendingChangeDescription(current: Pick<P4Session, "pending" | "selectedChange" | "description">, changeId: string) {
+  return current.selectedChange === changeId
+    ? current.description
+    : current.pending.find((change) => change.id === changeId)?.description ?? "";
+}
+
+/** A saved modal draft belongs to its target, even if selection changed while saving. */
+export function savePendingDescription(
+  current: P4Session,
+  changeId: string,
+  description: string,
+  descriptionAtStart: string,
+): P4Session {
+  return {
+    ...current,
+    pending: current.pending.map((change) => change.id === changeId ? { ...change, description } : change),
+    description: current.selectedChange === changeId && current.description === descriptionAtStart
+      ? description
+      : current.description,
+  };
+}
+
 export function refreshPendingSession(
   current: P4Session,
   pending: P4Changelist[],
