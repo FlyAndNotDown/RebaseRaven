@@ -3,24 +3,19 @@
 
 use std::io;
 
-pub(super) const MAX_ARCHIVE_BYTES: usize = 1_100_000;
+use super::{FILE_BYTES, LOG_NAMES, MAX_LOG_BYTES};
+
+pub(super) const MAX_ARCHIVE_BYTES: usize = MAX_LOG_BYTES + 16 * 1024;
 
 pub(super) fn stored_zip(entries: &[(&str, Vec<u8>)]) -> io::Result<Vec<u8>> {
-    if entries.len() > 6 {
+    if entries.len() > LOG_NAMES.len() + 2 {
         return Err(invalid_archive());
     }
     let mut output = Vec::new();
     let mut central = Vec::new();
     for (name, contents) in entries {
-        if !matches!(
-            *name,
-            "manifest.json"
-                | "README.txt"
-                | "events.jsonl"
-                | "events.1.jsonl"
-                | "events.2.jsonl"
-                | "events.3.jsonl"
-        ) || contents.len() > 262_144
+        if (!matches!(*name, "manifest.json" | "README.txt") && !LOG_NAMES.contains(name))
+            || contents.len() > FILE_BYTES
         {
             return Err(invalid_archive());
         }
@@ -110,11 +105,25 @@ mod tests {
             "/events.jsonl",
             "prefs.json",
             "folder/events.jsonl",
+            "events.32.jsonl",
         ] {
             assert!(stored_zip(&[(name, Vec::new())]).is_err());
         }
-        assert!(stored_zip(&[("events.jsonl", vec![0; 262_145])]).is_err());
-        assert!(stored_zip(&[("events.jsonl", vec![0; 262_144])]).is_ok());
+        assert!(stored_zip(&[("events.jsonl", vec![0; FILE_BYTES + 1])]).is_err());
+        assert!(stored_zip(&[("events.jsonl", vec![0; FILE_BYTES])]).is_ok());
+    }
+
+    #[test]
+    fn accepts_every_full_log_segment_with_room_for_metadata() {
+        let mut entries: Vec<_> = LOG_NAMES
+            .into_iter()
+            .map(|name| (name, vec![0; FILE_BYTES]))
+            .collect();
+        entries.push(("manifest.json", b"{}".to_vec()));
+        entries.push(("README.txt", b"Local diagnostics".to_vec()));
+        let archive = stored_zip(&entries).unwrap();
+        assert!(archive.len() > MAX_LOG_BYTES);
+        assert!(archive.len() <= MAX_ARCHIVE_BYTES);
     }
 
     #[test]

@@ -15,12 +15,41 @@ use crate::error::{AppError, AppResult};
 const FILE_BYTES: usize = 262_144;
 const RETENTION_DAYS: u64 = 7;
 const PRUNE_INTERVAL: Duration = Duration::from_secs(3600);
-const LOG_NAMES: [&str; 4] = [
+const LOG_NAMES: [&str; 32] = [
     "events.jsonl",
     "events.1.jsonl",
     "events.2.jsonl",
     "events.3.jsonl",
+    "events.4.jsonl",
+    "events.5.jsonl",
+    "events.6.jsonl",
+    "events.7.jsonl",
+    "events.8.jsonl",
+    "events.9.jsonl",
+    "events.10.jsonl",
+    "events.11.jsonl",
+    "events.12.jsonl",
+    "events.13.jsonl",
+    "events.14.jsonl",
+    "events.15.jsonl",
+    "events.16.jsonl",
+    "events.17.jsonl",
+    "events.18.jsonl",
+    "events.19.jsonl",
+    "events.20.jsonl",
+    "events.21.jsonl",
+    "events.22.jsonl",
+    "events.23.jsonl",
+    "events.24.jsonl",
+    "events.25.jsonl",
+    "events.26.jsonl",
+    "events.27.jsonl",
+    "events.28.jsonl",
+    "events.29.jsonl",
+    "events.30.jsonl",
+    "events.31.jsonl",
 ];
+const MAX_LOG_BYTES: usize = FILE_BYTES * LOG_NAMES.len();
 const MAX_DURATION_MS: u64 = 86_400_000;
 const MAX_TIMESTAMP_MS: u64 = 4_102_444_800_000;
 const ISSUES_URL: &str = "https://github.com/FlyAndNotDown/Rebasely/issues";
@@ -123,19 +152,19 @@ pub fn initialize(app: &AppHandle) -> AppResult<()> {
         .name("local-diagnostics".into())
         .spawn(move || {
             let mut limiter = RateLimit::default();
-            let mut last_prune: Option<Instant> = None;
+            let mut next_prune = Instant::now();
             loop {
-                let event = match receiver.recv_timeout(PRUNE_INTERVAL) {
+                let wait = next_prune.saturating_duration_since(Instant::now());
+                let event = match receiver.recv_timeout(wait) {
                     Ok(event) => Some(event),
                     Err(mpsc::RecvTimeoutError::Timeout) => None,
                     Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 };
                 let now = Instant::now();
-                let prune = last_prune
-                    .is_none_or(|previous| now.duration_since(previous) >= PRUNE_INTERVAL);
+                let prune = now >= next_prune;
                 let event = event.filter(|event| limiter.allow(event.code, event.status, now));
                 if prune {
-                    last_prune = Some(now);
+                    next_prune = now + PRUNE_INTERVAL;
                 }
                 if prune || event.is_some() {
                     if let Ok(store) = Store::new(&directory) {
@@ -335,7 +364,7 @@ impl Store {
         Ok(Summary {
             total_bytes,
             file_count,
-            max_bytes: FILE_BYTES * LOG_NAMES.len(),
+            max_bytes: MAX_LOG_BYTES,
             retention_days: RETENTION_DAYS,
         })
     }
@@ -402,9 +431,13 @@ impl Store {
         line.push(b'\n');
         let mut contents = self.read(LOG_NAMES[0])?.unwrap_or_default();
         if contents.len() + line.len() > FILE_BYTES {
+            // Move completed segments without reading or rewriting their contents.
             for index in (1..LOG_NAMES.len()).rev() {
-                if let Some(previous) = self.read(LOG_NAMES[index - 1])? {
-                    crate::fsutil::write_atomic(&self.directory.join(LOG_NAMES[index]), &previous)?;
+                if self.metadata(LOG_NAMES[index - 1])?.is_some() {
+                    fs::rename(
+                        self.directory.join(LOG_NAMES[index - 1]),
+                        self.directory.join(LOG_NAMES[index]),
+                    )?;
                 }
             }
             contents.clear();
@@ -568,7 +601,7 @@ mod tests {
     }
 
     #[test]
-    fn rotation_keeps_four_files_within_the_total_budget() {
+    fn rotation_keeps_logs_within_the_total_budget() {
         let temp = tempfile::tempdir().unwrap();
         let store = Store::new(&temp.path().join("logs")).unwrap();
         let line = serde_json::to_vec(&event()).unwrap();
@@ -582,7 +615,8 @@ mod tests {
         }
         store.append(&event()).unwrap();
         let summary = store.summary().unwrap();
-        assert_eq!(summary.file_count, 4);
+        assert_eq!(summary.file_count, LOG_NAMES.len());
+        assert_eq!(summary.max_bytes, 8 * 1024 * 1024);
         assert!(summary.total_bytes <= summary.max_bytes as u64);
         assert!(store.read(LOG_NAMES[0]).unwrap().unwrap().len() < 1024);
         assert_eq!(store.read(LOG_NAMES[1]).unwrap().unwrap(), full);
