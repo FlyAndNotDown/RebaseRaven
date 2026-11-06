@@ -97,6 +97,11 @@ async fn get_diagnostic_view(
 }
 
 #[tauri::command]
+async fn clear_diagnostic_logs(app: AppHandle) -> AppResult<()> {
+    blocking(move || diagnostics::clear(&app)).await
+}
+
+#[tauri::command]
 async fn export_diagnostic_logs(
     destination: String,
     app: AppHandle,
@@ -1763,6 +1768,7 @@ pub fn run() {
             initialize_repository,
             get_author_avatar,
             get_diagnostic_view,
+            clear_diagnostic_logs,
             export_diagnostic_logs,
             open_diagnostic_directory,
             open_diagnostic_issues,

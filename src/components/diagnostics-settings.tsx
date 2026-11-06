@@ -1,15 +1,16 @@
 import { formatBytes, t, useTranslation } from "@/i18n";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
-import { CheckIcon, DownloadIcon, ExternalLinkIcon, FolderOpenIcon, InfoIcon, LoaderCircleIcon, RefreshCwIcon, TriangleAlertIcon, XIcon, type LucideIcon } from "lucide-react";
+import { CheckIcon, DownloadIcon, ExternalLinkIcon, FolderOpenIcon, InfoIcon, LoaderCircleIcon, RefreshCwIcon, Trash2Icon, TriangleAlertIcon, XIcon, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { HoverTip } from "@/components/ui/tooltip";
 import { diagnosticsApi } from "@/lib/diagnostics";
 import type { DiagnosticLevel, DiagnosticSummary } from "@/types/diagnostics";
 
-type Action = "refresh" | "export" | "directory" | "issues";
+type Action = "refresh" | "export" | "directory" | "issues" | "clear";
 type Feedback = { outcome: "success" | "warning" | "error"; message: string };
-const actions: Action[] = ["refresh", "export", "directory", "issues"];
+const actions: Action[] = ["refresh", "export", "directory", "issues", "clear"];
 
 export function DiagnosticsSettings({ level, levelControl }: { level: DiagnosticLevel; levelControl: ReactNode }) {
   useTranslation();
@@ -17,6 +18,7 @@ export function DiagnosticsSettings({ level, levelControl }: { level: Diagnostic
   const [summary, setSummary] = useState<DiagnosticSummary | null>(null);
   const [action, setAction] = useState<Action | null>(null);
   const [feedback, setFeedback] = useState<Partial<Record<Action, Feedback>>>({});
+  const [clearOpen, setClearOpen] = useState(false);
   const [logRevision, setLogRevision] = useState(0);
   const [logResult, setLogResult] = useState<{ level: DiagnosticLevel; revision: number; text: string | null } | null>(null);
   const activeLog = logResult?.level === level && logResult.revision === logRevision ? logResult : null;
@@ -74,6 +76,17 @@ export function DiagnosticsSettings({ level, levelControl }: { level: Diagnostic
         case "refresh":
           setLogRevision((revision) => revision + 1);
           break;
+        case "clear":
+          await reads.current;
+          await diagnosticsApi.clear();
+          if (mounted.current) {
+            setClearOpen(false);
+            setFeedback((previous) => ({ ...previous, clear: {
+              outcome: "success",
+              message: t("desktop.diagnosticsSettings.logs_cleared"),
+            } }));
+          }
+          break;
         case "export": {
           const destination = await save({
             title: t("desktop.diagnosticsSettings.export_local_diagnostics"),
@@ -104,13 +117,17 @@ export function DiagnosticsSettings({ level, levelControl }: { level: Diagnostic
         outcome: "error",
         message: next === "export"
           ? t("desktop.diagnosticsSettings.could_not_export_diagnostics_choose_a_writable_zip")
+          : next === "clear" ? t("desktop.diagnosticsSettings.could_not_clear_all_logs")
           : next === "refresh" ? t("desktop.diagnosticsSettings.could_not_read_local_diagnostics_try_again")
           : next === "directory" ? t("desktop.diagnosticsSettings.could_not_open_the_diagnostics_folder_try_again")
           : t("desktop.diagnosticsSettings.could_not_open_issues_try_again"),
       } }));
     } finally {
       busy.current = false;
-      if (mounted.current) setAction(null);
+      if (mounted.current) {
+        setAction(null);
+        if (next === "clear") setLogRevision((revision) => revision + 1);
+      }
     }
   }
 
@@ -170,6 +187,35 @@ export function DiagnosticsSettings({ level, levelControl }: { level: Diagnostic
             {actionIcon("issues", ExternalLinkIcon)}{t("desktop.diagnosticsSettings.open_issues")}
           </Button>
         </HoverTip>
+        <Dialog open={clearOpen} onOpenChange={(open) => {
+          if (busy.current) return;
+          if (open) setFeedback((previous) => ({ ...previous, clear: undefined }));
+          setClearOpen(open);
+        }}>
+          <HoverTip label={actionTip("clear", t("desktop.diagnosticsSettings.clear_logs"))}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" disabled={action !== null} aria-describedby={`${titleId}-clear-feedback`}>
+                {actionIcon("clear", Trash2Icon)}{t("desktop.diagnosticsSettings.clear_logs")}
+              </Button>
+            </DialogTrigger>
+          </HoverTip>
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>{t("desktop.diagnosticsSettings.clear_logs")}</DialogTitle>
+              <DialogDescription>{t("desktop.diagnosticsSettings.clear_logs_confirmation")}</DialogDescription>
+            </DialogHeader>
+            {feedback.clear?.outcome === "error" ? <p role="alert" className="text-sm text-destructive">{feedback.clear.message}</p> : null}
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline" disabled={action === "clear"}>{t("common.cancel")}</Button>
+              </DialogClose>
+              <Button variant="destructive" disabled={action !== null} aria-busy={action === "clear"} onClick={() => void run("clear")}>
+                {action === "clear" ? <LoaderCircleIcon className="motion-safe:animate-spin" aria-hidden="true" /> : null}
+                {t("desktop.diagnosticsSettings.clear_logs")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
       {actions.map((next) => <span key={next} id={`${titleId}-${next}-feedback`} role="status" aria-atomic="true" className="sr-only">{announcement(next)}</span>)}
       <div className="mt-2 grid min-w-0 gap-2">

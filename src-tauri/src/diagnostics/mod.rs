@@ -49,7 +49,12 @@ const TAIL_LINES: usize = 200;
 const MAX_DURATION_MS: u64 = 86_400_000;
 const MAX_TIMESTAMP_MS: u64 = 4_102_444_800_000;
 const ISSUES_URL: &str = "https://github.com/FlyAndNotDown/Rebasely/issues";
-static EVENTS: OnceLock<mpsc::SyncSender<Event>> = OnceLock::new();
+static EVENTS: OnceLock<mpsc::SyncSender<Work>> = OnceLock::new();
+
+enum Work {
+    Append(Event),
+    Clear(mpsc::Sender<io::Result<()>>),
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -80,41 +85,50 @@ pub fn initialize(app: &AppHandle) -> AppResult<()> {
         return Ok(());
     }
     let directory = log_directory(app)?;
-    let (sender, receiver) = mpsc::sync_channel::<Event>(64);
+    let (sender, receiver) = mpsc::sync_channel(64);
     std::thread::Builder::new()
         .name("local-diagnostics".into())
-        .spawn(move || {
-            let mut limiter = RateLimit::default();
-            let mut next_prune = Instant::now();
-            loop {
-                let wait = next_prune.saturating_duration_since(Instant::now());
-                let event = match receiver.recv_timeout(wait) {
-                    Ok(event) => Some(event),
-                    Err(mpsc::RecvTimeoutError::Timeout) => None,
-                    Err(mpsc::RecvTimeoutError::Disconnected) => break,
-                };
-                let now = Instant::now();
-                let prune = now >= next_prune;
-                let event = event.filter(|event| limiter.allow(event, now));
-                if prune {
-                    next_prune = now + PRUNE_INTERVAL;
-                }
-                if prune || event.is_some() {
-                    if let Ok(store) = Store::new(&directory) {
-                        if prune {
-                            let _ = store.prune(retention_cutoff());
-                        }
-                        if let Some(event) = event {
-                            let _ = store.append(&event);
-                        }
-                    }
-                }
-            }
-        })
+        .spawn(move || write_logs(&directory, receiver))
         .map_err(|_| AppError::msg("Could not start local diagnostics."))?;
     let _ = EVENTS.set(sender);
     record(Code::AppStarted, Status::Success, None);
     Ok(())
+}
+
+fn write_logs(directory: &Path, receiver: mpsc::Receiver<Work>) {
+    let mut limiter = RateLimit::default();
+    let mut next_prune = Instant::now();
+    loop {
+        let wait = next_prune.saturating_duration_since(Instant::now());
+        let event = match receiver.recv_timeout(wait) {
+            Ok(Work::Append(event)) => Some(event),
+            Ok(Work::Clear(reply)) => {
+                // Earlier writes have already drained, so they cannot restore cleared logs.
+                let result = clear_stores(directory);
+                limiter = RateLimit::default();
+                let _ = reply.send(result);
+                continue;
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => None,
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        };
+        let now = Instant::now();
+        let prune = now >= next_prune;
+        let event = event.filter(|event| limiter.allow(event, now));
+        if prune {
+            next_prune = now + PRUNE_INTERVAL;
+        }
+        if prune || event.is_some() {
+            if let Ok(store) = Store::new(directory) {
+                if prune {
+                    let _ = store.prune(retention_cutoff());
+                }
+                if let Some(event) = event {
+                    let _ = store.append(&event);
+                }
+            }
+        }
+    }
 }
 
 /// Successful fast reads stay quiet.
@@ -206,7 +220,7 @@ fn enqueue(
 ) {
     if let Some(sender) = EVENTS.get() {
         let (reason, command) = details();
-        let _ = sender.try_send(Event {
+        let _ = sender.try_send(Work::Append(Event {
             time_unix_ms: unix_ms(),
             code,
             status,
@@ -214,7 +228,7 @@ fn enqueue(
                 .map(|value| value.as_millis().min(u128::from(MAX_DURATION_MS)) as u64),
             reason,
             command,
-        });
+        }));
     }
 }
 
@@ -228,6 +242,19 @@ pub fn view(app: &AppHandle, level: Level) -> AppResult<View> {
             })
         })
         .map_err(|_| AppError::msg("Could not read local diagnostics. Try again."))
+}
+
+pub fn clear(app: &AppHandle) -> AppResult<()> {
+    let result = if let Some(writer) = EVENTS.get() {
+        let (reply, response) = mpsc::channel();
+        writer
+            .send(Work::Clear(reply))
+            .map_err(|_| invalid_store())
+            .and_then(|_| response.recv().unwrap_or_else(|_| Err(invalid_store())))
+    } else {
+        clear_stores(&log_directory(app)?)
+    };
+    result.map_err(|_| AppError::msg("Could not clear all diagnostic logs. Try again."))
 }
 
 pub fn export(app: &AppHandle, destination: &Path) -> AppResult<ExportResult> {
@@ -264,6 +291,29 @@ fn log_directory(app: &AppHandle) -> AppResult<PathBuf> {
         .app_log_dir()
         .map(|directory| directory.join("diagnostics-v3"))
         .map_err(|_| AppError::msg("The local diagnostics folder is unavailable."))
+}
+
+fn clear_stores(directory: &Path) -> io::Result<()> {
+    let parent = directory.parent().ok_or_else(invalid_store)?;
+    let current = Store::new(directory).and_then(|store| store.clear_files(LOG_NAMES));
+    let previous = clear_previous_store(&parent.join("diagnostics-v2"), LOG_NAMES);
+    let jsonl = clear_previous_store(
+        &parent.join("diagnostics-v1"),
+        std::iter::once("events.jsonl".to_owned())
+            .chain((1..32).map(|index| format!("events.{index}.jsonl"))),
+    );
+    current.and(previous).and(jsonl)
+}
+
+fn clear_previous_store(
+    directory: &Path,
+    names: impl IntoIterator<Item = impl AsRef<Path>>,
+) -> io::Result<()> {
+    match fs::symlink_metadata(directory) {
+        Ok(_) => Store::new(directory)?.clear_files(names),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
 }
 
 #[derive(Default)]
@@ -367,6 +417,18 @@ impl Store {
             max_bytes: MAX_LOG_BYTES,
             retention_days: RETENTION_DAYS,
         })
+    }
+
+    fn clear_files(&self, names: impl IntoIterator<Item = impl AsRef<Path>>) -> io::Result<()> {
+        let mut result = Ok(());
+        for name in names {
+            match fs::remove_file(self.directory.join(name)) {
+                Ok(()) => {}
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => result = Err(error),
+            }
+        }
+        result
     }
 
     fn metadata(&self, name: &str) -> io::Result<Option<fs::Metadata>> {
@@ -679,6 +741,58 @@ fn sanitize(contents: &[u8], cutoff: u64) -> (Vec<u8>, usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clear_removes_queued_and_rotated_logs_and_keeps_unmanaged_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let directory = temp.path().join("diagnostics-v3");
+        let previous = temp.path().join("diagnostics-v2");
+        let jsonl = temp.path().join("diagnostics-v1");
+        for path in [&directory, &previous, &jsonl] {
+            fs::create_dir(path).unwrap();
+            fs::write(path.join("user-notes.log"), b"keep").unwrap();
+        }
+        let rolled = directory.join(LOG_NAMES[7]);
+        let previous_log = previous.join(LOG_NAMES[0]);
+        let jsonl_log = jsonl.join("events.31.jsonl");
+        fs::write(&rolled, event().line()).unwrap();
+        fs::write(&previous_log, event().line()).unwrap();
+        fs::write(&jsonl_log, b"{}\n").unwrap();
+
+        let (sender, receiver) = mpsc::sync_channel(4);
+        let worker_path = directory.clone();
+        let worker = std::thread::spawn(move || write_logs(&worker_path, receiver));
+        sender.send(Work::Append(event())).unwrap();
+        let (reply, response) = mpsc::channel();
+        sender.send(Work::Clear(reply)).unwrap();
+        response
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+
+        let store = Store::new(&directory).unwrap();
+        assert_eq!(store.summary().unwrap().file_count, 0);
+        assert!(store.tail(Level::Verbose, 0).unwrap().is_empty());
+        drop(store);
+        assert!(!rolled.exists());
+        assert!(!previous_log.exists());
+        assert!(!jsonl_log.exists());
+        for path in [&directory, &previous, &jsonl] {
+            assert_eq!(fs::read(path.join("user-notes.log")).unwrap(), b"keep");
+        }
+
+        sender.send(Work::Append(event())).unwrap();
+        drop(sender);
+        worker.join().unwrap();
+        assert_eq!(
+            Store::new(&directory)
+                .unwrap()
+                .summary()
+                .unwrap()
+                .file_count,
+            1
+        );
+    }
 
     fn event() -> Event {
         Event {

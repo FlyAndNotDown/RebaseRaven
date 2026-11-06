@@ -3,6 +3,7 @@ import type { DiagnosticExport, DiagnosticLevel, DiagnosticView } from "@/types/
 
 export const diagnosticsApi = {
   view: (level: DiagnosticLevel) => invoke<DiagnosticView>("get_diagnostic_view", { level }),
+  clear: () => invoke<void>("clear_diagnostic_logs"),
   export: (destination: string) => invoke<DiagnosticExport>("export_diagnostic_logs", { destination }),
   openDirectory: () => invoke<void>("open_diagnostic_directory"),
   openIssues: () => invoke<void>("open_diagnostic_issues"),
