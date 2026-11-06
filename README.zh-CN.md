@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://rebasely.flyandnotdown.com/zh-CN/">官网</a> ·
   <a href="https://github.com/FlyAndNotDown/Rebasely/releases/latest">下载</a> ·
-  <a href="README.md">English</a>
+  <a href="README.md">英语</a>
 </p>
 
 Rebasely 是面向 **Git 与 Perforce** 的开源桌面客户端，使用 React、TypeScript、

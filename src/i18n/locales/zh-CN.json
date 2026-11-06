@@ -48,7 +48,7 @@
   "language": {
     "label": "语言",
     "system": "跟随系统",
-    "english": "English",
+    "english": "英语",
     "chinese": "简体中文",
     "hint": "跟随设备语言。其他语言默认使用英语。"
   },

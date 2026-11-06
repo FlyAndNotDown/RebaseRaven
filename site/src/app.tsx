@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent, type RefObject } from "react";
+import { useRef, useState, type MouseEvent, type RefObject } from "react";
 import {
   ArrowDownToLineIcon,
   ArrowUpRightIcon,
@@ -21,13 +21,13 @@ import {
   LaptopIcon,
   MonitorIcon,
   MoonIcon,
-  RefreshCwIcon,
   SunIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { localeHref, rememberSiteLanguage, SITE_LOCALES, type SiteLocale } from "./i18n";
 import { useSiteTheme } from "./theme";
 import { AppMark } from "@/components/app-mark";
+import { GitHubMark } from "@/components/github-mark";
 import { VcsIcon } from "@/components/vcs-icon";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,69 +49,23 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { HoverTip } from "@/components/ui/tooltip";
 import { WorkspacePreview } from "./workspace-preview";
-import { fetchReleaseDownloads, LATEST_RELEASE_URL, REPOSITORY_URL, type ReleaseDownloads } from "./release-downloads";
+import { LATEST_RELEASE_URL, readBundledReleaseDownloads, REPOSITORY_URL } from "./release-downloads";
 
 const REPOSITORY = REPOSITORY_URL;
 const capabilityIcons = { review: FileDiffIcon, organize: LayersIcon, history: HistoryIcon, advanced: GitForkIcon, tools: TerminalIcon };
 const gettingStartedSteps = [{ step: 1, Icon: ArrowDownToLineIcon }, { step: 2, Icon: TerminalIcon }, { step: 3, Icon: FolderOpenIcon }] as const;
-type DownloadState = { kind: "idle" | "pending" | "error" } | { kind: "ready"; downloads: ReleaseDownloads };
+const downloads = readBundledReleaseDownloads(import.meta.env.VITE_RELEASE_DOWNLOADS);
 
 export function Site({ rootPage = false }: { rootPage?: boolean }) {
   const { t } = useTranslation();
   const [downloadOpen, setDownloadOpen] = useState(false);
-  const [downloads, setDownloads] = useState<DownloadState>({ kind: "idle" });
   const downloadTrigger = useRef<HTMLAnchorElement | null>(null);
-  const downloadRequest = useRef<AbortController | null>(null);
-  const downloadCache = useRef<{ state: DownloadState; until: number } | null>(null);
-
-  useEffect(() => () => {
-    const request = downloadRequest.current;
-    downloadRequest.current = null;
-    request?.abort();
-  }, []);
-
-  function loadDownloads(force = false) {
-    if (downloadRequest.current) return;
-    const cached = downloadCache.current;
-    if (!force && cached && cached.until > Date.now()) {
-      setDownloads(cached.state);
-      return;
-    }
-    const request = new AbortController();
-    downloadRequest.current = request;
-    setDownloads({ kind: "pending" });
-    const timeout = window.setTimeout(() => request.abort(), 10_000);
-    void fetchReleaseDownloads(request.signal).then((value) => {
-      if (downloadRequest.current !== request) return;
-      const state: DownloadState = { kind: "ready", downloads: value };
-      downloadCache.current = { state, until: Date.now() + 5 * 60_000 };
-      setDownloads(state);
-    }).catch(() => {
-      if (downloadRequest.current !== request) return;
-      const state: DownloadState = { kind: "error" };
-      downloadCache.current = { state, until: Date.now() + 30_000 };
-      setDownloads(state);
-    }).finally(() => {
-      window.clearTimeout(timeout);
-      if (downloadRequest.current === request) downloadRequest.current = null;
-    });
-  }
-
-  function changeDownloadOpen(open: boolean) {
-    if (!open) {
-      const request = downloadRequest.current;
-      downloadRequest.current = null;
-      request?.abort();
-    }
-    setDownloadOpen(open);
-  }
 
   function openDownload(event: MouseEvent<HTMLAnchorElement>) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     downloadTrigger.current = event.currentTarget;
     setDownloadOpen(true);
-    loadDownloads();
   }
 
   return (
@@ -126,7 +80,7 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
             <Button variant="ghost" size="sm" asChild className="overview-link"><a href="#features">{t("nav.features")}</a></Button>
             <Button variant="ghost" size="sm" asChild className="overview-link"><a href="#workflows">{t("nav.workflow")}</a></Button>
             <Button variant="ghost" size="sm" asChild className="overview-link overview-link-start"><a href="#start">{t("nav.start")}</a></Button>
-            <HoverTip label={t("nav.source")}><Button variant="ghost" size="icon-sm" asChild className="site-source-link"><a href={REPOSITORY} aria-label={t("nav.source")}><CodeXmlIcon /></a></Button></HoverTip>
+            <HoverTip label={t("nav.source")}><Button variant="ghost" size="icon-sm" asChild className="site-source-link"><a href={REPOSITORY} aria-label={t("nav.source")}><GitHubMark /></a></Button></HoverTip>
             <LanguageMenu rootPage={rootPage} />
             <ThemeMenu />
             <Button size="sm" asChild className="site-nav-download"><a href={LATEST_RELEASE_URL} onClick={openDownload}>{t("nav.download")}<ArrowDownToLineIcon /></a></Button>
@@ -219,9 +173,8 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
       <footer className="site-footer site-container">
         <div className="site-footer-brand"><a href={rootPage ? "./" : "../"} translate="no">Rebasely</a><p>{t("footer.tagline")}</p></div>
         <nav aria-label={t("nav.footer")}><a href={`${REPOSITORY}/issues`}><MessageSquareIcon aria-hidden="true" />{t("nav.feedback")}</a><a href={`${REPOSITORY}/blob/dev/CONTRIBUTING.md`}><GitPullRequestIcon aria-hidden="true" />{t("nav.contribute")}</a><a href={`${REPOSITORY}/blob/dev/LICENSE`}><ScaleIcon aria-hidden="true" />{t("nav.license")}</a></nav>
-        <div className="site-footer-languages">{SITE_LOCALES.map((locale) => <a key={locale} href={localeHref(locale, rootPage)} hrefLang={locale} onClick={() => rememberSiteLanguage(locale)}>{t(`language.${locale}`)}</a>)}</div>
       </footer>
-      <DownloadDialog open={downloadOpen} onOpenChange={changeDownloadOpen} returnFocusTo={downloadTrigger} state={downloads} onRefresh={() => loadDownloads(true)} />
+      <DownloadDialog open={downloadOpen} onOpenChange={setDownloadOpen} returnFocusTo={downloadTrigger} />
     </>
   );
 }
@@ -238,7 +191,49 @@ function WorkflowPath({ kind }: { kind: "git" | "p4" }) {
 
 function LanguageMenu({ rootPage }: { rootPage: boolean }) {
   const { t, i18n } = useTranslation();
-  return <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="sm" className="site-language-control" aria-label={t("language.label")}><LanguagesIcon /><span>{t("language.short")}</span></Button></DropdownMenuTrigger><DropdownMenuContent align="end">{SITE_LOCALES.map((locale: SiteLocale) => <DropdownMenuItem key={locale} asChild><a href={localeHref(locale, rootPage)} hrefLang={locale} lang={locale} aria-current={i18n.language === locale ? "page" : undefined} onClick={() => rememberSiteLanguage(locale)}>{t(`language.${locale}`)}</a></DropdownMenuItem>)}<DropdownMenuSeparator /><DropdownMenuItem asChild><a href={rootPage ? "./" : "../"} onClick={() => rememberSiteLanguage(null)}>{t("language.automatic")}</a></DropdownMenuItem></DropdownMenuContent></DropdownMenu>;
+  const links = SITE_LOCALES.map((locale: SiteLocale) => ({
+    locale,
+    href: localeHref(locale, rootPage),
+    label: t(`language.${locale}`),
+    current: i18n.language === locale ? "page" as const : undefined,
+  }));
+  return (
+    <>
+      <DropdownMenu>
+        <HoverTip label={t("language.label")}>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon-sm" className="site-language-trigger" aria-label={t("language.label")}>
+              <LanguagesIcon />
+            </Button>
+          </DropdownMenuTrigger>
+        </HoverTip>
+        <DropdownMenuContent align="end">
+          {links.map(({ locale, href, label, current }) => (
+            <DropdownMenuItem key={locale} asChild>
+              <a href={href} hrefLang={locale} aria-current={current} onClick={() => rememberSiteLanguage(locale)}>{label}</a>
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem asChild>
+            <a href={rootPage ? "./" : "../"} onClick={() => rememberSiteLanguage(null)}>{t("language.automatic")}</a>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <noscript>
+        <style>{".site-language-trigger { display: none; }"}</style>
+        <details className="relative">
+          <Button asChild variant="ghost" size="icon-sm">
+            <summary aria-label={t("language.label")} className="list-none [&::-webkit-details-marker]:hidden"><LanguagesIcon /></summary>
+          </Button>
+          <div className="absolute right-0 z-50 grid min-w-max gap-1 rounded-md border bg-popover p-1 text-sm text-popover-foreground">
+            {links.map(({ locale, href, label, current }) => (
+              <a key={locale} href={href} hrefLang={locale} aria-current={current} className="rounded-sm px-2 py-1 hover:bg-accent">{label}</a>
+            ))}
+          </div>
+        </details>
+      </noscript>
+    </>
+  );
 }
 
 function ThemeMenu() {
@@ -247,9 +242,47 @@ function ThemeMenu() {
   return <DropdownMenu><HoverTip label={t("theme.label")}><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={t("theme.label")}><SunIcon className="hidden dark:block" /><MoonIcon className="dark:hidden" /></Button></DropdownMenuTrigger></HoverTip><DropdownMenuContent align="end" className="w-36"><DropdownMenuRadioGroup value={theme} onValueChange={(value) => { if (value === "light" || value === "dark" || value === "system") setTheme(value); }}>{([{ value: "light", icon: SunIcon }, { value: "dark", icon: MoonIcon }, { value: "system", icon: MonitorIcon }] as const).map(({ value, icon: Icon }) => <DropdownMenuRadioItem key={value} value={value}><Icon /><span>{t(`theme.${value}`)}</span></DropdownMenuRadioItem>)}</DropdownMenuRadioGroup></DropdownMenuContent></DropdownMenu>;
 }
 
-function DownloadDialog({ open, onOpenChange, returnFocusTo, state, onRefresh }: { open: boolean; onOpenChange: (open: boolean) => void; returnFocusTo: RefObject<HTMLAnchorElement | null>; state: DownloadState; onRefresh: () => void }) {
+function DownloadDialog({ open, onOpenChange, returnFocusTo }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  returnFocusTo: RefObject<HTMLAnchorElement | null>;
+}) {
   const { t } = useTranslation();
-  const downloads = state.kind === "ready" ? state.downloads : null;
-  const complete = downloads?.macos && downloads.windows;
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="site-download-dialog max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain sm:max-w-md" onCloseAutoFocus={(event) => { event.preventDefault(); returnFocusTo.current?.focus(); }}><DialogHeader><DialogTitle>{t("download.dialog.title")}</DialogTitle><DialogDescription>{t("download.dialog.body")}</DialogDescription></DialogHeader><div className="grid gap-1">{[{ label: "macOS", detail: "Apple Silicon", format: "DMG", icon: LaptopIcon, url: downloads?.macos }, { label: "Windows", detail: "x64", format: t("download.installer"), icon: MonitorIcon, url: downloads?.windows }].map(({ label, detail, format, icon: Icon, url }) => <Button key={label} variant="ghost" asChild className="h-auto justify-start gap-3 px-2 py-3"><a href={url ?? LATEST_RELEASE_URL}><Icon className="size-5 text-muted-foreground" /><span className="grid min-w-0 flex-1 gap-1 text-left"><span>{label}<span className="ml-1 text-xs font-normal text-muted-foreground">{detail}</span></span><span className="text-xs font-normal text-muted-foreground">{url ? format : t("download.viewLatest")}</span></span>{url ? <ArrowDownToLineIcon className="text-muted-foreground" /> : <ChevronRightIcon className="text-muted-foreground" />}</a></Button>)}</div><div className="flex items-center gap-3"><p role={state.kind === "error" ? "alert" : "status"} className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">{state.kind === "pending" ? t("download.finding") : state.kind === "error" ? t("download.error") : complete ? t("download.version", { version: downloads.tag }) : t("download.choose")}</p><Button size="sm" variant="ghost" disabled={state.kind === "pending"} onClick={onRefresh}><RefreshCwIcon />{t(state.kind === "error" ? "download.retry" : "download.refresh")}</Button></div><p className="text-xs leading-relaxed text-muted-foreground">{t("download.requires")}</p><DialogFooter className="items-center sm:justify-between"><Button variant="ghost" size="sm" asChild><a href={`${REPOSITORY}/blob/dev/docs/development.md`}>{t("download.build")}</a></Button><Button size="sm" asChild><a href={LATEST_RELEASE_URL}>{t("download.latest")}<ArrowUpRightIcon /></a></Button></DialogFooter></DialogContent></Dialog>;
+  const platforms = [
+    { label: "macOS", detail: "Apple Silicon", format: "DMG", icon: LaptopIcon, url: downloads?.macos },
+    { label: "Windows", detail: "x64", format: t("download.installer"), icon: MonitorIcon, url: downloads?.windows },
+  ];
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="site-download-dialog max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain sm:max-w-md"
+        onCloseAutoFocus={(event) => { event.preventDefault(); returnFocusTo.current?.focus(); }}
+      >
+        <DialogHeader>
+          <DialogTitle>{t("download.dialog.title")}</DialogTitle>
+          <DialogDescription>{t("download.dialog.body")}</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-1">
+          {platforms.map(({ label, detail, format, icon: Icon, url }) => (
+            <Button key={label} variant="ghost" asChild className="h-auto justify-start gap-3 px-2 py-3">
+              <a href={url ?? LATEST_RELEASE_URL}>
+                <Icon className="size-5 text-muted-foreground" />
+                <span className="grid min-w-0 flex-1 gap-1 text-left">
+                  <span>{label}<span className="ml-1 text-xs text-muted-foreground">{detail}</span></span>
+                  <span className="text-xs font-normal text-muted-foreground">{url ? format : t("download.viewLatest")}</span>
+                </span>
+                {url ? <ArrowDownToLineIcon className="text-muted-foreground" /> : <ChevronRightIcon className="text-muted-foreground" />}
+              </a>
+            </Button>
+          ))}
+        </div>
+        {downloads ? <p className="text-xs text-muted-foreground">{t("download.version", { version: downloads.tag })}</p> : null}
+        <p className="text-xs leading-relaxed text-muted-foreground">{t("download.requires")}</p>
+        <DialogFooter className="items-center sm:justify-between">
+          <Button variant="ghost" size="sm" asChild><a href={`${REPOSITORY}/blob/dev/docs/development.md`}>{t("download.build")}</a></Button>
+          <Button size="sm" asChild><a href={LATEST_RELEASE_URL}>{t("download.latest")}<ArrowUpRightIcon /></a></Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
