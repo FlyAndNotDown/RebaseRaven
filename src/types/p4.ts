@@ -48,6 +48,8 @@ export interface P4ResolveView {
   summary: string;
   content: boolean;
   comparable: boolean;
+  workingCopy: boolean;
+  pendingResolves: number;
   diff: FileDiff;
 }
 
@@ -89,6 +91,8 @@ export type P4RevisionMode = "latest" | "revision" | "changelist" | "datetime" |
 
 export interface P4GetRevision {
   paths: string[];
+  changeId?: string;
+  recursive?: boolean;
   mode: P4RevisionMode;
   value: string;
   force: boolean;

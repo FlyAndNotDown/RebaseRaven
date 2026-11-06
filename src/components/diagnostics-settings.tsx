@@ -1,40 +1,70 @@
 import { formatBytes, t, useTranslation } from "@/i18n";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
-import { CheckIcon, DownloadIcon, ExternalLinkIcon, FolderOpenIcon, InfoIcon, LoaderCircleIcon, RefreshCwIcon, TriangleAlertIcon, XIcon, type LucideIcon } from "lucide-react";
+import { CheckIcon, DownloadIcon, ExternalLinkIcon, FolderOpenIcon, InfoIcon, LoaderCircleIcon, RefreshCwIcon, Trash2Icon, TriangleAlertIcon, XIcon, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { HoverTip } from "@/components/ui/tooltip";
 import { diagnosticsApi } from "@/lib/diagnostics";
-import type { DiagnosticSummary } from "@/types/diagnostics";
+import type { DiagnosticLevel, DiagnosticSummary } from "@/types/diagnostics";
 
-type Action = "refresh" | "export" | "directory" | "issues";
+type Action = "refresh" | "export" | "directory" | "issues" | "clear";
 type Feedback = { outcome: "success" | "warning" | "error"; message: string };
-const actions: Action[] = ["refresh", "export", "directory", "issues"];
+const actions: Action[] = ["refresh", "export", "directory", "issues", "clear"];
 
-export function DiagnosticsSettings() {
+export function DiagnosticsSettings({ level, levelControl }: { level: DiagnosticLevel; levelControl: ReactNode }) {
   useTranslation();
   const titleId = useId();
   const [summary, setSummary] = useState<DiagnosticSummary | null>(null);
-  const [action, setAction] = useState<Action | null>("refresh");
+  const [action, setAction] = useState<Action | null>(null);
   const [feedback, setFeedback] = useState<Partial<Record<Action, Feedback>>>({});
+  const [clearOpen, setClearOpen] = useState(false);
+  const [logRevision, setLogRevision] = useState(0);
+  const [logResult, setLogResult] = useState<{ level: DiagnosticLevel; revision: number; text: string | null } | null>(null);
+  const activeLog = logResult?.level === level && logResult.revision === logRevision ? logResult : null;
+  const logView = useRef<HTMLPreElement>(null);
   const mounted = useRef(false);
-  const busy = useRef(true);
+  const busy = useRef(false);
+  const reads = useRef(Promise.resolve());
+  const refreshing = activeLog === null;
 
   useEffect(() => {
     mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  useEffect(() => {
     let current = true;
-    void diagnosticsApi.summary().then((value) => {
-      if (current) setSummary(value);
-    }).catch(() => {
-      if (current) setFeedback((previous) => ({ ...previous, refresh: { outcome: "error", message: t("desktop.diagnosticsSettings.could_not_read_local_diagnostics_try_again") } }));
-    }).finally(() => {
-      if (current) {
-        busy.current = false;
-        setAction(null);
+    reads.current = reads.current.then(async () => {
+      if (!current) return;
+      try {
+        const value = await diagnosticsApi.view(level);
+        if (current) {
+          setSummary(value.summary);
+          setLogResult({ level, revision: logRevision, text: value.text });
+          setFeedback((previous) => ({
+            ...previous,
+            refresh: logRevision > 0
+              ? { outcome: "success", message: t("desktop.diagnosticsSettings.storage_refreshed") }
+              : undefined,
+          }));
+        }
+      } catch {
+        if (current) {
+          setLogResult({ level, revision: logRevision, text: null });
+          setFeedback((previous) => ({ ...previous, refresh: {
+            outcome: "error",
+            message: t("desktop.diagnosticsSettings.could_not_read_local_diagnostics_try_again"),
+          } }));
+        }
       }
     });
-    return () => { current = false; mounted.current = false; };
-  }, []);
+    return () => { current = false; };
+  }, [level, logRevision]);
+
+  useEffect(() => {
+    if (activeLog?.text && logView.current) logView.current.scrollTop = logView.current.scrollHeight;
+  }, [activeLog]);
 
   async function run(next: Action) {
     if (busy.current) return;
@@ -43,14 +73,20 @@ export function DiagnosticsSettings() {
     setFeedback((previous) => ({ ...previous, [next]: undefined }));
     try {
       switch (next) {
-        case "refresh": {
-          const value = await diagnosticsApi.summary();
+        case "refresh":
+          setLogRevision((revision) => revision + 1);
+          break;
+        case "clear":
+          await reads.current;
+          await diagnosticsApi.clear();
           if (mounted.current) {
-            setSummary(value);
-            setFeedback((previous) => ({ ...previous, [next]: { outcome: "success", message: t("desktop.diagnosticsSettings.storage_refreshed") } }));
+            setClearOpen(false);
+            setFeedback((previous) => ({ ...previous, clear: {
+              outcome: "success",
+              message: t("desktop.diagnosticsSettings.logs_cleared"),
+            } }));
           }
           break;
-        }
         case "export": {
           const destination = await save({
             title: t("desktop.diagnosticsSettings.export_local_diagnostics"),
@@ -81,18 +117,22 @@ export function DiagnosticsSettings() {
         outcome: "error",
         message: next === "export"
           ? t("desktop.diagnosticsSettings.could_not_export_diagnostics_choose_a_writable_zip")
+          : next === "clear" ? t("desktop.diagnosticsSettings.could_not_clear_all_logs")
           : next === "refresh" ? t("desktop.diagnosticsSettings.could_not_read_local_diagnostics_try_again")
           : next === "directory" ? t("desktop.diagnosticsSettings.could_not_open_the_diagnostics_folder_try_again")
           : t("desktop.diagnosticsSettings.could_not_open_issues_try_again"),
       } }));
     } finally {
       busy.current = false;
-      if (mounted.current) setAction(null);
+      if (mounted.current) {
+        setAction(null);
+        if (next === "clear") setLogRevision((revision) => revision + 1);
+      }
     }
   }
 
   function actionIcon(next: Action, IdleIcon: LucideIcon) {
-    if (action === next) return <LoaderCircleIcon className="motion-safe:animate-spin" aria-hidden="true" />;
+    if (action === next || (next === "refresh" && refreshing)) return <LoaderCircleIcon className="motion-safe:animate-spin" aria-hidden="true" />;
     const result = feedback[next];
     if (!result) return <IdleIcon aria-hidden="true" />;
     if (result.outcome === "error") return <XIcon className="text-destructive" aria-hidden="true" />;
@@ -106,34 +146,34 @@ export function DiagnosticsSettings() {
 
   function announcement(next: Action) {
     return action === next && next === "export" ? t("desktop.diagnosticsSettings.exporting")
-      : action === next && next === "refresh" ? t("desktop.diagnosticsSettings.reading_diagnostic_storage") : feedback[next]?.message ?? "";
+      : refreshing && next === "refresh" ? t("desktop.diagnosticsSettings.reading_diagnostic_storage") : feedback[next]?.message ?? "";
   }
 
   return (
-    <section aria-labelledby={titleId} className="grid gap-3">
+    <section aria-labelledby={titleId} className="grid min-w-0 gap-3">
       <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-1.5">
-            <h3 id={titleId} className="text-sm font-medium">{t("desktop.diagnosticsSettings.local_diagnostics")}</h3>
-            <HoverTip label={t("desktop.diagnosticsSettings.only_diagnostic_codes_timestamps_durations_app_version_and")}>
-              <Button variant="ghost" size="icon-xs" aria-label={t("desktop.diagnosticsSettings.about_local_diagnostics")}><InfoIcon /></Button>
-            </HoverTip>
-          </div>
-          <p className="mt-1 text-xs text-muted-foreground">{t("desktop.diagnosticsSettings.kept_on_this_device_share_an_exported_zip")}</p>
+        <div className="flex items-center gap-1.5">
+          <h3 id={titleId} className="text-sm font-medium">{t("desktop.diagnosticsSettings.local_diagnostics")}</h3>
+          <HoverTip label={[
+            t("desktop.diagnosticsSettings.local_log_contents"),
+            summary ? t("desktop.diagnosticsSettings.retention", { days: summary.retentionDays, maximum: formatBytes(summary.maxBytes) }) : "",
+          ].filter(Boolean).join("\n")}>
+            <Button variant="ghost" size="icon-xs" aria-label={t("desktop.diagnosticsSettings.about_local_diagnostics")}><InfoIcon /></Button>
+          </HoverTip>
         </div>
         <HoverTip label={actionTip("refresh", t("desktop.diagnosticsSettings.refresh_diagnostic_storage_usage"))}>
-          <Button variant="outline" size="icon-sm" aria-label={t("desktop.diagnosticsSettings.refresh_diagnostic_storage_usage")} aria-describedby={`${titleId}-refresh-feedback`} aria-busy={action === "refresh"} disabled={action !== null} onClick={() => void run("refresh")}>
+          <Button variant="outline" size="icon-sm" aria-label={t("desktop.diagnosticsSettings.refresh_diagnostic_storage_usage")} aria-describedby={`${titleId}-refresh-feedback`} aria-busy={refreshing} disabled={action !== null || refreshing} onClick={() => void run("refresh")}>
             {actionIcon("refresh", RefreshCwIcon)}
           </Button>
         </HoverTip>
       </div>
       <p role="status" className="text-xs text-muted-foreground">
         {summary ? t("desktop.diagnosticsSettings.storageUsage", { used: formatBytes(summary.totalBytes), maximum: formatBytes(summary.maxBytes), count: summary.fileCount })
-          : action === "refresh" ? t("desktop.diagnosticsSettings.reading_diagnostic_storage") : t("desktop.diagnosticsSettings.storage_usage_unavailable")}
+          : refreshing ? t("desktop.diagnosticsSettings.reading_diagnostic_storage") : t("desktop.diagnosticsSettings.storage_usage_unavailable")}
       </p>
       <div className="flex flex-wrap gap-2">
         <HoverTip label={actionTip("export", t("desktop.diagnosticsSettings.review_export_before_sharing"))}>
-          <Button size="sm" disabled={action !== null} aria-busy={action === "export"} aria-describedby={`${titleId}-export-feedback`} onClick={() => void run("export")}>
+          <Button size="sm" disabled={action !== null || refreshing} aria-busy={action === "export"} aria-describedby={`${titleId}-export-feedback`} onClick={() => void run("export")}>
             {actionIcon("export", DownloadIcon)}{t("desktop.diagnosticsSettings.export_zip")}
           </Button>
         </HoverTip>
@@ -147,8 +187,54 @@ export function DiagnosticsSettings() {
             {actionIcon("issues", ExternalLinkIcon)}{t("desktop.diagnosticsSettings.open_issues")}
           </Button>
         </HoverTip>
+        <Dialog open={clearOpen} onOpenChange={(open) => {
+          if (busy.current) return;
+          if (open) setFeedback((previous) => ({ ...previous, clear: undefined }));
+          setClearOpen(open);
+        }}>
+          <HoverTip label={actionTip("clear", t("desktop.diagnosticsSettings.clear_logs"))}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" disabled={action !== null} aria-describedby={`${titleId}-clear-feedback`}>
+                {actionIcon("clear", Trash2Icon)}{t("desktop.diagnosticsSettings.clear_logs")}
+              </Button>
+            </DialogTrigger>
+          </HoverTip>
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>{t("desktop.diagnosticsSettings.clear_logs")}</DialogTitle>
+              <DialogDescription>{t("desktop.diagnosticsSettings.clear_logs_confirmation")}</DialogDescription>
+            </DialogHeader>
+            {feedback.clear?.outcome === "error" ? <p role="alert" className="text-sm text-destructive">{feedback.clear.message}</p> : null}
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline" disabled={action === "clear"}>{t("common.cancel")}</Button>
+              </DialogClose>
+              <Button variant="destructive" disabled={action !== null} aria-busy={action === "clear"} onClick={() => void run("clear")}>
+                {action === "clear" ? <LoaderCircleIcon className="motion-safe:animate-spin" aria-hidden="true" /> : null}
+                {t("desktop.diagnosticsSettings.clear_logs")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
       {actions.map((next) => <span key={next} id={`${titleId}-${next}-feedback`} role="status" aria-atomic="true" className="sr-only">{announcement(next)}</span>)}
+      <div className="mt-2 grid min-w-0 gap-2">
+        {levelControl}
+        {activeLog?.text ? (
+          <pre
+            ref={logView}
+            tabIndex={0}
+            aria-label={t("desktop.diagnosticsSettings.recent_logs")}
+            className="max-h-64 min-w-0 overflow-auto rounded-md border bg-muted/30 p-2 font-mono text-xs leading-5 whitespace-pre select-text outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          >{activeLog.text}</pre>
+        ) : (
+          <p role="status" className="rounded-md border p-3 text-xs text-muted-foreground">
+            {activeLog === null ? t("desktop.diagnosticsSettings.reading_logs")
+              : activeLog.text === null ? t("desktop.diagnosticsSettings.could_not_read_local_diagnostics_try_again")
+              : t("desktop.diagnosticsSettings.no_logs_at_this_level")}
+          </p>
+        )}
+      </div>
     </section>
   );
 }

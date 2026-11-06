@@ -1796,6 +1796,8 @@ pub struct P4ResolveView {
     pub content: bool,
     /// False when the two sides could not be diffed. The choices still work.
     pub comparable: bool,
+    pub working_copy: bool,
+    pub pending_resolves: usize,
     pub diff: FileDiff,
 }
 
@@ -1806,24 +1808,18 @@ pub fn resolve_view(connection: &P4Connection, path: &str) -> AppResult<P4Resolv
     }
     let env = env_for(connection);
     let spec = workspace_file_spec(&connection.root, path);
-    let stdout = run_ok(&env, &["-ztag", "fstat", "-Or", &spec], None)?;
-    let record = parse_ztag(&stdout).into_iter().next().unwrap_or_default();
-    let mut facts = facts_from_fstat(&record, path);
-    if facts.from_file.is_empty() {
-        let preview = run_ok(&env, &["resolve", "-n", "-o", &spec], None).unwrap_or_default();
-        if let Some(parsed) = parse_resolve_preview(&preview) {
-            facts = parsed;
-        }
-    }
-    if facts.from_file.is_empty() && facts.action.is_empty() {
-        return Err(AppError::msg("This file does not need resolve."));
-    }
-    let (diff, comparable) = resolve_diff(&env, &facts);
+    // Unlike fstat -Or, this lists only resolves that still need a decision.
+    let preview = run_ok(&env, &["-ztag", "resolve", "-n", "-o", &spec], None)?;
+    let (facts, pending_resolves) = pending_resolve_facts(&preview, &spec)
+        .ok_or_else(|| AppError::msg("This file does not need resolve."))?;
+    let (diff, comparable, working_copy) = resolve_diff(&env, &facts);
     Ok(P4ResolveView {
         path: facts.depot.clone(),
         summary: resolve_summary(&facts),
         content: resolve_can_merge(&facts.action, &facts.kind),
         comparable,
+        working_copy,
+        pending_resolves,
         diff,
     })
 }
@@ -1842,10 +1838,12 @@ pub fn resolve_accept(connection: &P4Connection, path: &str, mode: &str) -> AppR
     let env = env_for(connection);
     let spec = workspace_file_spec(&connection.root, path);
     run_ok(&env, &["resolve", flag, &spec], None)?;
-    if mode == "merge" && resolve_still_open(&env, &spec)? {
-        return Err(AppError::msg(
-            "The merge has conflicts. Accept yours or theirs.",
-        ));
+    if resolve_still_open(&env, &spec)? {
+        return Err(AppError::msg(if mode == "merge" {
+            crate::error::P4_RESOLVE_CONFLICTS
+        } else {
+            "This file still needs resolve."
+        }));
     }
     Ok(())
 }
@@ -1861,29 +1859,34 @@ struct ResolveFacts {
     base_rev: String,
 }
 
-fn facts_from_fstat(record: &ZtagRecord, fallback_path: &str) -> ResolveFacts {
-    let depot = field(record, "depotFile");
-    ResolveFacts {
-        depot: if depot.starts_with("//") {
-            depot
+fn pending_resolve_facts(text: &str, depot: &str) -> Option<(ResolveFacts, usize)> {
+    let mut records = parse_ztag(text)
+        .into_iter()
+        .filter(|record| record.contains_key("clientFile") && record.contains_key("resolveType"));
+    if let Some(record) = records.next() {
+        let action = field(&record, "resolveType");
+        let content_kind = field(&record, "contentResolveType");
+        let kind = if content_kind.is_empty() {
+            action.clone()
         } else {
-            fallback_path.to_string()
-        },
-        action: first_field(record, &["resolveAction0", "resolveAction"]),
-        kind: first_field(record, &["resolveType0", "resolveType"]),
-        from_file: first_field(record, &["resolveFromFile0", "resolveFromFile"]),
-        start_rev: first_field(record, &["resolveStartFromRev0", "resolveStartFromRev"]),
-        end_rev: first_field(record, &["resolveEndFromRev0", "resolveEndFromRev"]),
-        base_file: first_field(record, &["resolveBaseFile0", "resolveBaseFile"]),
-        base_rev: first_field(record, &["resolveBaseRev0", "resolveBaseRev"]),
+            content_kind
+        };
+        let facts = ResolveFacts {
+            depot: depot.to_string(),
+            action,
+            kind,
+            from_file: field(&record, "fromFile"),
+            start_rev: field(&record, "startFromRev"),
+            end_rev: field(&record, "endFromRev"),
+            base_file: field(&record, "baseFile"),
+            base_rev: field(&record, "baseRev"),
+        };
+        return Some((facts, 1 + records.count()));
     }
-}
-
-fn first_field(record: &ZtagRecord, keys: &[&str]) -> String {
-    keys.iter()
-        .map(|key| field(record, key))
-        .find(|value| !value.is_empty())
-        .unwrap_or_default()
+    let mut facts = parse_resolve_preview(text)?;
+    facts.depot = depot.to_string();
+    let count = text.lines().filter(|line| line.contains(" - ")).count();
+    Some((facts, count))
 }
 
 fn parse_resolve_preview(text: &str) -> Option<ResolveFacts> {
@@ -2023,10 +2026,10 @@ fn resolve_can_merge(action: &str, kind: &str) -> bool {
     if kind.contains("binary") || kind.contains("delete") || action == "delete" {
         return false;
     }
-    kind.contains("content") || action == "merge" || action == "edit"
+    kind.contains("content") || action == "content" || action == "merge" || action == "edit"
 }
 
-fn resolve_diff(env: &P4Env, facts: &ResolveFacts) -> (FileDiff, bool) {
+fn resolve_diff(env: &P4Env, facts: &ResolveFacts) -> (FileDiff, bool, bool) {
     let depot = facts.depot.clone();
     let end = if facts.end_rev.is_empty() {
         facts.start_rev.clone()
@@ -2034,13 +2037,18 @@ fn resolve_diff(env: &P4Env, facts: &ResolveFacts) -> (FileDiff, bool) {
         facts.end_rev.clone()
     };
     if !depot.starts_with("//") || facts.from_file.is_empty() || end.is_empty() {
-        return (empty_diff(&depot), false);
+        return (empty_diff(&depot), false, false);
     }
-    let yours = format!("{depot}#have");
-    let theirs = format!("{}#{end}", facts.from_file);
-    match cli::run_p4_diff(env, &["diff2", "-du", &yours, &theirs]) {
-        Ok(text) => (parse_single_diff(&text, &depot), true),
-        Err(_) => (empty_diff(&depot), false),
+    let incoming = format!("{}#{end}", facts.from_file);
+    if depot == facts.from_file {
+        if let Ok(text) = cli::run_p4_diff(env, &["diff", "-du", "-f", &incoming]) {
+            return (parse_single_diff(&text, &depot), true, true);
+        }
+    }
+    let have = format!("{depot}#have");
+    match cli::run_p4_diff(env, &["diff2", "-du", &have, &incoming]) {
+        Ok(text) => (parse_single_diff(&text, &depot), true, false),
+        Err(_) => (empty_diff(&depot), false, false),
     }
 }
 
@@ -2072,6 +2080,9 @@ fn empty_diff(path: &str) -> FileDiff {
 #[serde(rename_all = "camelCase")]
 pub struct P4GetRevision {
     pub paths: Vec<String>,
+    pub change_id: Option<String>,
+    #[serde(default)]
+    pub recursive: bool,
     pub mode: String,
     pub value: String,
     pub force: bool,
@@ -2103,35 +2114,73 @@ pub fn sync(
 pub fn get_revision(
     connection: &P4Connection,
     request: &P4GetRevision,
-    progress: impl FnMut(&str),
+    mut progress: impl FnMut(&str),
 ) -> AppResult<String> {
-    if request.paths.is_empty() {
-        return Err(AppError::msg("Choose a file."));
+    if request.force && request.safe {
+        return Err(AppError::msg(
+            "Choose either force overwrite or safe update.",
+        ));
     }
     let env = env_for(connection);
-    let (paths, note) = revision_targets(&env, request)?;
-    if paths.is_empty() {
-        return Ok(if note.is_empty() {
-            "Up to date.".to_string()
-        } else {
-            note
-        });
-    }
-    let mut output = sync_paths(
-        &env,
-        &paths,
-        SyncFlags {
-            force: request.force,
-            safe: request.safe,
-            preview: request.preview,
-        },
-        progress,
-    )?;
-    if !note.is_empty() {
-        if !output.is_empty() && !output.ends_with('\n') {
-            output.push('\n');
+    let changed_files;
+    let targets = if let Some(id) = &request.change_id {
+        if !request.paths.is_empty() || request.recursive {
+            return Err(AppError::msg("Choose paths or a changelist."));
         }
-        output.push_str(&note);
+        let id = require_revision_number(id, "Choose a numbered changelist.")?.to_string();
+        changed_files = mapped_change_files(&env, &id)?;
+        &changed_files
+    } else {
+        &request.paths
+    };
+    if targets.is_empty() {
+        return Err(AppError::msg("Choose a file."));
+    }
+    let exact = match request.mode.as_str() {
+        "changelist" => request.changelist_files_only,
+        "label" => !request.remove_not_in_label,
+        _ => false,
+    };
+    let suffix = revision_suffix(&request.mode, &request.value, exact)?;
+    let paths = targets
+        .iter()
+        .map(|path| revision_file_spec(&connection.root, path, request.recursive, &suffix))
+        .collect::<AppResult<Vec<_>>>()?;
+    let flags = SyncFlags {
+        force: request.force,
+        safe: request.safe,
+        preview: request.preview,
+    };
+    let mut output = String::new();
+    // Keep argument lists short even for large changelists on Windows.
+    let mut remaining = paths.as_slice();
+    while !remaining.is_empty() {
+        let mut arg_bytes = 0;
+        let count = remaining
+            .iter()
+            .take_while(|path| {
+                arg_bytes += path.len() + 3;
+                arg_bytes <= 16_384
+            })
+            .count()
+            .max(1);
+        let (chunk, rest) = remaining.split_at(count);
+        remaining = rest;
+        let text = sync_paths(&env, chunk, flags, &mut progress)?;
+        if request.preview {
+            output.push_str(&text);
+            if output.lines().count() > REVISION_PREVIEW_LINES {
+                output = output
+                    .lines()
+                    .take(REVISION_PREVIEW_LINES)
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                output.push_str("\nPreview truncated.");
+                break;
+            }
+        } else if !text.trim().is_empty() {
+            output = text;
+        }
     }
     if output.trim().is_empty() {
         output = "Up to date.".to_string();
@@ -2139,66 +2188,37 @@ pub fn get_revision(
     Ok(output)
 }
 
-fn revision_targets(env: &P4Env, request: &P4GetRevision) -> AppResult<(Vec<String>, String)> {
-    let suffix = revision_suffix(&request.mode, &request.value, request.changelist_files_only)?;
-    if request.mode != "label" || request.remove_not_in_label {
-        let paths = request
-            .paths
-            .iter()
-            .map(|path| workspace_file_at(&env.cwd.to_string_lossy(), path, &suffix))
-            .collect();
-        return Ok((paths, String::new()));
+fn mapped_change_files(env: &P4Env, id: &str) -> AppResult<Vec<String>> {
+    let text = run_ok(
+        env,
+        &[
+            "-ztag",
+            "fstat",
+            "-Rc",
+            "-e",
+            id,
+            "-T",
+            "depotFile",
+            "//...",
+        ],
+        None,
+    )?;
+    let files: Vec<_> = parse_ztag(&text)
+        .into_iter()
+        .map(|record| field(&record, "depotFile"))
+        .filter(|path| path.starts_with("//"))
+        .collect();
+    if files.is_empty() {
+        return Err(AppError::msg(
+            "No files in that changelist are mapped to this workspace.",
+        ));
     }
-    let label = request.value.trim();
-    let mut paths = Vec::new();
-    let mut skipped = 0usize;
-    for path in &request.paths {
-        match file_rev_at_label(env, path, label)? {
-            Some(rev) => paths.push(workspace_file_at(
-                &env.cwd.to_string_lossy(),
-                path,
-                &format!("#{rev}"),
-            )),
-            None => skipped += 1,
-        }
-    }
-    let note = if skipped == 0 {
-        String::new()
-    } else if paths.is_empty() {
-        "The file is not in that label, so it stays in the workspace.".to_string()
-    } else {
-        format!("{skipped} files are not in that label and stay in the workspace.")
-    };
-    Ok((paths, note))
+    Ok(files)
 }
 
-fn file_rev_at_label(env: &P4Env, path: &str, label: &str) -> AppResult<Option<String>> {
-    let spec = workspace_file_at(&env.cwd.to_string_lossy(), path, &format!("@{label}"));
-    match run_ok(env, &["-ztag", "files", &spec], None) {
-        Ok(stdout) => Ok(parse_ztag(&stdout).into_iter().find_map(|record| {
-            let rev = field(&record, "rev");
-            if rev.is_empty() || !rev.chars().all(|ch| ch.is_ascii_digit()) {
-                None
-            } else {
-                Some(rev)
-            }
-        })),
-        Err(err) => {
-            let message = err.to_string();
-            if message == P4_LOGIN || !missing_label_file(&message) {
-                return Err(err);
-            }
-            Ok(None)
-        }
-    }
-}
+const REVISION_PREVIEW_LINES: usize = 200;
 
-fn missing_label_file(message: &str) -> bool {
-    let lower = message.to_ascii_lowercase();
-    lower.contains("no such file") || lower.contains("not in label")
-}
-
-fn revision_suffix(mode: &str, value: &str, files_only: bool) -> AppResult<String> {
+fn revision_suffix(mode: &str, value: &str, exact: bool) -> AppResult<String> {
     let value = value.trim();
     match mode {
         "latest" => Ok(String::new()),
@@ -2208,7 +2228,7 @@ fn revision_suffix(mode: &str, value: &str, files_only: bool) -> AppResult<Strin
         }
         "changelist" => {
             let change = require_revision_number(value, "Enter a changelist number.")?;
-            if files_only {
+            if exact {
                 Ok(format!("@{change},@{change}"))
             } else {
                 Ok(format!("@{change}"))
@@ -2219,7 +2239,11 @@ fn revision_suffix(mode: &str, value: &str, files_only: bool) -> AppResult<Strin
             if !valid_label(value) {
                 return Err(AppError::msg("Enter a label name."));
             }
-            Ok(format!("@{value}"))
+            if exact {
+                Ok(format!("@{value},@{value}"))
+            } else {
+                Ok(format!("@{value}"))
+            }
         }
         "workspace" => {
             if !valid_client_name(value) {
@@ -2329,8 +2353,25 @@ pub(super) fn workspace_file_spec(root: &str, path: &str) -> String {
     file_spec(&workspace_cli_path(root, path))
 }
 
-fn workspace_file_at(root: &str, path: &str, suffix: &str) -> String {
-    file_at(&workspace_cli_path(root, path), suffix)
+fn revision_file_spec(root: &str, path: &str, recursive: bool, suffix: &str) -> AppResult<String> {
+    let path = workspace_cli_path(root, path);
+    if !path.starts_with("//") && !Path::new(&path).is_absolute() {
+        return Err(AppError::msg("Choose a file or folder."));
+    }
+    if !recursive {
+        return Ok(file_at(&path, suffix));
+    }
+    let spec = file_spec(&path);
+    if spec == "//" {
+        return Ok(format!("//...{suffix}"));
+    }
+    let (directory, separator) = if cfg!(windows) && !spec.starts_with("//") {
+        let separator = if spec.contains('\\') { '\\' } else { '/' };
+        (spec.trim_end_matches(['/', '\\']), separator)
+    } else {
+        (spec.trim_end_matches('/'), '/')
+    };
+    Ok(format!("{directory}{separator}...{suffix}"))
 }
 
 fn workspace_cli_path(root: &str, path: &str) -> String {
@@ -2467,7 +2508,11 @@ fn sync_progress_line(line: &str, total: Option<u64>, transferred: &mut u64) -> 
 fn sync_args(paths: &[String], parallel: bool, estimate: bool, flags: SyncFlags) -> Vec<String> {
     let mut args = vec!["sync".to_string()];
     if flags.preview {
-        args.push("-n".to_string());
+        args.extend([
+            "-n".to_string(),
+            "-m".to_string(),
+            (REVISION_PREVIEW_LINES + 1).to_string(),
+        ]);
     } else if estimate {
         args.push("-N".to_string());
     } else if parallel {
@@ -4520,6 +4565,10 @@ Description:
             "@rel-1.0"
         );
         assert_eq!(
+            revision_suffix("label", "rel-1.0", true).unwrap(),
+            "@rel-1.0,@rel-1.0"
+        );
+        assert_eq!(
             revision_suffix("workspace", "dev-workspace", false).unwrap(),
             "@dev-workspace"
         );
@@ -4527,6 +4576,24 @@ Description:
         assert!(revision_suffix("datetime", "2026-10-16", false).is_err());
         assert!(revision_suffix("label", "bad label", false).is_err());
         assert_eq!(file_at(r"C:\work\a#b.txt", "#3"), r"C:\work\a%23b.txt#3");
+    }
+
+    #[test]
+    fn directory_revisions_append_a_wildcard_after_escaping_the_path() {
+        let path = if cfg!(windows) {
+            "C:/work/docs @ home"
+        } else {
+            "/work/docs @ home"
+        };
+        assert_eq!(
+            revision_file_spec("", path, true, "@release,@release").unwrap(),
+            format!("{}/...@release,@release", path.replace('@', "%40"))
+        );
+        assert_eq!(
+            revision_file_spec("", "//depot/docs%23notes", true, "#4").unwrap(),
+            "//depot/docs%23notes/...#4"
+        );
+        assert!(revision_file_spec("", "-f", true, "").is_err());
     }
 
     #[test]
@@ -4718,25 +4785,31 @@ Description:
     }
 
     #[test]
-    fn resolve_summary_names_the_source_and_base() {
-        let facts = facts_from_fstat(
-            &record(&[
-                ("depotFile", "//depot/main/app.ini"),
-                ("resolveAction0", "merge"),
-                ("resolveType0", "content"),
-                ("resolveFromFile0", "//depot/dev/app.ini"),
-                ("resolveStartFromRev0", "4"),
-                ("resolveEndFromRev0", "7"),
-                ("resolveBaseFile0", "//depot/dev/app.ini"),
-                ("resolveBaseRev0", "3"),
-            ]),
-            "//depot/main/app.ini",
-        );
+    fn resolve_summary_names_the_pending_source_and_base() {
+        let tagged = "\
+... clientFile /fixture/main/app.ini
+... fromFile //depot/dev/app.ini
+... startFromRev 4
+... endFromRev 7
+... baseFile //depot/dev/app.ini
+... baseRev 3
+... resolveType content
+... contentResolveType 3waytext
+
+... clientFile /fixture/main/app.ini
+... fromFile //depot/dev/app.ini
+... endFromRev 8
+... resolveType filetype
+";
+        let (facts, count) = pending_resolve_facts(tagged, "//depot/main/app.ini").unwrap();
+        assert_eq!(count, 2);
+        assert_eq!(facts.depot, "//depot/main/app.ini");
         assert!(resolve_can_merge(&facts.action, &facts.kind));
         assert_eq!(
             resolve_summary(&facts),
             "Merging //depot/dev/app.ini#4,#7 using base //depot/dev/app.ini#3"
         );
+        assert!(pending_resolve_facts("", "//depot/main/app.ini").is_none());
     }
 
     #[test]

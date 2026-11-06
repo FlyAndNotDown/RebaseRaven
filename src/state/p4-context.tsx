@@ -105,7 +105,7 @@ interface P4ContextValue {
   resolveAccept: (path: string, mode: "yours" | "theirs" | "merge") => Promise<boolean>;
   revertUnchanged: () => Promise<void>;
   sync: (paths?: string[]) => Promise<void>;
-  getRevision: (request: P4GetRevision) => Promise<string>;
+  getRevision: (request: P4GetRevision) => Promise<string | null>;
   filesEpoch: number;
   reconcile: () => Promise<void>;
   fileAction: (action: "edit" | "add" | "delete", paths: string[]) => Promise<void>;
@@ -923,8 +923,11 @@ export function P4Provider({ children }: { children: ReactNode }) {
         await guard(current.connection, () => p4Api.resolveAccept(current.connection, path, mode));
         toast.success(mode === "merge" ? t("p4.merged") : mode === "yours" ? t("p4.acceptedYours") : t("p4.acceptedTheirs"));
         await reloadPending(current, current.selectedChange);
+        bumpFiles();
         return true;
       } catch (caught) {
+        await reloadPending(current).catch(() => {});
+        bumpFiles();
         report(caught);
         return false;
       } finally {
@@ -932,7 +935,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
         release();
       }
     },
-    [lockMutation, beginActivity, endActivity, guard, reloadPending, report],
+    [lockMutation, beginActivity, bumpFiles, endActivity, guard, reloadPending, report],
   );
 
   const revertUnchanged = useCallback(async () => {
@@ -977,9 +980,9 @@ export function P4Provider({ children }: { children: ReactNode }) {
   const getRevision = useCallback(
     async (request: P4GetRevision) => {
       const current = sessionRef.current;
-      if (!current) return "";
+      if (!current) return null;
       const release = lockMutation(current, request.preview ? t("p4.previewingRevision") : t("p4.gettingRevision"));
-      if (!release) return "";
+      if (!release) return null;
       const id = beginActivity(request.preview ? t("p4.previewingRevision") : t("p4.gettingRevision"));
       try {
         const output = await guard(current.connection, () =>
@@ -992,6 +995,10 @@ export function P4Provider({ children }: { children: ReactNode }) {
         }
         return output;
       } catch (caught) {
+        if (!request.preview) {
+          await reloadPending(current).catch(() => {});
+          bumpFiles();
+        }
         report(caught);
         throw caught;
       } finally {

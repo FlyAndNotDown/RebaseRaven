@@ -2,8 +2,10 @@ import type { AppPrefs, PanelLayout, PanelLayouts } from "@/types/git";
 import { pathsIgnoreCase } from "@/lib/format";
 import { normalizeHttpProxy } from "@/lib/network";
 import { normalizeLanguage } from "@/i18n/language";
+import type { DiagnosticLevel } from "@/types/diagnostics";
 
 export const SIDEBAR_VIEWS = ["changes", "history", "stash", "files"] as const;
+export const DIAGNOSTIC_LEVELS: readonly DiagnosticLevel[] = ["error", "warning", "info", "verbose"];
 
 export const DEFAULT_PANEL_LAYOUTS: PanelLayouts = {
   historyShell: { "history-branches": 15, "history-main": 85 },
@@ -19,6 +21,7 @@ export const DEFAULT_PANEL_LAYOUTS: PanelLayouts = {
 export const defaultPrefs: AppPrefs = {
   language: "system",
   analyticsEnabled: true,
+  diagnosticLevel: "info",
   httpProxy: { mode: "system", url: "" },
   avatarProvider: "builtin",
   terminalId: "auto",
@@ -194,6 +197,8 @@ export function normalizePrefs(prefs: Partial<AppPrefs> | null | undefined): App
   return {
     language: normalizeLanguage(prefs?.language),
     analyticsEnabled: prefs?.analyticsEnabled !== false,
+    diagnosticLevel: prefs?.diagnosticLevel && DIAGNOSTIC_LEVELS.includes(prefs.diagnosticLevel)
+      ? prefs.diagnosticLevel : "info",
     httpProxy: normalizeHttpProxy(prefs?.httpProxy),
     avatarProvider: prefs?.avatarProvider === "github" || prefs?.avatarProvider === "gitlab" ? prefs.avatarProvider : "builtin",
     terminalId: prefs?.terminalId || "auto",

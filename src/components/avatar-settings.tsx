@@ -33,7 +33,7 @@ export function AvatarSettings({ provider, onSave }: {
   }
 
   return (
-    <div className="grid gap-2">
+    <>
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">
           <span id={labelId} className="text-sm">{t("desktop.avatarSettings.author_avatars")}</span>
@@ -59,8 +59,7 @@ export function AvatarSettings({ provider, onSave }: {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <p role="status" className="text-xs text-muted-foreground">{provider === "builtin" ? t("desktop.avatarSettings.built_in_avatars_stay_offline") : t("desktop.avatarSettings.providerNotice", { provider: provider === "github" ? "GitHub" : "GitLab" })}</p>
       <p id={`${labelId}-error`} role="alert" className="sr-only">{errorText}</p>
-    </div>
+    </>
   );
 }

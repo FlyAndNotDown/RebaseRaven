@@ -20,6 +20,9 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls-no-p
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+log = "0.4"
+log4rs = { version = "1.4", default-features = false, features = ["file_appender", "rolling_file_appender", "compound_policy", "fixed_window_roller"] }
 thiserror = "2"
 base64 = "0.22"
 notify = "6.1"
@@ -36,7 +39,7 @@ nix = { version = "0.30", features = ["signal", "process"] }
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.39.1"
 windows-core = "0.62.2"
-windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Diagnostics_ToolHelp", "Win32_System_JobObjects", "Win32_System_Threading"] }
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Diagnostics_ToolHelp", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_Storage_FileSystem"] }
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

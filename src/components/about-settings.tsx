@@ -1,7 +1,8 @@
-import { ExternalLinkIcon, FolderGit2Icon, MailIcon } from "lucide-react";
+import { ExternalLinkIcon, MailIcon } from "lucide-react";
 import { toast } from "sonner";
 import { version } from "../../package.json";
 import { AppMark } from "@/components/app-mark";
+import { GitHubMark } from "@/components/github-mark";
 import { UpdatesSettings } from "@/components/app-updates";
 import { Button } from "@/components/ui/button";
 import { t, useTranslation } from "@/i18n";
@@ -38,7 +39,7 @@ export function AboutSettings() {
           aria-label={t("desktop.aboutSettings.open_github_repository")}
           onClick={() => void openRepository()}
         >
-          <FolderGit2Icon className="size-5 shrink-0 text-muted-foreground" />
+          <GitHubMark className="size-5 shrink-0 text-muted-foreground" />
           <span className="grid min-w-0 flex-1 gap-1 whitespace-normal">
             <span className="text-sm font-medium">{t("desktop.aboutSettings.github_repository")}</span>
             <span className="break-all font-mono text-[11px] leading-relaxed text-muted-foreground">{REPOSITORY_URL}</span>

@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import { fetchReleaseDownloads, LATEST_RELEASE_API, parseReleaseDownloads, REPOSITORY_URL } from "./release-downloads";
+import { describe, expect, it } from "vitest";
+import { parseReleaseDownloads, readBundledReleaseDownloads, REPOSITORY_URL } from "./release-downloads";
 
 function asset(name: string, tag = "v1.2.3") {
   return { name, state: "uploaded", browser_download_url: `${REPOSITORY_URL}/releases/download/${tag}/${name}` };
@@ -51,21 +51,15 @@ describe("website release downloads", () => {
     expect(() => parseReleaseDownloads(value)).toThrow("Latest release information is unavailable.");
   });
 
-  it("uses only the fixed anonymous API and forwards cancellation", async () => {
-    const controller = new AbortController();
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(release())));
-    await fetchReleaseDownloads(controller.signal, fetcher);
-    expect(fetcher).toHaveBeenCalledWith(LATEST_RELEASE_API, {
-      signal: controller.signal,
-      credentials: "omit",
-      redirect: "error",
-      cache: "no-store",
-      headers: { Accept: "application/vnd.github+json" },
+  it("reads the installer snapshot embedded by the website build", () => {
+    const filename = "Rebasely_v1.2.3_macos_arm64.dmg";
+    expect(readBundledReleaseDownloads(JSON.stringify(release([asset(filename)])))).toEqual({
+      tag: "v1.2.3",
+      macos: `${REPOSITORY_URL}/releases/download/v1.2.3/${filename}`,
     });
   });
 
-  it("handles rate limits without displaying the response body", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response("private upstream details", { status: 403 }));
-    await expect(fetchReleaseDownloads(new AbortController().signal, fetcher)).rejects.toThrow("Latest release information is unavailable.");
+  it.each([undefined, "", "invalid JSON", JSON.stringify({ draft: true })])("falls back when installer metadata is unavailable", (metadata) => {
+    expect(readBundledReleaseDownloads(metadata)).toBeNull();
   });
 });

@@ -33,7 +33,6 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -53,7 +52,7 @@ import { p4Api } from "@/lib/p4";
 import { loadSettingsData } from "@/lib/settings-data";
 import { createSettingsWriter } from "@/lib/settings-writes";
 import { displayPath } from "@/lib/format";
-import { AUTO_FETCH_CHOICES, isGitFileName, isP4FileName, normalizePrefs, sameGitPath, sameP4Path } from "@/lib/prefs";
+import { AUTO_FETCH_CHOICES, DIAGNOSTIC_LEVELS, isGitFileName, isP4FileName, normalizePrefs, sameGitPath, sameP4Path } from "@/lib/prefs";
 import { cn } from "@/lib/utils";
 import { useGitPick } from "@/state/git-context";
 import { useAnalyticsSessionAllowed } from "@/state/use-analytics";
@@ -83,7 +82,7 @@ export function SettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[min(40rem,calc(100vh-4rem))] w-[min(56rem,calc(100vw-4rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
+      <DialogContent aria-describedby={undefined} className="flex h-[min(40rem,calc(100vh-4rem))] w-[min(56rem,calc(100vw-4rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
         {/* Mounted on each open, so the fields load fresh every time. */}
         <SettingsForm open={open} initialSection={initialSection} />
       </DialogContent>
@@ -415,8 +414,6 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
             <>
               <DialogHeader>
                 <DialogTitle>Git</DialogTitle>
-                <DialogDescription>
-                  {t("desktop.settingsDialog.executable_global_identity_and_tools")}</DialogDescription>
               </DialogHeader>
               <div className="mt-6 grid gap-8">
                 <GitExecutableSection
@@ -526,8 +523,6 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
             <>
               <DialogHeader>
                 <DialogTitle>Perforce</DialogTitle>
-                <DialogDescription>
-                  {t("desktop.settingsDialog.executable_and_workspace_refresh")}</DialogDescription>
               </DialogHeader>
               <div className="mt-6 grid gap-8">
                 <P4ExecutableSection
@@ -561,14 +556,25 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
             <SshKeysSettings email={email} />
           ) : section === "network" ? (
             <>
-              <DialogHeader><DialogTitle>{t("desktop.settingsDialog.network")}</DialogTitle><DialogDescription>{t("desktop.settingsDialog.client_connection_settings")}</DialogDescription></DialogHeader>
+              <DialogHeader><DialogTitle>{t("desktop.settingsDialog.network")}</DialogTitle></DialogHeader>
               <div className="mt-6"><NetworkSettings value={prefs.httpProxy} onSave={(httpProxy) => persistPrefs({ httpProxy })} /></div>
             </>
           ) : section === "diagnostics" ? (
             <>
-              <DialogHeader><DialogTitle>{t("desktop.settingsDialog.diagnostics")}</DialogTitle><DialogDescription>{t("desktop.settingsDialog.inspect_and_export_local_diagnostics")}</DialogDescription></DialogHeader>
+              <DialogHeader><DialogTitle>{t("desktop.settingsDialog.diagnostics")}</DialogTitle></DialogHeader>
               <div className="mt-6 grid gap-8">
-                <DiagnosticsSettings />
+                <DiagnosticsSettings
+                  level={prefs.diagnosticLevel}
+                  levelControl={
+                    <SelectField
+                      id="diagnostic-level"
+                      label={t("desktop.diagnosticsSettings.level")}
+                      value={prefs.diagnosticLevel}
+                      options={DIAGNOSTIC_LEVELS.map((id) => ({ id, label: t("desktop.diagnosticsSettings.levels." + id) }))}
+                      onChange={(diagnosticLevel) => { void persistPrefs({ diagnosticLevel }); }}
+                    />
+                  }
+                />
                 <FieldGroup title={t("analytics.title")}>
                   <div className="flex items-center gap-2">
                     <label className="flex flex-1 items-center gap-2 text-sm">
@@ -600,7 +606,6 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
             <>
               <DialogHeader>
                 <DialogTitle>{t("desktop.appMenu.about")}</DialogTitle>
-                <DialogDescription>{t("desktop.settingsDialog.version_updates_and_project_links")}</DialogDescription>
               </DialogHeader>
               <div className="mt-6"><AboutSettings /></div>
             </>
@@ -608,8 +613,6 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
             <>
               <DialogHeader>
                 <DialogTitle>{t("desktop.settingsDialog.general")}</DialogTitle>
-                <DialogDescription>
-                  {t("desktop.settingsDialog.appearance_and_external_apps")}</DialogDescription>
               </DialogHeader>
               <div className="mt-6 grid gap-8">
                 <FieldGroup title={t("language.label")} hint={t("language.hint")}>

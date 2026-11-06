@@ -61,67 +61,70 @@ export function NetworkSettings({ value, onSave }: { value: HttpProxy; onSave: (
   }
 
   return (
-    <section aria-labelledby={`${id}-title`} className="grid gap-3">
-      <div className="flex items-center gap-1.5">
-        <h3 id={`${id}-title`} className="text-sm font-medium">{t("desktop.networkSettings.client_network")}</h3>
-        <HoverTip label={t("desktop.networkSettings.applies_to_application_http_requests_git_and_perforce")}>
-          <Button variant="ghost" size="icon-xs" aria-label={t("desktop.networkSettings.about_client_network_settings")}><InfoIcon /></Button>
-        </HoverTip>
-      </div>
+    <section aria-labelledby={`${id}-mode-label`}>
       <form className="grid gap-4" noValidate onSubmit={(event) => { event.preventDefault(); if (changed) void apply(); }}>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Label id={`${id}-mode-label`} htmlFor={`${id}-mode`}>{t("desktop.networkSettings.proxy")}</Label>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                id={`${id}-mode`}
-                variant="outline"
-                size="sm"
-                className="w-44 max-w-full justify-between font-normal"
-                aria-labelledby={`${id}-mode-label ${id}-mode-choice`}
-                disabled={saving}
-              >
-                <span id={`${id}-mode-choice`} className="flex min-w-0 items-center gap-2">
-                  <ModeIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span className="truncate">{selectedMode.label}</span>
-                </span>
-                <ChevronDownIcon className="size-3.5 text-muted-foreground" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-(--radix-dropdown-menu-trigger-width)">
-              <DropdownMenuRadioGroup value={draft.mode} onValueChange={(mode) => {
-                if (!busy.current && (mode === "system" || mode === "none" || mode === "manual")) edit({ mode });
-              }}>
-                {modes.map(({ id: mode, label, icon: Icon }) => (
-                  <DropdownMenuRadioItem key={mode} value={mode} disabled={saving}>
-                    <Icon aria-hidden="true" className="size-3.5" />{label}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center gap-1.5">
+            <Label id={`${id}-mode-label`} htmlFor={`${id}-mode`}>{t("desktop.networkSettings.proxy")}</Label>
+            <HoverTip label={[
+              t("desktop.networkSettings.uses_operating_system_proxy_settings_on_windows_and"),
+              t("desktop.networkSettings.applies_to_application_http_requests_git_and_perforce"),
+            ].join("\n")}>
+              <Button variant="ghost" size="icon-xs" aria-label={t("desktop.networkSettings.about_proxy")}><InfoIcon /></Button>
+            </HoverTip>
+          </div>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  id={`${id}-mode`}
+                  variant="outline"
+                  size="sm"
+                  className="w-36 min-w-0 justify-between font-normal"
+                  aria-labelledby={`${id}-mode-label ${id}-mode-choice`}
+                  disabled={saving}
+                >
+                  <span id={`${id}-mode-choice`} className="flex min-w-0 items-center gap-2">
+                    <ModeIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{selectedMode.label}</span>
+                  </span>
+                  <ChevronDownIcon className="size-3.5 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-(--radix-dropdown-menu-trigger-width)">
+                <DropdownMenuRadioGroup value={draft.mode} onValueChange={(mode) => {
+                  if (!busy.current && (mode === "system" || mode === "none" || mode === "manual")) edit({ mode });
+                }}>
+                  {modes.map(({ id: mode, label, icon: Icon }) => (
+                    <DropdownMenuRadioItem key={mode} value={mode} disabled={saving}>
+                      <Icon aria-hidden="true" className="size-3.5" />{label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <HoverTip label={feedback || t("desktop.networkSettings.apply_proxy")}>
+              <span className="inline-flex rounded-md focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50" tabIndex={!changed && !!feedback ? 0 : undefined} role={!changed && !!feedback ? "group" : undefined} aria-label={!changed && !!feedback ? feedback : undefined}>
+                <Button type="submit" size="icon-sm" disabled={saving || !changed} aria-label={t("desktop.networkSettings.apply_proxy")} aria-busy={saving} aria-describedby={feedback ? `${id}-feedback` : undefined}>
+                  {saving ? <LoaderCircleIcon className="motion-safe:animate-spin" aria-hidden="true" />
+                    : error ? <XIcon aria-hidden="true" />
+                    : saved ? <CheckIcon aria-hidden="true" /> : <SaveIcon aria-hidden="true" />}
+                </Button>
+              </span>
+            </HoverTip>
+          </div>
         </div>
         {draft.mode === "manual" ? (
           <div className="grid gap-2">
-            <Label htmlFor={`${id}-url`}>{t("desktop.networkSettings.proxy_url")}</Label>
-            <Input ref={urlInput} id={`${id}-url`} type="url" className="font-mono text-xs" autoComplete="off" autoCapitalize="off" spellCheck={false} placeholder="http://127.0.0.1:8080" value={draft.url} disabled={saving} onChange={(event) => edit({ url: event.target.value })} aria-invalid={!!error} aria-describedby={`${id}-hint${error ? ` ${id}-feedback` : ""}`} />
-            <p id={`${id}-hint`} className="text-xs leading-relaxed text-muted-foreground">{t("desktop.networkSettings.http_https_socks5_or_socks5h_credentials_are_not")}</p>
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor={`${id}-url`}>{t("desktop.networkSettings.proxy_url")}</Label>
+              <HoverTip label={t("desktop.networkSettings.http_https_socks5_or_socks5h_credentials_are_not")}>
+                <Button variant="ghost" size="icon-xs" aria-label={t("desktop.networkSettings.about_proxy_url")}><InfoIcon /></Button>
+              </HoverTip>
+            </div>
+            <Input ref={urlInput} id={`${id}-url`} type="url" className="font-mono text-xs" autoComplete="off" autoCapitalize="off" spellCheck={false} placeholder="http://127.0.0.1:8080" value={draft.url} disabled={saving} onChange={(event) => edit({ url: event.target.value })} aria-invalid={!!error} aria-describedby={error ? `${id}-feedback` : undefined} />
           </div>
-        ) : draft.mode === "system" ? (
-          <p className="text-xs leading-relaxed text-muted-foreground">{t("desktop.networkSettings.uses_operating_system_proxy_settings_on_windows_and")}</p>
         ) : null}
-        <div className="flex min-h-7 items-center justify-end gap-3">
-          <HoverTip label={feedback || t("desktop.networkSettings.apply_proxy")}>
-            <span className="inline-flex rounded-md focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50" tabIndex={!changed && saved ? 0 : undefined} role={!changed && saved ? "group" : undefined} aria-label={!changed && saved ? feedback : undefined}>
-              <Button type="submit" size="sm" disabled={saving || !changed} aria-busy={saving} aria-describedby={feedback ? `${id}-feedback` : undefined}>
-                {saving ? <LoaderCircleIcon className="motion-safe:animate-spin" aria-hidden="true" />
-                  : error ? <XIcon aria-hidden="true" />
-                  : saved ? <CheckIcon aria-hidden="true" /> : <SaveIcon aria-hidden="true" />}
-                {t("desktop.networkSettings.apply_proxy")}
-              </Button>
-            </span>
-          </HoverTip>
-        </div>
         <span id={`${id}-feedback`} role="status" aria-atomic="true" className="sr-only">{feedback}</span>
       </form>
     </section>

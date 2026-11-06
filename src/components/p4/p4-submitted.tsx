@@ -1,12 +1,13 @@
 import { t, useTranslation } from "@/i18n";
 import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
-import { CheckIcon, ChevronDownIcon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon, DownloadIcon, HistoryIcon } from "lucide-react";
 import { toast } from "sonner";
 import { AuthorAvatar } from "@/components/author-avatar";
 import { AuthorName, ExactTime, RevisionDot } from "@/components/revision-meta";
 import { ChangeBadge } from "@/components/p4/change-badge";
 import { FileStatusIcon } from "@/components/p4/file-status-icon";
 import { P4Diff } from "@/components/p4/p4-diff";
+import { P4GetRevisionDialog, type P4RevisionTarget } from "@/components/p4/p4-get-revision-dialog";
 import { FileRowsSkeleton, HistorySkeleton } from "@/components/skeletons";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +16,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { Input } from "@/components/ui/input";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { formatAbsoluteTime, formatExactTime } from "@/lib/format";
@@ -57,6 +67,7 @@ export function P4Submitted() {
   const [clients, setClients] = useState<string[]>([]);
   const [search, setSearch] = useState<SubmittedSearch | null>(null);
   const [searching, setSearching] = useState(false);
+  const [revisionTarget, setRevisionTarget] = useState<P4RevisionTarget | null>(null);
   const connection = p4.connection;
   const scope = connection ? `${connection.port}\n${connection.client}` : "";
   const needle = query.trim().toLowerCase();
@@ -313,23 +324,57 @@ export function P4Submitted() {
                 {changes.map((change) => {
                   const active = change.id === p4.selectedSubmitted;
                   return (
-                    <button
-                      key={change.id}
-                      type="button"
-                      className={cn(
-                        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted/70",
-                        active && "bg-muted",
-                      )}
-                      onClick={() => void p4.selectSubmitted(change.id)}
-                    >
-                      <RevisionDot />
-                      <ChangeBadge id={change.id} />
-                      <span className="min-w-0 flex-1 truncate text-xs">
-                        {changeSummary(change.description) || t("p4.noDescription")}
-                      </span>
-                      <AuthorName name={change.user} />
-                      <ExactTime time={change.time} />
-                    </button>
+                    <ContextMenu key={change.id}>
+                      <ContextMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className={cn(
+                            "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted/70",
+                            active && "bg-muted",
+                          )}
+                          onClick={() => void p4.selectSubmitted(change.id)}
+                        >
+                          <RevisionDot />
+                          <ChangeBadge id={change.id} />
+                          <span className="min-w-0 flex-1 truncate text-xs">
+                            {changeSummary(change.description) || t("p4.noDescription")}
+                          </span>
+                          <AuthorName name={change.user} />
+                          <ExactTime time={change.time} />
+                        </button>
+                      </ContextMenuTrigger>
+                      <ContextMenuContent className="min-w-44">
+                        <ContextMenuItem disabled={p4.busy} onSelect={() => {
+                          void p4.getRevision({
+                            paths: [],
+                            changeId: change.id,
+                            mode: "latest",
+                            value: "",
+                            force: false,
+                            safe: false,
+                            changelistFilesOnly: false,
+                            removeNotInLabel: false,
+                            preview: false,
+                          }).catch(() => { /* The operation reports errors. */ });
+                        }}>
+                          <DownloadIcon />{t("p4.getLatest")}
+                        </ContextMenuItem>
+                        <ContextMenuSub>
+                          <ContextMenuSubTrigger disabled={p4.busy}><HistoryIcon />{t("p4.getRevision")}</ContextMenuSubTrigger>
+                          <ContextMenuSubContent>
+                            <ContextMenuItem onSelect={() => setRevisionTarget({ changeId: change.id, revision: change.id })}>
+                              {t("p4.revisionAtChange")}
+                            </ContextMenuItem>
+                            <ContextMenuItem disabled={Number(change.id) <= 1} onSelect={() => setRevisionTarget({ changeId: change.id, revision: String(Number(change.id) - 1) })}>
+                              {t("p4.revisionBeforeChange")}
+                            </ContextMenuItem>
+                            <ContextMenuItem onSelect={() => setRevisionTarget({ changeId: change.id })}>
+                              {t("p4.chooseRevision")}
+                            </ContextMenuItem>
+                          </ContextMenuSubContent>
+                        </ContextMenuSub>
+                      </ContextMenuContent>
+                    </ContextMenu>
                   );
                 })}
                 {listBusy ? (
@@ -341,6 +386,7 @@ export function P4Submitted() {
             )}
           </div>
         </div>
+        {revisionTarget ? <P4GetRevisionDialog target={revisionTarget} onClose={() => setRevisionTarget(null)} /> : null}
       </ResizablePanel>
       <ResizableHandle />
       <ResizablePanel id="p4-submitted-main" defaultSize="60%" minSize="36%">
@@ -427,6 +473,7 @@ export function P4Submitted() {
         </ResizablePanelGroup>
       </ResizablePanel>
     </ResizablePanelGroup>
+
   );
 }
 

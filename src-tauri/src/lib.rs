@@ -89,8 +89,16 @@ async fn load_session(app: AppHandle) -> AppResult<AppSession> {
 }
 
 #[tauri::command]
-async fn get_diagnostic_summary(app: AppHandle) -> AppResult<diagnostics::Summary> {
-    blocking(move || diagnostics::summary(&app)).await
+async fn get_diagnostic_view(
+    level: diagnostics::Level,
+    app: AppHandle,
+) -> AppResult<diagnostics::View> {
+    blocking(move || diagnostics::view(&app, level)).await
+}
+
+#[tauri::command]
+async fn clear_diagnostic_logs(app: AppHandle) -> AppResult<()> {
+    blocking(move || diagnostics::clear(&app)).await
 }
 
 #[tauri::command]
@@ -1338,7 +1346,13 @@ async fn p4_resolve_accept(
     path: String,
     mode: String,
 ) -> AppResult<()> {
-    blocking(move || p4::resolve_accept(&connection, &path, &mode)).await
+    blocking(move || {
+        let started = std::time::Instant::now();
+        let result = p4::resolve_accept(&connection, &path, &mode);
+        diagnostics::record_slow_or_failed(diagnostics::Code::PerforceResolve, started, &result);
+        result
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1753,7 +1767,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             initialize_repository,
             get_author_avatar,
-            get_diagnostic_summary,
+            get_diagnostic_view,
+            clear_diagnostic_logs,
             export_diagnostic_logs,
             open_diagnostic_directory,
             open_diagnostic_issues,

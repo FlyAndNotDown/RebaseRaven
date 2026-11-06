@@ -6,7 +6,7 @@ import { FileTree, FileTreeFilter, FilteredFileTree, type FileTreeEntry } from "
 import { ChangeBadge } from "@/components/p4/change-badge";
 import { FileStatusIcon } from "@/components/p4/file-status-icon";
 import { FileStatusTip } from "@/components/p4/file-status-tip";
-import { P4GetRevisionDialog } from "@/components/p4/p4-get-revision-dialog";
+import { P4GetRevisionDialog, type P4RevisionTarget } from "@/components/p4/p4-get-revision-dialog";
 import { P4MoveDialog } from "@/components/p4/p4-move-dialog";
 import { P4OperationDialog } from "@/components/p4/p4-operation-dialog";
 import type { P4OperationKind } from "@/lib/p4-operation-preview";
@@ -81,7 +81,7 @@ export function P4Files() {
   }, [fileQuery.result, mode, root]);
   const [seenModes, setSeenModes] = useState(() => new Set<"workspace" | "depot">([mode]));
   if (!seenModes.has(mode)) setSeenModes((current) => new Set(current).add(mode));
-  const [revisionPath, setRevisionPath] = useState<string | null>(null);
+  const [revisionTarget, setRevisionTarget] = useState<Extract<P4RevisionTarget, { path: string }> | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [history, setHistory] = useState<P4Revision[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -197,7 +197,7 @@ export function P4Files() {
       <ContextMenuContent className="min-w-60">
         <ContextMenuItem disabled={p4.busy} onClick={() => void p4.sync([path])}>
           <DownloadIcon />{t("p4.getLatest")}</ContextMenuItem>
-        <ContextMenuItem disabled={p4.busy} onClick={() => setRevisionPath(path)}>
+        <ContextMenuItem disabled={p4.busy} onSelect={() => setRevisionTarget({ path: entry.path, recursive: entry.dir })}>
           <HistoryIcon />{t("p4.getRevision")}</ContextMenuItem>
         {!entry.dir ? <>
           <ContextMenuItem disabled={p4.busy} onClick={() => setOperation({ kind: "integrate", path: entry.path, depot: mode === "depot" })}>
@@ -405,7 +405,7 @@ export function P4Files() {
         </div>
       </ResizablePanel>
       </ResizablePanelGroup>
-      <P4GetRevisionDialog path={revisionPath} onOpenChange={(open) => !open && setRevisionPath(null)} />
+      {revisionTarget ? <P4GetRevisionDialog target={revisionTarget} onClose={() => setRevisionTarget(null)} /> : null}
     </>
   );
 }
