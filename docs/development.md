@@ -69,8 +69,7 @@ configuration outside version control.
 
 Repository operations run through the selected command-line executables. Rust
 owns filesystem and process access; React uses typed clients. Preserve command
-behavior, async ownership, cancellation, and bounded loading. The complete
-engineering rules are in [AGENTS.md](../AGENTS.md).
+behavior, async ownership, cancellation, and bounded loading.
 
 ## Website
 

@@ -83,8 +83,7 @@ npm run build
 ```
 
 See the [development guide](docs/development.md) for the project structure and
-checks. Contributions follow [CONTRIBUTING.md](CONTRIBUTING.md); agents working
-on the codebase should also read [AGENTS.md](AGENTS.md).
+checks. Contributions follow [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Feedback and security
 

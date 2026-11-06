@@ -76,8 +76,7 @@ npm run build
 ```
 
 项目结构与检查命令见[开发指南](docs/development.md)。
-参与贡献请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)；
-处理代码的代理还应阅读 [AGENTS.md](AGENTS.md)。代码、注释和开发文档使用英文，
+参与贡献请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。代码、注释和开发文档使用英文，
 翻译文本集中存放在语言资源文件中。
 
 ## 反馈与安全
