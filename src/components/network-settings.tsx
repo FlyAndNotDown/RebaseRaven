@@ -116,9 +116,13 @@ export function NetworkSettings({ value, onSave }: { value: HttpProxy; onSave: (
         </div>
         {draft.mode === "manual" ? (
           <div className="grid gap-2">
-            <Label htmlFor={`${id}-url`}>{t("desktop.networkSettings.proxy_url")}</Label>
-            <Input ref={urlInput} id={`${id}-url`} type="url" className="font-mono text-xs" autoComplete="off" autoCapitalize="off" spellCheck={false} placeholder="http://127.0.0.1:8080" value={draft.url} disabled={saving} onChange={(event) => edit({ url: event.target.value })} aria-invalid={!!error} aria-describedby={`${id}-hint${error ? ` ${id}-feedback` : ""}`} />
-            <p id={`${id}-hint`} className="text-xs leading-relaxed text-muted-foreground">{t("desktop.networkSettings.http_https_socks5_or_socks5h_credentials_are_not")}</p>
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor={`${id}-url`}>{t("desktop.networkSettings.proxy_url")}</Label>
+              <HoverTip label={t("desktop.networkSettings.http_https_socks5_or_socks5h_credentials_are_not")}>
+                <Button variant="ghost" size="icon-xs" aria-label={t("desktop.networkSettings.about_proxy_url")}><InfoIcon /></Button>
+              </HoverTip>
+            </div>
+            <Input ref={urlInput} id={`${id}-url`} type="url" className="font-mono text-xs" autoComplete="off" autoCapitalize="off" spellCheck={false} placeholder="http://127.0.0.1:8080" value={draft.url} disabled={saving} onChange={(event) => edit({ url: event.target.value })} aria-invalid={!!error} aria-describedby={error ? `${id}-feedback` : undefined} />
           </div>
         ) : null}
         <span id={`${id}-feedback`} role="status" aria-atomic="true" className="sr-only">{feedback}</span>

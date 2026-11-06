@@ -112,14 +112,11 @@ export function DiagnosticsSettings() {
   return (
     <section aria-labelledby={titleId} className="grid gap-3">
       <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-1.5">
-            <h3 id={titleId} className="text-sm font-medium">{t("desktop.diagnosticsSettings.local_diagnostics")}</h3>
-            <HoverTip label={t("desktop.diagnosticsSettings.only_diagnostic_codes_timestamps_durations_app_version_and")}>
-              <Button variant="ghost" size="icon-xs" aria-label={t("desktop.diagnosticsSettings.about_local_diagnostics")}><InfoIcon /></Button>
-            </HoverTip>
-          </div>
-          <p className="mt-1 text-xs text-muted-foreground">{t("desktop.diagnosticsSettings.kept_on_this_device_share_an_exported_zip")}</p>
+        <div className="flex items-center gap-1.5">
+          <h3 id={titleId} className="text-sm font-medium">{t("desktop.diagnosticsSettings.local_diagnostics")}</h3>
+          <HoverTip label={t("desktop.diagnosticsSettings.only_diagnostic_codes_timestamps_durations_app_version_and")}>
+            <Button variant="ghost" size="icon-xs" aria-label={t("desktop.diagnosticsSettings.about_local_diagnostics")}><InfoIcon /></Button>
+          </HoverTip>
         </div>
         <HoverTip label={actionTip("refresh", t("desktop.diagnosticsSettings.refresh_diagnostic_storage_usage"))}>
           <Button variant="outline" size="icon-sm" aria-label={t("desktop.diagnosticsSettings.refresh_diagnostic_storage_usage")} aria-describedby={`${titleId}-refresh-feedback`} aria-busy={action === "refresh"} disabled={action !== null} onClick={() => void run("refresh")}>
