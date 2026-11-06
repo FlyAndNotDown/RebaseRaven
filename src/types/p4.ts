@@ -91,6 +91,7 @@ export type P4RevisionMode = "latest" | "revision" | "changelist" | "datetime" |
 
 export interface P4GetRevision {
   paths: string[];
+  changeId?: string;
   mode: P4RevisionMode;
   value: string;
   force: boolean;

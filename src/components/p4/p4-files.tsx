@@ -405,7 +405,7 @@ export function P4Files() {
         </div>
       </ResizablePanel>
       </ResizablePanelGroup>
-      <P4GetRevisionDialog path={revisionPath} onOpenChange={(open) => !open && setRevisionPath(null)} />
+      {revisionPath ? <P4GetRevisionDialog key={revisionPath} target={{ path: revisionPath }} onClose={() => setRevisionPath(null)} /> : null}
     </>
   );
 }

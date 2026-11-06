@@ -2080,6 +2080,7 @@ fn empty_diff(path: &str) -> FileDiff {
 #[serde(rename_all = "camelCase")]
 pub struct P4GetRevision {
     pub paths: Vec<String>,
+    pub change_id: Option<String>,
     pub mode: String,
     pub value: String,
     pub force: bool,
@@ -2111,30 +2112,65 @@ pub fn sync(
 pub fn get_revision(
     connection: &P4Connection,
     request: &P4GetRevision,
-    progress: impl FnMut(&str),
+    mut progress: impl FnMut(&str),
 ) -> AppResult<String> {
-    if request.paths.is_empty() {
-        return Err(AppError::msg("Choose a file."));
+    if request.force && request.safe {
+        return Err(AppError::msg(
+            "Choose either force overwrite or safe update.",
+        ));
     }
     let env = env_for(connection);
-    let (paths, note) = revision_targets(&env, request)?;
-    if paths.is_empty() {
-        return Ok(if note.is_empty() {
-            "Up to date.".to_string()
-        } else {
-            note
-        });
+    let changed_files;
+    let targets = if let Some(id) = &request.change_id {
+        if !request.paths.is_empty() {
+            return Err(AppError::msg("Choose paths or a changelist."));
+        }
+        let id = require_revision_number(id, "Choose a numbered changelist.")?.to_string();
+        changed_files = mapped_change_files(&env, &id)?;
+        &changed_files
+    } else {
+        &request.paths
+    };
+    if targets.is_empty() {
+        return Err(AppError::msg("Choose a file."));
     }
-    let mut output = sync_paths(
-        &env,
-        &paths,
-        SyncFlags {
-            force: request.force,
-            safe: request.safe,
-            preview: request.preview,
-        },
-        progress,
-    )?;
+    let (paths, note) = revision_targets(&env, request, targets)?;
+    let flags = SyncFlags {
+        force: request.force,
+        safe: request.safe,
+        preview: request.preview,
+    };
+    let mut output = String::new();
+    // Keep argument lists short even for large changelists on Windows.
+    let mut remaining = paths.as_slice();
+    while !remaining.is_empty() {
+        let mut arg_bytes = 0;
+        let count = remaining
+            .iter()
+            .take_while(|path| {
+                arg_bytes += path.len() + 3;
+                arg_bytes <= 16_384
+            })
+            .count()
+            .max(1);
+        let (chunk, rest) = remaining.split_at(count);
+        remaining = rest;
+        let text = sync_paths(&env, chunk, flags, &mut progress)?;
+        if request.preview {
+            output.push_str(&text);
+            if output.lines().count() > REVISION_PREVIEW_LINES {
+                output = output
+                    .lines()
+                    .take(REVISION_PREVIEW_LINES)
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                output.push_str("\nPreview truncated.");
+                break;
+            }
+        } else if !text.trim().is_empty() {
+            output = text;
+        }
+    }
     if !note.is_empty() {
         if !output.is_empty() && !output.ends_with('\n') {
             output.push('\n');
@@ -2147,11 +2183,44 @@ pub fn get_revision(
     Ok(output)
 }
 
-fn revision_targets(env: &P4Env, request: &P4GetRevision) -> AppResult<(Vec<String>, String)> {
+fn mapped_change_files(env: &P4Env, id: &str) -> AppResult<Vec<String>> {
+    let text = run_ok(
+        env,
+        &[
+            "-ztag",
+            "fstat",
+            "-Rc",
+            "-e",
+            id,
+            "-T",
+            "depotFile",
+            "//...",
+        ],
+        None,
+    )?;
+    let files: Vec<_> = parse_ztag(&text)
+        .into_iter()
+        .map(|record| field(&record, "depotFile"))
+        .filter(|path| path.starts_with("//"))
+        .collect();
+    if files.is_empty() {
+        return Err(AppError::msg(
+            "No files in that changelist are mapped to this workspace.",
+        ));
+    }
+    Ok(files)
+}
+
+const REVISION_PREVIEW_LINES: usize = 200;
+
+fn revision_targets(
+    env: &P4Env,
+    request: &P4GetRevision,
+    targets: &[String],
+) -> AppResult<(Vec<String>, String)> {
     let suffix = revision_suffix(&request.mode, &request.value, request.changelist_files_only)?;
     if request.mode != "label" || request.remove_not_in_label {
-        let paths = request
-            .paths
+        let paths = targets
             .iter()
             .map(|path| workspace_file_at(&env.cwd.to_string_lossy(), path, &suffix))
             .collect();
@@ -2160,7 +2229,7 @@ fn revision_targets(env: &P4Env, request: &P4GetRevision) -> AppResult<(Vec<Stri
     let label = request.value.trim();
     let mut paths = Vec::new();
     let mut skipped = 0usize;
-    for path in &request.paths {
+    for path in targets {
         match file_rev_at_label(env, path, label)? {
             Some(rev) => paths.push(workspace_file_at(
                 &env.cwd.to_string_lossy(),
@@ -2475,7 +2544,11 @@ fn sync_progress_line(line: &str, total: Option<u64>, transferred: &mut u64) -> 
 fn sync_args(paths: &[String], parallel: bool, estimate: bool, flags: SyncFlags) -> Vec<String> {
     let mut args = vec!["sync".to_string()];
     if flags.preview {
-        args.push("-n".to_string());
+        args.extend([
+            "-n".to_string(),
+            "-m".to_string(),
+            (REVISION_PREVIEW_LINES + 1).to_string(),
+        ]);
     } else if estimate {
         args.push("-N".to_string());
     } else if parallel {
