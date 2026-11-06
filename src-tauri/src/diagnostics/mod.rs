@@ -1,13 +1,17 @@
 mod archive;
+mod command;
 mod event;
 
+pub use command::CommandOutput;
+use command::{excerpt, CommandReport};
+use event::Event;
 pub use event::{Code, Status};
-use event::{Event, Failure};
 
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::process::Output;
 use std::sync::{mpsc, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -82,7 +86,7 @@ pub fn initialize(app: &AppHandle) -> AppResult<()> {
                 };
                 let now = Instant::now();
                 let prune = now >= next_prune;
-                let event = event.filter(|event| limiter.allow(event.code, event.status, now));
+                let event = event.filter(|event| limiter.allow(event, now));
                 if prune {
                     next_prune = now + PRUNE_INTERVAL;
                 }
@@ -104,48 +108,67 @@ pub fn initialize(app: &AppHandle) -> AppResult<()> {
     Ok(())
 }
 
-/// Successful fast reads stay quiet; failures and slow operations carry no input data.
+/// Successful fast reads stay quiet.
 pub fn record_slow_or_failed<T>(code: Code, started: Instant, result: &AppResult<T>) {
     if result.is_err() || started.elapsed() >= Duration::from_secs(1) {
-        record_command(code, started, result);
+        enqueue(code, Status::of(result), Some(started.elapsed()), || {
+            (result.as_ref().err().and_then(error_excerpt), None)
+        });
     }
 }
 
-/// Mutations and explicit previews record their outcome even when fast.
-pub fn record_command<T>(code: Code, started: Instant, result: &AppResult<T>) {
-    record_command_outcome(
-        code,
-        started,
-        Status::of(result),
-        result.as_ref().err().and_then(Failure::of),
-    );
+pub fn record_cli_output(
+    code: Code,
+    args: &[&str],
+    started: Instant,
+    result: &AppResult<Output>,
+    success: impl FnOnce(&Output) -> bool,
+) {
+    match result {
+        Ok(output) => record_cli(
+            code,
+            args,
+            started,
+            if success(output) {
+                Status::Success
+            } else {
+                Status::Failure
+            },
+            output.into(),
+            None,
+        ),
+        Err(error) => record_cli(
+            code,
+            args,
+            started,
+            Status::of(result),
+            CommandOutput::default(),
+            Some(error),
+        ),
+    }
 }
 
-pub fn record_exit(code: Code, started: Instant, success: bool, status: std::process::ExitStatus) {
-    let (outcome, failure) = if success {
-        (Status::Success, None)
-    } else {
-        (Status::Failure, status.code().map(Failure::ExitCode))
-    };
-    record_command_outcome(code, started, outcome, failure);
-}
-
-fn record_command_outcome(code: Code, started: Instant, status: Status, failure: Option<Failure>) {
-    let passive = matches!(
-        code,
-        Code::GitStatus
-            | Code::GitDiff
-            | Code::GitHistory
-            | Code::GitBackgroundFetch
-            | Code::PerforceOperation
-            | Code::PerforceInfo
-            | Code::PerforceStatus
-            | Code::PerforceHistory
-            | Code::PerforceDiff
-    );
+pub fn record_cli(
+    code: Code,
+    args: &[&str],
+    started: Instant,
+    status: Status,
+    output: CommandOutput<'_>,
+    error: Option<&AppError>,
+) {
     let elapsed = started.elapsed();
-    if !passive || status != Status::Success || elapsed >= Duration::from_secs(1) {
-        record_event(code, status, Some(elapsed), failure);
+    if !code.passive() || status != Status::Success || elapsed >= Duration::from_secs(1) {
+        enqueue(code, status, Some(elapsed), || {
+            let command = CommandReport::new(code.category(), args, output);
+            (error.and_then(error_excerpt), Some(command))
+        });
+    }
+}
+
+fn error_excerpt(error: &AppError) -> Option<String> {
+    match error {
+        AppError::Message(message) => excerpt(message.as_bytes()),
+        AppError::Io(error) => excerpt(error.to_string().as_bytes()),
     }
 }
 
@@ -161,20 +184,27 @@ fn retention_cutoff() -> u64 {
     unix_ms().saturating_sub(RETENTION_DAYS * 86_400_000)
 }
 
-/// Nonblocking and deliberately unable to accept paths, messages, or command output.
+/// Record an application milestone without command data.
 pub fn record(code: Code, status: Status, duration: Option<Duration>) {
-    record_event(code, status, duration, None);
+    enqueue(code, status, duration, || (None, None));
 }
 
-fn record_event(code: Code, status: Status, duration: Option<Duration>, failure: Option<Failure>) {
+fn enqueue(
+    code: Code,
+    status: Status,
+    duration: Option<Duration>,
+    details: impl FnOnce() -> (Option<String>, Option<CommandReport>),
+) {
     if let Some(sender) = EVENTS.get() {
+        let (reason, command) = details();
         let _ = sender.try_send(Event {
             time_unix_ms: unix_ms(),
             code,
             status,
             duration_ms: duration
                 .map(|value| value.as_millis().min(u128::from(MAX_DURATION_MS)) as u64),
-            failure,
+            reason,
+            command,
         });
     }
 }
@@ -218,36 +248,51 @@ pub fn open_issues() -> AppResult<()> {
 fn log_directory(app: &AppHandle) -> AppResult<PathBuf> {
     app.path()
         .app_log_dir()
-        .map(|directory| directory.join("diagnostics-v2"))
+        .map(|directory| directory.join("diagnostics-v3"))
         .map_err(|_| AppError::msg("The local diagnostics folder is unavailable."))
 }
 
 #[derive(Default)]
 struct RateLimit {
-    last: HashMap<(Code, Status), Instant>,
+    last: HashMap<(Code, Status, String), Instant>,
     window: Option<Instant>,
     count: usize,
 }
 
 impl RateLimit {
-    fn allow(&mut self, code: Code, status: Status, now: Instant) -> bool {
+    fn allow(&mut self, event: &Event, now: Instant) -> bool {
         if self
             .window
             .is_none_or(|start| now.duration_since(start) >= Duration::from_secs(60))
         {
             self.window = Some(now);
             self.count = 0;
+            self.last
+                .retain(|_, last| now.duration_since(*last) < Duration::from_secs(5));
         }
-        if self.count >= 60
-            || self
-                .last
-                .get(&(code, status))
-                .is_some_and(|last| now.duration_since(*last) < Duration::from_secs(5))
-        {
+        if self.count >= 60 {
             return false;
         }
+        if event.code.passive() {
+            let invocation = event
+                .command
+                .as_ref()
+                .map(|command| command.invocation.as_str());
+            let key = (
+                event.code,
+                event.status,
+                invocation.unwrap_or("").to_owned(),
+            );
+            if self
+                .last
+                .get(&key)
+                .is_some_and(|last| now.duration_since(*last) < Duration::from_secs(5))
+            {
+                return false;
+            }
+            self.last.insert(key, now);
+        }
         self.count += 1;
-        self.last.insert((code, status), now);
         true
     }
 }
@@ -326,13 +371,7 @@ impl Store {
         if metadata.len() > FILE_BYTES as u64 {
             return Err(invalid_store());
         }
-        let mut options = OpenOptions::new();
-        options.read(true);
-        safe_options(&mut options);
-        let file = options.open(self.directory.join(name))?;
-        if !file.metadata()?.is_file() {
-            return Err(invalid_store());
-        }
+        let file = open_log(&self.directory.join(name))?;
         let mut contents = Vec::new();
         file.take(FILE_BYTES as u64 + 1)
             .read_to_end(&mut contents)?;
@@ -448,7 +487,7 @@ impl Store {
         }
         let file_count = entries.len();
         let manifest = serde_json::json!({
-            "schemaVersion": 3,
+            "schemaVersion": 4,
             "appVersion": env!("CARGO_PKG_VERSION"),
             "os": std::env::consts::OS,
             "arch": std::env::consts::ARCH,
@@ -456,7 +495,7 @@ impl Store {
             "skippedEntries": skipped_entries,
         });
         entries.push(("manifest.json", serde_json::to_vec_pretty(&manifest)?));
-        entries.push(("README.txt", b"Rebasely local diagnostics\n\nThe .log files contain one event per line: [UTC time][Level][Type] Message. The message reports the outcome and available timing or failure details. No repository paths, remote URLs, usernames, credentials, command output, or original error messages are collected. Nothing is uploaded automatically. Review the archive before sharing it manually in an issue.\n".to_vec()));
+        entries.push(("README.txt", b"Rebasely local diagnostics\n\nEach line contains the local time and UTC offset, level, module, and message. Command entries include the command and selected options, outcome, and available exit status and output excerpts. Output can contain repository paths, server addresses, or other project details. Review this archive before sharing it.\n".to_vec()));
         let contents = archive::stored_zip(&entries)?;
         crate::fsutil::write_atomic(&destination, &contents)?;
         Ok(ExportResult {
@@ -544,16 +583,11 @@ fn sanitize(contents: &[u8], cutoff: u64) -> (Vec<u8>, usize) {
     let mut output = Vec::new();
     let mut skipped = 0;
     for line in contents.split_inclusive(|byte| *byte == b'\n') {
-        let Some(event) = line
+        if line
             .strip_suffix(b"\n")
-            .and_then(|line| Event::parse(line, cutoff))
-        else {
-            skipped += 1;
-            continue;
-        };
-        let line = event.line();
-        if output.len() + line.len() <= FILE_BYTES {
-            output.extend_from_slice(line.as_bytes());
+            .is_some_and(|line| Event::is_retained(line, cutoff))
+        {
+            output.extend_from_slice(line);
         } else {
             skipped += 1;
         }
@@ -571,41 +605,26 @@ mod tests {
             code: Code::UiReady,
             status: Status::Success,
             duration_ms: Some(42),
-            failure: None,
+            reason: None,
+            command: None,
         }
     }
 
     #[test]
-    fn exported_records_reject_extra_fields_unknown_codes_and_invalid_limits() {
+    fn export_filters_bad_headers_controls_and_incomplete_lines() {
         let valid = event().line();
         let contents = format!(
-            "{valid}[2026-01-01T00:00:00.000Z][INFO][UiReady] Completed /private/example\n\
-             [2026-01-01T00:00:00.000Z][ERROR][https://example.com] Failed\n\
-             [2026-01-01T00:00:00.000Z][ERROR][GitFetch] Failed. untrusted command output\n\
+            "{valid}[2026-01-01 12:00:00.000 +08:00][DEBUG][Git] Unexpected level\n\
+             [2026-01-01 12:00:00.000 +08:00][ERROR][Other] Unexpected module\n\
+             [2026-01-01 12:00:00.000 +08:00][ERROR][P4] Invalid control: \x1b\n\
              incomplete"
         );
         let (sanitized, skipped) = sanitize(contents.as_bytes(), 0);
         assert_eq!(skipped, 4);
         assert_eq!(sanitized, valid.as_bytes());
         let mut invalid = event();
-        invalid.duration_ms = Some(MAX_DURATION_MS + 1);
-        assert_eq!(sanitize(invalid.line().as_bytes(), 0).1, 1);
         invalid.time_unix_ms = MAX_TIMESTAMP_MS + 1;
-        invalid.duration_ms = None;
         assert_eq!(sanitize(invalid.line().as_bytes(), 0).1, 1);
-    }
-
-    #[test]
-    fn existing_text_records_are_reformatted_without_exporting_unknown_details() {
-        let contents =
-            b"2026-01-01T00:00:00.000Z ERROR GitFetch | Failed in 37 ms | Exit code 128\n\
-            2026-01-01T00:00:00.000Z ERROR GitFetch | Failed | untrusted command output\n";
-        let (sanitized, skipped) = sanitize(contents, 0);
-        assert_eq!(skipped, 1);
-        assert_eq!(
-            sanitized,
-            b"[2026-01-01T00:00:00.000Z][ERROR][GitFetch] Failed in 37 ms. Exit code 128\n"
-        );
     }
 
     #[test]
@@ -619,7 +638,7 @@ mod tests {
         let mut second = event();
         second.code = Code::PerforceResolve;
         second.status = Status::Failure;
-        second.failure = Failure::of(&AppError::msg(crate::error::P4_RESOLVE_CONFLICTS));
+        second.reason = Some("Automatic merge left conflicts".to_owned());
 
         store.append(&second).unwrap();
 
@@ -633,7 +652,7 @@ mod tests {
         );
         assert!(second
             .line()
-            .contains("][ERROR][PerforceResolve] Failed in 42 ms. Automatic merge left conflicts"));
+            .contains("][ERROR][P4] Verify conflict resolution: Failed in 42 ms"));
     }
 
     #[test]
@@ -669,8 +688,7 @@ mod tests {
 
         assert!(store.read(LOG_NAMES[1]).unwrap().is_none());
         let retained = store.read(LOG_NAMES[0]).unwrap().unwrap();
-        let actual = Event::parse(retained.strip_suffix(b"\n").unwrap(), 0).unwrap();
-        assert_eq!(actual.code, Code::PerforceSync);
+        assert_eq!(retained, recent.line().as_bytes());
     }
 
     #[test]
@@ -730,22 +748,18 @@ mod tests {
     fn repetitive_events_are_throttled_but_new_statuses_are_distinct() {
         let mut limit = RateLimit::default();
         let now = Instant::now();
-        assert!(limit.allow(Code::GitOperation, Status::Success, now));
-        assert!(!limit.allow(
-            Code::GitOperation,
-            Status::Success,
-            now + Duration::from_secs(1)
-        ));
-        assert!(limit.allow(
-            Code::GitOperation,
-            Status::Failure,
-            now + Duration::from_secs(1)
-        ));
-        assert!(limit.allow(
-            Code::GitOperation,
-            Status::Success,
-            now + Duration::from_secs(5)
-        ));
+        let mut read = event();
+        read.code = Code::GitStatus;
+        assert!(limit.allow(&read, now));
+        assert!(!limit.allow(&read, now + Duration::from_secs(1)));
+        read.status = Status::Failure;
+        assert!(limit.allow(&read, now + Duration::from_secs(1)));
+        read.status = Status::Success;
+        assert!(limit.allow(&read, now + Duration::from_secs(5)));
+
+        read.code = Code::GitFetch;
+        assert!(limit.allow(&read, now + Duration::from_secs(5)));
+        assert!(limit.allow(&read, now + Duration::from_secs(5)));
     }
 
     #[cfg(unix)]

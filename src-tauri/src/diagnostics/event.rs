@@ -1,17 +1,17 @@
-use std::fmt::{self, Write};
+use std::fmt::Write;
 
-use chrono::{DateTime, SecondsFormat};
-use serde::{de::value::StrDeserializer, Deserialize};
+use chrono::{DateTime, Local};
 
-use crate::error::{
-    AppError, AppResult, GIT_BACKGROUND_TIMEOUT, GIT_MISSING, P4_LOGIN, P4_MISSING,
-    P4_PROBE_TIMEOUT, P4_RESOLVE_CONFLICTS,
-};
+use crate::error::AppResult;
 
-use super::{MAX_DURATION_MS, MAX_TIMESTAMP_MS};
+use super::command::CommandReport;
+use super::MAX_TIMESTAMP_MS;
 
-/// Only fixed diagnostic categories cross this boundary. Never add user input.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq)]
+const TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.3f %:z";
+const MAX_LINE_BYTES: usize = 16 * 1024;
+
+/// Internal event identifiers for filtering and rate limits.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Code {
     AppStarted,
     UiReady,
@@ -34,6 +34,7 @@ pub enum Code {
     GitStash,
     PerforceOperation,
     PerforceInfo,
+    PerforceLogin,
     PerforceStatus,
     PerforceHistory,
     PerforceDiff,
@@ -45,7 +46,6 @@ pub enum Code {
     PerforceShelf,
     PerforceRevert,
     PerforceOpen,
-    CredentialRequest,
     DiagnosticsExport,
 }
 
@@ -57,7 +57,7 @@ pub enum Status {
 }
 
 impl Status {
-    pub(super) fn of<T>(result: &AppResult<T>) -> Self {
+    pub(crate) fn of<T>(result: &AppResult<T>) -> Self {
         match result {
             Ok(_) => Self::Success,
             Err(error) if error.is_cancelled() => Self::Cancelled,
@@ -82,67 +82,68 @@ impl Status {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Failure {
-    MergeConflict,
-    TimedOut,
-    LoginRequired,
-    ExecutableMissing,
-    PermissionDenied,
-    ExitCode(i32),
+pub(super) enum Category {
+    UI,
+    Git,
+    P4,
+    Update,
+    Diagnostics,
 }
 
-impl Failure {
-    pub(super) fn of(error: &AppError) -> Option<Self> {
-        match error {
-            AppError::Message(message) => match message.as_str() {
-                P4_RESOLVE_CONFLICTS => Some(Self::MergeConflict),
-                GIT_BACKGROUND_TIMEOUT | P4_PROBE_TIMEOUT => Some(Self::TimedOut),
-                P4_LOGIN => Some(Self::LoginRequired),
-                GIT_MISSING | P4_MISSING => Some(Self::ExecutableMissing),
-                _ => None,
-            },
-            AppError::Io(error) => match error.kind() {
-                std::io::ErrorKind::TimedOut => Some(Self::TimedOut),
-                std::io::ErrorKind::PermissionDenied => Some(Self::PermissionDenied),
-                _ => None,
-            },
-        }
-    }
-
-    const KNOWN: [Self; 5] = [
-        Self::MergeConflict,
-        Self::TimedOut,
-        Self::LoginRequired,
-        Self::ExecutableMissing,
-        Self::PermissionDenied,
-    ];
-
-    fn message(self) -> &'static str {
+impl Code {
+    pub(super) fn category(self) -> Category {
         match self {
-            Self::MergeConflict => "Automatic merge left conflicts",
-            Self::TimedOut => "Operation timed out",
-            Self::LoginRequired => "Perforce login required",
-            Self::ExecutableMissing => "Executable unavailable",
-            Self::PermissionDenied => "Permission denied",
-            Self::ExitCode(_) => "Exit code",
+            Self::AppStarted | Self::UiReady => Category::UI,
+            Self::UpdateCheck
+            | Self::UpdateDownload
+            | Self::UpdateInstall
+            | Self::UpdateRestart => Category::Update,
+            Self::GitOperation
+            | Self::GitStatus
+            | Self::GitDiff
+            | Self::GitHistory
+            | Self::GitFetch
+            | Self::GitBackgroundFetch
+            | Self::GitPull
+            | Self::GitPush
+            | Self::GitClone
+            | Self::GitCommit
+            | Self::GitStage
+            | Self::GitWorkspace
+            | Self::GitStash => Category::Git,
+            Self::DiagnosticsExport => Category::Diagnostics,
+            _ => Category::P4,
         }
     }
 
-    fn parse(text: &str) -> Option<Self> {
-        if let Some(code) = text.strip_prefix("Exit code ") {
-            return Some(Self::ExitCode(code.parse().ok()?));
-        }
-        Self::KNOWN
-            .into_iter()
-            .find(|reason| reason.message() == text)
+    pub(super) fn passive(self) -> bool {
+        matches!(
+            self,
+            Self::GitOperation
+                | Self::GitStatus
+                | Self::GitDiff
+                | Self::GitHistory
+                | Self::GitBackgroundFetch
+                | Self::PerforceOperation
+                | Self::PerforceInfo
+                | Self::PerforceStatus
+                | Self::PerforceHistory
+                | Self::PerforceDiff
+        )
     }
-}
 
-impl fmt::Display for Failure {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn label(self) -> &'static str {
         match self {
-            Self::ExitCode(code) => write!(f, "Exit code {code}"),
-            _ => f.write_str(self.message()),
+            Self::AppStarted => "Application started",
+            Self::UiReady => "Main window ready",
+            Self::UpdateCheck => "Check for updates",
+            Self::UpdateDownload => "Download update",
+            Self::UpdateInstall => "Install update",
+            Self::UpdateRestart => "Restart after update",
+            Self::GitOperation => "Repository operation",
+            Self::PerforceResolve => "Verify conflict resolution",
+            Self::DiagnosticsExport => "Export diagnostics",
+            _ => "Repository command",
         }
     }
 }
@@ -153,90 +154,83 @@ pub(super) struct Event {
     pub(super) code: Code,
     pub(super) status: Status,
     pub(super) duration_ms: Option<u64>,
-    pub(super) failure: Option<Failure>,
+    pub(super) reason: Option<String>,
+    pub(super) command: Option<CommandReport>,
 }
 
 impl Event {
     pub(super) fn line(&self) -> String {
         let time = DateTime::from_timestamp_millis(self.time_unix_ms as i64)
             .expect("bounded diagnostic timestamp")
-            .to_rfc3339_opts(SecondsFormat::Millis, true);
+            .with_timezone(&Local);
         let mut line = format!(
-            "[{time}][{}][{:?}] {}",
-            self.status.level().as_str(),
-            self.code,
-            self.status.message()
+            "[{}][{}][{:?}] ",
+            time.format(TIME_FORMAT),
+            self.status.level(),
+            self.code.category()
         );
-        if let Some(duration) = self.duration_ms {
-            write!(line, " in {duration} ms").expect("writing to a string");
-        }
-        if let Some(failure) = self.failure {
-            write!(line, ". {failure}").expect("writing to a string");
+        if matches!(self.code, Code::AppStarted | Code::UiReady) {
+            line.push_str(self.code.label());
+        } else {
+            if let Some(command) = &self.command {
+                line.push_str(&command.invocation);
+                if self.code == Code::GitBackgroundFetch {
+                    line.push_str(" (background)");
+                }
+            } else {
+                line.push_str(self.code.label());
+            }
+            write!(line, ": {}", self.status.message()).expect("writing to a string");
+            if let Some(duration) = self.duration_ms {
+                write!(line, " in {duration} ms").expect("writing to a string");
+            }
+            if let Some(command) = &self.command {
+                command.write_exit(&mut line).expect("writing to a string");
+            }
+            if let Some(reason) = &self.reason {
+                write!(line, " error={reason:?}").expect("writing to a string");
+            }
+            if let Some(command) = &self.command {
+                command
+                    .write_output(&mut line)
+                    .expect("writing to a string");
+            }
         }
         line.push('\n');
         line
     }
 
-    pub(super) fn parse(line: &[u8], cutoff: u64) -> Option<Self> {
-        if line.len() > 256 {
-            return None;
+    // Text is redacted before storage. Check the header and complete line when
+    // pruning or exporting without interpreting command output as log headers.
+    pub(super) fn is_retained(line: &[u8], cutoff: u64) -> bool {
+        if line.len() > MAX_LINE_BYTES {
+            return false;
         }
-        let line = std::str::from_utf8(line).ok()?;
-        let (time, level, code, content, detail_separator) =
-            if let Some(line) = line.strip_prefix('[') {
-                let (time, rest) = line.split_once("][")?;
-                let (level, rest) = rest.split_once("][")?;
-                let (code, content) = rest.split_once("] ")?;
-                (time, level, code, content, ". ")
-            } else {
-                // Recent text logs are rewritten in the new format during cleanup and export.
-                let (header, content) = line.split_once(" | ")?;
-                let mut fields = header.split_ascii_whitespace();
-                let (time, level, code) = (fields.next()?, fields.next()?, fields.next()?);
-                if fields.next().is_some() {
-                    return None;
-                }
-                (time, level, code, content, " | ")
-            };
-        let timestamp = DateTime::parse_from_rfc3339(time).ok()?;
-        let time_unix_ms = u64::try_from(timestamp.timestamp_millis()).ok()?;
-        if !(cutoff..=MAX_TIMESTAMP_MS).contains(&time_unix_ms) {
-            return None;
+        let Ok(line) = std::str::from_utf8(line) else {
+            return false;
+        };
+        let Some((time, rest)) = line
+            .strip_prefix('[')
+            .and_then(|line| line.split_once("]["))
+        else {
+            return false;
+        };
+        let Some((level, rest)) = rest.split_once("][") else {
+            return false;
+        };
+        let Some((category, message)) = rest.split_once("] ") else {
+            return false;
+        };
+        if !matches!(level, "INFO" | "WARN" | "ERROR")
+            || !matches!(category, "UI" | "Git" | "P4" | "Update" | "Diagnostics")
+            || message.is_empty()
+            || message.chars().any(char::is_control)
+        {
+            return false;
         }
-        let status = match level {
-            "INFO" => Status::Success,
-            "ERROR" => Status::Failure,
-            "WARN" => Status::Cancelled,
-            _ => return None,
-        };
-        let code = Code::deserialize(StrDeserializer::<serde::de::value::Error>::new(code)).ok()?;
-        let (message, failure) = match content.split_once(detail_separator) {
-            Some((message, detail)) if status == Status::Failure => {
-                (message, Some(Failure::parse(detail)?))
-            }
-            Some(_) => return None,
-            None => (content, None),
-        };
-        let duration_ms = match message.strip_prefix(status.message())? {
-            "" => None,
-            suffix => {
-                let duration = suffix
-                    .strip_prefix(" in ")?
-                    .strip_suffix(" ms")?
-                    .parse()
-                    .ok()?;
-                if duration > MAX_DURATION_MS {
-                    return None;
-                }
-                Some(duration)
-            }
-        };
-        Some(Self {
-            time_unix_ms,
-            code,
-            status,
-            duration_ms,
-            failure,
-        })
+        DateTime::parse_from_str(time, TIME_FORMAT)
+            .ok()
+            .and_then(|time| u64::try_from(time.timestamp_millis()).ok())
+            .is_some_and(|time| (cutoff..=MAX_TIMESTAMP_MS).contains(&time))
     }
 }

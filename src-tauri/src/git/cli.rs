@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::diagnostics::{self, Code};
+use crate::diagnostics::{self, Code, CommandOutput, Status};
 use crate::error::GIT_BACKGROUND_TIMEOUT as BACKGROUND_TIMEOUT;
 
 use std::cell::RefCell;
@@ -169,33 +169,41 @@ fn remove_stale_locks(root: &Path, since: SystemTime) {
     }
 }
 
-fn diagnostic_code(args: &[&str], background: bool) -> Option<Code> {
-    let mut args = args.iter().copied();
-    while let Some(arg) = args.next() {
-        match arg {
-            "-c" | "-C" => {
-                args.next();
-            }
-            "--no-optional-locks" | "--literal-pathspecs" | "--no-pager" => {}
+fn diagnostic_command<'a, 'b>(
+    mut args: &'a [&'b str],
+    background: bool,
+) -> Option<(Code, &'a [&'b str])> {
+    while let Some((arg, rest)) = args.split_first() {
+        match *arg {
+            "-c" | "-C" => args = rest.get(1..)?,
+            "--no-optional-locks" | "--literal-pathspecs" | "--no-pager" => args = rest,
             verb => {
-                return match verb {
-                    "status" => Some(Code::GitStatus),
-                    "diff" => Some(Code::GitDiff),
-                    "log" => Some(Code::GitHistory),
-                    "fetch" if background => Some(Code::GitBackgroundFetch),
-                    "fetch" => Some(Code::GitFetch),
-                    "pull" => Some(Code::GitPull),
-                    "push" => Some(Code::GitPush),
-                    "clone" => Some(Code::GitClone),
-                    "commit" => Some(Code::GitCommit),
-                    "add" => Some(Code::GitStage),
-                    "checkout" | "switch" | "restore" | "reset" | "clean" | "merge" | "rebase"
-                    | "revert" | "cherry-pick" => Some(Code::GitWorkspace),
-                    "stash" if !matches!(args.next(), Some("list" | "show")) => {
-                        Some(Code::GitStash)
+                let code = match verb {
+                    "status" => Code::GitStatus,
+                    "diff" => Code::GitDiff,
+                    "log" | "show" => Code::GitHistory,
+                    "fetch" if background => Code::GitBackgroundFetch,
+                    "fetch" => Code::GitFetch,
+                    "pull" => Code::GitPull,
+                    "push" => Code::GitPush,
+                    "clone" => Code::GitClone,
+                    "commit" => Code::GitCommit,
+                    "add" | "rm" | "apply" => Code::GitStage,
+                    "branch" | "tag" if rest.contains(&"--") => Code::GitWorkspace,
+                    "remote" if matches!(rest.first(), Some(&"add" | &"set-url" | &"remove")) => {
+                        Code::GitWorkspace
                     }
-                    _ => None,
-                }
+                    "worktree" if matches!(rest.first(), Some(&"add" | &"remove" | &"prune")) => {
+                        Code::GitWorkspace
+                    }
+                    "checkout" | "switch" | "restore" | "reset" | "clean" | "merge" | "rebase"
+                    | "revert" | "cherry-pick" | "mv" | "submodule" | "update-ref" => {
+                        Code::GitWorkspace
+                    }
+                    "stash" if !matches!(rest.first(), Some(&"list" | &"show")) => Code::GitStash,
+                    _ => return None,
+                };
+                return Some((code, args));
             }
         }
     }
@@ -203,19 +211,15 @@ fn diagnostic_code(args: &[&str], background: bool) -> Option<Code> {
 }
 
 fn record_output(args: &[&str], started: Instant, output: &AppResult<std::process::Output>) {
-    if let Some(code) = diagnostic_code(args, BACKGROUND.with(|flag| flag.get())) {
-        match output {
-            Ok(output) => {
-                let success = output.status.success()
-                    || (code == Code::GitDiff
-                        && args
-                            .iter()
-                            .any(|arg| matches!(*arg, "--no-index" | "--exit-code" | "--quiet"))
-                        && output.status.code() == Some(1));
-                diagnostics::record_exit(code, started, success, output.status);
-            }
-            Err(_) => diagnostics::record_command(code, started, output),
-        }
+    if let Some((code, args)) = diagnostic_command(args, BACKGROUND.with(|flag| flag.get())) {
+        diagnostics::record_cli_output(code, args, started, output, |output| {
+            output.status.success()
+                || (code == Code::GitDiff
+                    && args
+                        .iter()
+                        .any(|arg| matches!(*arg, "--no-index" | "--exit-code" | "--quiet"))
+                    && output.status.code() == Some(1))
+        });
     }
 }
 
@@ -228,17 +232,18 @@ pub(super) fn run_git_env(
     args: &[&str],
     env: &[(&str, &str)],
 ) -> AppResult<std::process::Output> {
-    let git = require_git()?;
-    let mut command = git_command(git);
-    command.arg("-C").arg(root).args(args);
-    command.env("GIT_TERMINAL_PROMPT", "0");
-    for (key, value) in env {
-        command.env(key, value);
-    }
     let started = Instant::now();
-    let output = command
-        .output()
-        .map_err(|err| git_start_error(command.get_program(), err));
+    let output = require_git().and_then(|git| {
+        let mut command = git_command(git);
+        command.arg("-C").arg(root).args(args);
+        command.env("GIT_TERMINAL_PROMPT", "0");
+        for (key, value) in env {
+            command.env(key, value);
+        }
+        command
+            .output()
+            .map_err(|err| git_start_error(command.get_program(), err))
+    });
     record_output(args, started, &output);
     output
 }
@@ -250,6 +255,13 @@ pub(super) fn run_git_input_output(
     args: &[&str],
     input: &[u8],
 ) -> AppResult<std::process::Output> {
+    let started = Instant::now();
+    let output = git_input_output(root, args, input);
+    record_output(args, started, &output);
+    output
+}
+
+fn git_input_output(root: &Path, args: &[&str], input: &[u8]) -> AppResult<std::process::Output> {
     let git = require_git()?;
     let mut command = git_command(git);
     command.arg("-C").arg(root).args(args);
@@ -258,7 +270,6 @@ pub(super) fn run_git_input_output(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let started = Instant::now();
     let mut child = command
         .spawn()
         .map_err(|err| git_start_error(command.get_program(), err))?;
@@ -275,7 +286,6 @@ pub(super) fn run_git_input_output(
     if output.is_ok() {
         let _ = writer.join();
     }
-    record_output(args, started, &output);
     output
 }
 
@@ -320,7 +330,15 @@ pub(super) fn run_git_progress(
     args: &[&str],
     mut on_progress: impl FnMut(&str) + Send,
 ) -> AppResult<()> {
-    let git = require_git()?;
+    let timer = Instant::now();
+    let git = match require_git() {
+        Ok(git) => git,
+        Err(error) => {
+            let failed = Err(error);
+            record_output(args, timer, &failed);
+            return failed.map(|_| ());
+        }
+    };
     let mut command = git_command(git);
     if let Some(root) = root {
         command.arg("-C").arg(root);
@@ -343,16 +361,31 @@ pub(super) fn run_git_progress(
         }
     }
     let started = SystemTime::now();
-    let timer = Instant::now();
     let background = BACKGROUND.with(|flag| flag.get());
+    let diagnostic = diagnostic_command(args, background);
+    let mut capture = ProgressCapture::default();
     let result = run_progress_command(
         &mut command,
         scope.map(|(_, token)| token),
         background.then_some(ProgressLimits::BACKGROUND),
         &mut on_progress,
+        diagnostic.map(|_| &mut capture),
     );
-    if let Some(code) = diagnostic_code(args, background) {
-        diagnostics::record_command(code, timer, &result);
+    if let Some((code, args)) = diagnostic {
+        diagnostics::record_cli(
+            code,
+            args,
+            timer,
+            Status::of(&result),
+            CommandOutput {
+                status: capture.status,
+                stdout: &capture.stdout,
+                stderr: capture.stderr.as_bytes(),
+            },
+            result.as_ref().err().filter(|_| {
+                capture.status.is_none_or(|status| status.success()) || capture.stopped
+            }),
+        );
     }
     if !background && result.as_ref().is_err_and(|error| error.is_cancelled()) {
         if let Some(root) = root {
@@ -445,11 +478,20 @@ enum ProgressStop {
     TimedOut,
 }
 
+#[derive(Default)]
+struct ProgressCapture {
+    status: Option<std::process::ExitStatus>,
+    stopped: bool,
+    stdout: Vec<u8>,
+    stderr: String,
+}
+
 fn run_progress_command(
     command: &mut Command,
     cancel: Option<Arc<AtomicBool>>,
     limits: Option<ProgressLimits>,
     on_progress: &mut (impl FnMut(&str) + Send),
+    capture: Option<&mut ProgressCapture>,
 ) -> AppResult<()> {
     let (child, tree) = if limits.is_some() {
         let (child, tree) = crate::platform::spawn_probe_command(command)
@@ -577,6 +619,29 @@ fn run_progress_command(
     if stdout_done {
         if let Some(handle) = stdout_thread {
             let _ = handle.join();
+        }
+    }
+    if let Some(capture) = capture {
+        capture.status = status;
+        capture.stopped = stopped.is_some();
+        capture.stdout.clone_from(&stdout_bytes);
+        let mut bytes = 0;
+        let count = logs
+            .iter()
+            .rev()
+            .take_while(|line| {
+                bytes += line.len() + 1;
+                bytes <= 2048
+            })
+            .count();
+        if count == 0 && !logs.is_empty() {
+            capture
+                .stderr
+                .push_str("[output omitted: progress line exceeds 2048 bytes]");
+        }
+        for line in logs.iter().skip(logs.len() - count) {
+            capture.stderr.push_str(line);
+            capture.stderr.push('\n');
         }
     }
     if let Some(reason) = stopped {
@@ -1241,6 +1306,7 @@ mod progress_tests {
             None,
             Some(short_limits()),
             &mut |_| {},
+            None,
         )
         .unwrap_err();
         assert_eq!(error.to_string(), BACKGROUND_TIMEOUT);
@@ -1252,8 +1318,9 @@ mod progress_tests {
         let mut command = fixture("silent");
         command.stdout(Stdio::null()).stderr(Stdio::null());
         let started = Instant::now();
-        let error = run_progress_command(&mut command, None, Some(short_limits()), &mut |_| {})
-            .unwrap_err();
+        let error =
+            run_progress_command(&mut command, None, Some(short_limits()), &mut |_| {}, None)
+                .unwrap_err();
         assert_eq!(error.to_string(), BACKGROUND_TIMEOUT);
         assert!(started.elapsed() < Duration::from_secs(3));
     }
@@ -1274,6 +1341,7 @@ mod progress_tests {
                 None,
                 Some(active_limits()),
                 &mut |_| {},
+                None,
             );
             let unrelated_alive = independent.try_wait().unwrap().is_none();
             stop_child(&mut independent);
@@ -1290,8 +1358,14 @@ mod progress_tests {
     #[test]
     fn background_fetch_counts_stdout_and_unterminated_stderr_as_activity() {
         for mode in ["stdout", "stderr"] {
-            run_progress_command(&mut fixture(mode), None, Some(active_limits()), &mut |_| {})
-                .unwrap();
+            run_progress_command(
+                &mut fixture(mode),
+                None,
+                Some(active_limits()),
+                &mut |_| {},
+                None,
+            )
+            .unwrap();
         }
     }
 
@@ -1305,6 +1379,7 @@ mod progress_tests {
                 total: Duration::from_millis(600),
             }),
             &mut |_| {},
+            None,
         )
         .unwrap_err();
         assert_eq!(error.to_string(), BACKGROUND_TIMEOUT);
@@ -1312,7 +1387,7 @@ mod progress_tests {
 
     #[test]
     fn a_manual_operation_has_no_background_deadline() {
-        run_progress_command(&mut fixture("manual"), None, None, &mut |_| {}).unwrap();
+        run_progress_command(&mut fixture("manual"), None, None, &mut |_| {}, None).unwrap();
     }
 
     #[test]
@@ -1330,7 +1405,7 @@ mod progress_tests {
                 command.stdout(Stdio::null());
             }
             let started = Instant::now();
-            let result = run_progress_command(&mut command, Some(cancel), None, &mut |_| {});
+            let result = run_progress_command(&mut command, Some(cancel), None, &mut |_| {}, None);
             cancellation.join().unwrap();
             assert!(result.unwrap_err().is_cancelled());
             assert!(started.elapsed() < Duration::from_secs(3));
@@ -1352,6 +1427,7 @@ mod progress_tests {
                     trigger.store(true, Ordering::Relaxed);
                 }
             },
+            None,
         );
         assert!(received >= 5);
         assert!(result.unwrap_err().is_cancelled());

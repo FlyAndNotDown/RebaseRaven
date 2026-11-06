@@ -357,7 +357,7 @@
       "could_not_read_local_diagnostics_try_again": "Could not read local diagnostics. Try again.",
       "export_local_diagnostics": "Export local diagnostics",
       "local_diagnostics": "Local diagnostics",
-      "only_diagnostic_codes_timestamps_durations_app_version_and": "Records operation names, outcomes, and timings. No paths, URLs, credentials, or command output. Logs stay on this device.",
+      "local_log_contents": "Local logs include commands, exit status, and short output excerpts. Review the export for project details before sharing.",
       "retention": "Keeps up to {{days}} days within {{maximum}}.",
       "about_local_diagnostics": "About local diagnostics",
       "refresh_diagnostic_storage_usage": "Refresh diagnostic storage usage",

@@ -115,7 +115,7 @@ export function DiagnosticsSettings() {
         <div className="flex items-center gap-1.5">
           <h3 id={titleId} className="text-sm font-medium">{t("desktop.diagnosticsSettings.local_diagnostics")}</h3>
           <HoverTip label={[
-            t("desktop.diagnosticsSettings.only_diagnostic_codes_timestamps_durations_app_version_and"),
+            t("desktop.diagnosticsSettings.local_log_contents"),
             summary ? t("desktop.diagnosticsSettings.retention", { days: summary.retentionDays, maximum: formatBytes(summary.maxBytes) }) : "",
           ].filter(Boolean).join("\n")}>
             <Button variant="ghost" size="icon-xs" aria-label={t("desktop.diagnosticsSettings.about_local_diagnostics")}><InfoIcon /></Button>

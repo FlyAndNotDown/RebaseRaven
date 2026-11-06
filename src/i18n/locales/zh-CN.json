@@ -357,7 +357,7 @@
       "could_not_read_local_diagnostics_try_again": "无法读取本地诊断信息，请重试。",
       "export_local_diagnostics": "导出本地诊断信息",
       "local_diagnostics": "本地诊断",
-      "only_diagnostic_codes_timestamps_durations_app_version_and": "记录操作名称、结果和耗时。不记录路径、网址、凭据或命令输出。日志仅保存在此设备。",
+      "local_log_contents": "本地日志包含命令、退出状态和输出摘录。分享前请检查导出文件中的项目详情。",
       "retention": "最多保留 {{days}} 天，总容量不超过 {{maximum}}。",
       "about_local_diagnostics": "关于本地诊断",
       "refresh_diagnostic_storage_usage": "刷新诊断存储用量",
