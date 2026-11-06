@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { ArchiveIcon, ArchiveRestoreIcon, ChevronDownIcon, GitMergeIcon, Loader2Icon, PencilIcon, PlusIcon, SendIcon, Trash2Icon, Undo2Icon } from "lucide-react";
+import { ArchiveIcon, ArchiveRestoreIcon, ChevronDownIcon, CopyIcon, GitMergeIcon, Loader2Icon, PencilIcon, PlusIcon, SendIcon, Trash2Icon, Undo2Icon } from "lucide-react";
+import { toast } from "sonner";
 import { ChangeBadge } from "@/components/p4/change-badge";
 import { P4ChangeDialog, type ChangeDialogRequest } from "@/components/p4/p4-change-dialog";
 import { FileStatusIcon } from "@/components/p4/file-status-icon";
@@ -353,6 +354,18 @@ export function P4Pending() {
                         <ContextMenuItem disabled={p4.busy} onClick={() => openChangeDialog(change, "edit")}>
                           <PencilIcon />{t("p4.editChangelist")}
                         </ContextMenuItem>
+                        {change.id !== "default" ? (
+                          <ContextMenuItem onSelect={async () => {
+                            try {
+                              await navigator.clipboard.writeText(change.id);
+                              toast.success(t("p4.copiedChangelist"));
+                            } catch {
+                              toast.error(t("p4.couldNotCopy"));
+                            }
+                          }}>
+                            <CopyIcon />{t("p4.copyChangelist")}
+                          </ContextMenuItem>
+                        ) : null}
                         <ContextMenuSeparator />
                         <ContextMenuItem
                           disabled={p4.busy || change.id === "default" || changeOpened.length === 0}

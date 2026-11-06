@@ -119,7 +119,7 @@
   "copyUser": "Copy user",
   "copiedUser": "Copied user",
   "copiedTime": "Copied time",
-  "copyChangelist": "Copy changelist",
+  "copyChangelist": "Copy changelist number",
   "copiedChangelist": "Copied changelist",
   "selectAChangelist": "Select a changelist",
   "noFilesInThisChangelist": "No files in this changelist",
