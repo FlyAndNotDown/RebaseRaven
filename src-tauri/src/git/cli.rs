@@ -1,6 +1,7 @@
 use super::*;
 
-use crate::diagnostics::{self, Code, Status};
+use crate::diagnostics::{self, Code};
+use crate::error::GIT_BACKGROUND_TIMEOUT as BACKGROUND_TIMEOUT;
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -203,20 +204,18 @@ fn diagnostic_code(args: &[&str], background: bool) -> Option<Code> {
 
 fn record_output(args: &[&str], started: Instant, output: &AppResult<std::process::Output>) {
     if let Some(code) = diagnostic_code(args, BACKGROUND.with(|flag| flag.get())) {
-        let status = match output {
-            Ok(output)
-                if output.status.success()
+        match output {
+            Ok(output) => {
+                let success = output.status.success()
                     || (code == Code::GitDiff
-                        && args.iter().any(|arg| {
-                            matches!(*arg, "--no-index" | "--exit-code" | "--quiet")
-                        })
-                        && output.status.code() == Some(1)) =>
-            {
-                Status::Success
+                        && args
+                            .iter()
+                            .any(|arg| matches!(*arg, "--no-index" | "--exit-code" | "--quiet"))
+                        && output.status.code() == Some(1));
+                diagnostics::record_exit(code, started, success, output.status);
             }
-            _ => Status::Failure,
-        };
-        diagnostics::record_command(code, started, status);
+            Err(_) => diagnostics::record_command(code, started, output),
+        }
     }
 }
 
@@ -353,7 +352,7 @@ pub(super) fn run_git_progress(
         &mut on_progress,
     );
     if let Some(code) = diagnostic_code(args, background) {
-        diagnostics::record_command(code, timer, Status::of(&result));
+        diagnostics::record_command(code, timer, &result);
     }
     if !background && result.as_ref().is_err_and(|error| error.is_cancelled()) {
         if let Some(root) = root {
@@ -378,7 +377,6 @@ impl ProgressLimits {
 
 const PROGRESS_POLL: Duration = Duration::from_millis(30);
 const STOP_DRAIN_TIMEOUT: Duration = Duration::from_secs(1);
-const BACKGROUND_TIMEOUT: &str = "Background fetch timed out. Fetch manually to retry.";
 
 struct ProgressProcess {
     child: std::process::Child,

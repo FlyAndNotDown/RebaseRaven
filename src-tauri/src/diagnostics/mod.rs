@@ -1,128 +1,48 @@
 mod archive;
+mod event;
+
+pub use event::{Code, Status};
+use event::{Event, Failure};
 
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Read};
+use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{mpsc, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use serde::{Deserialize, Serialize};
+use log::Record;
+use log4rs::{
+    append::{
+        file::FileAppender,
+        rolling_file::policy::compound::roll::{fixed_window::FixedWindowRoller, Roll},
+        Append,
+    },
+    encode::pattern::PatternEncoder,
+};
+use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 use crate::error::{AppError, AppResult};
 
-const FILE_BYTES: usize = 262_144;
+const FILE_BYTES: usize = 1024 * 1024;
 const RETENTION_DAYS: u64 = 7;
 const PRUNE_INTERVAL: Duration = Duration::from_secs(3600);
-const LOG_NAMES: [&str; 32] = [
-    "events.jsonl",
-    "events.1.jsonl",
-    "events.2.jsonl",
-    "events.3.jsonl",
-    "events.4.jsonl",
-    "events.5.jsonl",
-    "events.6.jsonl",
-    "events.7.jsonl",
-    "events.8.jsonl",
-    "events.9.jsonl",
-    "events.10.jsonl",
-    "events.11.jsonl",
-    "events.12.jsonl",
-    "events.13.jsonl",
-    "events.14.jsonl",
-    "events.15.jsonl",
-    "events.16.jsonl",
-    "events.17.jsonl",
-    "events.18.jsonl",
-    "events.19.jsonl",
-    "events.20.jsonl",
-    "events.21.jsonl",
-    "events.22.jsonl",
-    "events.23.jsonl",
-    "events.24.jsonl",
-    "events.25.jsonl",
-    "events.26.jsonl",
-    "events.27.jsonl",
-    "events.28.jsonl",
-    "events.29.jsonl",
-    "events.30.jsonl",
-    "events.31.jsonl",
+const LOG_NAMES: [&str; 8] = [
+    "events.log",
+    "events.1.log",
+    "events.2.log",
+    "events.3.log",
+    "events.4.log",
+    "events.5.log",
+    "events.6.log",
+    "events.7.log",
 ];
 const MAX_LOG_BYTES: usize = FILE_BYTES * LOG_NAMES.len();
 const MAX_DURATION_MS: u64 = 86_400_000;
 const MAX_TIMESTAMP_MS: u64 = 4_102_444_800_000;
 const ISSUES_URL: &str = "https://github.com/FlyAndNotDown/Rebasely/issues";
 static EVENTS: OnceLock<mpsc::SyncSender<Event>> = OnceLock::new();
-
-/// Only fixed diagnostic categories cross this boundary. Never add user input.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum Code {
-    AppStarted,
-    UiReady,
-    UpdateCheck,
-    UpdateDownload,
-    UpdateInstall,
-    UpdateRestart,
-    GitOperation,
-    GitStatus,
-    GitDiff,
-    GitHistory,
-    GitFetch,
-    GitBackgroundFetch,
-    GitPull,
-    GitPush,
-    GitClone,
-    GitCommit,
-    GitStage,
-    GitWorkspace,
-    GitStash,
-    PerforceOperation,
-    PerforceInfo,
-    PerforceStatus,
-    PerforceHistory,
-    PerforceDiff,
-    PerforceSync,
-    PerforceSyncPreview,
-    PerforceResolve,
-    PerforceSubmit,
-    PerforceChange,
-    PerforceShelf,
-    PerforceRevert,
-    PerforceOpen,
-    CredentialRequest,
-    DiagnosticsExport,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum Status {
-    Success,
-    Failure,
-    Cancelled,
-}
-
-impl Status {
-    pub fn of<T>(result: &AppResult<T>) -> Self {
-        match result {
-            Ok(_) => Self::Success,
-            Err(error) if error.is_cancelled() => Self::Cancelled,
-            Err(_) => Self::Failure,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Event {
-    schema_version: u8,
-    time_unix_ms: u64,
-    code: Code,
-    status: Status,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    duration_ms: Option<u64>,
-}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -186,14 +106,31 @@ pub fn initialize(app: &AppHandle) -> AppResult<()> {
 
 /// Successful fast reads stay quiet; failures and slow operations carry no input data.
 pub fn record_slow_or_failed<T>(code: Code, started: Instant, result: &AppResult<T>) {
-    let elapsed = started.elapsed();
-    if result.is_err() || elapsed >= Duration::from_secs(1) {
-        record(code, Status::of(result), Some(elapsed));
+    if result.is_err() || started.elapsed() >= Duration::from_secs(1) {
+        record_command(code, started, result);
     }
 }
 
 /// Mutations and explicit previews record their outcome even when fast.
-pub fn record_command(code: Code, started: Instant, status: Status) {
+pub fn record_command<T>(code: Code, started: Instant, result: &AppResult<T>) {
+    record_command_outcome(
+        code,
+        started,
+        Status::of(result),
+        result.as_ref().err().and_then(Failure::of),
+    );
+}
+
+pub fn record_exit(code: Code, started: Instant, success: bool, status: std::process::ExitStatus) {
+    let (outcome, failure) = if success {
+        (Status::Success, None)
+    } else {
+        (Status::Failure, status.code().map(Failure::ExitCode))
+    };
+    record_command_outcome(code, started, outcome, failure);
+}
+
+fn record_command_outcome(code: Code, started: Instant, status: Status, failure: Option<Failure>) {
     let passive = matches!(
         code,
         Code::GitStatus
@@ -208,7 +145,7 @@ pub fn record_command(code: Code, started: Instant, status: Status) {
     );
     let elapsed = started.elapsed();
     if !passive || status != Status::Success || elapsed >= Duration::from_secs(1) {
-        record(code, status, Some(elapsed));
+        record_event(code, status, Some(elapsed), failure);
     }
 }
 
@@ -226,14 +163,18 @@ fn retention_cutoff() -> u64 {
 
 /// Nonblocking and deliberately unable to accept paths, messages, or command output.
 pub fn record(code: Code, status: Status, duration: Option<Duration>) {
+    record_event(code, status, duration, None);
+}
+
+fn record_event(code: Code, status: Status, duration: Option<Duration>, failure: Option<Failure>) {
     if let Some(sender) = EVENTS.get() {
         let _ = sender.try_send(Event {
-            schema_version: 1,
             time_unix_ms: unix_ms(),
             code,
             status,
             duration_ms: duration
                 .map(|value| value.as_millis().min(u128::from(MAX_DURATION_MS)) as u64),
+            failure,
         });
     }
 }
@@ -277,7 +218,7 @@ pub fn open_issues() -> AppResult<()> {
 fn log_directory(app: &AppHandle) -> AppResult<PathBuf> {
     app.path()
         .app_log_dir()
-        .map(|directory| directory.join("diagnostics-v1"))
+        .map(|directory| directory.join("diagnostics-v2"))
         .map_err(|_| AppError::msg("The local diagnostics folder is unavailable."))
 }
 
@@ -427,23 +368,52 @@ impl Store {
                 fs::remove_file(self.directory.join(name))?;
             }
         }
-        let mut line = serde_json::to_vec(event)?;
-        line.push(b'\n');
-        let mut contents = self.read(LOG_NAMES[0])?.unwrap_or_default();
-        if contents.len() + line.len() > FILE_BYTES {
-            // Move completed segments without reading or rewriting their contents.
-            for index in (1..LOG_NAMES.len()).rev() {
-                if self.metadata(LOG_NAMES[index - 1])?.is_some() {
-                    fs::rename(
-                        self.directory.join(LOG_NAMES[index - 1]),
-                        self.directory.join(LOG_NAMES[index]),
-                    )?;
+        let directory = self.directory.to_str().ok_or_else(invalid_store)?;
+        // The appender and roller interpolate these tokens in paths.
+        if ["$ENV{", "$TIME{", "{}"]
+            .iter()
+            .any(|token| directory.contains(token))
+        {
+            return Err(invalid_store());
+        }
+        let path = self.directory.join(LOG_NAMES[0]);
+        let (length, needs_newline) = prepare_active_log(&path)?;
+        let mut line = event.line();
+        if needs_newline {
+            // Keep an interrupted write from swallowing the next complete record.
+            line.insert(0, '\n');
+        }
+        if length + line.len() as u64 > FILE_BYTES as u64 {
+            // The roller can fall back to copying if a rename fails.
+            for name in &LOG_NAMES[1..] {
+                if self.metadata(name)?.is_some() {
+                    open_log(&self.directory.join(name))?;
                 }
             }
-            contents.clear();
+            let pattern = self.directory.join("events.{}.log");
+            FixedWindowRoller::builder()
+                .base(1)
+                .build(
+                    pattern.to_str().ok_or_else(invalid_store)?,
+                    (LOG_NAMES.len() - 1) as u32,
+                )
+                .and_then(|roller| roller.roll(&path))
+                .map_err(|_| invalid_store())?;
+            prepare_active_log(&path)?;
+            line = event.line();
         }
-        contents.extend_from_slice(&line);
-        crate::fsutil::write_atomic(&self.directory.join(LOG_NAMES[0]), &contents)
+        // Keep this appender private: only typed diagnostic events enter the file.
+        FileAppender::builder()
+            .append(true)
+            .encoder(Box::new(PatternEncoder::new("{m}")))
+            .build(&path)?
+            .append(
+                &Record::builder()
+                    .level(event.status.level())
+                    .args(format_args!("{line}"))
+                    .build(),
+            )
+            .map_err(|_| invalid_store())
     }
 
     fn export(&self, destination: &Path) -> io::Result<ExportResult> {
@@ -478,7 +448,7 @@ impl Store {
         }
         let file_count = entries.len();
         let manifest = serde_json::json!({
-            "schemaVersion": 1,
+            "schemaVersion": 2,
             "appVersion": env!("CARGO_PKG_VERSION"),
             "os": std::env::consts::OS,
             "arch": std::env::consts::ARCH,
@@ -486,7 +456,7 @@ impl Store {
             "skippedEntries": skipped_entries,
         });
         entries.push(("manifest.json", serde_json::to_vec_pretty(&manifest)?));
-        entries.push(("README.txt", b"Rebasely local diagnostics\n\nThis archive contains fixed operation codes, outcomes, timestamps, durations, app version, and platform only. No repository paths, remote URLs, usernames, credentials, command output, or original error messages are collected. Nothing is uploaded automatically. Review the archive before sharing it manually in an issue.\n".to_vec()));
+        entries.push(("README.txt", b"Rebasely local diagnostics\n\nThe .log files contain one event per line with a UTC timestamp, level, operation, outcome, and available timing or failure details. No repository paths, remote URLs, usernames, credentials, command output, or original error messages are collected. Nothing is uploaded automatically. Review the archive before sharing it manually in an issue.\n".to_vec()));
         let contents = archive::stored_zip(&entries)?;
         crate::fsutil::write_atomic(&destination, &contents)?;
         Ok(ExportResult {
@@ -494,6 +464,61 @@ impl Store {
             skipped_entries,
         })
     }
+}
+
+fn open_log(path: &Path) -> io::Result<File> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    safe_options(&mut options);
+    let file = options.open(path)?;
+    if !file.metadata()?.is_file() || !single_link(&file)? {
+        return Err(invalid_store());
+    }
+    Ok(file)
+}
+
+fn prepare_active_log(path: &Path) -> io::Result<(u64, bool)> {
+    let mut file = match open_log(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            // Set private permissions before handing the path to the appender.
+            let mut options = OpenOptions::new();
+            options.write(true).create_new(true);
+            safe_options(&mut options);
+            options.open(path)?;
+            return Ok((0, false));
+        }
+        Err(error) => return Err(error),
+    };
+    let length = file.metadata()?.len();
+    if length == 0 {
+        return Ok((0, false));
+    }
+    let mut last = [0];
+    file.seek(SeekFrom::End(-1))?;
+    file.read_exact(&mut last)?;
+    Ok((length, last[0] != b'\n'))
+}
+
+#[cfg(unix)]
+fn single_link(file: &File) -> io::Result<bool> {
+    use std::os::unix::fs::MetadataExt;
+    Ok(file.metadata()?.nlink() == 1)
+}
+
+#[cfg(windows)]
+fn single_link(file: &File) -> io::Result<bool> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{
+        GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, FILE_ATTRIBUTE_REPARSE_POINT,
+    };
+
+    let mut info = BY_HANDLE_FILE_INFORMATION::default();
+    // The open handle and the writable structure both outlive the call.
+    if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(info.nNumberOfLinks == 1 && info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT == 0)
 }
 
 fn safe_options(options: &mut OpenOptions) {
@@ -518,32 +543,19 @@ fn invalid_store() -> io::Error {
 fn sanitize(contents: &[u8], cutoff: u64) -> (Vec<u8>, usize) {
     let mut output = Vec::new();
     let mut skipped = 0;
-    for line in contents
-        .split(|byte| *byte == b'\n')
-        .filter(|line| !line.is_empty())
-    {
-        let event = if line.len() <= 1024 {
-            serde_json::from_slice::<Event>(line).ok()
-        } else {
-            None
-        };
-        let Some(event) = event.filter(|event| {
-            event.schema_version == 1
-                && (cutoff..=MAX_TIMESTAMP_MS).contains(&event.time_unix_ms)
-                && event
-                    .duration_ms
-                    .is_none_or(|duration| duration <= MAX_DURATION_MS)
-        }) else {
+    for line in contents.split_inclusive(|byte| *byte == b'\n') {
+        let Some(event) = line
+            .strip_suffix(b"\n")
+            .and_then(|line| Event::parse(line, cutoff))
+        else {
             skipped += 1;
             continue;
         };
-        if let Ok(mut line) = serde_json::to_vec(&event) {
-            line.push(b'\n');
-            if output.len() + line.len() <= FILE_BYTES {
-                output.extend_from_slice(&line);
-            } else {
-                skipped += 1;
-            }
+        let line = event.line();
+        if output.len() + line.len() <= FILE_BYTES {
+            output.extend_from_slice(line.as_bytes());
+        } else {
+            skipped += 1;
         }
     }
     (output, skipped)
@@ -555,27 +567,77 @@ mod tests {
 
     fn event() -> Event {
         Event {
-            schema_version: 1,
             time_unix_ms: unix_ms(),
             code: Code::UiReady,
             status: Status::Success,
             duration_ms: Some(42),
+            failure: None,
         }
     }
 
     #[test]
     fn exported_records_reject_extra_fields_unknown_codes_and_invalid_limits() {
-        let valid = serde_json::to_string(&event()).unwrap();
-        let contents = format!("{valid}\n{{\"schemaVersion\":1,\"timeUnixMs\":1,\"code\":\"uiReady\",\"status\":\"success\",\"path\":\"/private/example\"}}\n{{\"schemaVersion\":1,\"timeUnixMs\":1,\"code\":\"https://example.com\",\"status\":\"failure\"}}\nnot json\n");
+        let valid = event().line();
+        let contents = format!(
+            "{valid}2026-01-01T00:00:00.000Z INFO UiReady | Completed /private/example\n\
+             2026-01-01T00:00:00.000Z ERROR https://example.com | Failed\n\
+             2026-01-01T00:00:00.000Z ERROR GitFetch | Failed | untrusted command output\n\
+             incomplete"
+        );
         let (sanitized, skipped) = sanitize(contents.as_bytes(), 0);
-        assert_eq!(skipped, 3);
-        assert_eq!(String::from_utf8(sanitized).unwrap(), format!("{valid}\n"));
+        assert_eq!(skipped, 4);
+        assert_eq!(sanitized, valid.as_bytes());
         let mut invalid = event();
         invalid.duration_ms = Some(MAX_DURATION_MS + 1);
-        assert_eq!(sanitize(&serde_json::to_vec(&invalid).unwrap(), 0).1, 1);
+        assert_eq!(sanitize(invalid.line().as_bytes(), 0).1, 1);
+        invalid.time_unix_ms = MAX_TIMESTAMP_MS + 1;
         invalid.duration_ms = None;
-        invalid.schema_version = 2;
-        assert_eq!(sanitize(&serde_json::to_vec(&invalid).unwrap(), 0).1, 1);
+        assert_eq!(sanitize(invalid.line().as_bytes(), 0).1, 1);
+    }
+
+    #[test]
+    fn appending_after_an_interrupted_write_keeps_complete_records() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(&temp.path().join("logs")).unwrap();
+        let first = event();
+        let path = store.directory.join(LOG_NAMES[0]);
+        fs::write(&path, format!("{}interrupted", first.line())).unwrap();
+        let mut reader = File::open(&path).unwrap();
+        let mut second = event();
+        second.code = Code::PerforceResolve;
+        second.status = Status::Failure;
+        second.failure = Failure::of(&AppError::msg(crate::error::P4_RESOLVE_CONFLICTS));
+
+        store.append(&second).unwrap();
+
+        let mut contents = Vec::new();
+        reader.read_to_end(&mut contents).unwrap();
+        let (retained, skipped) = sanitize(&contents, 0);
+        assert_eq!(skipped, 1);
+        assert_eq!(
+            retained,
+            format!("{}{}", first.line(), second.line()).as_bytes()
+        );
+        assert!(second
+            .line()
+            .contains("ERROR PerforceResolve | Failed in 42 ms | Automatic merge left conflicts"));
+    }
+
+    #[test]
+    fn append_and_rotation_do_not_follow_hard_links() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(&temp.path().join("logs")).unwrap();
+        let target = temp.path().join("existing.txt");
+        fs::write(&target, b"unchanged").unwrap();
+        let active = store.directory.join(LOG_NAMES[0]);
+        fs::hard_link(&target, &active).unwrap();
+        assert!(store.append(&event()).is_err());
+        fs::remove_file(&active).unwrap();
+
+        fs::write(active, vec![b'\n'; FILE_BYTES]).unwrap();
+        fs::hard_link(&target, store.directory.join(LOG_NAMES[1])).unwrap();
+        assert!(store.append(&event()).is_err());
+        assert_eq!(fs::read(target).unwrap(), b"unchanged");
     }
 
     #[test]
@@ -585,9 +647,7 @@ mod tests {
         let mut expired = event();
         expired.time_unix_ms = 1;
         store.append(&expired).unwrap();
-        let mut old_contents = serde_json::to_vec(&expired).unwrap();
-        old_contents.push(b'\n');
-        fs::write(store.directory.join(LOG_NAMES[1]), old_contents).unwrap();
+        fs::write(store.directory.join(LOG_NAMES[1]), expired.line()).unwrap();
         let mut recent = event();
         recent.code = Code::PerforceSync;
         store.append(&recent).unwrap();
@@ -596,7 +656,7 @@ mod tests {
 
         assert!(store.read(LOG_NAMES[1]).unwrap().is_none());
         let retained = store.read(LOG_NAMES[0]).unwrap().unwrap();
-        let actual: Event = serde_json::from_slice(&retained).unwrap();
+        let actual = Event::parse(retained.strip_suffix(b"\n").unwrap(), 0).unwrap();
         assert_eq!(actual.code, Code::PerforceSync);
     }
 
@@ -604,12 +664,8 @@ mod tests {
     fn rotation_keeps_logs_within_the_total_budget() {
         let temp = tempfile::tempdir().unwrap();
         let store = Store::new(&temp.path().join("logs")).unwrap();
-        let line = serde_json::to_vec(&event()).unwrap();
-        let mut full = Vec::new();
-        while full.len() + line.len() < FILE_BYTES {
-            full.extend_from_slice(&line);
-            full.push(b'\n');
-        }
+        let line = event().line();
+        let full = line.as_bytes().repeat(FILE_BYTES / line.len());
         for name in LOG_NAMES {
             fs::write(store.directory.join(name), &full).unwrap();
         }
@@ -638,6 +694,9 @@ mod tests {
         assert_eq!(result.file_count, 1);
         assert_eq!(result.skipped_entries, 0);
         let archive = fs::read(output).unwrap();
+        assert!(archive
+            .windows(b"events.log".len())
+            .any(|value| value == b"events.log"));
         assert!(!archive
             .windows(b"private-value".len())
             .any(|value| value == b"private-value"));

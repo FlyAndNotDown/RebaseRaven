@@ -1341,11 +1341,7 @@ async fn p4_resolve_accept(
     blocking(move || {
         let started = std::time::Instant::now();
         let result = p4::resolve_accept(&connection, &path, &mode);
-        diagnostics::record_command(
-            diagnostics::Code::PerforceResolve,
-            started,
-            diagnostics::Status::of(&result),
-        );
+        diagnostics::record_command(diagnostics::Code::PerforceResolve, started, &result);
         result
     })
     .await

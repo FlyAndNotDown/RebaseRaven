@@ -101,16 +101,16 @@ mod tests {
     #[test]
     fn rejects_paths_unknown_entries_and_oversized_payloads() {
         for name in [
-            "../events.jsonl",
-            "/events.jsonl",
+            "../events.log",
+            "/events.log",
             "prefs.json",
-            "folder/events.jsonl",
-            "events.32.jsonl",
+            "folder/events.log",
+            "events.32.log",
         ] {
             assert!(stored_zip(&[(name, Vec::new())]).is_err());
         }
-        assert!(stored_zip(&[("events.jsonl", vec![0; FILE_BYTES + 1])]).is_err());
-        assert!(stored_zip(&[("events.jsonl", vec![0; FILE_BYTES])]).is_ok());
+        assert!(stored_zip(&[("events.log", vec![0; FILE_BYTES + 1])]).is_err());
+        assert!(stored_zip(&[("events.log", vec![0; FILE_BYTES])]).is_ok());
     }
 
     #[test]
@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn central_directory_points_to_the_real_local_entries() {
         let output = stored_zip(&[
-            ("events.jsonl", b"hello\n".to_vec()),
+            ("events.log", b"hello\n".to_vec()),
             ("README.txt", Vec::new()),
         ])
         .unwrap();
@@ -145,6 +145,6 @@ mod tests {
             0
         );
         assert_eq!(u32::from_le_bytes(output[18..22].try_into().unwrap()), 6);
-        assert_eq!(&output[30..42], b"events.jsonl");
+        assert_eq!(&output[30..40], b"events.log");
     }
 }

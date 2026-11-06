@@ -1840,7 +1840,7 @@ pub fn resolve_accept(connection: &P4Connection, path: &str, mode: &str) -> AppR
     run_ok(&env, &["resolve", flag, &spec], None)?;
     if resolve_still_open(&env, &spec)? {
         return Err(AppError::msg(if mode == "merge" {
-            "The merge has conflicts. Accept yours or theirs."
+            crate::error::P4_RESOLVE_CONFLICTS
         } else {
             "This file still needs resolve."
         }));

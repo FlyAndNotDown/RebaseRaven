@@ -13,8 +13,8 @@ use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::diagnostics::{self, Code, Status};
-use crate::error::{AppError, AppResult, P4_LOGIN, P4_MISSING};
+use crate::diagnostics::{self, Code};
+use crate::error::{AppError, AppResult, P4_LOGIN, P4_MISSING, P4_PROBE_TIMEOUT as PROBE_TIMEOUT};
 
 struct P4Bin {
     selected: String,
@@ -412,14 +412,13 @@ fn diagnostic_code(args: &[&str]) -> Code {
 pub fn run_p4_ok(env: &P4Env, args: &[&str], input: Option<&str>) -> AppResult<String> {
     let started = Instant::now();
     let result = run_p4(env, args, input).and_then(finish);
-    diagnostics::record_command(diagnostic_code(args), started, Status::of(&result));
+    diagnostics::record_command(diagnostic_code(args), started, &result);
     result
 }
 
 // Passive repository discovery must never wait for an unrelated server or a
 // selected executable wrapper. Keep its limits separate from user operations.
 const PROBE_OUTPUT_LIMIT: usize = 65_536;
-const PROBE_TIMEOUT: &str = "Perforce workspace discovery timed out.";
 
 pub(super) fn run_p4_probe(env: &P4Env, args: &[&str], deadline: Instant) -> AppResult<String> {
     if !matches!(args, ["set"] | ["-ztag", "info"]) {
@@ -428,7 +427,7 @@ pub(super) fn run_p4_probe(env: &P4Env, args: &[&str], deadline: Instant) -> App
     let started = Instant::now();
     let mut command = prepared(require_p4()?, env, args);
     let result = probe_output(&mut command, deadline).and_then(finish);
-    diagnostics::record_command(Code::PerforceInfo, started, Status::of(&result));
+    diagnostics::record_command(Code::PerforceInfo, started, &result);
     result
 }
 
@@ -539,7 +538,7 @@ pub fn run_p4_diff(env: &P4Env, args: &[&str]) -> AppResult<String> {
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
         finish_diff(output.status.success(), stdout, stderr)
     });
-    diagnostics::record_command(Code::PerforceDiff, started, Status::of(&result));
+    diagnostics::record_command(Code::PerforceDiff, started, &result);
     result
 }
 
@@ -603,7 +602,7 @@ pub fn run_p4_stream(
     let started = Instant::now();
     let result = stream_once(env, args, &mut on_line)
         .and_then(|(ok, stdout, stderr)| finish_parts(ok, stdout, stderr));
-    diagnostics::record_command(diagnostic_code(args), started, Status::of(&result));
+    diagnostics::record_command(diagnostic_code(args), started, &result);
     result
 }
 
