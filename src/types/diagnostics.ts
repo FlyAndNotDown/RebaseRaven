@@ -1,3 +1,5 @@
+export type DiagnosticLevel = "error" | "warning" | "info" | "verbose";
+
 export interface DiagnosticSummary {
   totalBytes: number;
   fileCount: number;
@@ -8,4 +10,9 @@ export interface DiagnosticSummary {
 export interface DiagnosticExport {
   fileCount: number;
   skippedEntries: number;
+}
+
+export interface DiagnosticView {
+  summary: DiagnosticSummary;
+  text: string;
 }

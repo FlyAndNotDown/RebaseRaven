@@ -163,15 +163,26 @@ impl CommandReport {
         Ok(())
     }
 
-    pub(super) fn write_output(&self, line: &mut String) -> fmt::Result {
-        if let Some(stderr) = &self.stderr {
-            write!(line, " stderr={stderr:?}")?;
-        }
-        if let Some(stdout) = &self.stdout {
-            write!(line, " stdout={stdout:?}")?;
+    pub(super) fn write_output(&self, time: &str, log: &mut String) -> fmt::Result {
+        for (stream, output) in [("stderr", &self.stderr), ("stdout", &self.stdout)] {
+            if let Some(output) = output {
+                write_output_lines(log, time, stream, output)?;
+            }
         }
         Ok(())
     }
+}
+
+pub(super) fn write_output_lines(
+    log: &mut String,
+    time: &str,
+    stream: &str,
+    output: &str,
+) -> fmt::Result {
+    for line in output.lines() {
+        writeln!(log, "[{time}][VERBOSE][Commands] {stream}: {line}")?;
+    }
+    Ok(())
 }
 
 // Keep only complete lines from a bounded tail. Starting mid-line can leave
@@ -193,8 +204,7 @@ pub(super) fn excerpt(bytes: &[u8]) -> Option<String> {
         tail
     };
     let value = String::from_utf8_lossy(tail);
-    let value = value.trim();
-    if value.is_empty() {
+    if value.trim().is_empty() {
         return None;
     }
     if bytes[inspected..]
@@ -203,7 +213,7 @@ pub(super) fn excerpt(bytes: &[u8]) -> Option<String> {
     {
         return Some("[private key output omitted]".to_owned());
     }
-    let cleaned = redact(value);
+    let cleaned = redact(&value.replace("\r\n", "\n").replace('\r', "\n"));
     Some(if start > 0 {
         format!("[tail] {cleaned}")
     } else {
@@ -293,7 +303,9 @@ mod tests {
         );
         assert_eq!(report.invocation, "git fetch --progress <args omitted>");
         let mut text = String::new();
-        report.write_output(&mut text).unwrap();
+        report
+            .write_output("2026-01-01 12:00:00.000 +08:00", &mut text)
+            .unwrap();
         assert!(text.contains("403"));
         assert!(text.contains("the remote rejected the request"));
         assert!(text.contains("remote response"));

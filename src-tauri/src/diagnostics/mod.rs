@@ -5,7 +5,7 @@ mod event;
 pub use command::CommandOutput;
 use command::{excerpt, CommandReport};
 use event::Event;
-pub use event::{Code, Status};
+pub use event::{Code, Level, Status};
 
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
@@ -43,6 +43,9 @@ const LOG_NAMES: [&str; 8] = [
     "events.7.log",
 ];
 const MAX_LOG_BYTES: usize = FILE_BYTES * LOG_NAMES.len();
+const TAIL_SCAN_BYTES: usize = FILE_BYTES;
+const TAIL_BYTES: usize = 64 * 1024;
+const TAIL_LINES: usize = 200;
 const MAX_DURATION_MS: u64 = 86_400_000;
 const MAX_TIMESTAMP_MS: u64 = 4_102_444_800_000;
 const ISSUES_URL: &str = "https://github.com/FlyAndNotDown/Rebasely/issues";
@@ -50,11 +53,17 @@ static EVENTS: OnceLock<mpsc::SyncSender<Event>> = OnceLock::new();
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Summary {
+struct Summary {
     total_bytes: u64,
     file_count: usize,
     max_bytes: usize,
     retention_days: u64,
+}
+
+#[derive(Serialize)]
+pub struct View {
+    summary: Summary,
+    text: String,
 }
 
 #[derive(Serialize)]
@@ -209,10 +218,15 @@ fn enqueue(
     }
 }
 
-pub fn summary(app: &AppHandle) -> AppResult<Summary> {
+pub fn view(app: &AppHandle, level: Level) -> AppResult<View> {
     let directory = log_directory(app)?;
     Store::new(&directory)
-        .and_then(|store| store.summary())
+        .and_then(|store| {
+            Ok(View {
+                summary: store.summary()?,
+                text: store.tail(level, retention_cutoff())?,
+            })
+        })
         .map_err(|_| AppError::msg("Could not read local diagnostics. Try again."))
 }
 
@@ -365,20 +379,86 @@ impl Store {
     }
 
     fn read(&self, name: &str) -> io::Result<Option<Vec<u8>>> {
+        self.read_window(name, FILE_BYTES)
+            .map(|window| window.map(|(contents, _)| contents))
+    }
+
+    fn read_window(&self, name: &str, limit: usize) -> io::Result<Option<(Vec<u8>, bool)>> {
         let Some(metadata) = self.metadata(name)? else {
             return Ok(None);
         };
         if metadata.len() > FILE_BYTES as u64 {
             return Err(invalid_store());
         }
-        let file = open_log(&self.directory.join(name))?;
+        let mut file = open_log(&self.directory.join(name))?;
+        let offset = metadata.len().saturating_sub(limit as u64);
+        let starts_mid_line = if offset > 0 {
+            file.seek(SeekFrom::Start(offset - 1))?;
+            let mut previous = [0];
+            file.read_exact(&mut previous)?;
+            previous[0] != b'\n'
+        } else {
+            false
+        };
         let mut contents = Vec::new();
-        file.take(FILE_BYTES as u64 + 1)
-            .read_to_end(&mut contents)?;
-        if contents.len() > FILE_BYTES {
+        file.take(limit as u64 + 1).read_to_end(&mut contents)?;
+        if contents.len() > limit {
             return Err(invalid_store());
         }
-        Ok(Some(contents))
+        Ok(Some((contents, starts_mid_line)))
+    }
+
+    fn tail(&self, level: Level, cutoff: u64) -> io::Result<String> {
+        let mut remaining = TAIL_SCAN_BYTES;
+        let mut bytes = 0;
+        let mut lines = Vec::new();
+        'files: for name in LOG_NAMES {
+            let Some((contents, starts_mid_line)) = self.read_window(name, remaining)? else {
+                continue;
+            };
+            remaining -= contents.len();
+            // Skip incomplete lines at either edge of the window.
+            let start = if starts_mid_line {
+                contents
+                    .iter()
+                    .position(|byte| *byte == b'\n')
+                    .map_or(contents.len(), |pos| pos + 1)
+            } else {
+                0
+            };
+            if let Some(end) = contents[start..].iter().rposition(|byte| *byte == b'\n') {
+                for line in contents[start..start + end].rsplit(|byte| *byte == b'\n') {
+                    let Some((entry_level, mut line)) = Event::retained_line(line, cutoff) else {
+                        continue;
+                    };
+                    if entry_level > level {
+                        continue;
+                    }
+                    // Previous releases put output in quoted fields on the summary line.
+                    if level < Level::Verbose {
+                        if let Some((summary, _)) = line
+                            .split_once(" stderr=\"")
+                            .or_else(|| line.split_once(" stdout=\""))
+                        {
+                            line = summary;
+                        }
+                    }
+                    bytes += line.len() + 1;
+                    if bytes > TAIL_BYTES {
+                        break 'files;
+                    }
+                    lines.push(line.to_owned());
+                    if lines.len() >= TAIL_LINES {
+                        break 'files;
+                    }
+                }
+            }
+            if remaining == 0 {
+                break;
+            }
+        }
+        lines.reverse();
+        Ok(lines.join("\n"))
     }
 
     fn prune(&self, cutoff: u64) -> io::Result<()> {
@@ -585,7 +665,8 @@ fn sanitize(contents: &[u8], cutoff: u64) -> (Vec<u8>, usize) {
     for line in contents.split_inclusive(|byte| *byte == b'\n') {
         if line
             .strip_suffix(b"\n")
-            .is_some_and(|line| Event::is_retained(line, cutoff))
+            .and_then(|line| Event::retained_line(line, cutoff))
+            .is_some()
         {
             output.extend_from_slice(line);
         } else {
@@ -625,6 +706,53 @@ mod tests {
         let mut invalid = event();
         invalid.time_unix_ms = MAX_TIMESTAMP_MS + 1;
         assert_eq!(sanitize(invalid.line().as_bytes(), 0).1, 1);
+    }
+
+    #[test]
+    fn recent_logs_filter_output_lines_without_removing_them_from_the_store() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(&temp.path().join("logs")).unwrap();
+        let ui = event().line();
+        fs::write(store.directory.join(LOG_NAMES[1]), &ui).unwrap();
+        let mut fetch = event();
+        fetch.code = Code::GitFetch;
+        fetch.status = Status::Failure;
+        fetch.command = Some(CommandReport::new(
+            fetch.code.category(),
+            &["fetch", "--prune"],
+            CommandOutput {
+                stderr: b"remote: unavailable\r\n\ttry again later\n",
+                stdout: b"first line\n\nlast line\n",
+                status: None,
+            },
+        ));
+        store.append(&fetch).unwrap();
+
+        let info = store.tail(Level::default(), 0).unwrap();
+        assert_eq!(info.lines().count(), 2);
+        assert!(info.starts_with(&ui));
+        assert!(info.contains("][ERROR][Git] git fetch --prune"));
+        assert!(!info.contains("[Commands]"));
+        assert_eq!(store.tail(Level::Warning, 0).unwrap().lines().count(), 1);
+
+        let verbose = store.tail(Level::Verbose, 0).unwrap();
+        let output: Vec<_> = verbose
+            .lines()
+            .filter_map(|line| line.split_once("][VERBOSE][Commands] "))
+            .map(|(_, body)| body)
+            .collect();
+        assert_eq!(
+            output,
+            [
+                "stderr: remote: unavailable",
+                "stderr: \ttry again later",
+                "stdout: first line",
+                "stdout: ",
+                "stdout: last line",
+            ]
+        );
+        let stored = store.read(LOG_NAMES[0]).unwrap().unwrap();
+        assert_eq!(sanitize(&stored, 0), (stored, 0));
     }
 
     #[test]

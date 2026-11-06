@@ -523,8 +523,10 @@ fn run_progress_command(
             let mut reader = BufReader::new(ProgressReader { pipe, activity });
             let mut buf = Vec::new();
             while read_progress_line(&mut reader, &mut buf).unwrap_or(0) > 0 {
-                let line = String::from_utf8_lossy(&buf).trim().to_string();
-                if !line.is_empty() && tx.send(ProgressEvent::Line(line)).is_err() {
+                let line = String::from_utf8_lossy(&buf);
+                if !line.trim().is_empty()
+                    && tx.send(ProgressEvent::Line(line.into_owned())).is_err()
+                {
                     return;
                 }
             }
@@ -597,7 +599,7 @@ fn run_progress_command(
         match rx.recv_timeout(PROGRESS_POLL) {
             Ok(ProgressEvent::Line(line)) => {
                 remember_progress(&mut logs, &line);
-                on_progress(&crate::error::redact_credentials(&line));
+                on_progress(&crate::error::redact_credentials(line.trim()));
             }
             Ok(ProgressEvent::StderrDone) => stderr_done = true,
             Ok(ProgressEvent::StdoutDone(bytes)) => {
@@ -662,7 +664,11 @@ fn run_progress_command(
         return Ok(());
     }
     let stdout = String::from_utf8_lossy(&stdout_bytes);
-    let stderr = logs.into_iter().collect::<Vec<_>>().join("\n");
+    let stderr = logs
+        .iter()
+        .map(|line| line.trim())
+        .collect::<Vec<_>>()
+        .join("\n");
     let message = [stderr.trim(), stdout.trim()]
         .into_iter()
         .filter(|part| !part.is_empty())

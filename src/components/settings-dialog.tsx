@@ -52,7 +52,7 @@ import { p4Api } from "@/lib/p4";
 import { loadSettingsData } from "@/lib/settings-data";
 import { createSettingsWriter } from "@/lib/settings-writes";
 import { displayPath } from "@/lib/format";
-import { AUTO_FETCH_CHOICES, isGitFileName, isP4FileName, normalizePrefs, sameGitPath, sameP4Path } from "@/lib/prefs";
+import { AUTO_FETCH_CHOICES, DIAGNOSTIC_LEVELS, isGitFileName, isP4FileName, normalizePrefs, sameGitPath, sameP4Path } from "@/lib/prefs";
 import { cn } from "@/lib/utils";
 import { useGitPick } from "@/state/git-context";
 import { useAnalyticsSessionAllowed } from "@/state/use-analytics";
@@ -563,7 +563,18 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
             <>
               <DialogHeader><DialogTitle>{t("desktop.settingsDialog.diagnostics")}</DialogTitle></DialogHeader>
               <div className="mt-6 grid gap-8">
-                <DiagnosticsSettings />
+                <DiagnosticsSettings
+                  level={prefs.diagnosticLevel}
+                  levelControl={
+                    <SelectField
+                      id="diagnostic-level"
+                      label={t("desktop.diagnosticsSettings.level")}
+                      value={prefs.diagnosticLevel}
+                      options={DIAGNOSTIC_LEVELS.map((id) => ({ id, label: t("desktop.diagnosticsSettings.levels." + id) }))}
+                      onChange={(diagnosticLevel) => { void persistPrefs({ diagnosticLevel }); }}
+                    />
+                  }
+                />
                 <FieldGroup title={t("analytics.title")}>
                   <div className="flex items-center gap-2">
                     <label className="flex flex-1 items-center gap-2 text-sm">

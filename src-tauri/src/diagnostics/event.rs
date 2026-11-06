@@ -1,14 +1,37 @@
 use std::fmt::Write;
 
 use chrono::{DateTime, Local};
+use serde::{Deserialize, Serialize};
 
 use crate::error::AppResult;
 
-use super::command::CommandReport;
+use super::command::{write_output_lines, CommandReport};
 use super::MAX_TIMESTAMP_MS;
 
 const TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.3f %:z";
 const MAX_LINE_BYTES: usize = 16 * 1024;
+
+#[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Level {
+    Error,
+    Warning,
+    #[default]
+    Info,
+    Verbose,
+}
+
+impl Level {
+    fn from_header(value: &str) -> Option<Self> {
+        match value {
+            "ERROR" => Some(Self::Error),
+            "WARN" => Some(Self::Warning),
+            "INFO" => Some(Self::Info),
+            "VERBOSE" => Some(Self::Verbose),
+            _ => None,
+        }
+    }
+}
 
 /// Internal event identifiers for filtering and rate limits.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -163,9 +186,9 @@ impl Event {
         let time = DateTime::from_timestamp_millis(self.time_unix_ms as i64)
             .expect("bounded diagnostic timestamp")
             .with_timezone(&Local);
+        let time = time.format(TIME_FORMAT).to_string();
         let mut line = format!(
-            "[{}][{}][{:?}] ",
-            time.format(TIME_FORMAT),
+            "[{time}][{}][{:?}] ",
             self.status.level(),
             self.code.category()
         );
@@ -186,51 +209,48 @@ impl Event {
             }
             if let Some(command) = &self.command {
                 command.write_exit(&mut line).expect("writing to a string");
-            }
-            if let Some(reason) = &self.reason {
-                write!(line, " error={reason:?}").expect("writing to a string");
-            }
-            if let Some(command) = &self.command {
-                command
-                    .write_output(&mut line)
-                    .expect("writing to a string");
+                if let Some(reason) = &self.reason {
+                    write!(line, " error={reason:?}").expect("writing to a string");
+                }
             }
         }
         line.push('\n');
+        if let Some(command) = &self.command {
+            command
+                .write_output(&time, &mut line)
+                .expect("writing to a string");
+        } else if let Some(reason) = &self.reason {
+            // An outer repository error can contain a subprocess's output.
+            write_output_lines(&mut line, &time, "error", reason).expect("writing to a string");
+        }
         line
     }
 
     // Text is redacted before storage. Check the header and complete line when
     // pruning or exporting without interpreting command output as log headers.
-    pub(super) fn is_retained(line: &[u8], cutoff: u64) -> bool {
+    pub(super) fn retained_line(line: &[u8], cutoff: u64) -> Option<(Level, &str)> {
         if line.len() > MAX_LINE_BYTES {
-            return false;
+            return None;
         }
-        let Ok(line) = std::str::from_utf8(line) else {
-            return false;
-        };
-        let Some((time, rest)) = line
-            .strip_prefix('[')
-            .and_then(|line| line.split_once("]["))
-        else {
-            return false;
-        };
-        let Some((level, rest)) = rest.split_once("][") else {
-            return false;
-        };
-        let Some((category, message)) = rest.split_once("] ") else {
-            return false;
-        };
-        if !matches!(level, "INFO" | "WARN" | "ERROR")
-            || !matches!(category, "UI" | "Git" | "P4" | "Update" | "Diagnostics")
-            || message.is_empty()
-            || message.chars().any(char::is_control)
+        let line = std::str::from_utf8(line).ok()?;
+        let (time, rest) = line.strip_prefix('[')?.split_once("][")?;
+        let (level, rest) = rest.split_once("][")?;
+        let level = Level::from_header(level)?;
+        let (category, message) = rest.split_once("] ")?;
+        if !(match level {
+            Level::Verbose => category == "Commands",
+            _ => matches!(category, "UI" | "Git" | "P4" | "Update" | "Diagnostics"),
+        }) || message.is_empty()
+            || message
+                .chars()
+                .any(|character| character.is_control() && character != '\t')
         {
-            return false;
+            return None;
         }
         DateTime::parse_from_str(time, TIME_FORMAT)
             .ok()
             .and_then(|time| u64::try_from(time.timestamp_millis()).ok())
-            .is_some_and(|time| (cutoff..=MAX_TIMESTAMP_MS).contains(&time))
+            .filter(|time| (cutoff..=MAX_TIMESTAMP_MS).contains(time))
+            .map(|_| (level, line))
     }
 }

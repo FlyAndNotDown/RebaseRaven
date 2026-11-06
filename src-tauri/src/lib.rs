@@ -89,8 +89,11 @@ async fn load_session(app: AppHandle) -> AppResult<AppSession> {
 }
 
 #[tauri::command]
-async fn get_diagnostic_summary(app: AppHandle) -> AppResult<diagnostics::Summary> {
-    blocking(move || diagnostics::summary(&app)).await
+async fn get_diagnostic_view(
+    level: diagnostics::Level,
+    app: AppHandle,
+) -> AppResult<diagnostics::View> {
+    blocking(move || diagnostics::view(&app, level)).await
 }
 
 #[tauri::command]
@@ -1759,7 +1762,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             initialize_repository,
             get_author_avatar,
-            get_diagnostic_summary,
+            get_diagnostic_view,
             export_diagnostic_logs,
             open_diagnostic_directory,
             open_diagnostic_issues,
