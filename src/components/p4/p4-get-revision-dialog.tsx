@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { useP4 } from "@/state/p4-context";
 import type { P4RevisionMode } from "@/types/p4";
 
-export type P4RevisionTarget = { path: string } | { changeId: string; revision?: string };
+export type P4RevisionTarget = { path: string; recursive: boolean } | { changeId: string; revision?: string };
 
 export function P4GetRevisionDialog({ target, onClose }: { target: P4RevisionTarget; onClose: () => void }) {
   useTranslation();
@@ -32,6 +32,7 @@ export function P4GetRevisionDialog({ target, onClose }: { target: P4RevisionTar
   ];
   const { connection, getRevision, busy: workspaceBusy } = useP4();
   const path = "path" in target ? target.path : null;
+  const recursive = "recursive" in target && target.recursive;
   const changeId = "changeId" in target ? target.changeId : undefined;
   const revision = "revision" in target ? target.revision : undefined;
   const [latest, setLatest] = useState(path !== null);
@@ -49,8 +50,9 @@ export function P4GetRevisionDialog({ target, onClose }: { target: P4RevisionTar
   const placeholder = kinds.find((item) => item.id === kind)?.placeholder ?? "";
   const needsValue = specify && !value.trim();
   const blocked = busy !== null || workspaceBusy;
-  const relative = path && connection ? relativeToRoot(connection.root, path) || path
-    : t("p4.revisionChangeScope", { id: changeId });
+  const relative = path && connection ? relativeToRoot(connection.root, path) || path : path;
+  const scope = changeId ? t("p4.revisionChangeScope", { id: changeId })
+    : recursive ? t("p4.revisionDirectoryScope", { path: relative }) : relative;
 
   async function run(previewing: boolean) {
     if (running.current || blocked || needsValue) return;
@@ -61,6 +63,7 @@ export function P4GetRevisionDialog({ target, onClose }: { target: P4RevisionTar
       const output = await getRevision({
         paths: path ? [path] : [],
         changeId,
+        recursive,
         mode: specify ? kind : "latest",
         value: specify ? value.trim() : "",
         force,
@@ -88,8 +91,8 @@ export function P4GetRevisionDialog({ target, onClose }: { target: P4RevisionTar
       <DialogContent className="max-h-[90vh] overflow-auto sm:max-w-xl" showCloseButton={!busy}>
         <DialogHeader>
           <DialogTitle>{t("p4.getRevision")}</DialogTitle>
-          <DialogDescription className="truncate font-mono text-xs" title={relative}>
-            {relative}
+          <DialogDescription className="truncate font-mono text-xs" title={scope ?? undefined}>
+            {scope}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">

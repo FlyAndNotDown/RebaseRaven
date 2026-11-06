@@ -2081,6 +2081,8 @@ fn empty_diff(path: &str) -> FileDiff {
 pub struct P4GetRevision {
     pub paths: Vec<String>,
     pub change_id: Option<String>,
+    #[serde(default)]
+    pub recursive: bool,
     pub mode: String,
     pub value: String,
     pub force: bool,
@@ -2122,7 +2124,7 @@ pub fn get_revision(
     let env = env_for(connection);
     let changed_files;
     let targets = if let Some(id) = &request.change_id {
-        if !request.paths.is_empty() {
+        if !request.paths.is_empty() || request.recursive {
             return Err(AppError::msg("Choose paths or a changelist."));
         }
         let id = require_revision_number(id, "Choose a numbered changelist.")?.to_string();
@@ -2134,7 +2136,16 @@ pub fn get_revision(
     if targets.is_empty() {
         return Err(AppError::msg("Choose a file."));
     }
-    let (paths, note) = revision_targets(&env, request, targets)?;
+    let exact = match request.mode.as_str() {
+        "changelist" => request.changelist_files_only,
+        "label" => !request.remove_not_in_label,
+        _ => false,
+    };
+    let suffix = revision_suffix(&request.mode, &request.value, exact)?;
+    let paths = targets
+        .iter()
+        .map(|path| revision_file_spec(&connection.root, path, request.recursive, &suffix))
+        .collect::<AppResult<Vec<_>>>()?;
     let flags = SyncFlags {
         force: request.force,
         safe: request.safe,
@@ -2170,12 +2181,6 @@ pub fn get_revision(
         } else if !text.trim().is_empty() {
             output = text;
         }
-    }
-    if !note.is_empty() {
-        if !output.is_empty() && !output.ends_with('\n') {
-            output.push('\n');
-        }
-        output.push_str(&note);
     }
     if output.trim().is_empty() {
         output = "Up to date.".to_string();
@@ -2213,69 +2218,7 @@ fn mapped_change_files(env: &P4Env, id: &str) -> AppResult<Vec<String>> {
 
 const REVISION_PREVIEW_LINES: usize = 200;
 
-fn revision_targets(
-    env: &P4Env,
-    request: &P4GetRevision,
-    targets: &[String],
-) -> AppResult<(Vec<String>, String)> {
-    let suffix = revision_suffix(&request.mode, &request.value, request.changelist_files_only)?;
-    if request.mode != "label" || request.remove_not_in_label {
-        let paths = targets
-            .iter()
-            .map(|path| workspace_file_at(&env.cwd.to_string_lossy(), path, &suffix))
-            .collect();
-        return Ok((paths, String::new()));
-    }
-    let label = request.value.trim();
-    let mut paths = Vec::new();
-    let mut skipped = 0usize;
-    for path in targets {
-        match file_rev_at_label(env, path, label)? {
-            Some(rev) => paths.push(workspace_file_at(
-                &env.cwd.to_string_lossy(),
-                path,
-                &format!("#{rev}"),
-            )),
-            None => skipped += 1,
-        }
-    }
-    let note = if skipped == 0 {
-        String::new()
-    } else if paths.is_empty() {
-        "The file is not in that label, so it stays in the workspace.".to_string()
-    } else {
-        format!("{skipped} files are not in that label and stay in the workspace.")
-    };
-    Ok((paths, note))
-}
-
-fn file_rev_at_label(env: &P4Env, path: &str, label: &str) -> AppResult<Option<String>> {
-    let spec = workspace_file_at(&env.cwd.to_string_lossy(), path, &format!("@{label}"));
-    match run_ok(env, &["-ztag", "files", &spec], None) {
-        Ok(stdout) => Ok(parse_ztag(&stdout).into_iter().find_map(|record| {
-            let rev = field(&record, "rev");
-            if rev.is_empty() || !rev.chars().all(|ch| ch.is_ascii_digit()) {
-                None
-            } else {
-                Some(rev)
-            }
-        })),
-        Err(err) => {
-            let message = err.to_string();
-            if message == P4_LOGIN || !missing_label_file(&message) {
-                return Err(err);
-            }
-            Ok(None)
-        }
-    }
-}
-
-fn missing_label_file(message: &str) -> bool {
-    let lower = message.to_ascii_lowercase();
-    lower.contains("no such file") || lower.contains("not in label")
-}
-
-fn revision_suffix(mode: &str, value: &str, files_only: bool) -> AppResult<String> {
+fn revision_suffix(mode: &str, value: &str, exact: bool) -> AppResult<String> {
     let value = value.trim();
     match mode {
         "latest" => Ok(String::new()),
@@ -2285,7 +2228,7 @@ fn revision_suffix(mode: &str, value: &str, files_only: bool) -> AppResult<Strin
         }
         "changelist" => {
             let change = require_revision_number(value, "Enter a changelist number.")?;
-            if files_only {
+            if exact {
                 Ok(format!("@{change},@{change}"))
             } else {
                 Ok(format!("@{change}"))
@@ -2296,7 +2239,11 @@ fn revision_suffix(mode: &str, value: &str, files_only: bool) -> AppResult<Strin
             if !valid_label(value) {
                 return Err(AppError::msg("Enter a label name."));
             }
-            Ok(format!("@{value}"))
+            if exact {
+                Ok(format!("@{value},@{value}"))
+            } else {
+                Ok(format!("@{value}"))
+            }
         }
         "workspace" => {
             if !valid_client_name(value) {
@@ -2406,8 +2353,25 @@ pub(super) fn workspace_file_spec(root: &str, path: &str) -> String {
     file_spec(&workspace_cli_path(root, path))
 }
 
-fn workspace_file_at(root: &str, path: &str, suffix: &str) -> String {
-    file_at(&workspace_cli_path(root, path), suffix)
+fn revision_file_spec(root: &str, path: &str, recursive: bool, suffix: &str) -> AppResult<String> {
+    let path = workspace_cli_path(root, path);
+    if !path.starts_with("//") && !Path::new(&path).is_absolute() {
+        return Err(AppError::msg("Choose a file or folder."));
+    }
+    if !recursive {
+        return Ok(file_at(&path, suffix));
+    }
+    let spec = file_spec(&path);
+    if spec == "//" {
+        return Ok(format!("//...{suffix}"));
+    }
+    let (directory, separator) = if cfg!(windows) && !spec.starts_with("//") {
+        let separator = if spec.contains('\\') { '\\' } else { '/' };
+        (spec.trim_end_matches(['/', '\\']), separator)
+    } else {
+        (spec.trim_end_matches('/'), '/')
+    };
+    Ok(format!("{directory}{separator}...{suffix}"))
 }
 
 fn workspace_cli_path(root: &str, path: &str) -> String {
@@ -4601,6 +4565,10 @@ Description:
             "@rel-1.0"
         );
         assert_eq!(
+            revision_suffix("label", "rel-1.0", true).unwrap(),
+            "@rel-1.0,@rel-1.0"
+        );
+        assert_eq!(
             revision_suffix("workspace", "dev-workspace", false).unwrap(),
             "@dev-workspace"
         );
@@ -4608,6 +4576,24 @@ Description:
         assert!(revision_suffix("datetime", "2026-10-16", false).is_err());
         assert!(revision_suffix("label", "bad label", false).is_err());
         assert_eq!(file_at(r"C:\work\a#b.txt", "#3"), r"C:\work\a%23b.txt#3");
+    }
+
+    #[test]
+    fn directory_revisions_append_a_wildcard_after_escaping_the_path() {
+        let path = if cfg!(windows) {
+            "C:/work/docs @ home"
+        } else {
+            "/work/docs @ home"
+        };
+        assert_eq!(
+            revision_file_spec("", path, true, "@release,@release").unwrap(),
+            format!("{}/...@release,@release", path.replace('@', "%40"))
+        );
+        assert_eq!(
+            revision_file_spec("", "//depot/docs%23notes", true, "#4").unwrap(),
+            "//depot/docs%23notes/...#4"
+        );
+        assert!(revision_file_spec("", "-f", true, "").is_err());
     }
 
     #[test]

@@ -20,6 +20,7 @@
   "thatPathIsNotInThisWorkspace": "That path is not in this workspace.",
   "getLatest": "Get latest",
   "getRevision": "Get revision",
+  "revisionDirectoryScope": "Files in {{path}}",
   "revisionChangeScope": "Files in changelist {{id}}",
   "revisionAtChange": "At this changelist…",
   "revisionBeforeChange": "Before this changelist…",

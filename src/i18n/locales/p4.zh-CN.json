@@ -20,6 +20,7 @@
   "thatPathIsNotInThisWorkspace": "此路径不在当前工作区中。",
   "getLatest": "获取最新版本",
   "getRevision": "获取指定版本",
+  "revisionDirectoryScope": "{{path}} 中的文件",
   "revisionChangeScope": "变更列表 {{id}} 中的文件",
   "revisionAtChange": "此变更列表的版本…",
   "revisionBeforeChange": "此变更列表之前的版本…",
