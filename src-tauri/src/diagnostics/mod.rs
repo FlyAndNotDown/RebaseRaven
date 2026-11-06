@@ -448,7 +448,7 @@ impl Store {
         }
         let file_count = entries.len();
         let manifest = serde_json::json!({
-            "schemaVersion": 2,
+            "schemaVersion": 3,
             "appVersion": env!("CARGO_PKG_VERSION"),
             "os": std::env::consts::OS,
             "arch": std::env::consts::ARCH,
@@ -456,7 +456,7 @@ impl Store {
             "skippedEntries": skipped_entries,
         });
         entries.push(("manifest.json", serde_json::to_vec_pretty(&manifest)?));
-        entries.push(("README.txt", b"Rebasely local diagnostics\n\nThe .log files contain one event per line with a UTC timestamp, level, operation, outcome, and available timing or failure details. No repository paths, remote URLs, usernames, credentials, command output, or original error messages are collected. Nothing is uploaded automatically. Review the archive before sharing it manually in an issue.\n".to_vec()));
+        entries.push(("README.txt", b"Rebasely local diagnostics\n\nThe .log files contain one event per line: [UTC time][Level][Type] Message. The message reports the outcome and available timing or failure details. No repository paths, remote URLs, usernames, credentials, command output, or original error messages are collected. Nothing is uploaded automatically. Review the archive before sharing it manually in an issue.\n".to_vec()));
         let contents = archive::stored_zip(&entries)?;
         crate::fsutil::write_atomic(&destination, &contents)?;
         Ok(ExportResult {
@@ -579,9 +579,9 @@ mod tests {
     fn exported_records_reject_extra_fields_unknown_codes_and_invalid_limits() {
         let valid = event().line();
         let contents = format!(
-            "{valid}2026-01-01T00:00:00.000Z INFO UiReady | Completed /private/example\n\
-             2026-01-01T00:00:00.000Z ERROR https://example.com | Failed\n\
-             2026-01-01T00:00:00.000Z ERROR GitFetch | Failed | untrusted command output\n\
+            "{valid}[2026-01-01T00:00:00.000Z][INFO][UiReady] Completed /private/example\n\
+             [2026-01-01T00:00:00.000Z][ERROR][https://example.com] Failed\n\
+             [2026-01-01T00:00:00.000Z][ERROR][GitFetch] Failed. untrusted command output\n\
              incomplete"
         );
         let (sanitized, skipped) = sanitize(contents.as_bytes(), 0);
@@ -593,6 +593,19 @@ mod tests {
         invalid.time_unix_ms = MAX_TIMESTAMP_MS + 1;
         invalid.duration_ms = None;
         assert_eq!(sanitize(invalid.line().as_bytes(), 0).1, 1);
+    }
+
+    #[test]
+    fn existing_text_records_are_reformatted_without_exporting_unknown_details() {
+        let contents =
+            b"2026-01-01T00:00:00.000Z ERROR GitFetch | Failed in 37 ms | Exit code 128\n\
+            2026-01-01T00:00:00.000Z ERROR GitFetch | Failed | untrusted command output\n";
+        let (sanitized, skipped) = sanitize(contents, 0);
+        assert_eq!(skipped, 1);
+        assert_eq!(
+            sanitized,
+            b"[2026-01-01T00:00:00.000Z][ERROR][GitFetch] Failed in 37 ms. Exit code 128\n"
+        );
     }
 
     #[test]
@@ -620,7 +633,7 @@ mod tests {
         );
         assert!(second
             .line()
-            .contains("ERROR PerforceResolve | Failed in 42 ms | Automatic merge left conflicts"));
+            .contains("][ERROR][PerforceResolve] Failed in 42 ms. Automatic merge left conflicts"));
     }
 
     #[test]

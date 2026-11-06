@@ -162,7 +162,7 @@ impl Event {
             .expect("bounded diagnostic timestamp")
             .to_rfc3339_opts(SecondsFormat::Millis, true);
         let mut line = format!(
-            "{time} {:5} {:?} | {}",
+            "[{time}][{}][{:?}] {}",
             self.status.level().as_str(),
             self.code,
             self.status.message()
@@ -171,7 +171,7 @@ impl Event {
             write!(line, " in {duration} ms").expect("writing to a string");
         }
         if let Some(failure) = self.failure {
-            write!(line, " | {failure}").expect("writing to a string");
+            write!(line, ". {failure}").expect("writing to a string");
         }
         line.push('\n');
         line
@@ -181,27 +181,36 @@ impl Event {
         if line.len() > 256 {
             return None;
         }
-        let (header, content) = std::str::from_utf8(line).ok()?.split_once(" | ")?;
-        let mut fields = header.split_ascii_whitespace();
-        let timestamp = DateTime::parse_from_rfc3339(fields.next()?).ok()?;
+        let line = std::str::from_utf8(line).ok()?;
+        let (time, level, code, content, detail_separator) =
+            if let Some(line) = line.strip_prefix('[') {
+                let (time, rest) = line.split_once("][")?;
+                let (level, rest) = rest.split_once("][")?;
+                let (code, content) = rest.split_once("] ")?;
+                (time, level, code, content, ". ")
+            } else {
+                // Recent text logs are rewritten in the new format during cleanup and export.
+                let (header, content) = line.split_once(" | ")?;
+                let mut fields = header.split_ascii_whitespace();
+                let (time, level, code) = (fields.next()?, fields.next()?, fields.next()?);
+                if fields.next().is_some() {
+                    return None;
+                }
+                (time, level, code, content, " | ")
+            };
+        let timestamp = DateTime::parse_from_rfc3339(time).ok()?;
         let time_unix_ms = u64::try_from(timestamp.timestamp_millis()).ok()?;
         if !(cutoff..=MAX_TIMESTAMP_MS).contains(&time_unix_ms) {
             return None;
         }
-        let status = match fields.next()? {
+        let status = match level {
             "INFO" => Status::Success,
             "ERROR" => Status::Failure,
             "WARN" => Status::Cancelled,
             _ => return None,
         };
-        let code = Code::deserialize(StrDeserializer::<serde::de::value::Error>::new(
-            fields.next()?,
-        ))
-        .ok()?;
-        if fields.next().is_some() {
-            return None;
-        }
-        let (message, failure) = match content.split_once(" | ") {
+        let code = Code::deserialize(StrDeserializer::<serde::de::value::Error>::new(code)).ok()?;
+        let (message, failure) = match content.split_once(detail_separator) {
             Some((message, detail)) if status == Status::Failure => {
                 (message, Some(Failure::parse(detail)?))
             }
