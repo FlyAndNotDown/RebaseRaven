@@ -10,6 +10,7 @@ import {
   CopyIcon,
   FileIcon,
   FilePenIcon,
+  FilePenLineIcon,
   FileSearchIcon,
   FileXIcon,
   FilesIcon,
@@ -772,7 +773,7 @@ export function ChangesPane() {
                     disabled={!canAmend}
                     className="whitespace-nowrap"
                     onCheckedChange={(checked) => toggleAmend(checked === true)}
-                  >{t("git.ui.amend_last_commit")}</DropdownMenuCheckboxItem>
+                  ><FilePenLineIcon />{t("git.ui.amend_last_commit")}</DropdownMenuCheckboxItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
