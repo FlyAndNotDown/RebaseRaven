@@ -185,7 +185,7 @@
   },
   "deleteChange": {
     "title": "Delete changelist {{id}}?",
-    "action": "Delete empty changelist",
+    "action": "Delete changelist",
     "description": "This removes only your empty pending changelist. Changelists with opened or shelved files cannot be deleted.",
     "failed": "The changelist could not be deleted. Refresh to check whether files or a shelf were added."
   },

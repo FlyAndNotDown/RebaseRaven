@@ -54,6 +54,8 @@ export function P4Pending() {
   const currentResolve = resolving ?? p4.resolveRequest;
   const resolvingPath = currentResolve?.change === p4.selectedChange ? currentResolve.path : null;
   const openChanges = expanded ?? new Set(p4.selectedChange ? [p4.selectedChange] : []);
+  const changeToDelete = p4.pending.find((change) => change.id === deletingChange);
+  const canDeleteChange = changeToDelete != null && !changeToDelete.shelved && changeToDelete.files.length === 0;
   const dialogChange = changeDialog ? p4.pending.find((change) => change.id === changeDialog.id) : null;
 
   function openChangeDialog(change: P4Changelist, mode: ChangeDialogRequest["mode"]) {
@@ -372,7 +374,7 @@ export function P4Pending() {
                         >
                           <Undo2Icon />{t("p4.revert")}
                         </ContextMenuItem>
-                        {change.id !== "default" && change.files.length === 0 ? (
+                        {change.id !== "default" ? (
                           <ContextMenuItem variant="destructive" disabled={p4.busy} onClick={() => { setDeletingChange(change.id); setDeleteFailed(false); }}>
                             <Trash2Icon />{t("p4.deleteChange.action")}
                           </ContextMenuItem>
@@ -507,8 +509,8 @@ export function P4Pending() {
           {deleteFailed ? <p role="alert" className="text-sm text-destructive">{t("p4.deleteChange.failed")}</p> : null}
           <DialogFooter>
             <Button variant="outline" disabled={p4.busy} onClick={() => setDeletingChange(null)}>{t("common.cancel")}</Button>
-            <Button variant="destructive" disabled={p4.busy} onClick={async () => {
-              if (!deletingChange || p4.busy) return;
+            <Button variant="destructive" disabled={p4.busy || !canDeleteChange} onClick={async () => {
+              if (!deletingChange || p4.busy || !canDeleteChange) return;
               setDeleteFailed(false);
               if (await p4.deleteChange(deletingChange)) setDeletingChange(null);
               else setDeleteFailed(true);
