@@ -1338,7 +1338,17 @@ async fn p4_resolve_accept(
     path: String,
     mode: String,
 ) -> AppResult<()> {
-    blocking(move || p4::resolve_accept(&connection, &path, &mode)).await
+    blocking(move || {
+        let started = std::time::Instant::now();
+        let result = p4::resolve_accept(&connection, &path, &mode);
+        diagnostics::record_command(
+            diagnostics::Code::PerforceResolve,
+            started,
+            diagnostics::Status::of(&result),
+        );
+        result
+    })
+    .await
 }
 
 #[tauri::command]

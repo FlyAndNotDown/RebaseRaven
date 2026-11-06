@@ -1,5 +1,7 @@
 use super::*;
 
+use crate::diagnostics::{self, Code, Status};
+
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -166,6 +168,58 @@ fn remove_stale_locks(root: &Path, since: SystemTime) {
     }
 }
 
+fn diagnostic_code(args: &[&str], background: bool) -> Option<Code> {
+    let mut args = args.iter().copied();
+    while let Some(arg) = args.next() {
+        match arg {
+            "-c" | "-C" => {
+                args.next();
+            }
+            "--no-optional-locks" | "--literal-pathspecs" | "--no-pager" => {}
+            verb => {
+                return match verb {
+                    "status" => Some(Code::GitStatus),
+                    "diff" => Some(Code::GitDiff),
+                    "log" => Some(Code::GitHistory),
+                    "fetch" if background => Some(Code::GitBackgroundFetch),
+                    "fetch" => Some(Code::GitFetch),
+                    "pull" => Some(Code::GitPull),
+                    "push" => Some(Code::GitPush),
+                    "clone" => Some(Code::GitClone),
+                    "commit" => Some(Code::GitCommit),
+                    "add" => Some(Code::GitStage),
+                    "checkout" | "switch" | "restore" | "reset" | "clean" | "merge" | "rebase"
+                    | "revert" | "cherry-pick" => Some(Code::GitWorkspace),
+                    "stash" if !matches!(args.next(), Some("list" | "show")) => {
+                        Some(Code::GitStash)
+                    }
+                    _ => None,
+                }
+            }
+        }
+    }
+    None
+}
+
+fn record_output(args: &[&str], started: Instant, output: &AppResult<std::process::Output>) {
+    if let Some(code) = diagnostic_code(args, BACKGROUND.with(|flag| flag.get())) {
+        let status = match output {
+            Ok(output)
+                if output.status.success()
+                    || (code == Code::GitDiff
+                        && args.iter().any(|arg| {
+                            matches!(*arg, "--no-index" | "--exit-code" | "--quiet")
+                        })
+                        && output.status.code() == Some(1)) =>
+            {
+                Status::Success
+            }
+            _ => Status::Failure,
+        };
+        diagnostics::record_command(code, started, status);
+    }
+}
+
 pub(super) fn run_git(root: &Path, args: &[&str]) -> AppResult<std::process::Output> {
     run_git_env(root, args, &[])
 }
@@ -182,9 +236,12 @@ pub(super) fn run_git_env(
     for (key, value) in env {
         command.env(key, value);
     }
-    command
+    let started = Instant::now();
+    let output = command
         .output()
-        .map_err(|err| git_start_error(command.get_program(), err))
+        .map_err(|err| git_start_error(command.get_program(), err));
+    record_output(args, started, &output);
+    output
 }
 
 /// Runs git with `input` on stdin and returns the raw output, including a
@@ -202,6 +259,7 @@ pub(super) fn run_git_input_output(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    let started = Instant::now();
     let mut child = command
         .spawn()
         .map_err(|err| git_start_error(command.get_program(), err))?;
@@ -214,9 +272,12 @@ pub(super) fn run_git_input_output(
     });
     let output = child
         .wait_with_output()
-        .map_err(|err| AppError::msg(err.to_string()))?;
-    let _ = writer.join();
-    Ok(output)
+        .map_err(|err| AppError::msg(err.to_string()));
+    if output.is_ok() {
+        let _ = writer.join();
+    }
+    record_output(args, started, &output);
+    output
 }
 
 /// Runs git with `input` on stdin, so messages and path lists never hit the
@@ -283,6 +344,7 @@ pub(super) fn run_git_progress(
         }
     }
     let started = SystemTime::now();
+    let timer = Instant::now();
     let background = BACKGROUND.with(|flag| flag.get());
     let result = run_progress_command(
         &mut command,
@@ -290,6 +352,9 @@ pub(super) fn run_git_progress(
         background.then_some(ProgressLimits::BACKGROUND),
         &mut on_progress,
     );
+    if let Some(code) = diagnostic_code(args, background) {
+        diagnostics::record_command(code, timer, Status::of(&result));
+    }
     if !background && result.as_ref().is_err_and(|error| error.is_cancelled()) {
         if let Some(root) = root {
             remove_stale_locks(root, started);

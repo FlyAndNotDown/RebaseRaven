@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::diagnostics::{self, Code, Status};
 use crate::error::{AppError, AppResult, P4_LOGIN, P4_MISSING};
 
 struct P4Bin {
@@ -388,14 +389,30 @@ pub fn run_p4(env: &P4Env, args: &[&str], input: Option<&str>) -> AppResult<std:
     run_once(env, args, input)
 }
 
+fn diagnostic_code(args: &[&str]) -> Code {
+    let verb = args.iter().copied().find(|arg| !arg.starts_with('-'));
+    match verb {
+        Some("info") => Code::PerforceInfo,
+        Some("opened" | "fstat") => Code::PerforceStatus,
+        Some("changes" | "describe" | "filelog") => Code::PerforceHistory,
+        Some("diff" | "diff2") => Code::PerforceDiff,
+        Some("sync") if args.contains(&"-n") => Code::PerforceSyncPreview,
+        Some("sync") if !args.contains(&"-N") => Code::PerforceSync,
+        Some("submit") => Code::PerforceSubmit,
+        Some("change") if args.contains(&"-i") || args.contains(&"-d") => Code::PerforceChange,
+        Some("shelve" | "unshelve") => Code::PerforceShelf,
+        Some("revert") => Code::PerforceRevert,
+        Some(
+            "edit" | "add" | "delete" | "reopen" | "move" | "reconcile" | "integrate" | "undo",
+        ) if !args.contains(&"-n") => Code::PerforceOpen,
+        _ => Code::PerforceOperation,
+    }
+}
+
 pub fn run_p4_ok(env: &P4Env, args: &[&str], input: Option<&str>) -> AppResult<String> {
-    let started = std::time::Instant::now();
+    let started = Instant::now();
     let result = run_p4(env, args, input).and_then(finish);
-    crate::diagnostics::record_slow_or_failed(
-        crate::diagnostics::Code::PerforceOperation,
-        started,
-        &result,
-    );
+    diagnostics::record_command(diagnostic_code(args), started, Status::of(&result));
     result
 }
 
@@ -408,8 +425,11 @@ pub(super) fn run_p4_probe(env: &P4Env, args: &[&str], deadline: Instant) -> App
     if !matches!(args, ["set"] | ["-ztag", "info"]) {
         return Err(AppError::msg("That command is not a repository probe."));
     }
+    let started = Instant::now();
     let mut command = prepared(require_p4()?, env, args);
-    probe_output(&mut command, deadline).and_then(finish)
+    let result = probe_output(&mut command, deadline).and_then(finish);
+    diagnostics::record_command(Code::PerforceInfo, started, Status::of(&result));
+    result
 }
 
 /// Own the child until its result is collected, so a deadline never targets a
@@ -513,10 +533,14 @@ fn probe_child(
 
 /// `p4 diff` can exit non-zero when the files differ. A diff body is still a result.
 pub fn run_p4_diff(env: &P4Env, args: &[&str]) -> AppResult<String> {
-    let output = run_p4(env, args, None)?;
-    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-    finish_diff(output.status.success(), stdout, stderr)
+    let started = Instant::now();
+    let result = run_p4(env, args, None).and_then(|output| {
+        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        finish_diff(output.status.success(), stdout, stderr)
+    });
+    diagnostics::record_command(Code::PerforceDiff, started, Status::of(&result));
+    result
 }
 
 /// File previews are bounded independently of normal command and progress output.
@@ -576,8 +600,11 @@ pub fn run_p4_stream(
     args: &[&str],
     mut on_line: impl FnMut(String),
 ) -> AppResult<String> {
-    let (ok, stdout, stderr) = stream_once(env, args, &mut on_line)?;
-    finish_parts(ok, stdout, stderr)
+    let started = Instant::now();
+    let result = stream_once(env, args, &mut on_line)
+        .and_then(|(ok, stdout, stderr)| finish_parts(ok, stdout, stderr));
+    diagnostics::record_command(diagnostic_code(args), started, Status::of(&result));
+    result
 }
 
 fn finish(output: std::process::Output) -> AppResult<String> {

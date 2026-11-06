@@ -13,6 +13,8 @@ use tauri::{AppHandle, Manager};
 use crate::error::{AppError, AppResult};
 
 const FILE_BYTES: usize = 262_144;
+const RETENTION_DAYS: u64 = 7;
+const PRUNE_INTERVAL: Duration = Duration::from_secs(3600);
 const LOG_NAMES: [&str; 4] = [
     "events.jsonl",
     "events.1.jsonl",
@@ -35,7 +37,31 @@ pub enum Code {
     UpdateInstall,
     UpdateRestart,
     GitOperation,
+    GitStatus,
+    GitDiff,
+    GitHistory,
+    GitFetch,
+    GitBackgroundFetch,
+    GitPull,
+    GitPush,
+    GitClone,
+    GitCommit,
+    GitStage,
+    GitWorkspace,
+    GitStash,
     PerforceOperation,
+    PerforceInfo,
+    PerforceStatus,
+    PerforceHistory,
+    PerforceDiff,
+    PerforceSync,
+    PerforceSyncPreview,
+    PerforceResolve,
+    PerforceSubmit,
+    PerforceChange,
+    PerforceShelf,
+    PerforceRevert,
+    PerforceOpen,
     CredentialRequest,
     DiagnosticsExport,
 }
@@ -46,6 +72,16 @@ pub enum Status {
     Success,
     Failure,
     Cancelled,
+}
+
+impl Status {
+    pub fn of<T>(result: &AppResult<T>) -> Self {
+        match result {
+            Ok(_) => Self::Success,
+            Err(error) if error.is_cancelled() => Self::Cancelled,
+            Err(_) => Self::Failure,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -65,6 +101,7 @@ pub struct Summary {
     total_bytes: u64,
     file_count: usize,
     max_bytes: usize,
+    retention_days: u64,
 }
 
 #[derive(Serialize)]
@@ -86,9 +123,29 @@ pub fn initialize(app: &AppHandle) -> AppResult<()> {
         .name("local-diagnostics".into())
         .spawn(move || {
             let mut limiter = RateLimit::default();
-            for event in receiver {
-                if limiter.allow(event.code, event.status, Instant::now()) {
-                    let _ = Store::new(&directory).and_then(|store| store.append(&event));
+            let mut last_prune: Option<Instant> = None;
+            loop {
+                let event = match receiver.recv_timeout(PRUNE_INTERVAL) {
+                    Ok(event) => Some(event),
+                    Err(mpsc::RecvTimeoutError::Timeout) => None,
+                    Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                };
+                let now = Instant::now();
+                let prune = last_prune
+                    .is_none_or(|previous| now.duration_since(previous) >= PRUNE_INTERVAL);
+                let event = event.filter(|event| limiter.allow(event.code, event.status, now));
+                if prune {
+                    last_prune = Some(now);
+                }
+                if prune || event.is_some() {
+                    if let Ok(store) = Store::new(&directory) {
+                        if prune {
+                            let _ = store.prune(retention_cutoff());
+                        }
+                        if let Some(event) = event {
+                            let _ = store.append(&event);
+                        }
+                    }
                 }
             }
         })
@@ -101,13 +158,41 @@ pub fn initialize(app: &AppHandle) -> AppResult<()> {
 /// Successful fast reads stay quiet; failures and slow operations carry no input data.
 pub fn record_slow_or_failed<T>(code: Code, started: Instant, result: &AppResult<T>) {
     let elapsed = started.elapsed();
-    let status = match result {
-        Ok(_) if elapsed < Duration::from_secs(1) => return,
-        Ok(_) => Status::Success,
-        Err(error) if error.is_cancelled() => Status::Cancelled,
-        Err(_) => Status::Failure,
-    };
-    record(code, status, Some(elapsed));
+    if result.is_err() || elapsed >= Duration::from_secs(1) {
+        record(code, Status::of(result), Some(elapsed));
+    }
+}
+
+/// Mutations and explicit previews record their outcome even when fast.
+pub fn record_command(code: Code, started: Instant, status: Status) {
+    let passive = matches!(
+        code,
+        Code::GitStatus
+            | Code::GitDiff
+            | Code::GitHistory
+            | Code::GitBackgroundFetch
+            | Code::PerforceOperation
+            | Code::PerforceInfo
+            | Code::PerforceStatus
+            | Code::PerforceHistory
+            | Code::PerforceDiff
+    );
+    let elapsed = started.elapsed();
+    if !passive || status != Status::Success || elapsed >= Duration::from_secs(1) {
+        record(code, status, Some(elapsed));
+    }
+}
+
+fn unix_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .min(u128::from(MAX_TIMESTAMP_MS)) as u64
+}
+
+fn retention_cutoff() -> u64 {
+    unix_ms().saturating_sub(RETENTION_DAYS * 86_400_000)
 }
 
 /// Nonblocking and deliberately unable to accept paths, messages, or command output.
@@ -115,11 +200,7 @@ pub fn record(code: Code, status: Status, duration: Option<Duration>) {
     if let Some(sender) = EVENTS.get() {
         let _ = sender.try_send(Event {
             schema_version: 1,
-            time_unix_ms: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis()
-                .min(u128::from(MAX_TIMESTAMP_MS)) as u64,
+            time_unix_ms: unix_ms(),
             code,
             status,
             duration_ms: duration
@@ -255,6 +336,7 @@ impl Store {
             total_bytes,
             file_count,
             max_bytes: FILE_BYTES * LOG_NAMES.len(),
+            retention_days: RETENTION_DAYS,
         })
     }
 
@@ -288,6 +370,22 @@ impl Store {
             return Err(invalid_store());
         }
         Ok(Some(contents))
+    }
+
+    fn prune(&self, cutoff: u64) -> io::Result<()> {
+        for name in LOG_NAMES {
+            let Ok(Some(contents)) = self.read(name) else {
+                continue;
+            };
+            let (retained, _) = sanitize(&contents, cutoff);
+            let path = self.directory.join(name);
+            if retained.is_empty() {
+                fs::remove_file(path)?;
+            } else if retained != contents {
+                crate::fsutil::write_atomic(&path, &retained)?;
+            }
+        }
+        Ok(())
     }
 
     fn append(&self, event: &Event) -> io::Result<()> {
@@ -331,12 +429,15 @@ impl Store {
         let destination = parent.join(destination.file_name().ok_or_else(invalid_store)?);
         let mut entries = Vec::new();
         let mut skipped_entries = 0;
+        let cutoff = retention_cutoff();
         for name in LOG_NAMES {
             match self.read(name) {
                 Ok(Some(contents)) => {
-                    let (contents, skipped) = sanitize(&contents);
+                    let (contents, skipped) = sanitize(&contents, cutoff);
                     skipped_entries += skipped;
-                    entries.push((name, contents));
+                    if !contents.is_empty() {
+                        entries.push((name, contents));
+                    }
                 }
                 Ok(None) => {}
                 Err(_) => skipped_entries += 1,
@@ -352,7 +453,7 @@ impl Store {
             "skippedEntries": skipped_entries,
         });
         entries.push(("manifest.json", serde_json::to_vec_pretty(&manifest)?));
-        entries.push(("README.txt", b"Rebasely local diagnostics\n\nThis archive contains fixed diagnostic codes, timestamps, durations, app version, and platform only. No repository paths, remote URLs, usernames, credentials, command output, or original error messages are collected. Nothing is uploaded automatically. Review the archive before sharing it manually in an issue.\n".to_vec()));
+        entries.push(("README.txt", b"Rebasely local diagnostics\n\nThis archive contains fixed operation codes, outcomes, timestamps, durations, app version, and platform only. No repository paths, remote URLs, usernames, credentials, command output, or original error messages are collected. Nothing is uploaded automatically. Review the archive before sharing it manually in an issue.\n".to_vec()));
         let contents = archive::stored_zip(&entries)?;
         crate::fsutil::write_atomic(&destination, &contents)?;
         Ok(ExportResult {
@@ -381,7 +482,7 @@ fn invalid_store() -> io::Error {
     io::Error::other("Local diagnostics are unavailable.")
 }
 
-fn sanitize(contents: &[u8]) -> (Vec<u8>, usize) {
+fn sanitize(contents: &[u8], cutoff: u64) -> (Vec<u8>, usize) {
     let mut output = Vec::new();
     let mut skipped = 0;
     for line in contents
@@ -395,7 +496,7 @@ fn sanitize(contents: &[u8]) -> (Vec<u8>, usize) {
         };
         let Some(event) = event.filter(|event| {
             event.schema_version == 1
-                && event.time_unix_ms <= MAX_TIMESTAMP_MS
+                && (cutoff..=MAX_TIMESTAMP_MS).contains(&event.time_unix_ms)
                 && event
                     .duration_ms
                     .is_none_or(|duration| duration <= MAX_DURATION_MS)
@@ -422,7 +523,7 @@ mod tests {
     fn event() -> Event {
         Event {
             schema_version: 1,
-            time_unix_ms: 1,
+            time_unix_ms: unix_ms(),
             code: Code::UiReady,
             status: Status::Success,
             duration_ms: Some(42),
@@ -433,15 +534,37 @@ mod tests {
     fn exported_records_reject_extra_fields_unknown_codes_and_invalid_limits() {
         let valid = serde_json::to_string(&event()).unwrap();
         let contents = format!("{valid}\n{{\"schemaVersion\":1,\"timeUnixMs\":1,\"code\":\"uiReady\",\"status\":\"success\",\"path\":\"/private/example\"}}\n{{\"schemaVersion\":1,\"timeUnixMs\":1,\"code\":\"https://example.com\",\"status\":\"failure\"}}\nnot json\n");
-        let (sanitized, skipped) = sanitize(contents.as_bytes());
+        let (sanitized, skipped) = sanitize(contents.as_bytes(), 0);
         assert_eq!(skipped, 3);
         assert_eq!(String::from_utf8(sanitized).unwrap(), format!("{valid}\n"));
         let mut invalid = event();
         invalid.duration_ms = Some(MAX_DURATION_MS + 1);
-        assert_eq!(sanitize(&serde_json::to_vec(&invalid).unwrap()).1, 1);
+        assert_eq!(sanitize(&serde_json::to_vec(&invalid).unwrap(), 0).1, 1);
         invalid.duration_ms = None;
         invalid.schema_version = 2;
-        assert_eq!(sanitize(&serde_json::to_vec(&invalid).unwrap()).1, 1);
+        assert_eq!(sanitize(&serde_json::to_vec(&invalid).unwrap(), 0).1, 1);
+    }
+
+    #[test]
+    fn retention_prunes_expired_entries_from_active_and_rotated_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(&temp.path().join("logs")).unwrap();
+        let mut expired = event();
+        expired.time_unix_ms = 1;
+        store.append(&expired).unwrap();
+        let mut old_contents = serde_json::to_vec(&expired).unwrap();
+        old_contents.push(b'\n');
+        fs::write(store.directory.join(LOG_NAMES[1]), old_contents).unwrap();
+        let mut recent = event();
+        recent.code = Code::PerforceSync;
+        store.append(&recent).unwrap();
+
+        store.prune(retention_cutoff()).unwrap();
+
+        assert!(store.read(LOG_NAMES[1]).unwrap().is_none());
+        let retained = store.read(LOG_NAMES[0]).unwrap().unwrap();
+        let actual: Event = serde_json::from_slice(&retained).unwrap();
+        assert_eq!(actual.code, Code::PerforceSync);
     }
 
     #[test]
