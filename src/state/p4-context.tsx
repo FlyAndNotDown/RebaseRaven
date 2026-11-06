@@ -923,8 +923,11 @@ export function P4Provider({ children }: { children: ReactNode }) {
         await guard(current.connection, () => p4Api.resolveAccept(current.connection, path, mode));
         toast.success(mode === "merge" ? t("p4.merged") : mode === "yours" ? t("p4.acceptedYours") : t("p4.acceptedTheirs"));
         await reloadPending(current, current.selectedChange);
+        bumpFiles();
         return true;
       } catch (caught) {
+        await reloadPending(current).catch(() => {});
+        bumpFiles();
         report(caught);
         return false;
       } finally {
@@ -932,7 +935,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
         release();
       }
     },
-    [lockMutation, beginActivity, endActivity, guard, reloadPending, report],
+    [lockMutation, beginActivity, bumpFiles, endActivity, guard, reloadPending, report],
   );
 
   const revertUnchanged = useCallback(async () => {

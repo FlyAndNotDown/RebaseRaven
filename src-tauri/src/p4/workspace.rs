@@ -1796,6 +1796,8 @@ pub struct P4ResolveView {
     pub content: bool,
     /// False when the two sides could not be diffed. The choices still work.
     pub comparable: bool,
+    pub working_copy: bool,
+    pub pending_resolves: usize,
     pub diff: FileDiff,
 }
 
@@ -1806,24 +1808,18 @@ pub fn resolve_view(connection: &P4Connection, path: &str) -> AppResult<P4Resolv
     }
     let env = env_for(connection);
     let spec = workspace_file_spec(&connection.root, path);
-    let stdout = run_ok(&env, &["-ztag", "fstat", "-Or", &spec], None)?;
-    let record = parse_ztag(&stdout).into_iter().next().unwrap_or_default();
-    let mut facts = facts_from_fstat(&record, path);
-    if facts.from_file.is_empty() {
-        let preview = run_ok(&env, &["resolve", "-n", "-o", &spec], None).unwrap_or_default();
-        if let Some(parsed) = parse_resolve_preview(&preview) {
-            facts = parsed;
-        }
-    }
-    if facts.from_file.is_empty() && facts.action.is_empty() {
-        return Err(AppError::msg("This file does not need resolve."));
-    }
-    let (diff, comparable) = resolve_diff(&env, &facts);
+    // Unlike fstat -Or, this lists only resolves that still need a decision.
+    let preview = run_ok(&env, &["-ztag", "resolve", "-n", "-o", &spec], None)?;
+    let (facts, pending_resolves) = pending_resolve_facts(&preview, &spec)
+        .ok_or_else(|| AppError::msg("This file does not need resolve."))?;
+    let (diff, comparable, working_copy) = resolve_diff(&env, &facts);
     Ok(P4ResolveView {
         path: facts.depot.clone(),
         summary: resolve_summary(&facts),
         content: resolve_can_merge(&facts.action, &facts.kind),
         comparable,
+        working_copy,
+        pending_resolves,
         diff,
     })
 }
@@ -1842,10 +1838,12 @@ pub fn resolve_accept(connection: &P4Connection, path: &str, mode: &str) -> AppR
     let env = env_for(connection);
     let spec = workspace_file_spec(&connection.root, path);
     run_ok(&env, &["resolve", flag, &spec], None)?;
-    if mode == "merge" && resolve_still_open(&env, &spec)? {
-        return Err(AppError::msg(
-            "The merge has conflicts. Accept yours or theirs.",
-        ));
+    if resolve_still_open(&env, &spec)? {
+        return Err(AppError::msg(if mode == "merge" {
+            "The merge has conflicts. Accept yours or theirs."
+        } else {
+            "This file still needs resolve."
+        }));
     }
     Ok(())
 }
@@ -1861,29 +1859,34 @@ struct ResolveFacts {
     base_rev: String,
 }
 
-fn facts_from_fstat(record: &ZtagRecord, fallback_path: &str) -> ResolveFacts {
-    let depot = field(record, "depotFile");
-    ResolveFacts {
-        depot: if depot.starts_with("//") {
-            depot
+fn pending_resolve_facts(text: &str, depot: &str) -> Option<(ResolveFacts, usize)> {
+    let mut records = parse_ztag(text)
+        .into_iter()
+        .filter(|record| record.contains_key("clientFile") && record.contains_key("resolveType"));
+    if let Some(record) = records.next() {
+        let action = field(&record, "resolveType");
+        let content_kind = field(&record, "contentResolveType");
+        let kind = if content_kind.is_empty() {
+            action.clone()
         } else {
-            fallback_path.to_string()
-        },
-        action: first_field(record, &["resolveAction0", "resolveAction"]),
-        kind: first_field(record, &["resolveType0", "resolveType"]),
-        from_file: first_field(record, &["resolveFromFile0", "resolveFromFile"]),
-        start_rev: first_field(record, &["resolveStartFromRev0", "resolveStartFromRev"]),
-        end_rev: first_field(record, &["resolveEndFromRev0", "resolveEndFromRev"]),
-        base_file: first_field(record, &["resolveBaseFile0", "resolveBaseFile"]),
-        base_rev: first_field(record, &["resolveBaseRev0", "resolveBaseRev"]),
+            content_kind
+        };
+        let facts = ResolveFacts {
+            depot: depot.to_string(),
+            action,
+            kind,
+            from_file: field(&record, "fromFile"),
+            start_rev: field(&record, "startFromRev"),
+            end_rev: field(&record, "endFromRev"),
+            base_file: field(&record, "baseFile"),
+            base_rev: field(&record, "baseRev"),
+        };
+        return Some((facts, 1 + records.count()));
     }
-}
-
-fn first_field(record: &ZtagRecord, keys: &[&str]) -> String {
-    keys.iter()
-        .map(|key| field(record, key))
-        .find(|value| !value.is_empty())
-        .unwrap_or_default()
+    let mut facts = parse_resolve_preview(text)?;
+    facts.depot = depot.to_string();
+    let count = text.lines().filter(|line| line.contains(" - ")).count();
+    Some((facts, count))
 }
 
 fn parse_resolve_preview(text: &str) -> Option<ResolveFacts> {
@@ -2023,10 +2026,10 @@ fn resolve_can_merge(action: &str, kind: &str) -> bool {
     if kind.contains("binary") || kind.contains("delete") || action == "delete" {
         return false;
     }
-    kind.contains("content") || action == "merge" || action == "edit"
+    kind.contains("content") || action == "content" || action == "merge" || action == "edit"
 }
 
-fn resolve_diff(env: &P4Env, facts: &ResolveFacts) -> (FileDiff, bool) {
+fn resolve_diff(env: &P4Env, facts: &ResolveFacts) -> (FileDiff, bool, bool) {
     let depot = facts.depot.clone();
     let end = if facts.end_rev.is_empty() {
         facts.start_rev.clone()
@@ -2034,13 +2037,18 @@ fn resolve_diff(env: &P4Env, facts: &ResolveFacts) -> (FileDiff, bool) {
         facts.end_rev.clone()
     };
     if !depot.starts_with("//") || facts.from_file.is_empty() || end.is_empty() {
-        return (empty_diff(&depot), false);
+        return (empty_diff(&depot), false, false);
     }
-    let yours = format!("{depot}#have");
-    let theirs = format!("{}#{end}", facts.from_file);
-    match cli::run_p4_diff(env, &["diff2", "-du", &yours, &theirs]) {
-        Ok(text) => (parse_single_diff(&text, &depot), true),
-        Err(_) => (empty_diff(&depot), false),
+    let incoming = format!("{}#{end}", facts.from_file);
+    if depot == facts.from_file {
+        if let Ok(text) = cli::run_p4_diff(env, &["diff", "-du", "-f", &incoming]) {
+            return (parse_single_diff(&text, &depot), true, true);
+        }
+    }
+    let have = format!("{depot}#have");
+    match cli::run_p4_diff(env, &["diff2", "-du", &have, &incoming]) {
+        Ok(text) => (parse_single_diff(&text, &depot), true, false),
+        Err(_) => (empty_diff(&depot), false, false),
     }
 }
 
@@ -4718,25 +4726,31 @@ Description:
     }
 
     #[test]
-    fn resolve_summary_names_the_source_and_base() {
-        let facts = facts_from_fstat(
-            &record(&[
-                ("depotFile", "//depot/main/app.ini"),
-                ("resolveAction0", "merge"),
-                ("resolveType0", "content"),
-                ("resolveFromFile0", "//depot/dev/app.ini"),
-                ("resolveStartFromRev0", "4"),
-                ("resolveEndFromRev0", "7"),
-                ("resolveBaseFile0", "//depot/dev/app.ini"),
-                ("resolveBaseRev0", "3"),
-            ]),
-            "//depot/main/app.ini",
-        );
+    fn resolve_summary_names_the_pending_source_and_base() {
+        let tagged = "\
+... clientFile /fixture/main/app.ini
+... fromFile //depot/dev/app.ini
+... startFromRev 4
+... endFromRev 7
+... baseFile //depot/dev/app.ini
+... baseRev 3
+... resolveType content
+... contentResolveType 3waytext
+
+... clientFile /fixture/main/app.ini
+... fromFile //depot/dev/app.ini
+... endFromRev 8
+... resolveType filetype
+";
+        let (facts, count) = pending_resolve_facts(tagged, "//depot/main/app.ini").unwrap();
+        assert_eq!(count, 2);
+        assert_eq!(facts.depot, "//depot/main/app.ini");
         assert!(resolve_can_merge(&facts.action, &facts.kind));
         assert_eq!(
             resolve_summary(&facts),
             "Merging //depot/dev/app.ini#4,#7 using base //depot/dev/app.ini#3"
         );
+        assert!(pending_resolve_facts("", "//depot/main/app.ini").is_none());
     }
 
     #[test]

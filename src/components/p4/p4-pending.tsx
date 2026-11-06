@@ -228,7 +228,7 @@ export function P4Pending() {
           <>
             <ContextMenuItem
               disabled={p4.busy}
-              onClick={() => {
+              onSelect={() => {
                 chooseFile(file.change, file.path, false);
                 setResolving({ change: file.change, path: file.path });
               }}
@@ -483,17 +483,14 @@ export function P4Pending() {
         </ResizablePanel>
         <ResizableHandle />
         <ResizablePanel id="p4-diff" defaultSize="58%" minSize="30%">
-          {resolvingPath ? (
-            <P4Resolve key={resolvingPath} path={resolvingPath} onResolved={closeResolution} />
-          ) : (
-            <P4Diff
-              diff={p4.diff}
-              loading={p4.diffLoading}
-              empty={p4.selectedFile ? t("p4.noDifferencesInThisFile") : t("p4.selectAFileToSeeItsDiff")}
-            />
-          )}
+          <P4Diff
+            diff={p4.diff}
+            loading={p4.diffLoading}
+            empty={p4.selectedFile ? t("p4.noDifferencesInThisFile") : t("p4.selectAFileToSeeItsDiff")}
+          />
         </ResizablePanel>
       </ResizablePanelGroup>
+      {resolvingPath ? <P4Resolve key={resolvingPath} path={resolvingPath} onClose={closeResolution} /> : null}
       {changeDialog ? (
         <P4ChangeDialog
           key={`${changeDialog.mode}:${changeDialog.id}`}

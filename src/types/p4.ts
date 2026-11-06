@@ -48,6 +48,8 @@ export interface P4ResolveView {
   summary: string;
   content: boolean;
   comparable: boolean;
+  workingCopy: boolean;
+  pendingResolves: number;
   diff: FileDiff;
 }
 
