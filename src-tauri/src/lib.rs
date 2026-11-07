@@ -1549,6 +1549,23 @@ async fn p4_delete_change(connection: p4::P4Connection, change_id: String) -> Ap
 }
 
 #[tauri::command]
+async fn p4_file_properties(
+    connection: p4::P4Connection,
+    paths: Vec<String>,
+) -> AppResult<p4::P4FilePropertiesView> {
+    blocking(move || p4::file_properties(&connection, &paths)).await
+}
+
+#[tauri::command]
+async fn p4_change_file_types(
+    connection: p4::P4Connection,
+    request: p4::P4FileTypeRequest,
+    fingerprint: String,
+) -> AppResult<()> {
+    blocking(move || p4::change_file_types(&connection, &request, &fingerprint)).await
+}
+
+#[tauri::command]
 async fn p4_move_file(
     connection: p4::P4Connection,
     source: String,
@@ -2286,6 +2303,8 @@ pub fn run() {
             p4_new_change,
             p4_delete_change,
             p4_move_file,
+            p4_file_properties,
+            p4_change_file_types,
             p4_reopen,
             p4_revert,
             p4_revert_unchanged,

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
-import { ArrowRightLeftIcon, DownloadIcon, FilePenIcon, FolderIcon, FolderOpenIcon, FolderSearchIcon, FolderTreeIcon, GitMergeIcon, HistoryIcon, PlusIcon, Trash2Icon, Undo2Icon } from "lucide-react";
+import { ArrowRightLeftIcon, DownloadIcon, FilePenIcon, InfoIcon, Settings2Icon, FolderIcon, FolderOpenIcon, FolderSearchIcon, FolderTreeIcon, GitMergeIcon, HistoryIcon, PlusIcon, Trash2Icon, Undo2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { FileTree, FileTreeFilter, FilteredFileTree, type FileTreeEntry } from "@/components/file-tree";
 import { FileStatusIcon } from "@/components/p4/file-status-icon";
 import { FileStatusTip } from "@/components/p4/file-status-tip";
 import { P4GetRevisionDialog, type P4RevisionTarget } from "@/components/p4/p4-get-revision-dialog";
+import { P4FilePropertiesDialog } from "@/components/p4/p4-file-properties";
 import { P4MoveDialog } from "@/components/p4/p4-move-dialog";
 import { P4OperationDialog } from "@/components/p4/p4-operation-dialog";
 import type { P4OperationKind } from "@/lib/p4-operation-preview";
@@ -34,6 +35,7 @@ import type { P4Connection, P4DirEntry, P4EntryStatus } from "@/types/p4";
 export function P4Files() {
   const { t } = useTranslation();
   const p4 = useP4();
+  const [properties, setProperties] = useState<{ paths: string[]; edit: boolean } | null>(null);
   const [moving, setMoving] = useState<string | null>(null);
   const [operation, setOperation] = useState<{ kind: P4OperationKind; path: string; depot: boolean } | null>(null);
   const root = p4.connection?.root ?? "";
@@ -135,6 +137,9 @@ export function P4Files() {
           <HistoryIcon />{t("p4.getRevision")}</ContextMenuItem>
         {entry.dir ? <ContextMenuItem disabled={p4.busy} onClick={() => p4.openIntegration(mode === "depot" ? {source:path} : {target:`//${connection?.client}/${relativeToRoot(root,entry.path).replace(/\/+$/, "")}${relativeToRoot(root,entry.path) ? "/" : ""}...`})}><GitMergeIcon />{t("p4.integration.title")}</ContextMenuItem> : null}
         {!entry.dir ? <>
+          <ContextMenuItem onSelect={() => setProperties({ paths: [entry.path], edit: false })}><InfoIcon />{t("p4.properties.title")}</ContextMenuItem>
+          <ContextMenuItem disabled={p4.busy} onSelect={() => setProperties({ paths: [entry.path], edit: true })}><Settings2Icon />{t("p4.properties.editTitle")}</ContextMenuItem>
+          <ContextMenuSeparator />
           <ContextMenuItem disabled={p4.busy} onClick={() => setOperation({ kind: "integrate", path: entry.path, depot: mode === "depot" })}>
             <GitMergeIcon />{t(mode === "workspace" ? "p4-operations.integrate.intoMenu" : "p4-operations.integrate.title")}
           </ContextMenuItem>
@@ -176,6 +181,7 @@ export function P4Files() {
 
   return (
     <>
+      {properties ? <P4FilePropertiesDialog key={`${connectionKey}:${JSON.stringify(properties)}`} {...properties} onClose={() => setProperties(null)} /> : null}
       {moving ? <P4MoveDialog key={`${connectionKey}:${moving}`} source={moving} onClose={() => setMoving(null)} onMoved={(destination) => {
         const path = joinRoot(root, pathsIgnoreCase() ? destination.replace(/\\/g, "/") : destination);
         setQuery("");

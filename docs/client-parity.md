@@ -43,8 +43,8 @@ verification of every option or platform.
 | --- | --- | --- |
 | Connect, authenticate, create/select workspace | `p4/workspace.rs` | Audit connection switching and workspace lifecycle |
 | Workspace root, mappings and options | `p4/client.rs` | Audit advanced fields and safe mapping changes |
-| Depot/workspace browser and search | `p4/workspace.rs` | Audit deleted files, filters, file properties and status freshness |
-| Add, edit, delete, move, reopen, lock | `p4/workspace.rs` | File-type changes and richer properties are missing |
+| Depot/workspace browser and search | `p4/workspace.rs` | Audit deleted files, filters and status freshness |
+| Add, edit, delete, move, reopen, lock | `p4/workspace.rs`; `p4/properties.rs` adds file inspection and pending type changes | Live file-type checks pass; native dialog/provider transitions and larger batches remain to audit |
 | Pending/submitted changelists and submit | `p4/workspace.rs` | Audit submit options and changelist editing |
 | Sync and get revision | `p4/workspace.rs` | Audit preview, safe/forced updates and label removal behavior |
 | Offline reconcile and revert unchanged | `p4/review.rs`, `p4/workspace.rs` | Clean/restore workspace preview needs inspection |
@@ -227,3 +227,28 @@ area. Do not infer full parity from a passing test suite or this inventory.
   424 frontend tests passing. Rust formatting, Clippy and tests pass: 321 passed
   and one existing unrelated test ignored. These checks do not establish
   complete client parity.
+
+
+### Perforce file properties and types
+
+- Workspace/depot files and opened pending files expose a shared properties
+  dialog. It shows depot/local paths, pending and head types, have/head revisions,
+  changelists, depot size/digest/timestamps, and other-client opens and locks.
+- Single or selected pending files can change type. Full types replace omitted
+  flags, while partial modifiers extend the current type. Opened files retain
+  their changelists; unopened mapped files are checked out in a chosen own pending
+  changelist. Changes remain pending and never submit automatically.
+- Inspection is bounded to 200 exact files. Connection, client form, server
+  metadata and local file metadata bind an apply to its inspected state. Unmapped,
+  missing, unsynced, unresolved, deleted or differently owned files cannot be
+  retyped. Native acknowledgements and refreshed properties confirm the result,
+  including default storage modifiers omitted by fstat. Partial failures refresh
+  actual pending state without attempting an unsafe rollback.
+- Seven Rust tests cover validation, stale state, blocked files, changelist
+  preservation, native acknowledgement and storage normalization. Eight live P4
+  scenarios cover reserved file names, mixed batches, full/partial modifiers,
+  local/server changes, other-client opens/locks, unchanged bytes and no submit.
+- Source, website, version, type, lint and frontend build checks pass, with 424
+  frontend tests passing. Rust formatting, Clippy and tests pass: 328 passed and
+  one existing unrelated test ignored. Browser control timed out, so visual UI
+  checks and native/provider transitions remain unverified for this dialog.
