@@ -2073,6 +2073,10 @@ pub fn manual_resolve_apply(
     #[cfg(windows)]
     if original_permissions.readonly() {
         let mut writable = original_permissions.clone();
+        #[allow(
+            clippy::permissions_set_readonly_false,
+            reason = "This Windows-only branch clears a DOS attribute, not Unix permission bits"
+        )]
         writable.set_readonly(false);
         fs::set_permissions(&local, writable)?;
     }
