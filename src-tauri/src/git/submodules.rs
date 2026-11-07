@@ -193,9 +193,12 @@ pub fn update_submodules_with_options(
     on_progress: impl FnMut(&str) + Send,
 ) -> AppResult<WorkspaceSnapshot> {
     let _lock = SubmoduleLock::acquire(repo)?;
-    let specs = selected_paths(repo, paths)?;
+    let specs: Vec<_> = selected_paths(repo, paths)?
+        .iter()
+        .map(|path| literal_submodule_pathspec(path))
+        .collect();
     let mut args = vec![
-        "--literal-pathspecs",
+        "--no-literal-pathspecs",
         "submodule",
         "update",
         "--init",
@@ -355,6 +358,11 @@ fn selected_paths(repo: &Repository, paths: &[String]) -> AppResult<Vec<String>>
             }
         })
         .collect()
+}
+
+// Keep literal selection in each argument across legacy submodule script dispatch.
+fn literal_submodule_pathspec(path: &str) -> String {
+    format!(":(top,literal){path}")
 }
 
 fn child_repo(repo: &Repository, path: &str) -> AppResult<Option<Repository>> {
@@ -617,8 +625,11 @@ pub fn sync_submodules(
     recursive: bool,
 ) -> AppResult<WorkspaceSnapshot> {
     let _lock = SubmoduleLock::acquire(repo)?;
-    let paths = selected_paths(repo, paths)?;
-    let mut args = vec!["--literal-pathspecs", "submodule", "sync"];
+    let paths: Vec<_> = selected_paths(repo, paths)?
+        .iter()
+        .map(|path| literal_submodule_pathspec(path))
+        .collect();
+    let mut args = vec!["--no-literal-pathspecs", "submodule", "sync"];
     if recursive {
         args.push("--recursive");
     }
@@ -747,16 +758,17 @@ pub fn remove_submodule(
         return Err(AppError::msg("The submodule has local changes. Review the preview and enable force removal to discard them."));
     }
     let path = preview.module.path;
+    let pathspec = literal_submodule_pathspec(&path);
     let directory = repo.workdir().join(&path);
     if directory.join(".git").is_dir() {
         run_git_stdout(
             repo.workdir(),
             &[
-                "--literal-pathspecs",
+                "--no-literal-pathspecs",
                 "submodule",
                 "absorbgitdirs",
                 "--",
-                &path,
+                &pathspec,
             ],
         )?;
     }
@@ -779,11 +791,11 @@ pub fn remove_submodule(
         check.extend(["--", &path]);
         run_git_stdout(repo.workdir(), &check)?;
     }
-    let mut args = vec!["--literal-pathspecs", "submodule", "deinit"];
+    let mut args = vec!["--no-literal-pathspecs", "submodule", "deinit"];
     if force {
         args.push("--force");
     }
-    args.extend(["--", &path]);
+    args.extend(["--", &pathspec]);
     run_git_stdout(repo.workdir(), &args)?;
     if matches!(kind, SubmoduleRemovalKind::Remove) {
         let mut remove = vec!["--literal-pathspecs", "rm"];

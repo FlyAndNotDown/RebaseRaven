@@ -204,20 +204,80 @@ fn submodule_updates_distinguish_recorded_remote_merge_rebase_and_literal_paths(
     let source = repository(&temp.path().join("source"));
     let base = head_oid(&source).unwrap();
     let mut repo = repository(&temp.path().join("parent"));
+    add(&mut repo, source.workdir(), "libraries/a", "other-core");
     add(
         &mut repo,
         source.workdir(),
         "libraries/[ab]",
         "literal-core",
     );
-    add(&mut repo, source.workdir(), "libraries/a", "other-core");
     commit_parent(&repo);
     commit_file(source.workdir(), "value.txt", "two\n", "Remote change");
     let remote = head_oid(&source).unwrap();
-    let paths = vec!["libraries/[ab]".into()];
+    let paths: Vec<String> = vec!["libraries/[ab]".into()];
     let child_root = repo.workdir().join(&paths[0]);
     let child = open_at(&child_root).unwrap();
     let other = open_at(&repo.workdir().join("libraries/a")).unwrap();
+    let settings = submodule_settings(&repo, &paths[0]).unwrap();
+    edit_submodule(
+        &mut repo,
+        &paths[0],
+        source.workdir().to_str().unwrap(),
+        Some("."),
+        &settings.fingerprint,
+    )
+    .unwrap();
+    assert_eq!(
+        submodule_settings(&repo, &paths[0])
+            .unwrap()
+            .module
+            .branch
+            .as_deref(),
+        Some(".")
+    );
+    assert_eq!(
+        submodule_settings(&repo, "libraries/a")
+            .unwrap()
+            .module
+            .branch
+            .as_deref(),
+        Some("main")
+    );
+    let settings = submodule_settings(&repo, &paths[0]).unwrap();
+    edit_submodule(
+        &mut repo,
+        &paths[0],
+        source.workdir().to_str().unwrap(),
+        Some("main"),
+        &settings.fingerprint,
+    )
+    .unwrap();
+    let original_url = run_git_stdout(other.workdir(), &["remote", "get-url", "origin"]).unwrap();
+    let unrelated_url = "https://example.invalid/unchanged.git";
+    for root in [child.workdir(), other.workdir()] {
+        run_git_stdout(root, &["config", "remote.origin.url", unrelated_url]).unwrap();
+    }
+    sync_submodules(&mut repo, &paths, false).unwrap();
+    assert_eq!(
+        run_git_stdout(child.workdir(), &["remote", "get-url", "origin"]).unwrap(),
+        original_url
+    );
+    assert_eq!(
+        String::from_utf8_lossy(
+            &run_git_stdout(other.workdir(), &["remote", "get-url", "origin"]).unwrap()
+        )
+        .trim(),
+        unrelated_url
+    );
+    run_git_stdout(
+        other.workdir(),
+        &[
+            "config",
+            "remote.origin.url",
+            String::from_utf8_lossy(&original_url).trim(),
+        ],
+    )
+    .unwrap();
     update_submodules(&mut repo, &paths, |_| {}).unwrap();
     assert_eq!(head_oid(&child).as_deref(), Some(base.as_str()));
     let mut options = SubmoduleUpdateOptions {
@@ -292,6 +352,19 @@ fn submodule_updates_distinguish_recorded_remote_merge_rebase_and_literal_paths(
             .is_err()
     );
     assert!(update_submodules(&mut repo, &[String::new()], |_| {}).is_err());
+    let preview =
+        preview_submodule_removal(&repo, &paths[0], &SubmoduleRemovalKind::Deinit, true).unwrap();
+    remove_submodule(
+        &mut repo,
+        &paths[0],
+        &SubmoduleRemovalKind::Deinit,
+        true,
+        &preview.fingerprint,
+    )
+    .unwrap();
+    assert!(!child_root.join(".git").exists());
+    assert!(other.workdir().join(".git").is_file());
+    assert_eq!(head_oid(&other).as_deref(), Some(base.as_str()));
 }
 
 #[test]

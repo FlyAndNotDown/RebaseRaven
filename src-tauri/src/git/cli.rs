@@ -176,7 +176,10 @@ fn diagnostic_command<'a, 'b>(
     while let Some((arg, rest)) = args.split_first() {
         match *arg {
             "-c" | "-C" => args = rest.get(1..)?,
-            "--no-optional-locks" | "--literal-pathspecs" | "--no-pager" => args = rest,
+            "--no-optional-locks"
+            | "--literal-pathspecs"
+            | "--no-literal-pathspecs"
+            | "--no-pager" => args = rest,
             verb => {
                 let code = match verb {
                     "status" => Code::GitStatus,
