@@ -48,12 +48,12 @@ verification of every option or platform.
 | Offline reconcile and revert unchanged | `p4/review.rs`, `p4/workspace.rs` | Clean/restore workspace preview needs inspection |
 | Shelves and restore | `p4/shelves.rs` | Audit selective shelf replacement/deletion and cross-stream behavior |
 | Resolve and internal/external merge | `p4/workspace.rs` | Audit non-content resolve types and interactive choices |
-| Integrate and undo | `p4/operations.rs` | Directory integration and named branch mappings are missing |
+| Integrate and undo | `p4/operations.rs`; `p4/integration.rs` adds folder and named mapping integration | Live P4 checks pass; native QA of the new integration dialog is pending while the host is locked |
 | Stream merge/copy and switch | `p4/streams.rs`, `p4/switch.rs` | Audit stream create/edit/delete and stream-spec changes |
 | Stream relationships | `p4-streams.tsx` | Audit flow rules and visualization consistency |
 | File history, comparisons, blame, images | `p4/history.rs`, `p4/images.rs` | Audit integration lineage graph and folder comparison |
 | Labels | `p4/specs.rs`, `p4-specs.tsx`: browse, filters, CRUD, automatic/static revisions, previewed tag updates, files, sync entry | Live P4 and native macOS verified; global/edge label options and larger datasets remain to audit |
-| Classic branch mappings | `p4/specs.rs`, shared specification browser/editor | CRUD verified against live P4 and native macOS; named mapping integration remains missing |
+| Classic branch mappings | `p4/specs.rs`, shared specification browser/editor | CRUD verified against live P4 and native macOS; named mapping integration is implemented and live P4 verified, with new-dialog native QA pending |
 | Jobs and changelist fixes | No command surface found | Native P4 job/fix operations remain to be audited |
 
 ## Verification contract
@@ -85,3 +85,25 @@ area. Do not infer full parity from a passing test suite or this inventory.
   quoted in a Perforce form to avoid becoming a comment.
 - Label previews stop at 512 KiB of output or 30 seconds. Browsing returns an
   explicit truncation state after 200 specifications or 500 label files.
+
+### Folder and named mapping integration
+
+- Source/target patterns, named branch mappings, reverse mappings, source file
+  revision/changelist ranges, reintegration and pending-changelist selection are
+  implemented. Entry points include folder context menus, the command palette
+  and the branch mapping inspector.
+- Preview and apply bind the source revisions, branch/client forms, target file
+  state and selected changelist. Offline edits, missing tracked files and local
+  collisions block the operation; opened edits in the selected changelist enter
+  the existing resolve workflow. A successful process exit is followed by an
+  explicit check that all planned targets were opened in that changelist.
+- Ten live P4 check groups cover both mapping methods, branch/edit/delete,
+  read-only previews, stale approvals, argument validation, local collisions,
+  changelist ownership, concurrent map/source/local changes, range selection,
+  reverse/reintegration previews, application, resolve and restoring the baseline.
+- Frontend checks and 422 tests pass. Rust formatting, Clippy and 294 tests pass,
+  with the existing unrelated test ignored.
+- The integration file preview is shared with stream merge/copy, virtualized,
+  and uses localized action labels. Native visual checks of these new screens
+  remain pending because the host locked during the iteration. A clean build
+  alone is not evidence that these visual checks passed.

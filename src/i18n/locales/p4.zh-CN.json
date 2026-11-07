@@ -498,5 +498,35 @@
     },
     "updating": "正在更新 Perforce 规格",
     "applyTags": "应用标记"
+  },
+  "integration": {
+    "title": "合并／集成",
+    "method": "集成方式",
+    "paths": "文件路径",
+    "useMapping": "使用此映射集成",
+    "sourcePlaceholder": "//depot/main/...",
+    "mapping": "分支映射",
+    "chooseMapping": "选择分支映射",
+    "reverse": "反向使用分支映射",
+    "target": "当前工作区中的目标路径",
+    "limitRange": "限制源修订范围",
+    "rangeKind": "源范围类型",
+    "from": "起始修订或变更列表",
+    "to": "结束修订或变更列表",
+    "force": "包含已集成的修订",
+    "forceHint": "即使之前已经集成，也再次安排所选的源修订。",
+    "reviewPending": "查看待提交文件",
+    "saveDescription": "请先保存当前变更列表的描述，再进行集成。",
+    "actions": {
+      "add": "新增",
+      "edit": "编辑",
+      "delete": "删除",
+      "branch": "分支",
+      "integrate": "集成",
+      "move_add": "移入",
+      "move_delete": "移出",
+      "updated": "更新",
+      "refresh": "刷新"
+    }
   }
 }

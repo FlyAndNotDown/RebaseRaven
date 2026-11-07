@@ -71,7 +71,13 @@
     "tagSource": "Choose a supported label source.",
     "tagLocked": "Use an unlocked static label to change tagged files.",
     "tagLimit": "Too many label changes. Choose a narrower path.",
-    "tagTimeout": "Label preview timed out. Choose a narrower path and retry."
+    "tagTimeout": "Label preview timed out. Choose a narrower path and retry.",
+    "integrationRange": "Choose revisions or changelists for the integration range.",
+    "integrationMethod": "Choose file paths or a named branch mapping.",
+    "integrationChange": "Move integration targets to the selected changelist first.",
+    "integrationOffline": "Reconcile or preserve offline target changes before integrating.",
+    "integrationLimit": "Too many integration targets. Choose a narrower path.",
+    "integrationPartial": "Some integrations were not opened in the selected changelist. Review pending files before retrying."
   },
   "connectionRequired": "Reconnect this workspace before continuing.",
   "workspaceBusy": "Wait for the current workspace operation to finish.",

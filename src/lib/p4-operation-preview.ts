@@ -4,6 +4,13 @@ import { t } from "@/i18n";
 export type P4OperationKind = "integrate" | "undo";
 
 const operationErrors: Record<string, string> = {
+  "Choose revisions or changelists for the integration range.": "integrationRange",
+  "Choose file paths or a named branch mapping.": "integrationMethod",
+  "Move integration targets to the selected changelist first.": "integrationChange",
+  "Reconcile or preserve offline target changes before integrating.": "integrationOffline",
+  "Too many integration targets. Choose a narrower path.": "integrationLimit",
+  "Some integrations were not opened in the selected changelist. Review pending files before retrying.": "integrationPartial",
+
   "Label preview timed out. Choose a narrower path and retry.": "tagTimeout",
   "Enter one Perforce object name without wildcards.": "specName",
   "The selected Perforce object no longer exists.": "specMissing",

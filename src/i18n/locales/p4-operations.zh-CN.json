@@ -71,7 +71,13 @@
     "tagSource": "请选择支持的标签来源。",
     "tagLocked": "请使用未锁定的静态标签修改文件标记。",
     "tagLimit": "标签变更过多，请缩小路径范围。",
-    "tagTimeout": "标签预览超时，请缩小路径范围后重试。"
+    "tagTimeout": "标签预览超时，请缩小路径范围后重试。",
+    "integrationRange": "请选择修订或变更列表范围。",
+    "integrationMethod": "请选择文件路径或命名分支映射。",
+    "integrationChange": "请先将目标文件移到所选的变更列表。",
+    "integrationOffline": "集成前请先整理或保存目标中的离线修改。",
+    "integrationLimit": "集成目标过多，请缩小路径范围。",
+    "integrationPartial": "部分集成未能进入所选的变更列表，请检查待提交文件后重试。"
   },
   "connectionRequired": "请重新连接此工作区后继续。",
   "workspaceBusy": "请等待当前工作区操作完成。",

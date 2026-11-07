@@ -3,8 +3,12 @@ mod client;
 pub use client::{save_workspace, workspace_settings, P4WorkspaceEdit, P4WorkspaceSettings};
 mod history;
 mod images;
+mod integration;
 pub use history::{annotate, compare_files, P4BlameLine, P4CompareRequest, P4Comparison};
 pub use images::{image_pair, P4ImageSource};
+pub use integration::{
+    apply_integration, preview_integration, P4IntegrationPreview, P4IntegrationRequest,
+};
 mod operations;
 mod parse;
 mod review;

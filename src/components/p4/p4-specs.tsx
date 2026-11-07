@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDownIcon, DownloadIcon, GitBranchIcon, InfoIcon, LoaderCircleIcon, LockKeyholeIcon, PencilIcon, PlusIcon, RefreshCwIcon, TagIcon, Trash2Icon } from "lucide-react";
+import { ChevronDownIcon, DownloadIcon, GitBranchIcon, GitMergeIcon, InfoIcon, LoaderCircleIcon, LockKeyholeIcon, PencilIcon, PlusIcon, RefreshCwIcon, TagIcon, Trash2Icon } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -101,6 +101,7 @@ function SpecInspector({kind, name, onEdit, onDeleted}: {kind:P4SpecKind; name:s
       <p className="whitespace-pre-wrap break-words text-sm">{spec.description}</p>
       {spec.revision ? <div className="flex items-center gap-2 text-xs"><span className="text-muted-foreground">{t("p4.specs.autoRevision")}</span><code className="rounded border px-2 py-1">{spec.revision}</code></div> : null}
       <div className="overflow-hidden rounded-lg border"><p className="border-b bg-muted/20 px-3 py-2 text-xs font-medium">{t("p4.specs.view")}</p><pre className="overflow-auto p-3 font-mono text-xs leading-relaxed">{spec.view.join("\n")}</pre></div>
+      {kind === "branch" ? <Button variant="outline" size="sm" className="justify-self-start" disabled={p4.busy} onClick={() => p4.openIntegration({branch:spec.name})}><GitMergeIcon />{t("p4.integration.useMapping")}</Button> : null}
       {kind === "label" ? <>
         <div className="flex gap-2"><Button variant="outline" size="sm" disabled={p4.busy} onClick={() => setSyncing(true)}><DownloadIcon />{t("p4.specs.sync")}</Button><HoverTip label={t(spec.revision ? "p4.specs.autoHint" : spec.locked ? "p4.specs.lockHint" : "p4.specs.tagHint")}><span><Button variant="outline" size="sm" disabled={p4.busy || spec.locked || Boolean(spec.revision)} onClick={() => setTagging(true)}><TagIcon />{t("p4.specs.tag")}</Button></span></HoverTip></div>
         <div className="overflow-hidden rounded-lg border"><p className="flex items-center border-b bg-muted/20 px-3 py-2 text-xs font-medium">{t("p4.specs.files")}<span className="ml-auto text-muted-foreground tabular-nums">{files?.files.length ?? ""}</span></p>{files ? <>{files.files.length ? files.files.map(file => <div key={file.depotPath} className="flex items-center gap-3 border-b px-3 py-2 text-xs last:border-0"><code className="min-w-0 flex-1 truncate" title={file.depotPath}>{file.depotPath}</code><code className="shrink-0 text-muted-foreground">#{file.revision}</code><span className="w-16 truncate text-right text-muted-foreground">{file.fileType}</span></div>) : <p className="p-5 text-center text-xs text-muted-foreground">{t("p4.specs.noFiles")}</p>}{files.truncated ? <p className="border-t p-3 text-xs text-muted-foreground">{t("p4.specs.filesLimit")}</p> : null}</> : !error ? <Loading /> : null}</div>

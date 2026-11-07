@@ -1264,6 +1264,23 @@ async fn p4_search_submitted(
 }
 
 #[tauri::command]
+async fn p4_preview_integration(
+    connection: p4::P4Connection,
+    request: p4::P4IntegrationRequest,
+) -> AppResult<p4::P4IntegrationPreview> {
+    blocking(move || p4::preview_integration(&connection, &request)).await
+}
+
+#[tauri::command]
+async fn p4_apply_integration(
+    connection: p4::P4Connection,
+    request: p4::P4IntegrationRequest,
+    fingerprint: String,
+) -> AppResult<String> {
+    blocking(move || p4::apply_integration(&connection, &request, &fingerprint)).await
+}
+
+#[tauri::command]
 async fn p4_list_specs(
     connection: p4::P4Connection,
     kind: p4::P4SpecKind,
@@ -2092,6 +2109,8 @@ pub fn run() {
             p4_search_submitted,
             p4_save_workspace,
             p4_workspace_settings,
+            p4_preview_integration,
+            p4_apply_integration,
             p4_list_specs,
             p4_read_spec,
             p4_save_spec,

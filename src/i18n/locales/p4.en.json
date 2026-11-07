@@ -498,5 +498,35 @@
     },
     "updating": "Updating Perforce specification",
     "applyTags": "Apply tags"
+  },
+  "integration": {
+    "title": "Merge / Integrate",
+    "method": "Integration method",
+    "paths": "File paths",
+    "useMapping": "Integrate with this mapping",
+    "sourcePlaceholder": "//depot/main/...",
+    "mapping": "Branch mapping",
+    "chooseMapping": "Choose a branch mapping",
+    "reverse": "Reverse the branch mapping",
+    "target": "Target path in this workspace",
+    "limitRange": "Limit source revisions",
+    "rangeKind": "Source range type",
+    "from": "First revision or changelist",
+    "to": "Last revision or changelist",
+    "force": "Include already integrated revisions",
+    "forceHint": "Schedule the selected source revisions again, even if they have already been integrated.",
+    "reviewPending": "Review pending files",
+    "saveDescription": "Save the current changelist description before integrating.",
+    "actions": {
+      "add": "Add",
+      "edit": "Edit",
+      "delete": "Delete",
+      "branch": "Branch",
+      "integrate": "Integrate",
+      "move_add": "Move to",
+      "move_delete": "Move from",
+      "updated": "Update",
+      "refresh": "Refresh"
+    }
   }
 }
