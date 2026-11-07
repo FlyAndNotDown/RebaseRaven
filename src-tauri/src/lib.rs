@@ -1264,6 +1264,66 @@ async fn p4_search_submitted(
 }
 
 #[tauri::command]
+async fn p4_list_specs(
+    connection: p4::P4Connection,
+    kind: p4::P4SpecKind,
+    query: String,
+    owner: String,
+) -> AppResult<p4::P4SpecPage> {
+    blocking(move || p4::list_specs(&connection, kind, &query, &owner)).await
+}
+
+#[tauri::command]
+async fn p4_read_spec(
+    connection: p4::P4Connection,
+    kind: p4::P4SpecKind,
+    name: String,
+) -> AppResult<p4::P4Spec> {
+    blocking(move || p4::read_spec(&connection, kind, &name)).await
+}
+
+#[tauri::command]
+async fn p4_save_spec(
+    connection: p4::P4Connection,
+    edit: p4::P4SpecEdit,
+    fingerprint: Option<String>,
+) -> AppResult<p4::P4Spec> {
+    blocking(move || p4::save_spec(&connection, &edit, fingerprint.as_deref())).await
+}
+
+#[tauri::command]
+async fn p4_delete_spec(
+    connection: p4::P4Connection,
+    kind: p4::P4SpecKind,
+    name: String,
+    fingerprint: String,
+) -> AppResult<()> {
+    blocking(move || p4::delete_spec(&connection, kind, &name, &fingerprint)).await
+}
+
+#[tauri::command]
+async fn p4_label_files(connection: p4::P4Connection, name: String) -> AppResult<p4::P4LabelFiles> {
+    blocking(move || p4::label_files(&connection, &name)).await
+}
+
+#[tauri::command]
+async fn p4_preview_label_tag(
+    connection: p4::P4Connection,
+    request: p4::P4LabelTagRequest,
+) -> AppResult<p4::P4LabelTagPreview> {
+    blocking(move || p4::preview_label_tag(&connection, &request)).await
+}
+
+#[tauri::command]
+async fn p4_apply_label_tag(
+    connection: p4::P4Connection,
+    request: p4::P4LabelTagRequest,
+    fingerprint: String,
+) -> AppResult<String> {
+    blocking(move || p4::apply_label_tag(&connection, &request, &fingerprint)).await
+}
+
+#[tauri::command]
 async fn p4_preview_switch(
     connection: p4::P4Connection,
     request: p4::P4SwitchRequest,
@@ -2032,6 +2092,13 @@ pub fn run() {
             p4_search_submitted,
             p4_save_workspace,
             p4_workspace_settings,
+            p4_list_specs,
+            p4_read_spec,
+            p4_save_spec,
+            p4_delete_spec,
+            p4_label_files,
+            p4_preview_label_tag,
+            p4_apply_label_tag,
             p4_preview_switch,
             p4_apply_switch,
             p4_submit,

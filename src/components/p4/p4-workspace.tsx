@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useGitPick } from "@/state/git-context";
 import { useP4 } from "@/state/p4-context";
 
+const P4Specs = lazy(() => import("@/components/p4/p4-specs").then(module => ({default: module.P4Specs})));
 const P4Streams = lazy(() => import("@/components/p4/p4-streams").then((module) => ({default:module.P4Streams})));
 const P4Files = lazy(() => import("@/components/p4/p4-files").then((module) => ({ default: module.P4Files })));
 const P4Pending = lazy(() => import("@/components/p4/p4-pending").then((module) => ({ default: module.P4Pending })));
@@ -36,7 +37,7 @@ export function P4Workspace() {
   return (
     <div key={JSON.stringify(connection)} className="flex h-full min-h-0 flex-col">
       <Suspense fallback={<WorkspaceSkeleton />}>
-        {view === "streams" ? <P4Streams /> : view === "submitted" ? <P4Submitted /> : view === "workspace" ? <P4Files /> : <P4Pending />}
+        {view === "specs" ? <P4Specs /> : view === "streams" ? <P4Streams /> : view === "submitted" ? <P4Submitted /> : view === "workspace" ? <P4Files /> : <P4Pending />}
       </Suspense>
     </div>
   );

@@ -57,6 +57,8 @@ import type {
   P4StreamOption,
 } from "@/types/p4";
 
+import type { P4SpecActions } from "@/types/p4-specs";
+
 export type { P4View };
 
 const OPEN_SETTINGS_EVENT = "rebaseraven-open-settings";
@@ -68,6 +70,7 @@ class LoginCancelled extends Error {
 }
 
 interface P4ContextValue {
+  specs: P4SpecActions;
   view: P4View;
   setView: (view: P4View) => void;
   connection: P4Connection | null;
@@ -1488,8 +1491,35 @@ export function P4Provider({ children }: { children: ReactNode }) {
     [lockMutation, beginActivity, endActivity, reconnect, report, retargetRepoTab, setTabMeta],
   );
 
+  const specs = useMemo<P4SpecActions>(() => {
+    async function read<T>(action: (connection: P4Connection) => Promise<T>): Promise<T> {
+      const owner = sessionRef.current;
+      if (!owner) throw new Error(t("p4-operations.connectionRequired"));
+      return guard(owner.connection, () => action(owner.connection));
+    }
+    async function write<T>(action: (connection: P4Connection) => Promise<T>): Promise<T> {
+      const owner = sessionRef.current;
+      if (!owner) throw new Error(t("p4-operations.connectionRequired"));
+      const release = lockMutation(owner, t("p4.specs.updating"));
+      if (!release) throw new Error(t("p4-operations.workspaceBusy"));
+      const activity = beginActivity(t("p4.specs.updating"));
+      try { return await guard(owner.connection, () => action(owner.connection)); }
+      finally { endActivity(activity); release(); }
+    }
+    return {
+      list: (kind, query, owner) => read(c => p4Api.listSpecs(c, kind, query, owner)),
+      read: (kind, name) => read(c => p4Api.readSpec(c, kind, name)),
+      files: name => read(c => p4Api.labelFiles(c, name)),
+      previewTag: request => read(c => p4Api.previewLabelTag(c, request)),
+      save: (edit, fingerprint) => write(c => p4Api.saveSpec(c, edit, fingerprint)),
+      remove: (kind, name, fingerprint) => write(c => p4Api.deleteSpec(c, kind, name, fingerprint)),
+      applyTag: (request, fingerprint) => write(c => p4Api.applyLabelTag(c, request, fingerprint)),
+    };
+  }, [guard, lockMutation, beginActivity, endActivity]);
+
   const value = useMemo<P4ContextValue>(
     () => ({
+      specs,
       view: visibleSession?.view ?? "pending",
       setView,
       connection,
@@ -1588,6 +1618,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
       applySwitch,
     }),
     [
+      specs,
       activePerforceId,
       language,
       mutationLabels,

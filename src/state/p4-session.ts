@@ -2,7 +2,7 @@ import type { FileDiff } from "@/types/git";
 import type { P4Changelist, P4Connection, P4File } from "@/types/p4";
 import { sameRepoPath } from "@/lib/format";
 
-export type P4View = "pending" | "submitted" | "workspace" | "streams";
+export type P4View = "pending" | "submitted" | "workspace" | "streams" | "specs";
 
 export interface P4ResolveRequest {
   id: number;

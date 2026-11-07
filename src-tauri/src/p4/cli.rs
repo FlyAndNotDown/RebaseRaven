@@ -474,6 +474,31 @@ fn probe_child(
     tree: crate::platform::ProbeProcessTreeGuard,
     deadline: Instant,
 ) -> AppResult<std::process::Output> {
+    capture_child(
+        child,
+        tree,
+        deadline,
+        CaptureLimits {
+            bytes: PROBE_OUTPUT_LIMIT,
+            timeout: PROBE_TIMEOUT,
+            overflow: "Perforce workspace discovery output is too large.",
+        },
+    )
+}
+
+#[derive(Clone, Copy)]
+struct CaptureLimits {
+    bytes: usize,
+    timeout: &'static str,
+    overflow: &'static str,
+}
+
+fn capture_child(
+    child: Child,
+    tree: crate::platform::ProbeProcessTreeGuard,
+    deadline: Instant,
+    limits: CaptureLimits,
+) -> AppResult<std::process::Output> {
     let mut process = ProbeProcess {
         child,
         tree,
@@ -492,10 +517,8 @@ fn probe_child(
     ] {
         let sender = sender.clone();
         thread::spawn(move || {
-            let mut bytes = Vec::with_capacity(PROBE_OUTPUT_LIMIT + 1);
-            let result = pipe
-                .take((PROBE_OUTPUT_LIMIT + 1) as u64)
-                .read_to_end(&mut bytes);
+            let mut bytes = Vec::with_capacity(limits.bytes + 1);
+            let result = pipe.take((limits.bytes + 1) as u64).read_to_end(&mut bytes);
             let _ = sender.send((stdout, result.map(|_| bytes)));
         });
     }
@@ -506,12 +529,10 @@ fn probe_child(
         let remaining = deadline.saturating_duration_since(Instant::now());
         let (is_stdout, bytes) = receiver
             .recv_timeout(remaining)
-            .map_err(|_| AppError::msg(PROBE_TIMEOUT))?;
+            .map_err(|_| AppError::msg(limits.timeout))?;
         let bytes = bytes?;
-        if bytes.len() > PROBE_OUTPUT_LIMIT {
-            return Err(AppError::msg(
-                "Perforce workspace discovery output is too large.",
-            ));
+        if bytes.len() > limits.bytes {
+            return Err(AppError::msg(limits.overflow));
         }
         if is_stdout {
             stdout = bytes;
@@ -526,7 +547,7 @@ fn probe_child(
         }
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
-            return Err(AppError::msg(PROBE_TIMEOUT));
+            return Err(AppError::msg(limits.timeout));
         }
         thread::sleep(remaining.min(Duration::from_millis(5)));
     };
@@ -535,6 +556,39 @@ fn probe_child(
         stdout,
         stderr,
     })
+}
+
+/// Label previews have no server-side result limit. Stop oversized or stalled
+/// read-only commands before their output can grow without a bound.
+pub(super) fn run_label_preview(env: &P4Env, args: &[&str]) -> AppResult<String> {
+    if args.first() != Some(&"labelsync") || !args.contains(&"-n") {
+        return Err(AppError::msg("Expected a read-only label preview."));
+    }
+    let started = Instant::now();
+    let program = require_p4()?;
+    let mut command = prepared(program, env, args);
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let result = crate::platform::spawn_probe_command(&mut command)
+        .map_err(|err| p4_start_error(command.get_program(), err))
+        .and_then(|(child, tree)| {
+            capture_child(
+                child,
+                tree,
+                started + Duration::from_secs(30),
+                CaptureLimits {
+                    bytes: 524_288,
+                    timeout: "Label preview timed out. Choose a narrower path and retry.",
+                    overflow: "Too many label changes. Choose a narrower path.",
+                },
+            )
+        });
+    diagnostics::record_cli_output(Code::PerforceOperation, args, started, &result, |output| {
+        output.status.success()
+    });
+    result.and_then(finish)
 }
 
 /// `p4 diff` can exit non-zero when the files differ. A diff body is still a result.

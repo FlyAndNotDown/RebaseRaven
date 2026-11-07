@@ -4,6 +4,18 @@ import { t } from "@/i18n";
 export type P4OperationKind = "integrate" | "undo";
 
 const operationErrors: Record<string, string> = {
+  "Label preview timed out. Choose a narrower path and retry.": "tagTimeout",
+  "Enter one Perforce object name without wildcards.": "specName",
+  "The selected Perforce object no longer exists.": "specMissing",
+  "Enter a single-line search filter.": "specFilter",
+  "Enter a description smaller than 64 KiB.": "specDescription",
+  "Enter one depot mapping per line.": "specView",
+  "Enter a label revision beginning with @ or #, or leave it empty.": "specRevision",
+  "Choose depot or workspace paths without revision suffixes.": "tagPaths",
+  "Choose a supported label source.": "tagSource",
+  "Unlock this static label before changing its tagged files.": "tagLocked",
+  "Too many label changes. Choose a narrower path.": "tagLimit",
+
   "The workspace is not fully synced. Use Get latest to finish.": "switchIncomplete",
   "Refresh and choose a writable stream workspace.": "switchWorkspace",
   "Choose a different stream.": "switchDifferent",

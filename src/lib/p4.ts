@@ -42,6 +42,7 @@ import type {
 import type { FileDiff, ImagePair } from "@/types/git";
 import { errorMessage } from "@/lib/git";
 import { pathsIgnoreCase } from "@/lib/format";
+import type { P4SpecKind, P4SpecEdit, P4Spec, P4SpecPage, P4LabelFiles, P4LabelTagRequest, P4LabelTagPreview } from "@/types/p4-specs";
 
 /** Matches `P4_MISSING` in the Rust backend. */
 export const P4_MISSING = "p4 executable was not found. Choose one in Settings.";
@@ -78,6 +79,13 @@ function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
 }
 
 export const p4Api = {
+  listSpecs: (connection: P4Connection, kind: P4SpecKind, query: string, owner: string) => call<P4SpecPage>("p4_list_specs", {connection, kind, query, owner}),
+  readSpec: (connection: P4Connection, kind: P4SpecKind, name: string) => call<P4Spec>("p4_read_spec", {connection, kind, name}),
+  saveSpec: (connection: P4Connection, edit: P4SpecEdit, fingerprint: string | null) => call<P4Spec>("p4_save_spec", {connection, edit, fingerprint}),
+  deleteSpec: (connection: P4Connection, kind: P4SpecKind, name: string, fingerprint: string) => call<void>("p4_delete_spec", {connection, kind, name, fingerprint}),
+  labelFiles: (connection: P4Connection, name: string) => call<P4LabelFiles>("p4_label_files", {connection, name}),
+  previewLabelTag: (connection: P4Connection, request: P4LabelTagRequest) => call<P4LabelTagPreview>("p4_preview_label_tag", {connection, request}),
+  applyLabelTag: (connection: P4Connection, request: P4LabelTagRequest, fingerprint: string) => call<string>("p4_apply_label_tag", {connection, request, fingerprint}),
   detectRepository: (path: string) => call<RepoDetection>("detect_repository", { path }),
   open: (path: string) => call<P4OpenResult>("p4_open", { path }),
   refreshPending: (connection: P4Connection) =>

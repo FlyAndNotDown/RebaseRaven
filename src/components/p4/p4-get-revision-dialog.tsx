@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { useP4 } from "@/state/p4-context";
 import type { P4RevisionMode } from "@/types/p4";
 
-export type P4RevisionTarget = { path: string; recursive: boolean } | { changeId: string; revision?: string };
+export type P4RevisionTarget = { path: string; recursive: boolean; label?: string } | { changeId: string; revision?: string };
 
 export function P4GetRevisionDialog({ target, onClose }: { target: P4RevisionTarget; onClose: () => void }) {
   useTranslation();
@@ -35,9 +35,10 @@ export function P4GetRevisionDialog({ target, onClose }: { target: P4RevisionTar
   const recursive = "recursive" in target && target.recursive;
   const changeId = "changeId" in target ? target.changeId : undefined;
   const revision = "revision" in target ? target.revision : undefined;
-  const [latest, setLatest] = useState(path !== null);
-  const [kind, setKind] = useState<(typeof kinds)[number]["id"]>(revision ? "changelist" : "revision");
-  const [value, setValue] = useState(revision ?? "");
+  const label = "label" in target ? target.label : undefined;
+  const [latest, setLatest] = useState(path !== null && !label);
+  const [kind, setKind] = useState<(typeof kinds)[number]["id"]>(label ? "label" : revision ? "changelist" : "revision");
+  const [value, setValue] = useState(label ?? revision ?? "");
   const [force, setForce] = useState(false);
   const [safe, setSafe] = useState(false);
   const [filesOnly, setFilesOnly] = useState(false);

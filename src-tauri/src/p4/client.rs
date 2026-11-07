@@ -61,7 +61,7 @@ pub(super) fn block(spec: &str, field: &str) -> Vec<String> {
     lines
 }
 
-fn set_block(spec: &str, field: &str, lines: &[String]) -> String {
+pub(super) fn set_block(spec: &str, field: &str, lines: &[String]) -> String {
     let mut result = String::new();
     let mut active = false;
     for line in spec.lines() {
