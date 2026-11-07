@@ -26,6 +26,13 @@ pub struct P4StreamPreview {
     pub fingerprint: String,
 }
 
+fn stable_spec(spec: &str) -> String {
+    spec.lines()
+        .filter(|line| !line.trim_start().starts_with("Access:"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn stream_args(
     connection: &P4Connection,
     request: &P4StreamRequest,
@@ -68,7 +75,15 @@ fn stream_args(
     .map(String::from)
     .collect::<Vec<_>>();
     args.extend(["-c".into(), change]);
-    Ok((args, format!("{client}\n{source_spec}\n{target_spec}")))
+    Ok((
+        args,
+        format!(
+            "{}\n{}\n{}",
+            stable_spec(&client),
+            stable_spec(&source_spec),
+            stable_spec(&target_spec)
+        ),
+    ))
 }
 
 pub fn preview_stream(
@@ -126,4 +141,21 @@ pub fn apply_stream(
     let (args, _) = stream_args(connection, request)?;
     let refs = args.iter().map(String::as_str).collect::<Vec<_>>();
     run(connection, &refs)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::stable_spec;
+
+    #[test]
+    fn access_times_do_not_invalidate_an_otherwise_identical_preview() {
+        assert_eq!(
+            stable_spec("Stream: //depot/dev\nAccess: yesterday\nParent: //depot/main\n"),
+            stable_spec("Stream: //depot/dev\nAccess: today\nParent: //depot/main\n")
+        );
+        assert_ne!(
+            stable_spec("Stream: //depot/dev\nParent: //depot/main\n"),
+            stable_spec("Stream: //depot/dev\nParent: //depot/release\n")
+        );
+    }
 }
