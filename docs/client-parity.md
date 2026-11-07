@@ -207,6 +207,11 @@ area. Do not infer full parity from a passing test suite or this inventory.
   history outside the checkout, including old embedded Git directories.
   Application actions share a per-worktree advisory lock. Failed operations
   refresh actual state; multi-step native commands are not assumed atomic.
+- Windows dispatch prefers a detected public native submodule builtin and
+  otherwise uses the native helper behind Git's legacy shell wrapper. Tests
+  exercise that helper with literal sibling paths and quoted URLs, and verify
+  that user-only file transports remain blocked. Compatibility with older Git
+  releases remains in the audit.
 - Seven new repository tests cover custom names, URL/branch edits, stale and
   dirty guards, recorded/remote update strategies, literal paths, recursive
   modules, relative URLs, shallow clones, stored Git directories and retained

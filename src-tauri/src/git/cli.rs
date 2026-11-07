@@ -106,14 +106,13 @@ pub(super) fn git_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
     crate::platform::background_command(program)
 }
 
-fn configure_git_args(command: &mut Command, root: Option<&Path>, args: &[&str]) {
+fn configure_git_args(command: &mut Command, root: Option<&Path>, args: &[&str]) -> AppResult<()> {
     #[cfg(any(windows, test))]
     {
         #[cfg(test)]
-        let enabled =
-            cfg!(windows) || std::env::var_os("REBASERAVEN_GIT_SUBMODULE_TRANSPORT_TEST").is_some();
+        let force_helper = std::env::var_os("REBASERAVEN_GIT_SUBMODULE_TRANSPORT_TEST").is_some();
         #[cfg(not(test))]
-        let enabled = true;
+        let force_helper = false;
         let mut tail = args;
         while let Some((arg, rest)) = tail.split_first() {
             match *arg {
@@ -125,30 +124,56 @@ fn configure_git_args(command: &mut Command, root: Option<&Path>, args: &[&str])
                 _ => break,
             }
         }
-        if enabled && tail.first() == Some(&"submodule") {
-            // Start the public command from an MSYS parent, where quoted variable
-            // expansions stay literal. No repository data enters the shell script
-            // or the native-to-MSYS command line, and no MSYS option is changed.
-            let program = command.get_program().to_os_string();
-            command.env("REBASERAVEN_GIT_EXECUTABLE", program);
-            let mut script =
-                String::from("alias.rebaseraven-submodule=!\"$REBASERAVEN_GIT_EXECUTABLE\"");
-            for (index, arg) in args.iter().enumerate() {
-                let key = format!("REBASERAVEN_GIT_ARG_{index}");
-                command.env(&key, arg);
-                script.push_str(&format!(" \"${key}\""));
+        if (cfg!(windows) || force_helper) && tail.first() == Some(&"submodule") {
+            // Prefer a public native builtin. Legacy Git uses a shell wrapper;
+            // dispatch to that wrapper's native helper so MSYS cannot reinterpret
+            // paths, quotes or backslashes. Preserve its transport policy too.
+            let mut probe = git_command(command.get_program());
+            if let Some(root) = root {
+                probe.current_dir(root);
+            }
+            let output = probe
+                .arg("--list-cmds=builtins")
+                .stdin(Stdio::null())
+                .output()
+                .map_err(|error| git_start_error(probe.get_program(), error))?;
+            if !output.status.success() {
+                return Err(git_output_error(output));
+            }
+            let builtins = String::from_utf8_lossy(&output.stdout);
+            let public = !force_helper
+                && builtins
+                    .split_ascii_whitespace()
+                    .any(|verb| verb == "submodule");
+            let helper = builtins
+                .split_ascii_whitespace()
+                .any(|verb| verb == "submodule--helper");
+            if !public && !helper {
+                return Err(AppError::msg("This Git installation has no native submodule command. Update Git before managing submodules."));
             }
             if let Some(root) = root {
-                command.current_dir(root);
+                command.arg("-C").arg(root);
             }
-            command.args(["-c", &script, "rebaseraven-submodule"]);
-            return;
+            let offset = args.len() - tail.len();
+            command
+                .args(&args[..offset])
+                .arg(if public {
+                    "submodule"
+                } else {
+                    "submodule--helper"
+                })
+                .args(&tail[1..]);
+            if !public {
+                command.env("GIT_PROTOCOL_FROM_USER", "0");
+            }
+            return Ok(());
         }
     }
     if let Some(root) = root {
         command.arg("-C").arg(root);
     }
     command.args(args);
+    Ok(())
 }
 
 /// A killed git cannot release its lock files, and every later command would
@@ -283,7 +308,7 @@ pub(super) fn run_git_env(
     let started = Instant::now();
     let output = require_git().and_then(|git| {
         let mut command = git_command(git);
-        configure_git_args(&mut command, Some(root), args);
+        configure_git_args(&mut command, Some(root), args)?;
         command.env("GIT_TERMINAL_PROMPT", "0");
         for (key, value) in env {
             command.env(key, value);
@@ -312,7 +337,7 @@ pub(super) fn run_git_input_output(
 fn git_input_output(root: &Path, args: &[&str], input: &[u8]) -> AppResult<std::process::Output> {
     let git = require_git()?;
     let mut command = git_command(git);
-    configure_git_args(&mut command, Some(root), args);
+    configure_git_args(&mut command, Some(root), args)?;
     command.env("GIT_TERMINAL_PROMPT", "0");
     command
         .stdin(Stdio::piped())
@@ -388,7 +413,11 @@ pub(super) fn run_git_progress(
         }
     };
     let mut command = git_command(git);
-    configure_git_args(&mut command, root, args);
+    if let Err(error) = configure_git_args(&mut command, root, args) {
+        let failed = Err(error);
+        record_output(args, timer, &failed);
+        return failed.map(|_| ());
+    }
     command.env("GIT_TERMINAL_PROMPT", "0");
     command
         .stdin(Stdio::null())

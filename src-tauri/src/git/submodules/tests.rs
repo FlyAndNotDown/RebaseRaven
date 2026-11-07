@@ -549,6 +549,21 @@ fn submodule_addition_rejects_stale_unsafe_and_unstaged_metadata_inputs() {
     request.url = "--upload-pack=wrong".into();
     assert!(add_submodule(&mut repo, &request, &fingerprint, |_| {}).is_err());
     assert!(!repo.workdir().join("libraries/core").exists());
+    let blocked = run_git(
+        repo.workdir(),
+        &[
+            "-c",
+            "protocol.file.allow=user",
+            "submodule",
+            "add",
+            "--",
+            source.workdir().to_str().unwrap(),
+            "blocked-source",
+        ],
+    )
+    .unwrap();
+    assert!(!blocked.status.success());
+    assert!(!repo.workdir().join("blocked-source/.git").exists());
     #[cfg(unix)]
     {
         let outside = temp.path().join("outside");
