@@ -13,6 +13,7 @@ use serde::Serialize;
 use crate::error::{AppError, AppResult};
 
 // Submodules share this module's imports and helpers through `use super::*`.
+mod bisect;
 mod changes;
 mod cli;
 mod conflicts;
@@ -33,10 +34,12 @@ mod repo;
 mod stash;
 mod status;
 mod structure;
+mod submodules;
 #[cfg(test)]
 mod tests;
 mod tools;
 
+pub use bisect::*;
 pub use changes::*;
 use cli::*;
 pub use cli::{
@@ -60,6 +63,7 @@ pub use remote::*;
 pub use stash::*;
 pub use status::*;
 pub use structure::*;
+pub use submodules::*;
 pub use tools::*;
 
 pub(crate) use repo::open_for_detection;

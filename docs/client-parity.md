@@ -9,7 +9,9 @@ Sources: [P4V navigation](https://help.perforce.com/helix-core/server-apps/p4v/c
 [P4V labels](https://help.perforce.com/helix-core/server-apps/p4v/2026.1/Content/P4V/branches.labels.html),
 [P4V branch mappings](https://help.perforce.com/helix-core/server-apps/p4v/current/Content/P4V/branches.mapping.html),
 [Fork feature overview](https://git-fork.com/), and the corresponding Git/P4
-command references. A source implementation is inventory evidence, not runtime
+command references, including [Git bisect](https://git-scm.com/docs/git-bisect)
+and [TortoiseGit bisect](https://tortoisegit.org/docs/tortoisegit/tgit-dug-bisect.html).
+A source implementation is inventory evidence, not runtime
 verification of every option or platform.
 
 ## Git
@@ -28,9 +30,9 @@ verification of every option or platform.
 | History, graph, file history and blame | `git/history.rs`, `git/files.rs` | Arbitrary revision tree browsing and branch/range comparison need inspection |
 | Reflog and lost-commit recovery | `git/reflog.rs` | Verify recovery without overwriting local work |
 | Worktrees | `git/structure.rs` | Audit lock/unlock, move and repair |
-| Submodules | `git/structure.rs` | Add, remove, URL changes, sync and branch updates are missing |
+| Submodules | `git/submodules.rs`, shared sidebar and dialogs: add, edit, sync, update, deinitialize and remove | Repository and component checks pass; native/provider transitions, long-running cancellation and large checkouts remain to audit |
 | Patch import/export | `git/operations.rs` | Audit format-patch/am recovery and selected changes |
-| Bisect | No command surface found | Implement interactive diagnosis and reset |
+| Bisect | `git/bisect.rs`, shared operation banner and bisect dialog: start, classify, skip, retest, inspect and reset | Repository and component checks pass; native/provider transitions, automation, log import/export and large-session behavior remain to audit |
 | Git LFS | No dedicated command surface found | Inspect installed-tool integration, tracking and locks |
 | Git-flow | No dedicated command surface found | Inspect branch workflow coverage and explicit operations |
 | Sparse checkout | No command surface found | Audit mainstream-client coverage and working-tree controls |
@@ -150,3 +152,78 @@ area. Do not infer full parity from a passing test suite or this inventory.
 - Current checks: 424 frontend tests and 303 Rust tests pass; formatting, Clippy,
   source, website, version and type checks pass. The existing unrelated test
   remains ignored. These checks do not establish complete client parity.
+
+### Interactive Git bisect
+
+- The history toolbar and command palette open an interactive session. Starting
+  accepts a bad revision, multiple good revisions, optional path filters and
+  first-parent traversal. Active sessions have their own operation banner and
+  cannot accidentally enter the generic continue/commit workflow.
+- Users can classify or skip the checked-out candidate, classify another known
+  revision, inspect a result, test an ambiguous candidate, and end the session to
+  restore its original branch or detached HEAD. External custom terms and
+  no-checkout sessions are recognized rather than silently reinterpreted.
+- Actions bind the session files, native refs and current HEAD. Tracked local
+  edits, staged changes, stale decisions and nested operations are rejected.
+  Git protects untracked checkout collisions. A per-worktree advisory lock
+  serializes application bisect actions; failures refresh actual repository
+  state instead of assuming an operation was atomic.
+- Candidate analysis explicitly preserves the session's Git-quoted paths and
+  first-parent mode. A sole untested candidate is not presented as a proven
+  result. Retesting a skipped revision clears its skip ref and replay-log entry;
+  the resulting native log was replayed successfully in a real repository test.
+- Eleven focused tests cover linear diagnosis, ambiguous skips and retesting,
+  invalid/stale/dirty requests, untracked collisions, action locking, linked
+  worktrees, detached restoration, custom terms, no-checkout sessions, path
+  quoting, first-parent merges and generic operation guards. A separate real
+  reftable repository also completes the full diagnosis and reset flow.
+- Production dialog and banner checks against real Rust/Git commands cover
+  start, classification, reopening, unique and ambiguous results, candidate
+  checkout, focus/scroll recovery, retesting, external command changes and dirty
+  mark/reset rejection. The minimum 960x640 window remains usable, and fixture
+  branches and worktrees were restored after testing.
+- Checks: 424 frontend tests and 314 Rust tests pass, with the existing unrelated
+  test ignored. Source, website, version, type, lint, formatting and Clippy pass.
+  Native application entry points and provider transitions remain unverified
+  while the host is locked. Candidate inspection is bounded to 500 revisions;
+  larger ambiguous sessions and automation/log management remain in the audit.
+
+
+### Git submodule management
+
+- The sidebar and command palette can add submodules with an optional tracking
+  branch, configuration name and shallow depth. Adding requires a named branch
+  or the remote default; inherited `.` tracking can be set after adding.
+  Existing entries support URL and
+  branch edits, URL synchronization, recorded or remote updates, checkout/merge/
+  rebase strategies, recursive updates, deinitialization and removal.
+- Configuration edits remain unstaged for review. Add and remove use native Git
+  staging, and reject unstaged metadata edits to avoid staging unrelated work.
+  Paths are literal, remain inside the repository and cannot traverse symlinks.
+  Definitions cannot change during another parent operation.
+- Configuration actions reject stale repository state. Removal previews bind
+  the module configuration and checkout metadata, show local file counts and
+  size, require explicit force for local changes, and retain selected Git
+  history outside the checkout, including old embedded Git directories.
+  Application actions share a per-worktree advisory lock. Failed operations
+  refresh actual state; multi-step native commands are not assumed atomic.
+- Windows dispatch prefers a detected public native submodule builtin and
+  otherwise uses the native helper behind Git's legacy shell wrapper. Tests
+  exercise that helper with literal sibling paths and quoted URLs, and verify
+  that user-only file transports remain blocked. Compatibility with older Git
+  releases remains in the audit.
+- Seven new repository tests cover custom names, URL/branch edits, stale and
+  dirty guards, recorded/remote update strategies, literal paths, recursive
+  modules, relative URLs, shallow clones, stored Git directories and retained
+  unpublished history. The three existing submodule tests still pass.
+- Production component checks against real Rust/Git commands cover adding,
+  stale settings rejection, URL/branch edits, synchronization, remote updates,
+  recorded checkout restoration, stale removal rejection, forced deinitialization,
+  reinitialization and staged removal. The 960x640 minimum window remains usable.
+  Native application entry points and provider transitions remain unverified
+  while the host is locked; long-running background cancellation and very large
+  checkout previews remain in the audit.
+- Source, website, version, type, lint and frontend build checks pass, with
+  424 frontend tests passing. Rust formatting, Clippy and tests pass: 321 passed
+  and one existing unrelated test ignored. These checks do not establish
+  complete client parity.

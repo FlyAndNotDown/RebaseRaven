@@ -369,19 +369,113 @@ async fn list_submodules(repo_path: String) -> AppResult<Vec<git::SubmoduleInfo>
 }
 
 #[tauri::command]
-async fn update_submodules(
+async fn submodule_catalog(repo_path: String) -> AppResult<git::SubmoduleCatalog> {
+    with_repo_async(repo_path, |repo| git::submodule_catalog(repo)).await
+}
+
+#[tauri::command]
+async fn submodule_settings(repo_path: String, path: String) -> AppResult<git::SubmoduleSettings> {
+    with_repo_async(repo_path, move |repo| git::submodule_settings(repo, &path)).await
+}
+
+#[tauri::command]
+async fn add_submodule(
     repo_path: String,
-    paths: Option<Vec<String>>,
+    request: git::SubmoduleAdd,
+    fingerprint: String,
     activity_id: Option<String>,
     app: AppHandle,
 ) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, move |repo| {
         git::with_cancel(activity_id.as_deref(), || {
-            git::update_submodules(
+            git::add_submodule(
                 repo,
-                paths.as_deref().unwrap_or(&[]),
+                &request,
+                &fingerprint,
                 progress_sink(&app, activity_id.as_deref()),
             )
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+async fn edit_submodule(
+    repo_path: String,
+    path: String,
+    url: String,
+    branch: Option<String>,
+    fingerprint: String,
+) -> AppResult<WorkspaceSnapshot> {
+    with_repo_async(repo_path, move |repo| {
+        git::edit_submodule(repo, &path, &url, branch.as_deref(), &fingerprint)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn sync_submodules(
+    repo_path: String,
+    paths: Vec<String>,
+    recursive: bool,
+) -> AppResult<WorkspaceSnapshot> {
+    with_repo_async(repo_path, move |repo| {
+        git::sync_submodules(repo, &paths, recursive)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn preview_submodule_removal(
+    repo_path: String,
+    path: String,
+    kind: git::SubmoduleRemovalKind,
+    force: bool,
+) -> AppResult<git::SubmoduleRemovalPreview> {
+    with_repo_async(repo_path, move |repo| {
+        git::preview_submodule_removal(repo, &path, &kind, force)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn remove_submodule(
+    repo_path: String,
+    path: String,
+    kind: git::SubmoduleRemovalKind,
+    force: bool,
+    fingerprint: String,
+) -> AppResult<WorkspaceSnapshot> {
+    with_repo_async(repo_path, move |repo| {
+        git::remove_submodule(repo, &path, &kind, force, &fingerprint)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn update_submodules(
+    repo_path: String,
+    paths: Option<Vec<String>>,
+    activity_id: Option<String>,
+    options: Option<git::SubmoduleUpdateOptions>,
+    app: AppHandle,
+) -> AppResult<WorkspaceSnapshot> {
+    with_repo_async(repo_path, move |repo| {
+        git::with_cancel(activity_id.as_deref(), || {
+            if options.is_some() {
+                git::update_submodules_with_options(
+                    repo,
+                    paths.as_deref().unwrap_or(&[]),
+                    options.as_ref(),
+                    progress_sink(&app, activity_id.as_deref()),
+                )
+            } else {
+                git::update_submodules(
+                    repo,
+                    paths.as_deref().unwrap_or(&[]),
+                    progress_sink(&app, activity_id.as_deref()),
+                )
+            }
         })
     })
     .await
@@ -746,6 +840,23 @@ async fn operation_continue(
 #[tauri::command]
 async fn operation_abort(repo_path: String) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, git::operation_abort).await
+}
+
+#[tauri::command]
+async fn bisect_state(repo_path: String) -> AppResult<git::BisectState> {
+    with_repo_async(repo_path, move |repo| git::bisect_state(repo)).await
+}
+
+#[tauri::command]
+async fn bisect_action(
+    repo_path: String,
+    action: git::BisectAction,
+    fingerprint: String,
+) -> AppResult<git::BisectOutcome> {
+    with_repo_async(repo_path, move |repo| {
+        git::bisect_action(repo, &action, &fingerprint)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -2060,6 +2171,13 @@ pub fn run() {
             head_reflog,
             undo_last_commit,
             list_submodules,
+            submodule_catalog,
+            submodule_settings,
+            add_submodule,
+            edit_submodule,
+            sync_submodules,
+            preview_submodule_removal,
+            remove_submodule,
             update_submodules,
             list_worktrees,
             add_worktree,
@@ -2087,6 +2205,8 @@ pub fn run() {
             merge_ref,
             operation_continue,
             operation_abort,
+            bisect_state,
+            bisect_action,
             resolve_conflict,
             conflict_view,
             save_conflict,

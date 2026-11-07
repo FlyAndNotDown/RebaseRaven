@@ -152,6 +152,46 @@ export interface CompareRevision {
   label: string;
 }
 
+export interface BisectRevision {
+  id: string;
+  shortId: string;
+  summary: string;
+}
+
+export interface BisectState {
+  active: boolean;
+  original: string | null;
+  current: BisectRevision | null;
+  bad: BisectRevision | null;
+  goodTerm: string;
+  badTerm: string;
+  goodCount: number;
+  skippedCount: number;
+  remainingCount: number | null;
+  truncated: boolean;
+  found: boolean;
+  firstBad: BisectRevision | null;
+  ambiguous: boolean;
+  candidates: BisectRevision[];
+  noCheckout: boolean;
+  firstParent: boolean;
+  fingerprint: string;
+}
+
+export type BisectVerdict = "good" | "bad" | "skip";
+export type BisectAction =
+  | { kind: "start"; bad: string; good: string[]; paths: string[]; firstParent: boolean }
+  | { kind: "mark"; verdict: BisectVerdict; revision?: string }
+  | { kind: "checkout"; revision: string }
+  | { kind: "reset" };
+export interface BisectUpdate {
+  state: BisectState;
+  report: string;
+}
+export interface BisectOutcome extends BisectUpdate {
+  snapshot: WorkspaceSnapshot;
+}
+
 export interface RevisionComparison {
   base: CompareRevision;
   head: CompareRevision;
@@ -243,11 +283,25 @@ export interface BlameHunk {
 }
 
 export interface SubmoduleInfo {
+  name: string;
   path: string;
   url: string | null;
+  branch: string | null;
   state: "clean" | "uninitialized" | "modified" | "conflicted" | string;
   commit: string | null;
 }
+
+export interface SubmoduleSettings { module: SubmoduleInfo; fingerprint: string }
+export interface SubmoduleCatalog { modules: SubmoduleInfo[]; fingerprint: string }
+export interface SubmoduleAdd { url: string; path: string; name: string | null; branch: string | null; depth: number | null; force: boolean }
+export type SubmoduleRemovalKind = "deinit" | "remove";
+export interface SubmoduleRemovalPreview { module: SubmoduleInfo; files: number; bytes: number; dirty: boolean; fingerprint: string }
+export interface SubmoduleUpdateOptions { remote: boolean; recursive: boolean; fetch: boolean; strategy: "checkout" | "merge" | "rebase" }
+export type SubmoduleChange =
+  | { kind: "add"; request: SubmoduleAdd; fingerprint: string }
+  | { kind: "edit"; path: string; url: string; branch: string | null; fingerprint: string }
+  | { kind: "sync"; paths: string[]; recursive: boolean }
+  | { kind: "remove"; path: string; mode: SubmoduleRemovalKind; force: boolean; fingerprint: string };
 
 export interface WorktreeInfo {
   path: string;
