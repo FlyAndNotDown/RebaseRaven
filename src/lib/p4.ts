@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { t } from "@/i18n";
 import type {
+  P4ReconcilePreview,
   P4ManualResolve,
   P4Auth,
   P4ChangePage,
@@ -162,8 +163,9 @@ export const p4Api = {
     call<P4OperationPreview>("p4_preview_undo", { connection, request }),
   applyUndo: (connection: P4Connection, request: P4UndoRequest, fingerprint: string) =>
     call<string>("p4_apply_undo", { connection, request, fingerprint }),
-  reconcile: (connection: P4Connection, activityId?: string) =>
-    call<string>("p4_reconcile", { connection, activityId: activityId ?? null }),
+  previewReconcile: (connection: P4Connection) => call<P4ReconcilePreview>("p4_preview_reconcile", { connection }),
+  applyReconcile: (connection: P4Connection, paths: string[], changeId: string, fingerprint: string) =>
+    call<string>("p4_apply_reconcile", { connection, paths, changeId, fingerprint }),
   fileAction: (connection: P4Connection, action: "edit" | "add" | "delete" | "lock" | "unlock", paths: string[], changeId?: string) =>
     call<void>("p4_file_action", { connection, action, paths, changeId: changeId ?? null }),
   login: (connection: P4Connection, password: string) =>

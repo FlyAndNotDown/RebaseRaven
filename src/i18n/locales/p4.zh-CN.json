@@ -304,5 +304,17 @@
     "discardTitle": "放弃合并修改？",
     "discardHint": "当前弹窗中的修改尚未写入工作区。",
     "discard": "放弃修改"
+  },
+  "reconcileReview": {
+    "title": "整理离线修改",
+    "selected": "已选 {{count}} / {{total}}",
+    "scanning": "正在扫描工作区…",
+    "scanAgain": "请刷新后重新扫描。",
+    "empty": "没有发现离线修改。",
+    "add": "新增",
+    "edit": "修改",
+    "delete": "删除",
+    "hint": "仅将勾选文件加入目标变更列表，遵循忽略规则；不会自动提交。",
+    "apply": "整理 {{count}} 个文件"
   }
 }

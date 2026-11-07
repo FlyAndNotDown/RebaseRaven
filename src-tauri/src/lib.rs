@@ -1405,12 +1405,18 @@ async fn p4_sync(
 }
 
 #[tauri::command]
-async fn p4_reconcile(
+async fn p4_preview_reconcile(connection: p4::P4Connection) -> AppResult<p4::P4ReconcilePreview> {
+    blocking(move || p4::preview_reconcile(&connection)).await
+}
+
+#[tauri::command]
+async fn p4_apply_reconcile(
     connection: p4::P4Connection,
-    activity_id: Option<String>,
-    app: AppHandle,
+    paths: Vec<String>,
+    change_id: String,
+    fingerprint: String,
 ) -> AppResult<String> {
-    blocking(move || p4::reconcile(&connection, progress_sink(&app, activity_id.as_deref()))).await
+    blocking(move || p4::apply_reconcile(&connection, &paths, &change_id, &fingerprint)).await
 }
 
 #[tauri::command]
@@ -1925,7 +1931,8 @@ pub fn run() {
             p4_resolve_accept,
             p4_get_revision,
             p4_sync,
-            p4_reconcile,
+            p4_preview_reconcile,
+            p4_apply_reconcile,
             p4_file_action,
             p4_preview_integrate,
             p4_apply_integrate,

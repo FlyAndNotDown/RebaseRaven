@@ -2681,17 +2681,6 @@ fn parallel_rejected(message: &str) -> bool {
             || lower.contains("ignored"))
 }
 
-pub fn reconcile(connection: &P4Connection, mut progress: impl FnMut(&str)) -> AppResult<String> {
-    let env = env_for(connection);
-    cli::run_p4_stream(
-        &env,
-        &["reconcile", "-e", "-a", "-d"],
-        &mut |line: String| {
-            progress(&line);
-        },
-    )
-}
-
 pub fn file_action(
     connection: &P4Connection,
     action: &str,

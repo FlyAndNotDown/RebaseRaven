@@ -192,3 +192,8 @@ export interface P4ManualResolve {
   theirs: string;
   fingerprint: string;
 }
+
+export interface P4ReconcilePreview {
+  files: { path: string; depotPath: string; action: string }[];
+  fingerprint: string;
+}

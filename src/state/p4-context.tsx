@@ -12,6 +12,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { P4ConnectionDialog } from "@/components/p4/p4-connection-dialog";
+import { P4ReconcileDialog } from "@/components/p4/p4-reconcile-dialog";
 import { P4LoginDialog } from "@/components/p4/p4-login-dialog";
 import { P4WorkspaceDialog } from "@/components/p4/p4-workspace-dialog";
 import { errorMessage } from "@/lib/git";
@@ -25,6 +26,7 @@ import { acquireP4Mutation, invalidateP4Session } from "@/state/p4-mutations";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import type { FileDiff } from "@/types/git";
 import type {
+  P4ReconcilePreview,
   P4ManualResolve,
   P4Auth,
   P4ChangePage,
@@ -111,6 +113,8 @@ interface P4ContextValue {
   getRevision: (request: P4GetRevision) => Promise<string | null>;
   filesEpoch: number;
   reconcile: () => Promise<void>;
+  previewReconcile: () => Promise<P4ReconcilePreview>;
+  applyReconcile: (paths: string[], changeId: string, fingerprint: string) => Promise<void>;
   fileAction: (action: "edit" | "add" | "delete", paths: string[]) => Promise<void>;
   loadSubmitted: (more?: boolean) => Promise<void>;
   submittedUser: string;
@@ -180,6 +184,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
   }, []);
   const [loginOpen, setLoginOpen] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
+  const [reconcileOpen, setReconcileOpen] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [filesEpoch, setFilesEpoch] = useState(0);
   const bumpFiles = useCallback(() => setFilesEpoch((value) => value + 1), []);
@@ -1035,24 +1040,30 @@ export function P4Provider({ children }: { children: ReactNode }) {
     [lockMutation, beginActivity, bumpFiles, endActivity, guard, reloadPending, report],
   );
 
-  const reconcile = useCallback(async () => {
+  const reconcile = useCallback(async () => { setReconcileOpen(true); }, []);
+
+  const previewReconcile = useCallback(async () => {
     const current = sessionRef.current;
-    if (!current) return;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    return guard(current.connection, () => p4Api.previewReconcile(current.connection));
+  }, [guard]);
+
+  const applyReconcile = useCallback(async (paths: string[], changeId: string, fingerprint: string) => {
+    const current = sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
     const release = lockMutation(current, t("p4.reconciling"));
-    if (!release) return;
-    const id = beginActivity(t("p4.reconciling"), current.connection.client);
+    if (!release) throw new Error(t("p4-operations.workspaceBusy"));
+    const activity = beginActivity(t("p4.reconciling"), current.connection.client);
     try {
-      const output = await guard(current.connection, () => p4Api.reconcile(current.connection, id));
-      toast.success(lastLine(output) || t("p4.reconciled"));
-      await reloadPending(current, "default");
-      bumpFiles();
-    } catch (caught) {
-      report(caught);
+      await guard(current.connection, () => p4Api.applyReconcile(current.connection, paths, changeId, fingerprint));
+      toast.success(t("p4.reconciled"));
     } finally {
-      endActivity(id);
+      await reloadPending(current, changeId).catch(report);
+      bumpFiles();
+      endActivity(activity);
       release();
     }
-  }, [lockMutation, beginActivity, bumpFiles, endActivity, guard, reloadPending, report]);
+  }, [guard, lockMutation, beginActivity, endActivity, reloadPending, bumpFiles, report]);
 
   const fileAction = useCallback(
     async (action: "edit" | "add" | "delete", paths: string[]) => {
@@ -1381,6 +1392,8 @@ export function P4Provider({ children }: { children: ReactNode }) {
       getRevision,
       filesEpoch,
       reconcile,
+      previewReconcile,
+      applyReconcile,
       fileAction,
       loadSubmitted,
       submittedUser: visibleSession?.submittedUser ?? connection?.user ?? "",
@@ -1440,6 +1453,8 @@ export function P4Provider({ children }: { children: ReactNode }) {
       moveFiles,
       placeFiles,
       reconcile,
+      previewReconcile,
+      applyReconcile,
       reconnect,
       refresh,
       connectionOpen,
@@ -1478,6 +1493,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
         {children}
         <P4ConnectionDialog />
         <P4WorkspaceDialog />
+        {reconcileOpen && connection ? <P4ReconcileDialog key={JSON.stringify(connection)} onClose={() => setReconcileOpen(false)} /> : null}
         <P4LoginDialog
           open={loginOpen}
           client={loginTarget.client}
