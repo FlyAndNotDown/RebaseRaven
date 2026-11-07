@@ -277,7 +277,6 @@ function DownloadDialog({ open, onOpenChange, returnFocusTo }: {
           ))}
         </div>
         {downloads ? <p className="text-xs text-muted-foreground">{t("download.version", { version: downloads.tag })}</p> : null}
-        <p className="text-xs leading-relaxed text-muted-foreground">{t("download.requires")}</p>
         <DialogFooter className="items-center sm:justify-between">
           <Button variant="ghost" size="sm" asChild><a href={`${REPOSITORY}/blob/dev/docs/development.md`}>{t("download.build")}</a></Button>
           <Button size="sm" asChild><a href={LATEST_RELEASE_URL}>{t("download.latest")}<ArrowUpRightIcon /></a></Button>
