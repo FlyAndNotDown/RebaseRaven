@@ -103,25 +103,52 @@ pub(super) fn stop_child(child: &mut std::process::Child) {
 }
 
 pub(super) fn git_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
-    let command = crate::platform::background_command(program);
-    #[cfg(windows)]
+    crate::platform::background_command(program)
+}
+
+fn configure_git_args(command: &mut Command, root: Option<&Path>, args: &[&str]) {
+    #[cfg(any(windows, test))]
     {
-        let mut command = command;
-        // Git's MSYS helpers otherwise expand wildcard arguments before Git can
-        // apply literal pathspecs. Keep existing runtime options and scope this
-        // setting to Git and its children.
-        let mut options = std::env::var_os("MSYS").unwrap_or_default();
-        if !options.is_empty() {
-            options.push(" ");
+        #[cfg(test)]
+        let enabled =
+            cfg!(windows) || std::env::var_os("REBASERAVEN_GIT_SUBMODULE_TRANSPORT_TEST").is_some();
+        #[cfg(not(test))]
+        let enabled = true;
+        let mut tail = args;
+        while let Some((arg, rest)) = tail.split_first() {
+            match *arg {
+                "-c" | "-C" => tail = rest.get(1..).unwrap_or_default(),
+                "--no-optional-locks"
+                | "--literal-pathspecs"
+                | "--no-literal-pathspecs"
+                | "--no-pager" => tail = rest,
+                _ => break,
+            }
         }
-        options.push("noglob");
-        command.env("MSYS", options);
-        command
+        if enabled && tail.first() == Some(&"submodule") {
+            // Start the public command from an MSYS parent, where quoted variable
+            // expansions stay literal. No repository data enters the shell script
+            // or the native-to-MSYS command line, and no MSYS option is changed.
+            let program = command.get_program().to_os_string();
+            command.env("REBASERAVEN_GIT_EXECUTABLE", program);
+            let mut script =
+                String::from("alias.rebaseraven-submodule=!\"$REBASERAVEN_GIT_EXECUTABLE\"");
+            for (index, arg) in args.iter().enumerate() {
+                let key = format!("REBASERAVEN_GIT_ARG_{index}");
+                command.env(&key, arg);
+                script.push_str(&format!(" \"${key}\""));
+            }
+            if let Some(root) = root {
+                command.current_dir(root);
+            }
+            command.args(["-c", &script, "rebaseraven-submodule"]);
+            return;
+        }
     }
-    #[cfg(not(windows))]
-    {
-        command
+    if let Some(root) = root {
+        command.arg("-C").arg(root);
     }
+    command.args(args);
 }
 
 /// A killed git cannot release its lock files, and every later command would
@@ -256,7 +283,7 @@ pub(super) fn run_git_env(
     let started = Instant::now();
     let output = require_git().and_then(|git| {
         let mut command = git_command(git);
-        command.arg("-C").arg(root).args(args);
+        configure_git_args(&mut command, Some(root), args);
         command.env("GIT_TERMINAL_PROMPT", "0");
         for (key, value) in env {
             command.env(key, value);
@@ -285,7 +312,7 @@ pub(super) fn run_git_input_output(
 fn git_input_output(root: &Path, args: &[&str], input: &[u8]) -> AppResult<std::process::Output> {
     let git = require_git()?;
     let mut command = git_command(git);
-    command.arg("-C").arg(root).args(args);
+    configure_git_args(&mut command, Some(root), args);
     command.env("GIT_TERMINAL_PROMPT", "0");
     command
         .stdin(Stdio::piped())
@@ -361,10 +388,7 @@ pub(super) fn run_git_progress(
         }
     };
     let mut command = git_command(git);
-    if let Some(root) = root {
-        command.arg("-C").arg(root);
-    }
-    command.args(args);
+    configure_git_args(&mut command, root, args);
     command.env("GIT_TERMINAL_PROMPT", "0");
     command
         .stdin(Stdio::null())

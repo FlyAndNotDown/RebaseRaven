@@ -13,6 +13,7 @@ fn isolated(name: &str) -> bool {
         .args(["--exact", &test, "--nocapture"])
         .current_dir(temp.path())
         .env(FLAG, name)
+        .env("REBASERAVEN_GIT_SUBMODULE_TRANSPORT_TEST", "1")
         .env("GIT_CONFIG_COUNT", "1")
         .env("GIT_CONFIG_KEY_0", "protocol.file.allow")
         .env("GIT_CONFIG_VALUE_0", "always")
