@@ -68,6 +68,9 @@ pub struct AppPrefs {
     /// Empty uses the `p4` executable on PATH.
     #[serde(default)]
     pub p4_path: String,
+    /// External P4 merge tool id or executable path; empty discovers P4Merge.
+    #[serde(default)]
+    pub p4_merge_tool: String,
     /// User-added p4 executables. The PATH entry is not stored here.
     #[serde(default)]
     pub extra_p4_paths: Vec<String>,
@@ -150,6 +153,7 @@ impl Default for AppPrefs {
             git_path: String::new(),
             extra_git_paths: Vec::new(),
             p4_path: String::new(),
+            p4_merge_tool: String::new(),
             extra_p4_paths: Vec::new(),
             p4_port: String::new(),
             p4_user: String::new(),

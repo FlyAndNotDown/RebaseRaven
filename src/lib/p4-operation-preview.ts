@@ -5,6 +5,9 @@ export type P4OperationKind = "integrate" | "undo";
 
 const operationErrors: Record<string, string> = {
   "Too many shelves. Filter by user or open a changelist by number.": "shelfLimit",
+  "Choose an installed external merge tool in Perforce settings.": "mergeToolMissing",
+  "The external merge tool exited without a successful result.": "mergeToolExit",
+
   "Choose a Perforce user name.": "shelfUser",
   "This changelist has no shelved files.": "shelfEmpty",
   "Choose files from this shelf.": "shelfFiles",

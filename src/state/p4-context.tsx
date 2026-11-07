@@ -119,6 +119,7 @@ interface P4ContextValue {
   unshelveSelected: () => Promise<void>;
   deleteSelectedShelf: () => Promise<void>;
   manualResolveView: (path: string) => Promise<P4ManualResolve>;
+  manualResolveExternal: (path: string, text: string, fingerprint: string) => Promise<string>;
   manualResolveApply: (path: string, text: string, fingerprint: string) => Promise<void>;
   resolveView: (path: string) => Promise<P4ResolveView | null>;
   resolveAccept: (path: string, mode: "yours" | "theirs" | "merge") => Promise<boolean>;
@@ -1032,6 +1033,16 @@ export function P4Provider({ children }: { children: ReactNode }) {
     return guard(current.connection, () => p4Api.manualResolveView(current.connection, path));
   }, [guard]);
 
+  const manualResolveExternal = useCallback(async (path: string, text: string, fingerprint: string) => {
+    const current = sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    const release = lockMutation(current, t("git-files.openMergeTool"));
+    if (!release) throw new Error(t("p4-operations.workspaceBusy"));
+    const activity = beginActivity(t("git-files.openMergeTool"), depotBase(path));
+    try { return await guard(current.connection, () => p4Api.manualResolveExternal(current.connection, path, text, fingerprint, prefs.p4MergeTool)); }
+    finally { endActivity(activity); release(); }
+  }, [guard, lockMutation, beginActivity, endActivity, prefs.p4MergeTool]);
+
   const manualResolveApply = useCallback(async (path: string, text: string, fingerprint: string) => {
     const current = sessionRef.current;
     if (!current) throw new Error(t("p4-operations.connectionRequired"));
@@ -1474,6 +1485,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
       deleteSelectedShelf,
       manualResolveView,
       manualResolveApply,
+      manualResolveExternal,
       resolveView,
       resolveAccept,
       revertUnchanged,
@@ -1533,6 +1545,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
       resolveAccept,
       manualResolveView,
       manualResolveApply,
+      manualResolveExternal,
       resolveView,
       diffLoading,
       error,

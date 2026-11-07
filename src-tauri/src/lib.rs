@@ -1361,6 +1361,18 @@ async fn p4_manual_resolve_view(
 }
 
 #[tauri::command]
+async fn p4_manual_resolve_external(
+    connection: p4::P4Connection,
+    path: String,
+    text: String,
+    fingerprint: String,
+    tool: String,
+) -> AppResult<String> {
+    blocking(move || p4::manual_resolve_external(&connection, &path, &text, &fingerprint, &tool))
+        .await
+}
+
+#[tauri::command]
 async fn p4_manual_resolve_apply(
     connection: p4::P4Connection,
     path: String,
@@ -1979,6 +1991,7 @@ pub fn run() {
             p4_resolve_view,
             p4_manual_resolve_view,
             p4_manual_resolve_apply,
+            p4_manual_resolve_external,
             p4_resolve_accept,
             p4_get_revision,
             p4_sync,

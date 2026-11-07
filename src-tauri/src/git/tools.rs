@@ -538,6 +538,100 @@ pub fn run_mergetool(repo: &mut Repository, path: &str) -> AppResult<WorkspaceSn
     snapshot(repo)
 }
 
+/// Launch a known GUI merge tool without a shell, using the same discovery as Git settings.
+/// Custom executables use the P4MERGE four-file argument contract.
+pub fn merge_files_external(
+    tool: &str,
+    cwd: &Path,
+    base: &Path,
+    yours: &Path,
+    theirs: &Path,
+    result: &Path,
+) -> AppResult<()> {
+    let value = if tool.trim().is_empty() {
+        "p4merge"
+    } else {
+        tool.trim()
+    };
+    let known = GUI_TOOLS.iter().find(|tool| tool.id == value);
+    let program = if let Some(tool) = known {
+        gui_tool_path(tool).or_else(|| {
+            tool.commands
+                .iter()
+                .find_map(|name| crate::locate::which(name))
+        })
+    } else if crate::locate::is_executable(Path::new(value)) {
+        Some(PathBuf::from(value))
+    } else {
+        crate::locate::which(value)
+    }
+    .ok_or_else(|| {
+        AppError::msg("Choose an installed external merge tool in Perforce settings.")
+    })?;
+    let mut command = crate::locate::command(program);
+    command
+        .current_dir(cwd)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    match value {
+        "vscode" | "cursor" => {
+            command
+                .arg("--wait")
+                .arg("--merge")
+                .arg(theirs)
+                .arg(yours)
+                .arg(base)
+                .arg(result);
+        }
+        "bc" => {
+            command.arg(yours).arg(theirs).arg(base).arg(result);
+        }
+        "kdiff3" => {
+            command
+                .arg(base)
+                .arg(yours)
+                .arg(theirs)
+                .arg("-o")
+                .arg(result);
+        }
+        "meld" => {
+            command
+                .arg(yours)
+                .arg(base)
+                .arg(theirs)
+                .arg("--output")
+                .arg(result);
+        }
+        "araxis" => {
+            command
+                .args(["-wait", "-merge", "-3", "-a1"])
+                .arg(base)
+                .arg(yours)
+                .arg(theirs)
+                .arg(result);
+        }
+        "smerge" => {
+            command
+                .arg("mergetool")
+                .arg(base)
+                .arg(yours)
+                .arg(theirs)
+                .arg("-o")
+                .arg(result);
+        }
+        _ => {
+            command.arg(base).arg(yours).arg(theirs).arg(result);
+        }
+    }
+    if !command.status()?.success() {
+        return Err(AppError::msg(
+            "The external merge tool exited without a successful result.",
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

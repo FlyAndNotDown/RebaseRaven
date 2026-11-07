@@ -148,6 +148,7 @@ export const p4Api = {
     call<void>("p4_delete_shelf", { connection, changeId }),
   manualResolveView: (connection: P4Connection, path: string) =>
     call<P4ManualResolve>("p4_manual_resolve_view", { connection, path }),
+  manualResolveExternal: (connection: P4Connection, path: string, text: string, fingerprint: string, tool: string) => call<string>("p4_manual_resolve_external", { connection, path, text, fingerprint, tool }),
   manualResolveApply: (connection: P4Connection, path: string, text: string, fingerprint: string) =>
     call<void>("p4_manual_resolve_apply", { connection, path, text, fingerprint }),
   resolveView: (connection: P4Connection, path: string) =>

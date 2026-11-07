@@ -1915,7 +1915,7 @@ fn manual_resolve_snapshot(
         .ok_or_else(|| AppError::msg("Choose a regular workspace file."))?;
     workspace_directory_path(Path::new(&connection.root), parent.to_path_buf())?;
     let yours = merge_text(
-        fs::File::open(&local)?
+        std::io::BufReader::new(fs::File::open(&local)?)
             .take((MANUAL_MERGE_LIMIT + 1) as u64)
             .bytes()
             .collect::<Result<Vec<_>, _>>()?,
@@ -1969,10 +1969,12 @@ pub fn manual_resolve_apply(
 ) -> AppResult<()> {
     use std::io::Write;
     merge_text(text.as_bytes().to_vec(), false)?;
-    if text
-        .lines()
-        .any(|line| line.starts_with("<<<<<<< ") || line.starts_with(">>>>>>> "))
-    {
+    if text.lines().any(|line| {
+        line.starts_with("<<<<<<<")
+            || line.starts_with(">>>>>>>")
+            || line.starts_with("|||||||")
+            || line == "======="
+    }) {
         return Err(AppError::msg("Remove conflict markers before resolving."));
     }
     let (current, local) = manual_resolve_snapshot(connection, path)?;
@@ -1987,11 +1989,60 @@ pub fn manual_resolve_apply(
         .set_permissions(fs::metadata(&local)?.permissions())?;
     result.write_all(text.as_bytes())?;
     result.flush()?;
-    result
-        .persist(&local)
-        .map_err(|error| AppError::msg(error.to_string()))?;
+    #[cfg(windows)]
+    let original_permissions = fs::metadata(&local)?.permissions();
+    #[cfg(windows)]
+    if original_permissions.readonly() {
+        let mut writable = original_permissions.clone();
+        writable.set_readonly(false);
+        fs::set_permissions(&local, writable)?;
+    }
+    if let Err(error) = result.persist(&local) {
+        #[cfg(windows)]
+        let _ = fs::set_permissions(&local, original_permissions);
+        return Err(AppError::msg(error.to_string()));
+    }
     // The edited workspace file is now the chosen result. Never submit it here.
     resolve_accept(connection, path, "yours")
+}
+
+pub fn manual_resolve_external(
+    connection: &P4Connection,
+    path: &str,
+    text: &str,
+    fingerprint: &str,
+    tool: &str,
+) -> AppResult<String> {
+    let (view, _) = manual_resolve_snapshot(connection, path)?;
+    if view.fingerprint != fingerprint {
+        return Err(AppError::msg(
+            "The operation or workspace changed. Preview it again before applying.",
+        ));
+    }
+    merge_text(text.as_bytes().to_vec(), false)?;
+    let directory = tempfile::tempdir()?;
+    let base = directory.path().join("base.txt");
+    let yours = directory.path().join("yours.txt");
+    let theirs = directory.path().join("theirs.txt");
+    let result = directory.path().join("result.txt");
+    fs::write(&base, &view.base)?;
+    fs::write(&yours, &view.yours)?;
+    fs::write(&theirs, &view.theirs)?;
+    fs::write(&result, text)?;
+    crate::git::merge_files_external(tool, directory.path(), &base, &yours, &theirs, &result)?;
+    let result = merge_text(
+        std::io::BufReader::new(fs::File::open(result)?)
+            .take((MANUAL_MERGE_LIMIT + 1) as u64)
+            .bytes()
+            .collect::<Result<Vec<_>, _>>()?,
+        false,
+    )?;
+    if manual_resolve_snapshot(connection, path)?.0.fingerprint != fingerprint {
+        return Err(AppError::msg(
+            "The operation or workspace changed. Preview it again before applying.",
+        ));
+    }
+    Ok(result)
 }
 
 struct ResolveFacts {

@@ -298,12 +298,16 @@
     "result": "Result · editable",
     "useYours": "Use entire local file",
     "useTheirs": "Use entire incoming file",
-    "hint": "The result starts with your workspace file. Edit it using the three versions above, then save and resolve. This does not submit the file.",
+    "hint": "Choose or edit each conflict block. Independent changes are merged automatically. Save and resolve after removing all conflict markers; the file is not submitted.",
     "apply": "Save and resolve",
     "back": "Back to resolve options",
     "discardTitle": "Discard merge edits?",
     "discardHint": "The edits in this dialog have not been written to your workspace.",
-    "discard": "Discard edits"
+    "discard": "Discard edits",
+    "externalSetting": "External merge tool",
+    "externalHint": "Empty uses P4Merge when installed. Custom executables receive four file paths: base, yours, theirs, result. Review the returned result before saving.",
+    "externalWaiting": "Waiting for the merge tool…",
+    "externalDefault": "Automatic · P4Merge"
   },
   "reconcileReview": {
     "title": "Reconcile offline changes",

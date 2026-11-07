@@ -23,6 +23,7 @@ const choices = [
 export function P4Resolve({ path, onClose }: { path: string; onClose: () => void }) {
   useTranslation();
   const { resolveView, resolveAccept, busy: workspaceBusy } = useP4();
+  const [external, setExternal] = useState(false);
   const [manual, setManual] = useState(false);
   const [view, setView] = useState<P4ResolveView | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +59,7 @@ export function P4Resolve({ path, onClose }: { path: string; onClose: () => void
     }
   }
 
-  if (manual) return <P4ManualResolve path={path} onClose={onClose} onBack={() => setManual(false)} />;
+  if (manual) return <P4ManualResolve external={external} path={path} onClose={onClose} onBack={() => { setExternal(false); setManual(false); }} />;
 
   return (
     <Dialog open onOpenChange={(open) => !open && !running.current && onClose()}>
@@ -103,6 +104,7 @@ export function P4Resolve({ path, onClose }: { path: string; onClose: () => void
         </fieldset>
         <DialogFooter>
           {view?.content && view.pendingResolves === 1 ? <Button className="mr-auto" variant="outline" disabled={busy || workspaceBusy} onClick={() => setManual(true)}>{t("p4.manual.open")}</Button> : null}
+          {view?.content && view.pendingResolves === 1 ? <Button variant="ghost" disabled={busy || workspaceBusy} onClick={() => { setExternal(true); setManual(true); }}>{t("git-files.openMergeTool")}</Button> : null}
           <Button variant="outline" disabled={busy} onClick={onClose}>{t("common.cancel")}</Button>
           <Button disabled={!view || !mode || busy || workspaceBusy} onClick={() => void accept()}>
             {busy ? <LoaderCircleIcon className="motion-safe:animate-spin" /> : <GitMergeIcon />}

@@ -37,6 +37,8 @@
     "shelfFiles": "Choose files from this shelf.",
     "shelfMapping": "Stream mapping restores the entire shelf. Select all files.",
     "shelfMappingEmpty": "No files can be restored into this workspace. Check the workspace view and stream mapping.",
+    "mergeToolMissing": "Choose an installed external merge tool in Settings → Perforce.",
+    "mergeToolExit": "The external merge tool exited without a successful result. Your workspace file has not been changed.",
     "shelfLimit": "Too many shelves. Filter by user or open a changelist by number."
   },
   "connectionRequired": "Reconnect this workspace before continuing.",

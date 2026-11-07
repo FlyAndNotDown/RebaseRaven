@@ -298,12 +298,16 @@
     "result": "合并结果 · 可编辑",
     "useYours": "采用整个本地文件",
     "useTheirs": "采用整个传入文件",
-    "hint": "结果以本地文件为起点。参考上方三个版本编辑后，保存并标记已解决；文件不会自动提交。",
+    "hint": "逐块选择或直接编辑冲突内容；互不冲突的修改已自动合并。移除全部冲突标记后保存并解决，文件不会自动提交。",
     "apply": "保存并解决",
     "back": "返回解决选项",
     "discardTitle": "放弃合并修改？",
     "discardHint": "当前弹窗中的修改尚未写入工作区。",
-    "discard": "放弃修改"
+    "discard": "放弃修改",
+    "externalSetting": "外部合并工具",
+    "externalHint": "留空时尝试使用已安装的 P4Merge。自定义程序依次接收基线、本地、传入、结果四个文件路径；返回后仍需审阅并保存。",
+    "externalWaiting": "正在等待合并工具…",
+    "externalDefault": "自动 · P4Merge"
   },
   "reconcileReview": {
     "title": "整理离线修改",
