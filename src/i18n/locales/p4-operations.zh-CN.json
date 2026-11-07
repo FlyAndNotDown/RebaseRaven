@@ -36,7 +36,8 @@
     "shelfEmpty": "此变更列表没有搁置文件。",
     "shelfFiles": "请选择此 Shelf 中的文件。",
     "shelfMapping": "Stream 映射将恢复整个 Shelf，请选择所有文件。",
-    "shelfMappingEmpty": "没有文件可以恢复到当前工作区，请检查工作区视图和 Stream 映射。"
+    "shelfMappingEmpty": "没有文件可以恢复到当前工作区，请检查工作区视图和 Stream 映射。",
+    "shelfLimit": "Shelf 数量过多，请按用户筛选或直接输入变更列表编号。"
   },
   "connectionRequired": "请重新连接此工作区后继续。",
   "workspaceBusy": "请等待当前工作区操作完成。",

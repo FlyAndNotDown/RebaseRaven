@@ -36,7 +36,8 @@
     "shelfEmpty": "This changelist has no shelved files.",
     "shelfFiles": "Choose files from this shelf.",
     "shelfMapping": "Stream mapping restores the entire shelf. Select all files.",
-    "shelfMappingEmpty": "No files can be restored into this workspace. Check the workspace view and stream mapping."
+    "shelfMappingEmpty": "No files can be restored into this workspace. Check the workspace view and stream mapping.",
+    "shelfLimit": "Too many shelves. Filter by user or open a changelist by number."
   },
   "connectionRequired": "Reconnect this workspace before continuing.",
   "workspaceBusy": "Wait for the current workspace operation to finish.",
