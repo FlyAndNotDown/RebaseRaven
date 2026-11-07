@@ -32,7 +32,14 @@
     "reachable_other": "Reachable · {{count}} heads",
     "saveFailed": "The URL could not be saved. Review the operation error and retry.",
     "updating": "Updating {{name}} URL",
-    "updated": "Updated {{name}} URL"
+    "updated": "Updated {{name}} URL",
+    "rename": "Rename",
+    "renameTitle": "Rename remote",
+    "renameDescription": "Rename {{name}} and its tracking references.",
+    "nameTaken": "A remote named {{name}} already exists.",
+    "renameFailed": "Could not rename this remote. Review the error and retry.",
+    "renaming": "Renaming {{name}}",
+    "renamed": "Renamed remote to {{name}}"
   },
   "sidebar": {
     "filter": "Filter branches and tags",

@@ -299,6 +299,26 @@ pub fn set_remote_url(repo: &Repository, name: &str, url: &str) -> AppResult<()>
     Ok(())
 }
 
+pub fn rename_remote(repo: &Repository, name: &str, new_name: &str) -> AppResult<()> {
+    let new_name = new_name.trim();
+    if !is_valid_remote_name(new_name) {
+        return Err(AppError::msg(
+            "Remote name can only contain letters, numbers, dots, hyphens, and underscores",
+        ));
+    }
+    let names = remote_names(repo)?;
+    if !names.iter().any(|current| current == name) {
+        return Err(AppError::msg(format!("Remote `{name}` no longer exists")));
+    }
+    if names.iter().any(|current| current == new_name) {
+        return Err(AppError::msg(format!("Remote `{new_name}` already exists")));
+    }
+    // Git updates tracking refs, symbolic HEAD and branch upstream settings as
+    // one native remote rename. Recreating the remote would lose those links.
+    run_git_stdout(workdir(repo)?, &["remote", "rename", "--", name, new_name])?;
+    Ok(())
+}
+
 pub fn delete_remote(repo: &Repository, name: &str) -> AppResult<()> {
     run_git_stdout(workdir(repo)?, &["remote", "remove", "--", name])?;
     Ok(())

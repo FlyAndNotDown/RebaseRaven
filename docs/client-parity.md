@@ -17,7 +17,7 @@ verification of every option or platform.
 | Workflow | Current implementation | Remaining audit or work |
 | --- | --- | --- |
 | Initialize, clone, recent repositories | `git/initialize.rs`, `git/remote.rs` | Verify edge cases and UI |
-| Fetch, pull, push and upstreams | `git/remote.rs`, `git/refs.rs` | Audit prune, remote rename, separate push URLs and push options |
+| Fetch, pull, push and upstreams | `git/remote.rs`, `git/refs.rs` | Remote rename is implemented and repository-tested; audit prune, separate push URL editing and push options |
 | Stage, unstage, discard, ignore | `git/changes.rs`, `git/partial.rs` | Audit selective stash, clean preview and ignored files |
 | Commit and amend | `git/changes.rs` | Audit signing and message reuse |
 | Branches and tags | `git/refs.rs` | Audit annotated/signed tags and multiple selection |
@@ -107,3 +107,19 @@ area. Do not infer full parity from a passing test suite or this inventory.
   and uses localized action labels. Native visual checks of these new screens
   remain pending because the host locked during the iteration. A clean build
   alone is not evidence that these visual checks passed.
+
+### Git remote rename and diagnostics locking
+
+- Git remote rename preserves fetch/push URLs, tracking branches, symbolic remote
+  HEAD, local upstream configuration, the active branch, index and working files.
+  History filters, expanded remote folders and affected comparison references
+  follow the new name, retaining ownership when tabs change during the operation.
+- Remote and local branch rename share the same dialog and save handling. New
+  native dialog checks remain pending while the host is locked.
+- A diagnostics test exposed a transient lock lifetime problem during concurrent
+  process creation. A deterministic inherited-descriptor regression test failed
+  before the fix. Stores now explicitly unlock when dropped, so another handle
+  can open the logs while a forked child's inherited descriptor is still alive.
+- Frontend checks and 424 tests pass. Rust formatting, Clippy and 297 tests pass,
+  with the existing unrelated test ignored. Remote rename tests use real Git
+  repositories and verify preservation and failure behavior, not a mocked CLI.

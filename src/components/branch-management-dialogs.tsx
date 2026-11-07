@@ -30,38 +30,53 @@ function useDialogSave(onDone: () => void) {
   return { mutation, busy, failed, setFailed, save };
 }
 
-export function RenameBranchDialog({ branch, existingNames, onOpenChange, onRename }: {
-  branch: BranchInfo;
-  existingNames: string[];
-  onOpenChange: (open: boolean) => void;
-  onRename: (name: string, newName: string) => Promise<boolean>;
+export function RenameBranchDialog({branch,...props}: {
+  branch:BranchInfo;
+  existingNames:string[];
+  onOpenChange:(open:boolean)=>void;
+  onRename:(name:string,newName:string)=>Promise<boolean>;
+}) { return <RenameGitItemDialog originalName={branch.name} kind="branch" {...props} />; }
+
+export function RenameRemoteDialog(props: {
+  name:string;
+  existingNames:string[];
+  onOpenChange:(open:boolean)=>void;
+  onRename:(name:string,newName:string)=>Promise<boolean>;
+}) { return <RenameGitItemDialog originalName={props.name} kind="remote" {...props} />; }
+
+function RenameGitItemDialog({originalName,kind,existingNames,onOpenChange,onRename}: {
+  originalName:string;
+  kind:"branch"|"remote";
+  existingNames:string[];
+  onOpenChange:(open:boolean)=>void;
+  onRename:(name:string,newName:string)=>Promise<boolean>;
 }) {
   const { t } = useTranslation();
-  const [name, setName] = useState(branch.name);
+  const [name, setName] = useState(originalName);
   const { mutation, busy, failed, setFailed, save } = useDialogSave(() => onOpenChange(false));
   const next = name.trim();
-  const taken = next !== branch.name && existingNames.includes(next);
+  const taken = next !== originalName && existingNames.includes(next);
   return (
     <Dialog open onOpenChange={(open) => { if (!mutation.busy) onOpenChange(open); }}>
       <DialogContent>
         <form onSubmit={(event) => {
           event.preventDefault();
-          if (!next || next === branch.name || taken || busy) return;
-          save(() => onRename(branch.name, next));
+          if (!next || next === originalName || taken || busy) return;
+          save(() => onRename(originalName, next));
         }}>
           <DialogHeader>
-            <DialogTitle>{t("git.branch.renameTitle")}</DialogTitle>
-            <DialogDescription>{t("git.branch.renameDescription", { name: branch.name })}</DialogDescription>
+            <DialogTitle>{t(`git.${kind}.renameTitle`)}</DialogTitle>
+            <DialogDescription>{t(`git.${kind}.renameDescription`, { name: originalName })}</DialogDescription>
           </DialogHeader>
           <div className="my-4 grid gap-2">
-            <Label htmlFor="rename-branch-name">{t("git.branch.newName")}</Label>
-            <Input id="rename-branch-name" autoFocus className="font-mono" value={name} disabled={busy} onChange={(event) => { setName(event.target.value); setFailed(false); }} />
-            {taken ? <p role="alert" className="text-xs text-destructive">{t("git.branch.nameTaken", { name: next })}</p> : null}
-            {failed ? <p role="alert" className="text-xs text-destructive">{t("git.branch.renameFailed")}</p> : null}
+            <Label htmlFor="rename-git-item-name">{t("git.branch.newName")}</Label>
+            <Input id="rename-git-item-name" autoFocus className="font-mono" value={name} disabled={busy} onChange={(event) => { setName(event.target.value); setFailed(false); }} />
+            {taken ? <p role="alert" className="text-xs text-destructive">{t(`git.${kind}.nameTaken`, { name: next })}</p> : null}
+            {failed ? <p role="alert" className="text-xs text-destructive">{t(`git.${kind}.renameFailed`)}</p> : null}
           </div>
           <DialogFooter>
             <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
-            <Button type="submit" disabled={!next || next === branch.name || taken || busy}>
+            <Button type="submit" disabled={!next || next === originalName || taken || busy}>
               {busy ? <Loader2Icon aria-hidden className="animate-spin motion-reduce:animate-none" /> : null}
               <span role={busy ? "status" : undefined}>{t(busy ? "git.branch.renamingLabel" : "git.branch.rename")}</span>
             </Button>

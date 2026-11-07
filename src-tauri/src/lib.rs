@@ -830,6 +830,19 @@ async fn set_remote_url(
 }
 
 #[tauri::command]
+async fn rename_remote(
+    repo_path: String,
+    name: String,
+    new_name: String,
+) -> AppResult<WorkspaceSnapshot> {
+    with_repo_async(repo_path, move |repo| {
+        git::rename_remote(repo, &name, &new_name)?;
+        git::snapshot(repo)
+    })
+    .await
+}
+
+#[tauri::command]
 async fn delete_remote(repo_path: String, name: String) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, move |repo| {
         git::delete_remote(repo, &name)?;
@@ -2058,6 +2071,7 @@ pub fn run() {
             add_remote,
             probe_remote_url,
             set_remote_url,
+            rename_remote,
             delete_remote,
             stash_save,
             stash_apply,

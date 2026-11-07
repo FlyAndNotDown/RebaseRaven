@@ -18,6 +18,7 @@ import { t } from "@/i18n";
 import { emptyBinaryDiff, errorMessage, expandHistoryRevs, GIT_MISSING, gitApi, isCancelled, subscribeGitMissing } from "@/lib/git";
 import { P4_MISSING, p4Api } from "@/lib/p4";
 import { normalizeRepoPath, sameRepoPath } from "@/lib/format";
+import { DEFAULT_HISTORY_EXPANDED, renamedRemoteViews } from "@/lib/remote-refs";
 import { repositoryUndoAction } from "@/state/repository-actions";
 import { defaultPrefs, normalizePrefs, sameLayout } from "@/lib/prefs";
 import {
@@ -236,6 +237,7 @@ interface GitContextValue {
   applyPatch: () => Promise<void>;
   addRemote: (name: string, url: string) => Promise<boolean>;
   setRemoteUrl: (name: string, url: string) => Promise<boolean>;
+  renameRemote: (name: string, newName: string) => Promise<boolean>;
   deleteRemote: (name: string) => Promise<boolean>;
   stashSave: (message: string, includeUntracked: boolean, paths?: string[]) => Promise<boolean>;
   stashApply: (id: string) => Promise<void>;
@@ -1504,9 +1506,9 @@ export function GitProvider({ children }: { children: ReactNode }) {
   );
 
   const loadComparison = useCallback(
-    async (base: CompareRevision, head: CompareRevision) => {
-      const repoPath = activeRepoPath();
-      const tabId = activeTabIdRef.current;
+    async (base: CompareRevision, head: CompareRevision, tabId = activeTabIdRef.current) => {
+      const tab = tabsRef.current.find(item => item.id === tabId);
+      const repoPath = tab?.kind === "repo" && tab.vcs === "git" ? tab.path : null;
       if (!repoPath) return;
       const generation = bumpGen(compareLoadGen.current, tabId);
       patchSession(tabId, {
@@ -1538,7 +1540,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
         reportError(error);
       }
     },
-    [activeRepoPath, patchSession],
+    [patchSession],
   );
 
   const openComparison = useCallback(
@@ -2579,6 +2581,29 @@ export function GitProvider({ children }: { children: ReactNode }) {
     [runMutation],
   );
 
+  const renameRemote = useCallback(async (name: string, newName: string) => {
+    const tabId = activeTabIdRef.current;
+    const previous = sessionsRef.current[tabId]?.snapshot;
+    const ok = await runMutation(t("git.remote.renaming", {name}), path => gitApi.renameRemote(path,name,newName), t("git.remote.renamed", {name:newName}), {tabId});
+    if (!ok) return false;
+    const current = sessionsRef.current[tabId];
+    if (current) {
+      const next = renamedRemoteViews(current.historyRevs,current.historyExpanded ?? DEFAULT_HISTORY_EXPANDED,name,newName,previous?.branches.remote.map(branch => branch.name) ?? [],previous?.branches.local.map(branch => branch.name) ?? []);
+      if (current.comparison) {
+        const comparison = current.comparison;
+        const base = {rev:next.renameRef(comparison.base.rev),label:next.renameRef(comparison.base.label)};
+        const head = {rev:next.renameRef(comparison.head.rev),label:next.renameRef(comparison.head.label)};
+        if (base.rev !== comparison.base.rev || head.rev !== comparison.head.rev) void loadComparison(base,head,tabId);
+      }
+      setHistoryRevs(next.revs,tabId);
+      setHistoryExpanded(next.expanded,tabId);
+      patchSession(tabId,{commitsLoaded:false,commitsHasMore:true});
+      refetchStaleHistory(tabId);
+    }
+    await ensureBranches(true,tabId);
+    return true;
+  }, [ensureBranches, loadComparison, patchSession, refetchStaleHistory, runMutation, setHistoryExpanded, setHistoryRevs]);
+
   const deleteRemote = useCallback(
     async (name: string) => {
       const tabId = activeTabIdRef.current;
@@ -3004,6 +3029,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       applyPatch,
       addRemote,
       setRemoteUrl,
+      renameRemote,
       deleteRemote,
       stashSave,
       stashApply,
@@ -3099,6 +3125,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       applyPatch,
       addRemote,
       setRemoteUrl,
+      renameRemote,
       deleteRemote,
       stashSave,
       stashApply,

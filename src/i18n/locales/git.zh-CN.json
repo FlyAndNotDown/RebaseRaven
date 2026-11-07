@@ -32,7 +32,14 @@
     "reachable_other": "连接成功 · {{count}} 个分支",
     "saveFailed": "无法保存地址。请查看操作错误后重试。",
     "updating": "正在更新 {{name}} 的地址",
-    "updated": "已更新 {{name}} 的地址"
+    "updated": "已更新 {{name}} 的地址",
+    "rename": "重命名",
+    "renameTitle": "重命名远端",
+    "renameDescription": "重命名 {{name}} 及其跟踪引用。",
+    "nameTaken": "已存在名为 {{name}} 的远端。",
+    "renameFailed": "无法重命名此远端，请查看错误后重试。",
+    "renaming": "正在重命名 {{name}}",
+    "renamed": "远端已重命名为 {{name}}"
   },
   "sidebar": {
     "filter": "筛选分支和标签",
