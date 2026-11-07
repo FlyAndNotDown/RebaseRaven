@@ -25,6 +25,8 @@ export function P4ReconcileDialog({ onClose }: { onClose: () => void }) {
   const running = useRef(false);
 
   const scan = useCallback(async () => {
+    await Promise.resolve();
+    if (!mounted.current) return;
     if (running.current) return;
     running.current = true;
     setLoading(true); setError(null); setPreview(null); setPicked(new Set());
@@ -35,7 +37,7 @@ export function P4ReconcileDialog({ onClose }: { onClose: () => void }) {
     finally { running.current = false; if (mounted.current) setLoading(false); }
   }, [previewReconcile]);
 
-  useEffect(() => { mounted.current = true; void scan(); return () => { mounted.current = false; }; }, [scan]);
+  useEffect(() => { mounted.current = true; void Promise.resolve().then(() => { if (mounted.current) void scan(); }); return () => { mounted.current = false; }; }, [scan]);
 
   async function apply() {
     if (!preview || picked.size === 0 || running.current || workspaceBusy) return;

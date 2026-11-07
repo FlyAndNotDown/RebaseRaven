@@ -16,6 +16,7 @@ import type { P4StreamOption, P4StreamPreview, P4StreamRequest } from "@/types/p
 export function P4StreamDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const p4 = useP4();
+  const listStreams = p4.listStreams;
   const [streams, setStreams] = useState<P4StreamOption[] | null>(null);
   const [mode, setMode] = useState<P4StreamRequest["mode"]>("merge");
   const [child, setChild] = useState("");
@@ -37,13 +38,13 @@ export function P4StreamDialog({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     mounted.current = true;
-    void p4.listStreams().then((next) => {
+    void listStreams().then((next) => {
       if (!mounted.current) return;
       setStreams(next);
       setMode(next.find((stream) => stream.path === target)?.parent?.startsWith("//") ? "merge" : "copy");
     }).catch((caught: unknown) => { if (mounted.current) setError(p4DisplayError(errorMessage(caught))); });
     return () => { mounted.current = false; };
-  }, [p4.listStreams, target, attempt]);
+  }, [listStreams, target, attempt]);
 
   function edit(update: () => void) { setPreview(null); setError(null); update(); }
 

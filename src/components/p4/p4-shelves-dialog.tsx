@@ -27,8 +27,7 @@ export function P4ShelvesDialog({ onClose }: { onClose: () => void }) {
   const [detail, setDetail] = useState<P4Changelist | null>(null);
   const [picked, setPicked] = useState<Set<string>>(() => new Set());
   const [file, setFile] = useState<string | null>(null);
-  const [diff, setDiff] = useState<FileDiff | null>(null);
-  const [diffLoading, setDiffLoading] = useState(false);
+  const [diffResult, setDiffResult] = useState<{ key: string; value: FileDiff | null }>({ key: "", value: null });
   const [target, setTarget] = useState(selectedChange);
   const [stream, setStream] = useState("");
   const [loading, setLoading] = useState(true);
@@ -44,8 +43,14 @@ export function P4ShelvesDialog({ onClose }: { onClose: () => void }) {
   const request: P4UnshelveRequest = { changeId: detail?.id ?? "", target, files: detail?.files.filter((entry) => picked.has(entry.depotPath)).map((entry) => entry.depotPath) ?? [], stream: stream.trim() };
   const key = JSON.stringify([connection, request]);
   const blocked = busy !== null || workspaceBusy;
+  const detailId = detail?.id ?? "";
+  const diffKey = detailId && file ? JSON.stringify([detailId, file]) : "";
+  const diff = diffResult.key === diffKey ? diffResult.value : null;
+  const diffLoading = Boolean(diffKey && diffResult.key !== diffKey);
 
   const load = useCallback(async (owner: string, before: number | null) => {
+    await Promise.resolve();
+    if (!mounted.current) return;
     const token = ++generation.current;
     ++detailGeneration.current;
     setLoading(true); setError(null); setPreview(null);
@@ -60,7 +65,7 @@ export function P4ShelvesDialog({ onClose }: { onClose: () => void }) {
     finally { if (mounted.current && token === generation.current) setLoading(false); }
   }, [listShelves]);
 
-  useEffect(() => { mounted.current = true; void load("", null); return () => { mounted.current = false; ++generation.current; ++detailGeneration.current; }; }, [load]);
+  useEffect(() => { mounted.current = true; void Promise.resolve().then(() => { if (mounted.current) void load("", null); }); return () => { mounted.current = false; }; }, [load]);
 
   async function select(id: string, direct = false) {
     const token = ++detailGeneration.current;
@@ -75,14 +80,12 @@ export function P4ShelvesDialog({ onClose }: { onClose: () => void }) {
   }
 
   useEffect(() => {
-    if (!detail || !file) { setDiff(null); return; }
+    if (!detailId || !file) return;
     let live = true;
-    setDiff(null); setDiffLoading(true);
-    void shelfDiff(file, detail.id).then((next) => { if (live) setDiff(next); })
-      .catch((caught: unknown) => { if (live) setError(p4DisplayError(errorMessage(caught))); })
-      .finally(() => { if (live) setDiffLoading(false); });
+    void shelfDiff(file, detailId).then((next) => { if (live) setDiffResult({ key: diffKey, value: next }); })
+      .catch((caught: unknown) => { if (live) { setError(p4DisplayError(errorMessage(caught))); setDiffResult({ key: diffKey, value: null }); } });
     return () => { live = false; };
-  }, [file, detail, shelfDiff]);
+  }, [file, detailId, diffKey, shelfDiff]);
 
   function edit(update: () => void) { setPreview(null); setError(null); update(); }
 
