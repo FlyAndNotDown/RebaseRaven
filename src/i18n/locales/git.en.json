@@ -41,7 +41,17 @@
     "renaming": "Renaming {{name}}",
     "renamed": "Renamed remote to {{name}}",
     "newName": "New remote name",
-    "renamingLabel": "Renaming…"
+    "renamingLabel": "Renaming…",
+    "editPushUrls": "Edit push URLs",
+    "pushUrls": "Push URLs",
+    "pushUrlsHint": "One URL per line. Git pushes to every configured URL. Leave empty to use the fetch URLs.",
+    "inheritedPushHint": "These addresses are defined in another configuration source. Edit that source to change them.",
+    "inherited": "Inherited",
+    "usingFetchUrls": "Using fetch URLs",
+    "pushSaveFailed": "Could not save push URLs. Review the error or reload the configuration.",
+    "reload": "Reload configuration",
+    "updatingPush": "Updating push URLs for {{name}}",
+    "pushUpdated": "Updated push URLs for {{name}}"
   },
   "sidebar": {
     "filter": "Filter branches and tags",

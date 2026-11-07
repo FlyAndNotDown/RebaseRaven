@@ -17,7 +17,7 @@ verification of every option or platform.
 | Workflow | Current implementation | Remaining audit or work |
 | --- | --- | --- |
 | Initialize, clone, recent repositories | `git/initialize.rs`, `git/remote.rs` | Verify edge cases and UI |
-| Fetch, pull, push and upstreams | `git/remote.rs`, `git/refs.rs` | Remote rename is implemented and repository-tested; audit prune, separate push URL editing and push options |
+| Fetch, pull, push and upstreams | `git/remote.rs`, `git/refs.rs` | Remote rename and explicit push URL lists are implemented and repository-tested; audit remaining fetch/push options and cross-platform UI |
 | Stage, unstage, discard, ignore | `git/changes.rs`, `git/partial.rs` | Audit selective stash, clean preview and ignored files |
 | Commit and amend | `git/changes.rs` | Audit signing and message reuse |
 | Branches and tags | `git/refs.rs` | Audit annotated/signed tags and multiple selection |
@@ -123,3 +123,30 @@ area. Do not infer full parity from a passing test suite or this inventory.
 - Frontend checks and 424 tests pass. Rust formatting, Clippy and 297 tests pass,
   with the existing unrelated test ignored. Remote rename tests use real Git
   repositories and verify preservation and failure behavior, not a mocked CLI.
+
+### Explicit Git push destinations and component QA
+
+- Remotes support a complete list of explicit push URLs. Clearing the list restores
+  Git's fetch-URL fallback. Remote summaries retain the first fetch/push address,
+  matching Git's primary destination instead of accidentally retaining the last.
+- Edits use Git's repository configuration lock, a separate temporary config and
+  atomic replacement. They preserve unrelated settings, reject stale snapshots
+  and existing locks, and work through linked worktrees. Included/global push URL
+  definitions are visible as inherited and read-only rather than being partially
+  overwritten or silently combined with new addresses.
+- Six real-Git test groups cover list round trips, multiple fetch fallbacks,
+  inherited sources, malformed/empty values, locks, concurrent changes, linked
+  worktrees and actual pushes to multiple local bare repositories. Clearing the
+  list was verified by pushing a different ref exclusively to the fetch endpoint.
+- The production React dialogs were tested in an isolated browser harness using
+  real Rust commands. UI-driven P4 range integration, remote rename, multiple push
+  URLs, stale-edit rejection/reload, inherited read-only display and clearing
+  overrides all pass. Dialogs were checked at the application's 1280x840 default
+  and 960x640 minimum sizes. Native application context menus, provider state
+  transitions and stream preview regression checks are still pending unlock.
+- Component QA found and corrected a remote rename field/action that still used
+  branch labels and an integration apply button that used a dialog-opening label.
+  Long push addresses now remain readable in a wider, wrapping editor.
+- Current checks: 424 frontend tests and 303 Rust tests pass; formatting, Clippy,
+  source, website, version and type checks pass. The existing unrelated test
+  remains ignored. These checks do not establish complete client parity.

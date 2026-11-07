@@ -238,6 +238,7 @@ interface GitContextValue {
   addRemote: (name: string, url: string) => Promise<boolean>;
   setRemoteUrl: (name: string, url: string) => Promise<boolean>;
   renameRemote: (name: string, newName: string) => Promise<boolean>;
+  setRemotePushUrls: (name: string, urls: string[], fingerprint: string) => Promise<boolean>;
   deleteRemote: (name: string) => Promise<boolean>;
   stashSave: (message: string, includeUntracked: boolean, paths?: string[]) => Promise<boolean>;
   stashApply: (id: string) => Promise<void>;
@@ -2581,6 +2582,10 @@ export function GitProvider({ children }: { children: ReactNode }) {
     [runMutation],
   );
 
+  const setRemotePushUrls = useCallback(async (name: string, urls: string[], fingerprint: string) => runMutation(
+    t("git.remote.updatingPush", {name}), path => gitApi.setRemotePushUrls(path,name,urls,fingerprint), t("git.remote.pushUpdated", {name}),
+  ), [runMutation]);
+
   const renameRemote = useCallback(async (name: string, newName: string) => {
     const tabId = activeTabIdRef.current;
     const previous = sessionsRef.current[tabId]?.snapshot;
@@ -3030,6 +3035,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       addRemote,
       setRemoteUrl,
       renameRemote,
+      setRemotePushUrls,
       deleteRemote,
       stashSave,
       stashApply,
@@ -3126,6 +3132,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       addRemote,
       setRemoteUrl,
       renameRemote,
+      setRemotePushUrls,
       deleteRemote,
       stashSave,
       stashApply,

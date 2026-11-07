@@ -1,13 +1,15 @@
-import { useState } from "react";
-import { Loader2Icon } from "lucide-react";
+import { useEffect, useState } from "react";
+import { InfoIcon, Loader2Icon } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { HoverTip } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { errorMessage, gitApi } from "@/lib/git";
 import { createExclusiveAction } from "@/lib/async-scope";
-import type { BranchInfo, RemoteInfo } from "@/types/git";
+import type { BranchInfo, RemoteInfo, RemotePushSettings } from "@/types/git";
 
 function useDialogSave(onDone: () => void) {
   const [mutation] = useState(createExclusiveAction);
@@ -195,4 +197,38 @@ export function EditRemoteDialog({ remote, repoPath, onOpenChange, onSave }: {
       </DialogContent>
     </Dialog>
   );
+}
+
+export function RemotePushUrlsDialog({repoPath,name,onOpenChange,onSave}: {
+  repoPath:string;
+  name:string;
+  onOpenChange:(open:boolean)=>void;
+  onSave:(name:string,urls:string[],fingerprint:string)=>Promise<boolean>;
+}) {
+  const {t} = useTranslation();
+  const [loaded,setLoaded] = useState<RemotePushSettings|null>(null);
+  const [text,setText] = useState("");
+  const [error,setError] = useState("");
+  const [attempt,setAttempt] = useState(0);
+  const {mutation,busy,failed,setFailed,save} = useDialogSave(() => onOpenChange(false));
+  useEffect(() => {
+    let live = true;
+    void gitApi.remotePushSettings(repoPath,name).then(value => {
+      if (live) {setLoaded(value); setText(value.urls.join("\n")); setError("");}
+    }).catch((caught:unknown) => {if (live) setError(errorMessage(caught));});
+    return () => {live = false;};
+  }, [repoPath,name,attempt]);
+  const urls = text.split(/\r?\n/).filter(line => line.length > 0);
+  const dirty = loaded && JSON.stringify(urls) !== JSON.stringify(loaded.urls);
+  function reload() {setLoaded(null); setError(""); setFailed(false); setAttempt(value => value + 1);}
+  return <Dialog open onOpenChange={open => {if (!mutation.busy) onOpenChange(open);}}><DialogContent className="sm:max-w-xl">
+    <form onSubmit={event => {event.preventDefault(); if (loaded && dirty && !loaded.inherited && !mutation.busy) save(() => onSave(name,urls,loaded.fingerprint));}}>
+      <DialogHeader><DialogTitle>{t("git.remote.editPushUrls")}</DialogTitle><DialogDescription className="font-mono">{name}</DialogDescription></DialogHeader>
+      <div className="my-4 grid gap-3">
+        {loaded ? <><div className="flex items-center gap-2"><Label htmlFor="remote-push-urls">{t("git.remote.pushUrls")}</Label><HoverTip label={t(loaded.inherited ? "git.remote.inheritedPushHint" : "git.remote.pushUrlsHint")}><InfoIcon className="size-3.5 text-muted-foreground" /></HoverTip>{loaded.inherited ? <span className="ml-auto rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground">{t("git.remote.inherited")}</span> : null}</div><Textarea id="remote-push-urls" autoFocus spellCheck={false} value={text} readOnly={loaded.inherited} disabled={busy} className="h-32 min-h-32 resize-none whitespace-pre-wrap break-all font-mono text-xs [field-sizing:fixed]" onChange={event => {setText(event.target.value); setFailed(false);}} />{!urls.length && loaded.fallbackUrls.length ? <div className="grid gap-1 text-xs text-muted-foreground"><span>{t("git.remote.usingFetchUrls")}</span><pre className="max-h-24 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px]">{loaded.fallbackUrls.join("\n")}</pre></div> : null}</> : !error ? <div className="flex min-h-32 items-center justify-center"><Loader2Icon className="size-5 animate-spin text-muted-foreground" /></div> : null}
+        {error || failed ? <p role="alert" className="whitespace-pre-wrap text-xs text-destructive">{error || t("git.remote.pushSaveFailed")}</p> : null}
+      </div>
+      <DialogFooter>{error || failed ? <Button variant="outline" className="mr-auto" disabled={busy} onClick={reload}>{t("git.remote.reload")}</Button> : null}<Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button><Button type="submit" disabled={busy || !loaded || loaded.inherited || !dirty}>{busy ? <Loader2Icon className="animate-spin" /> : null}{t("common.save")}</Button></DialogFooter>
+    </form>
+  </DialogContent></Dialog>;
 }

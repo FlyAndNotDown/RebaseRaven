@@ -830,6 +830,31 @@ async fn set_remote_url(
 }
 
 #[tauri::command]
+async fn remote_push_settings(
+    repo_path: String,
+    name: String,
+) -> AppResult<git::RemotePushSettings> {
+    with_repo_async(repo_path, move |repo| {
+        git::remote_push_settings(repo, &name)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn set_remote_push_urls(
+    repo_path: String,
+    name: String,
+    urls: Vec<String>,
+    fingerprint: String,
+) -> AppResult<WorkspaceSnapshot> {
+    with_repo_async(repo_path, move |repo| {
+        git::set_remote_push_urls(repo, &name, &urls, &fingerprint)?;
+        git::snapshot(repo)
+    })
+    .await
+}
+
+#[tauri::command]
 async fn rename_remote(
     repo_path: String,
     name: String,
@@ -2072,6 +2097,8 @@ pub fn run() {
             probe_remote_url,
             set_remote_url,
             rename_remote,
+            remote_push_settings,
+            set_remote_push_urls,
             delete_remote,
             stash_save,
             stash_apply,

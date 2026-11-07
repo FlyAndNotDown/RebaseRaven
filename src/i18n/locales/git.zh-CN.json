@@ -21,7 +21,7 @@
     "upstreamUpdated": "已更新 {{name}} 的上游分支"
   },
   "remote": {
-    "edit": "编辑获取地址",
+    "edit": "编辑拉取地址",
     "editTitle": "编辑 {{name}} 的获取地址",
     "editDescription": "更改从此远端获取数据的地址。保存只更新仓库配置，不会立即获取数据。",
     "url": "获取地址",
@@ -41,7 +41,17 @@
     "renaming": "正在重命名 {{name}}",
     "renamed": "远端已重命名为 {{name}}",
     "newName": "新远端名称",
-    "renamingLabel": "正在重命名…"
+    "renamingLabel": "正在重命名…",
+    "editPushUrls": "编辑推送地址",
+    "pushUrls": "推送地址",
+    "pushUrlsHint": "每行一个地址，Git 会推送到所有配置的地址。留空则使用拉取地址。",
+    "inheritedPushHint": "这些地址来自其他配置源，请在原配置中修改。",
+    "inherited": "继承的配置",
+    "usingFetchUrls": "使用拉取地址",
+    "pushSaveFailed": "无法保存推送地址，请查看错误或重新加载配置。",
+    "reload": "重新加载配置",
+    "updatingPush": "正在更新 {{name}} 的推送地址",
+    "pushUpdated": "已更新 {{name}} 的推送地址"
   },
   "sidebar": {
     "filter": "筛选分支和标签",

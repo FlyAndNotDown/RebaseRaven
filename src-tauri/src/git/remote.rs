@@ -177,8 +177,8 @@ pub fn list_remotes(repo: &Repository) -> AppResult<Vec<RemoteInfo>> {
             by_name.last_mut().expect("just pushed")
         };
         match kind {
-            "(fetch)" => entry.1 = Some(url.to_string()),
-            "(push)" => entry.2 = Some(url.to_string()),
+            "(fetch)" if entry.1.is_none() => entry.1 = Some(url.to_string()),
+            "(push)" if entry.2.is_none() => entry.2 = Some(url.to_string()),
             _ => {}
         }
     }
