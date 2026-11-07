@@ -352,7 +352,16 @@ impl RateLimit {
 struct Store {
     directory: PathBuf,
     // The OS releases this cross-process lock even if the app crashes.
-    _lock: File,
+    lock: File,
+}
+
+impl Drop for Store {
+    fn drop(&mut self) {
+        // A concurrent fork can temporarily retain the open file description.
+        // Explicit unlocking releases ownership when this store finishes,
+        // without waiting for an inherited descriptor to close at exec.
+        let _ = self.lock.unlock();
+    }
 }
 
 impl Store {
@@ -384,10 +393,7 @@ impl Store {
             return Err(invalid_store());
         }
         lock.try_lock().map_err(|_| invalid_store())?;
-        Ok(Self {
-            directory,
-            _lock: lock,
-        })
+        Ok(Self { directory, lock })
     }
 
     fn summary(&self) -> io::Result<Summary> {
@@ -663,6 +669,20 @@ fn sanitize(contents: &[u8], cutoff: u64) -> (Vec<u8>, usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn dropping_a_store_releases_locks_held_by_inherited_descriptors() {
+        let temp = tempfile::tempdir().unwrap();
+        let directory = temp.path().join("diagnostics");
+        let store = Store::new(&directory).unwrap();
+        // A forked child can retain this open file description until exec.
+        let inherited = store.lock.try_clone().unwrap();
+        assert!(Store::new(&directory).is_err());
+        drop(store);
+        assert!(Store::new(&directory).is_ok());
+        drop(inherited);
+    }
 
     #[test]
     fn clear_removes_queued_and_rotated_logs_and_keeps_unmanaged_files() {
