@@ -17,7 +17,7 @@ import {
   UploadIcon,
 } from "lucide-react";
 import { AddRemoteDialog } from "@/components/lazy-dialogs";
-import { BranchUpstreamDialog, EditRemoteDialog, RenameBranchDialog } from "@/components/branch-management-dialogs";
+import { BranchUpstreamDialog, EditRemoteDialog, RemotePushUrlsDialog, RenameRemoteDialog, RenameBranchDialog } from "@/components/branch-management-dialogs";
 import { useTranslation } from "@/i18n";
 import { CreateTagDialog } from "@/components/create-ref-dialogs";
 import { MergeDialog, RebaseOntoDialog } from "@/components/rebase-dialog";
@@ -49,6 +49,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { groupRemoteBranches, shortRemoteName } from "@/lib/branches";
 import { isRemoteTrackingBranch } from "@/lib/git";
 import { cn } from "@/lib/utils";
+import { DEFAULT_HISTORY_EXPANDED } from "@/lib/remote-refs";
 import { useGitPick } from "@/state/git-context";
 import type { BranchInfo } from "@/types/git";
 
@@ -60,7 +61,6 @@ type BranchTreeNode = {
   children: BranchTreeNode[];
 };
 
-const DEFAULT_EXPANDED = ["section:local", "section:remotes", "remote:origin", "section:tags"];
 
 export function HistoryBranches() {
   const { t } = useTranslation();
@@ -74,6 +74,8 @@ export function HistoryBranches() {
     addRemote,
     deleteRemote,
     setRemoteUrl,
+    renameRemote,
+    setRemotePushUrls,
     renameBranch,
     setBranchUpstream,
     checkoutBranch,
@@ -93,6 +95,8 @@ export function HistoryBranches() {
     "addRemote",
     "deleteRemote",
     "setRemoteUrl",
+    "renameRemote",
+    "setRemotePushUrls",
     "renameBranch",
     "setBranchUpstream",
     "checkoutBranch",
@@ -115,6 +119,8 @@ export function HistoryBranches() {
   const [deletingRemote, setDeletingRemote] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{ repoPath: string; branch: BranchInfo } | null>(null);
   const [upstreamBranch, setUpstreamBranch] = useState<{ repoPath: string; branch: BranchInfo } | null>(null);
+  const [pushRemote, setPushRemote] = useState<{repoPath:string;name:string}|null>(null);
+  const [renamingRemote, setRenamingRemote] = useState<{repoPath:string;name:string}|null>(null);
   const [editingRemote, setEditingRemote] = useState<{ repoPath: string; name: string } | null>(null);
   const [rebasing, setRebasing] = useState<BranchInfo | null>(null);
   const [merging, setMerging] = useState<BranchInfo | null>(null);
@@ -135,7 +141,7 @@ export function HistoryBranches() {
     repoPath !== "" && branchesReadyFor === repoPath && structureReadyFor === repoPath;
   const watched = useMemo(() => new Set(historyRevs), [historyRevs]);
   const expanded = useMemo(
-    () => new Set(historyExpanded ?? DEFAULT_EXPANDED),
+    () => new Set(historyExpanded ?? DEFAULT_HISTORY_EXPANDED),
     [historyExpanded],
   );
 
@@ -152,7 +158,7 @@ export function HistoryBranches() {
 
   useEffect(() => {
     if (historyExpanded !== null) return;
-    const ids = new Set(DEFAULT_EXPANDED);
+    const ids = new Set(DEFAULT_HISTORY_EXPANDED);
     const current = branches?.current;
     if (current) {
       for (const id of folderIdsForPath("local", current.split("/"))) ids.add(id);
@@ -357,6 +363,8 @@ export function HistoryBranches() {
             onRebase={canRebase ? setRebasing : undefined}
             onMerge={canRebase ? setMerging : undefined}
             onDeleteRemote={setDeletingRemote}
+            onEditPushUrls={name => setPushRemote({repoPath,name})}
+            onRenameRemote={name => setRenamingRemote({repoPath,name})}
             onEditRemote={(name) => setEditingRemote({ repoPath, name })}
             onFetchRemote={(name) => void fetchRemote(name)}
             onAddRemote={() => setAddOpen(true)}
@@ -415,6 +423,8 @@ export function HistoryBranches() {
           onSave={setBranchUpstream}
         />
       ) : null}
+      {pushRemote?.repoPath === repoPath ? <RemotePushUrlsDialog key={`${repoPath}:${pushRemote.name}`} repoPath={repoPath} name={pushRemote.name} onOpenChange={open => {if (!open) setPushRemote(current => current === pushRemote ? null : current);}} onSave={setRemotePushUrls} /> : null}
+      {renamingRemote?.repoPath === repoPath ? <RenameRemoteDialog key={`${repoPath}:${renamingRemote.name}`} name={renamingRemote.name} existingNames={snapshot?.remotes.map(remote => remote.name) ?? []} onOpenChange={open => {if (!open) setRenamingRemote(current => current === renamingRemote ? null : current);}} onRename={renameRemote} /> : null}
       {editingRemote?.repoPath === repoPath && snapshot?.remotes.some((remote) => remote.name === editingRemote.name) ? (
         <EditRemoteDialog
           key={`${repoPath}:${editingRemote.name}`}
@@ -678,6 +688,8 @@ function TreeRows({
   onMerge,
   onDeleteRemote,
   onEditRemote,
+  onRenameRemote,
+  onEditPushUrls,
   onFetchRemote,
   onAddRemote,
   onCreateTag,
@@ -708,6 +720,8 @@ function TreeRows({
   onMerge?: (branch: BranchInfo) => void;
   onDeleteRemote?: (name: string) => void;
   onEditRemote?: (name: string) => void;
+  onRenameRemote?: (name:string) => void;
+  onEditPushUrls?: (name:string) => void;
   onFetchRemote?: (name: string) => void;
   onAddRemote?: () => void;
   onCreateTag?: () => void;
@@ -945,7 +959,7 @@ function TreeRows({
         );
         return (
           <div key={node.id}>
-            {remoteName && (onFetchRemote || onDeleteRemote || onEditRemote) ? (
+            {remoteName && (onFetchRemote || onDeleteRemote || onEditRemote || onRenameRemote || onEditPushUrls) ? (
               <ContextMenu>
                 <ContextMenuTrigger asChild>{folderRow}</ContextMenuTrigger>
                 <ContextMenuContent className="min-w-44">
@@ -959,6 +973,8 @@ function TreeRows({
                       {t("git.remote.edit")}
                     </ContextMenuItem>
                   ) : null}
+                  {onEditPushUrls ? <ContextMenuItem onClick={() => onEditPushUrls(remoteName)}><UploadIcon />{t("git.remote.editPushUrls")}</ContextMenuItem> : null}
+                  {onRenameRemote ? <ContextMenuItem onClick={() => onRenameRemote(remoteName)}><PencilIcon />{t("git.remote.rename")}</ContextMenuItem> : null}
                   {onDeleteRemote ? (
                     <>
                       <ContextMenuSeparator />
@@ -988,6 +1004,8 @@ function TreeRows({
                 onMerge={onMerge}
                 onDeleteRemote={onDeleteRemote}
                 onEditRemote={onEditRemote}
+                onRenameRemote={onRenameRemote}
+                onEditPushUrls={onEditPushUrls}
                 onFetchRemote={onFetchRemote}
                 onAddRemote={onAddRemote}
                 onCreateTag={onCreateTag}

@@ -177,8 +177,8 @@ pub fn list_remotes(repo: &Repository) -> AppResult<Vec<RemoteInfo>> {
             by_name.last_mut().expect("just pushed")
         };
         match kind {
-            "(fetch)" => entry.1 = Some(url.to_string()),
-            "(push)" => entry.2 = Some(url.to_string()),
+            "(fetch)" if entry.1.is_none() => entry.1 = Some(url.to_string()),
+            "(push)" if entry.2.is_none() => entry.2 = Some(url.to_string()),
             _ => {}
         }
     }
@@ -296,6 +296,26 @@ pub fn set_remote_url(repo: &Repository, name: &str, url: &str) -> AppResult<()>
         return Err(AppError::msg("Remote URL is required"));
     }
     run_git_stdout(workdir(repo)?, &["remote", "set-url", "--", name, url])?;
+    Ok(())
+}
+
+pub fn rename_remote(repo: &Repository, name: &str, new_name: &str) -> AppResult<()> {
+    let new_name = new_name.trim();
+    if !is_valid_remote_name(new_name) {
+        return Err(AppError::msg(
+            "Remote name can only contain letters, numbers, dots, hyphens, and underscores",
+        ));
+    }
+    let names = remote_names(repo)?;
+    if !names.iter().any(|current| current == name) {
+        return Err(AppError::msg(format!("Remote `{name}` no longer exists")));
+    }
+    if names.iter().any(|current| current == new_name) {
+        return Err(AppError::msg(format!("Remote `{new_name}` already exists")));
+    }
+    // Git updates tracking refs, symbolic HEAD and branch upstream settings as
+    // one native remote rename. Recreating the remote would lose those links.
+    run_git_stdout(workdir(repo)?, &["remote", "rename", "--", name, new_name])?;
     Ok(())
 }
 

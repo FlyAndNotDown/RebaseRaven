@@ -17,6 +17,8 @@ import { P4StreamDialog } from "@/components/p4/p4-stream-dialog";
 import { P4ReconcileDialog } from "@/components/p4/p4-reconcile-dialog";
 import { P4LoginDialog } from "@/components/p4/p4-login-dialog";
 import { P4SwitchDialog, P4SwitchResultDialog } from "@/components/p4/p4-switch-dialog";
+import { P4IntegrationDialog } from "@/components/p4/p4-integration-dialog";
+import type { P4IntegrationInitial, P4IntegrationRequest, P4IntegrationPreview } from "@/types/p4-integration";
 import { P4WorkspaceDialog } from "@/components/p4/p4-workspace-dialog";
 import { errorMessage } from "@/lib/git";
 import { depotBase, P4_LOGIN, P4_MISSING, p4Api, syncSummary } from "@/lib/p4";
@@ -57,6 +59,8 @@ import type {
   P4StreamOption,
 } from "@/types/p4";
 
+import type { P4SpecActions } from "@/types/p4-specs";
+
 export type { P4View };
 
 const OPEN_SETTINGS_EVENT = "rebaseraven-open-settings";
@@ -68,6 +72,10 @@ class LoginCancelled extends Error {
 }
 
 interface P4ContextValue {
+  specs: P4SpecActions;
+  openIntegration: (initial?: P4IntegrationInitial) => void;
+  previewIntegration: (request: P4IntegrationRequest) => Promise<P4IntegrationPreview>;
+  applyIntegration: (request: P4IntegrationRequest, preview: P4IntegrationPreview) => Promise<void>;
   view: P4View;
   setView: (view: P4View) => void;
   connection: P4Connection | null;
@@ -216,6 +224,8 @@ export function P4Provider({ children }: { children: ReactNode }) {
   const [loginOpen, setLoginOpen] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [shelvesOpen, setShelvesOpen] = useState(false);
+  const [integrationInitial, setIntegrationInitial] = useState<P4IntegrationInitial|null>(null);
+  const openIntegration = useCallback((initial: P4IntegrationInitial = {}) => setIntegrationInitial(initial), []);
   const [streamOpen, updateStreamOpen] = useState(false);
   const [streamInitial, setStreamInitial] = useState<Pick<P4StreamRequest,"mode"|"source"> | null>(null);
   const setStreamOpen = useCallback((open: boolean) => {setStreamInitial(null);updateStreamOpen(open);},[]);
@@ -764,6 +774,32 @@ export function P4Provider({ children }: { children: ReactNode }) {
     if (!current) throw new Error(t("p4-operations.connectionRequired"));
     return guard(current.connection, () => p4Api.previewStream(current.connection, request));
   }, [guard]);
+
+  const previewIntegration = useCallback(async (request: P4IntegrationRequest) => {
+    const current = sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    return guard(current.connection, () => p4Api.previewIntegration(current.connection, request));
+  }, [guard]);
+
+  const applyIntegration = useCallback(async (request: P4IntegrationRequest, preview: P4IntegrationPreview) => {
+    const current = sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    if (current.description !== (current.pending.find(change => change.id === current.selectedChange)?.description ?? "")) {
+      throw new Error(t("p4.integration.saveDescription"));
+    }
+    const release = lockMutation(current, t("p4-operations.integrate.running"));
+    if (!release) throw new Error(t("p4-operations.workspaceBusy"));
+    const activity = beginActivity(t("p4-operations.integrate.running"), request.target, undefined, current.tabId);
+    try {
+      await guard(current.connection, () => p4Api.applyIntegration(current.connection, request, preview.fingerprint));
+      await showFileOperation(current, request.changeId, preview.files[0]?.path ?? "");
+      toast.success(t("p4-operations.integrate.completed"));
+    } catch (caught) {
+      await reloadPending(current).catch(() => {});
+      if (activeTabRef.current.id === current.tabId) bumpFiles();
+      throw caught;
+    } finally { endActivity(activity); release(); }
+  }, [guard, lockMutation, beginActivity, endActivity, showFileOperation, reloadPending, bumpFiles]);
 
   const applyStream = useCallback(async (request: P4StreamRequest, preview: P4StreamPreview) => {
     const current = sessionRef.current;
@@ -1488,8 +1524,38 @@ export function P4Provider({ children }: { children: ReactNode }) {
     [lockMutation, beginActivity, endActivity, reconnect, report, retargetRepoTab, setTabMeta],
   );
 
+  const specs = useMemo<P4SpecActions>(() => {
+    async function read<T>(action: (connection: P4Connection) => Promise<T>): Promise<T> {
+      const owner = sessionRef.current;
+      if (!owner) throw new Error(t("p4-operations.connectionRequired"));
+      return guard(owner.connection, () => action(owner.connection));
+    }
+    async function write<T>(action: (connection: P4Connection) => Promise<T>): Promise<T> {
+      const owner = sessionRef.current;
+      if (!owner) throw new Error(t("p4-operations.connectionRequired"));
+      const release = lockMutation(owner, t("p4.specs.updating"));
+      if (!release) throw new Error(t("p4-operations.workspaceBusy"));
+      const activity = beginActivity(t("p4.specs.updating"));
+      try { return await guard(owner.connection, () => action(owner.connection)); }
+      finally { endActivity(activity); release(); }
+    }
+    return {
+      list: (kind, query, owner) => read(c => p4Api.listSpecs(c, kind, query, owner)),
+      read: (kind, name) => read(c => p4Api.readSpec(c, kind, name)),
+      files: name => read(c => p4Api.labelFiles(c, name)),
+      previewTag: request => read(c => p4Api.previewLabelTag(c, request)),
+      save: (edit, fingerprint) => write(c => p4Api.saveSpec(c, edit, fingerprint)),
+      remove: (kind, name, fingerprint) => write(c => p4Api.deleteSpec(c, kind, name, fingerprint)),
+      applyTag: (request, fingerprint) => write(c => p4Api.applyLabelTag(c, request, fingerprint)),
+    };
+  }, [guard, lockMutation, beginActivity, endActivity]);
+
   const value = useMemo<P4ContextValue>(
     () => ({
+      specs,
+      openIntegration,
+      previewIntegration,
+      applyIntegration,
       view: visibleSession?.view ?? "pending",
       setView,
       connection,
@@ -1588,6 +1654,10 @@ export function P4Provider({ children }: { children: ReactNode }) {
       applySwitch,
     }),
     [
+      specs,
+      openIntegration,
+      previewIntegration,
+      applyIntegration,
       activePerforceId,
       language,
       mutationLabels,
@@ -1681,6 +1751,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
         <P4ConnectionDialog />
         {workspaceOpen && connection ? <P4WorkspaceDialog key={JSON.stringify(connection)} /> : null}
         {shelvesOpen && connection ? <P4ShelvesDialog key={JSON.stringify(connection)} onClose={() => setShelvesOpen(false)} /> : null}
+        {integrationInitial && connection ? <P4IntegrationDialog key={JSON.stringify([connection,integrationInitial])} initial={integrationInitial} onClose={() => setIntegrationInitial(null)} /> : null}
         {streamOpen && connection ? <P4StreamDialog initial={streamInitial} key={JSON.stringify([connection,streamInitial])} onClose={() => setStreamOpen(false)} /> : null}
         {reconcileOpen && connection ? <P4ReconcileDialog key={JSON.stringify(connection)} onClose={() => setReconcileOpen(false)} /> : null}
         {switchTarget !== null && connection ? <P4SwitchDialog key={JSON.stringify([connection,switchTarget])} initialTarget={switchTarget} onClose={() => setSwitchTarget(null)} /> : null}

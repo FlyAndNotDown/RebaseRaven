@@ -25,6 +25,7 @@ import type {
   RecentRepo,
   ReflogEntry,
   RemoteProbe,
+  RemotePushSettings,
   SubmoduleInfo,
   UndoneCommit,
   WorktreeInfo,
@@ -201,6 +202,12 @@ export const gitApi = {
     call<WorkspaceSnapshot>("delete_remote", { repoPath, name }),
   setRemoteUrl: (repoPath: string, name: string, url: string) =>
     call<WorkspaceSnapshot>("set_remote_url", { repoPath, name, url }),
+  renameRemote: (repoPath: string, name: string, newName: string) =>
+    call<WorkspaceSnapshot>("rename_remote", { repoPath, name, newName }),
+  remotePushSettings: (repoPath: string, name: string) =>
+    call<RemotePushSettings>("remote_push_settings", {repoPath, name}),
+  setRemotePushUrls: (repoPath: string, name: string, urls: string[], fingerprint: string) =>
+    call<WorkspaceSnapshot>("set_remote_push_urls", {repoPath, name, urls, fingerprint}),
   probeRemoteUrl: (repoPath: string, url: string) =>
     call<RemoteProbe>("probe_remote_url", { repoPath, url }),
   pullRemote: (repoPath: string, activityId?: string, remote?: string, rebase = false) =>

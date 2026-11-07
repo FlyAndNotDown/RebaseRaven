@@ -1336,6 +1336,89 @@ fn editing_a_remote_fetch_url_persists_without_changing_its_explicit_push_url() 
 }
 
 #[test]
+fn renaming_a_remote_preserves_urls_tracking_heads_upstreams_and_local_work() {
+    let (root, repo) = temp_repo();
+    commit_file(&repo, &root, "file.txt", "base\n", "base");
+    let branch = symbolic_branch(&repo).unwrap();
+    let head = head_id(&repo);
+    add_remote(&repo, "origin", "https://git.example.com/read/project.git").unwrap();
+    run_git_stdout(
+        &root,
+        &[
+            "remote",
+            "set-url",
+            "--push",
+            "origin",
+            "https://git.example.com/write/project.git",
+        ],
+    )
+    .unwrap();
+    run_git_stdout(&root, &["update-ref", "refs/remotes/origin/main", &head]).unwrap();
+    run_git_stdout(
+        &root,
+        &[
+            "symbolic-ref",
+            "refs/remotes/origin/HEAD",
+            "refs/remotes/origin/main",
+        ],
+    )
+    .unwrap();
+    set_branch_upstream(&repo, &branch, Some("origin/main")).unwrap();
+    create_branch(&repo, "origin/local-name", false, None).unwrap();
+    fs::write(root.join("file.txt"), "staged work\n").unwrap();
+    stage_paths(&repo, &["file.txt".into()]).unwrap();
+    fs::write(root.join("untracked.txt"), "keep local work\n").unwrap();
+    let status = run_git_stdout(&root, &["status", "--porcelain=v1", "-z"]).unwrap();
+    rename_remote(&repo, "origin", "upstream").unwrap();
+    assert!(ref_exists(&repo, "refs/remotes/upstream/main"));
+    assert!(!ref_exists(&repo, "refs/remotes/origin/main"));
+    assert!(ref_exists(&repo, "refs/heads/origin/local-name"));
+    assert_eq!(
+        config_get(&repo, &format!("branch.{branch}.remote")).as_deref(),
+        Some("upstream")
+    );
+    assert_eq!(
+        config_get(&repo, "remote.upstream.url").as_deref(),
+        Some("https://git.example.com/read/project.git")
+    );
+    assert_eq!(
+        config_get(&repo, "remote.upstream.pushurl").as_deref(),
+        Some("https://git.example.com/write/project.git")
+    );
+    assert_eq!(
+        String::from_utf8(
+            run_git_stdout(&root, &["symbolic-ref", "refs/remotes/upstream/HEAD"]).unwrap()
+        )
+        .unwrap()
+        .trim(),
+        "refs/remotes/upstream/main"
+    );
+    assert_eq!(head_id(&repo), head);
+    assert_eq!(
+        run_git_stdout(&root, &["status", "--porcelain=v1", "-z"]).unwrap(),
+        status
+    );
+    assert_eq!(symbolic_branch(&repo).as_deref(), Some(branch.as_str()));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn invalid_or_duplicate_remote_renames_do_not_remove_existing_configuration() {
+    let (root, repo) = temp_repo();
+    add_remote(&repo, "origin", "https://git.example.com/project.git").unwrap();
+    add_remote(&repo, "backup", "https://git.example.com/backup.git").unwrap();
+    for next in ["", "--delete", "bad name", "backup", "origin"] {
+        assert!(rename_remote(&repo, "origin", next).is_err());
+        assert_eq!(
+            config_get(&repo, "remote.origin.url").as_deref(),
+            Some("https://git.example.com/project.git")
+        );
+    }
+    assert!(rename_remote(&repo, "missing", "new-name").is_err());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn ignoring_appends_new_patterns_once_and_hides_the_files() {
     let (root, repo) = temp_repo();
     commit_file(&repo, &root, ".gitignore", "target/\r\n", "ignore");

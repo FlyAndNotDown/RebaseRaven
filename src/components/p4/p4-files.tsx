@@ -133,6 +133,7 @@ export function P4Files() {
           <DownloadIcon />{t("p4.getLatest")}</ContextMenuItem>
         <ContextMenuItem disabled={p4.busy} onSelect={() => setRevisionTarget({ path: entry.path, recursive: entry.dir })}>
           <HistoryIcon />{t("p4.getRevision")}</ContextMenuItem>
+        {entry.dir ? <ContextMenuItem disabled={p4.busy} onClick={() => p4.openIntegration(mode === "depot" ? {source:path} : {target:`//${connection?.client}/${relativeToRoot(root,entry.path).replace(/\/+$/, "")}${relativeToRoot(root,entry.path) ? "/" : ""}...`})}><GitMergeIcon />{t("p4.integration.title")}</ContextMenuItem> : null}
         {!entry.dir ? <>
           <ContextMenuItem disabled={p4.busy} onClick={() => setOperation({ kind: "integrate", path: entry.path, depot: mode === "depot" })}>
             <GitMergeIcon />{t(mode === "workspace" ? "p4-operations.integrate.intoMenu" : "p4-operations.integrate.title")}

@@ -8,7 +8,7 @@ import { P4StreamSelect } from "@/components/p4/p4-stream-select";
 import { Label } from "@/components/ui/label";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { errorMessage } from "@/lib/git";
-import { relativeToRoot } from "@/lib/p4";
+import { P4IntegrationFiles } from "@/components/p4/p4-integration-files";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import { useP4 } from "@/state/p4-context";
 import type { P4StreamOption, P4StreamPreview, P4StreamRequest } from "@/types/p4";
@@ -77,12 +77,7 @@ export function P4StreamDialog({ onClose, initial }: { onClose: () => void; init
         <Label className="text-xs text-muted-foreground">{t("p4.streams.target")}</Label><p className="break-all font-mono text-xs">{target}</p>
       </div>
       <div className="flex items-center justify-between gap-3"><Label>{t("p4-operations.pendingChange")}</Label><P4ChangeSelect value={changeId} onChange={(value) => edit(() => setChangeId(value))} disabled={blocked} /></div>
-      <div className="flex min-h-28 flex-col overflow-hidden rounded-md border">
-        <p className="border-b bg-muted/30 px-3 py-2 text-xs font-medium">{t("p4.streams.preview", { count: preview?.value.files.length ?? 0 })}</p>
-        <div className="max-h-[25vh] overflow-auto">
-          {preview?.value.files.length ? preview.value.files.map((file) => <div key={file.path} className="flex gap-3 border-b px-3 py-2 text-xs last:border-0"><span className="w-20 shrink-0 text-muted-foreground">{file.action}</span><span className="truncate font-mono" title={file.depotPath}>{relativeToRoot(p4.connection?.root ?? "", file.path) || file.depotPath}</span></div>) : <p role="status" className="flex items-center justify-center gap-2 p-5 text-xs text-muted-foreground">{busy === "preview" ? <LoaderCircleIcon className="size-4 animate-spin" /> : null}{t(preview ? "p4-operations.noChanges" : busy === "preview" ? "p4-operations.previewing" : "p4-operations.previewRequired")}</p>}
-        </div>
-      </div>
+      <P4IntegrationFiles root={p4.connection?.root ?? ""} files={preview?.value.files ?? []} previewed={Boolean(preview)} loading={busy === "preview"} />
       <p className="text-xs text-muted-foreground">{t(mode === "merge" ? "p4.streams.mergeHint" : "p4.streams.copyHint")}</p>
       {error ? <p role="alert" className="whitespace-pre-wrap text-xs text-destructive">{error}</p> : null}
       <DialogFooter>

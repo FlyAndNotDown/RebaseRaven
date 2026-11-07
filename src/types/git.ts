@@ -335,6 +335,13 @@ export interface RemoteInfo {
   pushUrl: string | null;
 }
 
+export interface RemotePushSettings {
+  urls: string[];
+  fallbackUrls: string[];
+  inherited: boolean;
+  fingerprint: string;
+}
+
 export interface RemoteProbe {
   heads: number;
 }

@@ -3,12 +3,21 @@ mod client;
 pub use client::{save_workspace, workspace_settings, P4WorkspaceEdit, P4WorkspaceSettings};
 mod history;
 mod images;
+mod integration;
 pub use history::{annotate, compare_files, P4BlameLine, P4CompareRequest, P4Comparison};
 pub use images::{image_pair, P4ImageSource};
+pub use integration::{
+    apply_integration, preview_integration, P4IntegrationPreview, P4IntegrationRequest,
+};
 mod operations;
 mod parse;
 mod review;
 mod shelves;
+mod specs;
+pub use specs::{
+    apply_label_tag, delete_spec, label_files, list_specs, preview_label_tag, read_spec, save_spec,
+    P4LabelFiles, P4LabelTagPreview, P4LabelTagRequest, P4Spec, P4SpecEdit, P4SpecKind, P4SpecPage,
+};
 mod streams;
 mod switch;
 pub use review::{apply_reconcile, preview_reconcile, P4ReconcilePreview};
