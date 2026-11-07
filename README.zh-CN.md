@@ -1,10 +1,6 @@
 <p align="center">
-  <img src="site/public/assets/mark.png" width="80" height="80" alt="RebaseRaven 标志">
+  <img src="assets/brand/readme-banner.png" width="1200" alt="RebaseRaven — Git 与 Perforce 桌面客户端">
 </p>
-
-<h1 align="center">RebaseRaven</h1>
-
-<p align="center">面向 Git 与 Perforce 的开源桌面客户端。</p>
 
 <p align="center">
   <a href="https://github.com/FlyAndNotDown/RebaseRaven/releases/latest"><img src="https://img.shields.io/github/v/release/FlyAndNotDown/RebaseRaven" alt="最新版本"></a>

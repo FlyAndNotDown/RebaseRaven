@@ -1,10 +1,6 @@
 <p align="center">
-  <img src="site/public/assets/mark.png" width="80" height="80" alt="RebaseRaven logo">
+  <img src="assets/brand/readme-banner.png" width="1200" alt="RebaseRaven — Git + Perforce desktop client">
 </p>
-
-<h1 align="center">RebaseRaven</h1>
-
-<p align="center">An open-source desktop client for Git and Perforce.</p>
 
 <p align="center">
   <a href="https://github.com/FlyAndNotDown/RebaseRaven/releases/latest"><img src="https://img.shields.io/github/v/release/FlyAndNotDown/RebaseRaven" alt="Latest release"></a>

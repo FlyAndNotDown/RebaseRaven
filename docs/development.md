@@ -113,3 +113,7 @@ for the glass application icon in desktop identity surfaces.
 The website card is `site/public/assets/social.png` (1200 × 630). The GitHub
 repository social preview is `assets/brand/github-social.png` (1280 × 640).
 Both use the bundled Geist font. The PNG glass treatment is static artwork.
+
+The approved README banner is `assets/brand/readme-banner.png`, shared by both
+README translations. It is a selected composition, separate from generated
+website and repository social cards.
