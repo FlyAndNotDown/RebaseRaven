@@ -284,7 +284,7 @@ const OPERATION_FINISHED: Record<string, string> = {
   get revert() { return t("operations.revert_finished"); },
 };
 
-const OPEN_SETTINGS_EVENT = "rebasely-open-settings";
+const OPEN_SETTINGS_EVENT = "rebaseraven-open-settings";
 
 function reportError(error: unknown) {
   const message = errorMessage(error);

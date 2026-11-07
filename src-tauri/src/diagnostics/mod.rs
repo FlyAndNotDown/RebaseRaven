@@ -48,7 +48,7 @@ const TAIL_BYTES: usize = 64 * 1024;
 const TAIL_LINES: usize = 200;
 const MAX_DURATION_MS: u64 = 86_400_000;
 const MAX_TIMESTAMP_MS: u64 = 4_102_444_800_000;
-const ISSUES_URL: &str = "https://github.com/FlyAndNotDown/Rebasely/issues";
+const ISSUES_URL: &str = "https://github.com/FlyAndNotDown/RebaseRaven/issues";
 static EVENTS: OnceLock<mpsc::SyncSender<Work>> = OnceLock::new();
 
 enum Work {
@@ -637,7 +637,7 @@ impl Store {
             "skippedEntries": skipped_entries,
         });
         entries.push(("manifest.json", serde_json::to_vec_pretty(&manifest)?));
-        entries.push(("README.txt", b"Rebasely local diagnostics\n\nEach line contains the local time and UTC offset, level, module, and message. Command entries include the command and selected options, outcome, and available exit status and output excerpts. Output can contain repository paths, server addresses, or other project details. Review this archive before sharing it.\n".to_vec()));
+        entries.push(("README.txt", b"RebaseRaven local diagnostics\n\nEach line contains the local time and UTC offset, level, module, and message. Command entries include the command and selected options, outcome, and available exit status and output excerpts. Output can contain repository paths, server addresses, or other project details. Review this archive before sharing it.\n".to_vec()));
         let contents = archive::stored_zip(&entries)?;
         crate::fsutil::write_atomic(&destination, &contents)?;
         Ok(ExportResult {

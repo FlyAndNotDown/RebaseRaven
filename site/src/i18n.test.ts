@@ -10,9 +10,9 @@ describe("website localization", () => {
   });
 
   it("keeps explicit language routes independent of the hosting prefix", () => {
-    expect(localeFromPath("/Rebasely/zh-CN/")).toBe("zh-CN");
+    expect(localeFromPath("/RebaseRaven/zh-CN/")).toBe("zh-CN");
     expect(localeFromPath("/en/index.html")).toBe("en");
-    expect(localeFromPath("/Rebasely/")).toBeNull();
+    expect(localeFromPath("/RebaseRaven/")).toBeNull();
     expect(localeHref("en", false)).toBe("../en/");
     expect(localeHref("zh-CN", true)).toBe("./zh-CN/");
   });

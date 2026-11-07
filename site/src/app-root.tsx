@@ -5,7 +5,7 @@ import { Site } from "./app";
 import { SiteThemeProvider } from "./theme";
 import { createSiteI18n, type SiteLocale } from "./i18n";
 
-export const IDENTIFIER_PREFIX = "rebasely-";
+export const IDENTIFIER_PREFIX = "rebaseraven-";
 
 export function SiteRoot({ locale = "en", rootPage = true }: { locale?: SiteLocale; rootPage?: boolean }) {
   const [i18n] = useState(() => createSiteI18n(locale));

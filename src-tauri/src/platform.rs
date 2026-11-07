@@ -213,7 +213,9 @@ mod tests {
             current.join(".")
         );
         assert!(existing_absolute_path(Path::new("")).is_err());
-        assert!(existing_absolute_path(&current.join("missing-rebasely-native-target")).is_err());
+        assert!(
+            existing_absolute_path(&current.join("missing-rebaseraven-native-target")).is_err()
+        );
         assert!(!kill_process_tree(0));
     }
 

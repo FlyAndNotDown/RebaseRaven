@@ -74,7 +74,7 @@ export function isCancelled(error: unknown) {
 /** Matches `GIT_MISSING` in the Rust backend. */
 export const GIT_MISSING = "Git executable was not found. Choose one in Settings.";
 
-const GIT_MISSING_EVENT = "rebasely-git-missing";
+const GIT_MISSING_EVENT = "rebaseraven-git-missing";
 
 function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   return tauriInvoke<T>(command, args).catch((error: unknown) => {

@@ -22,7 +22,7 @@ function versionLabel(value: string) {
 }
 
 function statusLabel(state: UpdateSnapshot) {
-  if (state.request === "restart") return t("desktop.appUpdates.restarting_rebasely");
+  if (state.request === "restart") return t("desktop.appUpdates.restarting_rebaseraven");
   if (state.request === "check" || state.status === "checking") return t("desktop.appUpdates.checking_for_updates");
   switch (state.status) {
     case "current": return t("desktop.appUpdates.you_are_up_to_date");
@@ -33,8 +33,8 @@ function statusLabel(state: UpdateSnapshot) {
         ? t("desktop.appUpdates.downloadingTotal", { downloaded, total: formatNumber(state.totalBytes / 1_048_576, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })
         : t("desktop.appUpdates.downloading", { downloaded });
     }
-    case "installing": return t("desktop.appUpdates.installing_update_rebasely_may_close_to_finish_installation");
-    case "installed": return t("desktop.appUpdates.update_installed_restart_rebasely_when_your_work_is");
+    case "installing": return t("desktop.appUpdates.installing_update_rebaseraven_may_close_to_finish_installation");
+    case "installed": return t("desktop.appUpdates.update_installed_restart_rebaseraven_when_your_work_is");
     case "error": return t("desktop.appUpdates.the_update_could_not_be_completed");
     default: return state.request === "install" ? t("desktop.appUpdates.preparing_update") : t("desktop.appUpdates.check_for_a_new_version");
   }
@@ -174,7 +174,7 @@ export function UpdatesSettings() {
               <span className="inline-flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
                 {state.request === "restart" ? <RotateCwIcon className="motion-safe:animate-spin" /> : restartFailed ? <XIcon /> : <RotateCwIcon />}
               </span>
-              {t("desktop.appUpdates.restart_rebasely")}
+              {t("desktop.appUpdates.restart_rebaseraven")}
             </Button>
           </HoverTip>
         </div>

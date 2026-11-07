@@ -3,7 +3,7 @@ import { ANALYTICS_BRIDGE_URL, type AnalyticsInit } from "../../src/lib/analytic
 import { analyticsConfiguration, analyticsEventParameters, createGoogleAnalyticsTag } from "./analytics-tag";
 
 const init: AnalyticsInit = {
-  type: "rebasely:analytics:init", protocol: 1,
+  type: "rebaseraven:analytics:init", protocol: 1,
   generation: "099a2525-4c0c-41e6-9969-9ecf6d4e26c7",
   clientId: "245bbf45-cbda-49cd-b1d6-d580fe56a85e", sessionId: 1_700_000_000,
   platform: "windows", appVersion: "1.2.3",
@@ -25,17 +25,17 @@ describe("official Google tag adapter", () => {
   it("uses scoped cross-site cookies, generic metadata and no automatic page view or advertising", () => {
     expect(analyticsConfiguration(init)).toEqual({
       client_id: init.clientId, session_id: init.sessionId, send_page_view: false,
-      page_title: "Rebasely desktop", page_location: ANALYTICS_BRIDGE_URL, page_referrer: "",
+      page_title: "RebaseRaven desktop", page_location: ANALYTICS_BRIDGE_URL, page_referrer: "",
       ignore_referrer: true, allow_google_signals: false, allow_ad_personalization_signals: false,
       cookie_flags: "SameSite=None;Secure",
-      cookie_prefix: "rebasely_app", cookie_domain: "none", cookie_path: "/analytics/", cookie_expires: 0, cookie_update: false,
+      cookie_prefix: "rebaseraven_app", cookie_domain: "none", cookie_path: "/analytics/", cookie_expires: 0, cookie_update: false,
     });
     expect(analyticsEventParameters(init, {
       type: "event", generation: init.generation, event: "pane_view", pane: "git_history",
     }, "G-EXAMPLE42")).toEqual({
       send_to: "G-EXAMPLE42", client_id: init.clientId, session_id: init.sessionId,
-      app_name: "Rebasely", app_version: "1.2.3", app_platform: "windows",
-      page_title: "Rebasely desktop", page_location: ANALYTICS_BRIDGE_URL, page_referrer: "", pane: "git_history",
+      app_name: "RebaseRaven", app_version: "1.2.3", app_platform: "windows",
+      page_title: "RebaseRaven desktop", page_location: ANALYTICS_BRIDGE_URL, page_referrer: "", pane: "git_history",
     });
   });
 

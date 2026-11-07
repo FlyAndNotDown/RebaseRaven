@@ -1,24 +1,24 @@
 <p align="center">
-  <img src="site/public/assets/mark.png" width="80" height="80" alt="Rebasely logo">
+  <img src="site/public/assets/mark.png" width="80" height="80" alt="RebaseRaven logo">
 </p>
 
-<h1 align="center">Rebasely</h1>
+<h1 align="center">RebaseRaven</h1>
 
 <p align="center">An open-source desktop client for Git and Perforce.</p>
 
 <p align="center">
-  <a href="https://github.com/FlyAndNotDown/Rebasely/releases/latest"><img src="https://img.shields.io/github/v/release/FlyAndNotDown/Rebasely" alt="Latest release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/FlyAndNotDown/Rebasely" alt="MIT license"></a>
-  <a href="https://github.com/FlyAndNotDown/Rebasely/actions/workflows/check.yml"><img src="https://github.com/FlyAndNotDown/Rebasely/actions/workflows/check.yml/badge.svg?branch=dev&amp;event=pull_request" alt="Check CI"></a>
+  <a href="https://github.com/FlyAndNotDown/RebaseRaven/releases/latest"><img src="https://img.shields.io/github/v/release/FlyAndNotDown/RebaseRaven" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/FlyAndNotDown/RebaseRaven" alt="MIT license"></a>
+  <a href="https://github.com/FlyAndNotDown/RebaseRaven/actions/workflows/check.yml"><img src="https://github.com/FlyAndNotDown/RebaseRaven/actions/workflows/check.yml/badge.svg?branch=dev&amp;event=pull_request" alt="Check CI"></a>
 </p>
 
 <p align="center">
-  <a href="https://rebasely.flyandnotdown.com/en/">Website</a> ·
-  <a href="https://github.com/FlyAndNotDown/Rebasely/releases/latest">Download</a> ·
+  <a href="https://rebaseraven.flyandnotdown.com/en/">Website</a> ·
+  <a href="https://github.com/FlyAndNotDown/RebaseRaven/releases/latest">Download</a> ·
   <a href="README.zh-CN.md">Chinese</a>
 </p>
 
-Rebasely is an open-source desktop client for **Git and Perforce**, built with
+RebaseRaven is an open-source desktop client for **Git and Perforce**, built with
 React, TypeScript, Tauri, and Rust. Review the details, understand the history,
 and prepare your next change in one focused workspace.
 
@@ -42,12 +42,12 @@ and prepare your next change in one focused workspace.
 | Rename branches, set upstreams, and edit remote URLs | Rename or move files, lock submissions, and undo revisions |
 | Merge, rebase, and cherry-pick commits | Preview single-file integration in classic workspaces |
 
-Try the [interactive Git and Perforce demo](https://rebasely.flyandnotdown.com/en/#features).
+Try the [interactive Git and Perforce demo](https://rebaseraven.flyandnotdown.com/en/#features).
 It uses invented data and never changes a real repository.
 
 ## Get started
 
-1. [Download the latest release](https://github.com/FlyAndNotDown/Rebasely/releases/latest)
+1. [Download the latest release](https://github.com/FlyAndNotDown/RebaseRaven/releases/latest)
    for **macOS Apple Silicon** or **Windows x64**.
 2. Install **Git** for Git repositories, or the **Perforce CLI (`p4`)** for
    Perforce workspaces. Select the executable in Settings if needed.
@@ -83,13 +83,12 @@ npm run build
 ```
 
 See the [development guide](docs/development.md) for the project structure and
-checks. Contributions follow [CONTRIBUTING.md](CONTRIBUTING.md); agents working
-on the codebase should also read [AGENTS.md](AGENTS.md).
+checks. Contributions follow [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Feedback and security
 
 Report reproducible problems or suggest improvements in
-[Issues](https://github.com/FlyAndNotDown/Rebasely/issues). Remove credentials,
+[Issues](https://github.com/FlyAndNotDown/RebaseRaven/issues). Remove credentials,
 private hosts, repository details, and local paths from attachments.
 For vulnerabilities, follow the [security policy](SECURITY.md).
 

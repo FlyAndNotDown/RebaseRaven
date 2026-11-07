@@ -1,12 +1,12 @@
 [package]
-name = "rebasely"
-version = "0.0.1"
+name = "rebaseraven"
+version = "0.1.5"
 description = "A unified version control client"
 license = "MIT"
 edition = "2021"
 
 [lib]
-name = "rebasely_lib"
+name = "rebaseraven_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

@@ -34,7 +34,7 @@ function sourceFiles(directory: string): string[] {
 }
 
 const visibleAttributes = new Set(["label", "title", "description", "hint", "detail", "empty", "message", "group", "placeholder", "aria-label", "aria-description", "alt", "fallback", "missing", "emptyLabel", "loadingLabel", "buttonLabel", "action"]);
-const technicalCopy = new Set(["Rebasely", "Git", "Perforce", "SSH", "GitHub", "GitLab", "PATH", "URL", "HEAD", "RSA", "RSA 4096", "ECDSA", "Ed25519", "v", "repo", "origin", "foo", "feature/name", "user_workspace", "fetch", "pull", "push", "utf8", "utf8-bom", "utf16", "utf16le", "utf16be", "utf32le", "utf32be", "yyyy/mm/dd:hh:mm:ss"]);
+const technicalCopy = new Set(["RebaseRaven", "Git", "Perforce", "SSH", "GitHub", "GitLab", "PATH", "URL", "HEAD", "RSA", "RSA 4096", "ECDSA", "Ed25519", "v", "repo", "origin", "foo", "feature/name", "user_workspace", "fetch", "pull", "push", "utf8", "utf8-bom", "utf16", "utf16le", "utf16be", "utf32le", "utf32be", "yyyy/mm/dd:hh:mm:ss"]);
 
 function meaningful(value: string) {
   const text = value.replace(/\s+/g, " ").trim();

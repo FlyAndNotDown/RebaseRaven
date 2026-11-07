@@ -4,14 +4,14 @@ fn temp_repo() -> (PathBuf, Repository) {
     // Tests run in parallel and the clock is too coarse to tell them apart.
     static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
-        "rebasely-test-{}-{}",
+        "rebaseraven-test-{}-{}",
         std::process::id(),
         NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     let _ = fs::remove_dir_all(&root);
     fs::create_dir_all(&root).unwrap();
     run_git_stdout(&root, &["init"]).unwrap();
-    run_git_stdout(&root, &["config", "user.name", "Rebasely Test"]).unwrap();
+    run_git_stdout(&root, &["config", "user.name", "RebaseRaven Test"]).unwrap();
     run_git_stdout(&root, &["config", "user.email", "test@example.com"]).unwrap();
     let repo = open_at(&root).unwrap();
     (root, repo)
@@ -60,8 +60,8 @@ fn other_branch(repo: &Repository, except: &str) -> String {
 
 #[test]
 fn passive_discovery_uses_c_locale_without_changing_git_commands() {
-    const CHILD_ENV: &str = "REBASELY_GIT_LOCALE_TEST_CHILD";
-    const ROOT_ENV: &str = "REBASELY_GIT_LOCALE_TEST_ROOT";
+    const CHILD_ENV: &str = "REBASERAVEN_GIT_LOCALE_TEST_CHILD";
+    const ROOT_ENV: &str = "REBASERAVEN_GIT_LOCALE_TEST_ROOT";
     if std::env::var_os(CHILD_ENV).as_deref() != Some(std::ffi::OsStr::new("1")) {
         let temporary = tempfile::tempdir().unwrap();
         let root = temporary.path().join("workspace");
@@ -385,7 +385,7 @@ fn amend_keeps_original_author() {
     let head = commit_info(&repo, "HEAD").unwrap();
     assert_eq!(head.summary(), Some("reworded"));
     assert_eq!(head.author_name, "Original Author");
-    assert_eq!(head.committer_name, "Rebasely Test");
+    assert_eq!(head.committer_name, "RebaseRaven Test");
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -873,11 +873,11 @@ fn history_pages_are_contiguous_whether_or_not_the_stream_is_reused() {
     let _ = fs::remove_dir_all(&root);
 }
 
-/// `REBASELY_BENCH_REPO=<path> cargo test bench_history_pages -- --ignored --nocapture`
+/// `REBASERAVEN_BENCH_REPO=<path> cargo test bench_history_pages -- --ignored --nocapture`
 #[test]
 #[ignore]
 fn bench_history_pages() {
-    let Ok(path) = std::env::var("REBASELY_BENCH_REPO") else {
+    let Ok(path) = std::env::var("REBASERAVEN_BENCH_REPO") else {
         return;
     };
     let mut repo = open_at(Path::new(&path)).unwrap();
@@ -1158,7 +1158,7 @@ fn pull_and_push_follow_an_upstream_with_a_different_name() {
     )
     .unwrap();
     let mut local = open_at(&local_root).unwrap();
-    run_git_stdout(&local_root, &["config", "user.name", "Rebasely Test"]).unwrap();
+    run_git_stdout(&local_root, &["config", "user.name", "RebaseRaven Test"]).unwrap();
     run_git_stdout(&local_root, &["config", "user.email", "test@example.com"]).unwrap();
     run_git_stdout(
         &local_root,
@@ -1870,7 +1870,7 @@ fn submodule_status_lines_are_parsed() {
 
 #[test]
 fn submodules_are_listed_and_updated() {
-    const CHILD_ENV: &str = "REBASELY_SUBMODULE_TEST_CHILD";
+    const CHILD_ENV: &str = "REBASERAVEN_SUBMODULE_TEST_CHILD";
     if std::env::var_os(CHILD_ENV).as_deref() != Some(std::ffi::OsStr::new("1")) {
         // Set inherited Git configuration before the child starts so parallel
         // tests cannot observe an incomplete GIT_CONFIG_COUNT/KEY/VALUE tuple.

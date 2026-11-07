@@ -25,7 +25,7 @@ Bundles are written to `src-tauri/target/release/bundle/`.
 
 ```sh
 rustup component add rustfmt clippy
-cargo build --manifest-path src-tauri/Cargo.toml --locked --bin rebasely
+cargo build --manifest-path src-tauri/Cargo.toml --locked --bin rebaseraven
 npm run check:all
 ```
 
@@ -69,8 +69,7 @@ configuration outside version control.
 
 Repository operations run through the selected command-line executables. Rust
 owns filesystem and process access; React uses typed clients. Preserve command
-behavior, async ownership, cancellation, and bounded loading. The complete
-engineering rules are in [AGENTS.md](../AGENTS.md).
+behavior, async ownership, cancellation, and bounded loading.
 
 ## Website
 
@@ -98,3 +97,15 @@ The website prerenders a language-neutral entry page and separate `/en/` and
 `/zh-CN/` pages. Language pages must work without JavaScript and include matching
 canonical, alternate-language, and structured metadata. Browser preferences only
 select the initial homepage language; explicit locale links stay stable.
+
+## Brand assets
+
+The approved glass icon master is `src-tauri/icons/app-icon.png`. The flat,
+transparent mark is `assets/brand/raven.svg`. Run `npm run brand:generate` to
+regenerate desktop icons, small-size favicon variants, website marks, and the
+website and GitHub social cards. The generator preserves the glass icon at
+normal sizes and uses a simplified mark for 16–24 pixel system icons.
+
+The website card is `site/public/assets/social.png` (1200 × 630). The GitHub
+repository social preview is `assets/brand/github-social.png` (1280 × 640).
+Both use the bundled Geist font. The PNG glass treatment is static artwork.

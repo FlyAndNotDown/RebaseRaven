@@ -3,7 +3,7 @@ import { installAnalyticsBridge, type AnalyticsTag } from "./analytics-bridge";
 import type { AnalyticsInit } from "../../src/lib/analytics-protocol";
 
 const init: AnalyticsInit = {
-  type: "rebasely:analytics:init", protocol: 1,
+  type: "rebaseraven:analytics:init", protocol: 1,
   generation: "099a2525-4c0c-41e6-9969-9ecf6d4e26c7",
   clientId: "245bbf45-cbda-49cd-b1d6-d580fe56a85e", sessionId: 1_700_000_000,
   platform: "windows", appVersion: "1.2.3",

@@ -153,7 +153,7 @@ jobs:
           releaseDraft: true
           prerelease: false
           releaseCommitish: ${{ github.sha }}
-          releaseAssetNamePattern: Rebasely_v[version]_${{ matrix.asset }}[ext]
+          releaseAssetNamePattern: RebaseRaven_v[version]_${{ matrix.asset }}[ext]
           uploadUpdaterJson: false
           uploadUpdaterSignatures: true
           args: --ci --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} ${{ matrix.config }} -- --locked

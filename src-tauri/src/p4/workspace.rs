@@ -3793,7 +3793,7 @@ mod tests {
                 .unwrap()
                 .as_nanos();
             let path = std::env::temp_dir().join(format!(
-                "rebasely-p4-{label}-{}-{unique}",
+                "rebaseraven-p4-{label}-{}-{unique}",
                 std::process::id()
             ));
             fs::create_dir(&path).unwrap();
@@ -4506,7 +4506,7 @@ View:
 \t//... //pc/everything/...
 
 Description:
-\tCreated by Rebasely.
+\tCreated by RebaseRaven.
 ";
         assert_eq!(
             client_view_roots(spec),
@@ -4731,7 +4731,7 @@ Description:
     #[test]
     fn workspace_search_keeps_hierarchy_and_skips_generated_trees() {
         let root = std::env::temp_dir().join(format!(
-            "rebasely-walk-{}-{}",
+            "rebaseraven-walk-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

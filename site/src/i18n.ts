@@ -4,7 +4,7 @@ import zhCN from "./locales/zh-CN.json" with { type: "json" };
 
 export const SITE_LOCALES = ["en", "zh-CN"] as const;
 export type SiteLocale = typeof SITE_LOCALES[number];
-export const LANGUAGE_STORAGE_KEY = "rebasely.site.language";
+export const LANGUAGE_STORAGE_KEY = "rebaseraven.site.language";
 export const siteResources = { en, "zh-CN": zhCN };
 
 export function isSiteLocale(value: unknown): value is SiteLocale {

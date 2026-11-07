@@ -43,7 +43,7 @@ export function WorkspacePreview() {
   return (
     <>
       <Tabs value={repository} onValueChange={(value) => { setRepository(value); if (value === "perforce") setPerforceRequested(true); setNotice(value === "git" ? t("demo.gitIntro") : t("demo.p4Intro")); }} className="workspace-preview" data-platform={platform}>
-        {platform === "linux" ? <div className="demo-system-frame" aria-hidden="true">Rebasely</div> : null}
+        {platform === "linux" ? <div className="demo-system-frame" aria-hidden="true">RebaseRaven</div> : null}
         <div className="demo-titlebar">
           {platform === "macos" ? <span className="demo-traffic-lights" aria-hidden="true"><i /><i /><i /></span> : null}
           <DropdownMenu>

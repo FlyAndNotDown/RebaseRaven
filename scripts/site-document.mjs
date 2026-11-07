@@ -1,7 +1,7 @@
-const REPOSITORY_URL = "https://github.com/FlyAndNotDown/Rebasely";
+const REPOSITORY_URL = "https://github.com/FlyAndNotDown/RebaseRaven";
 const DOWNLOAD_URL = `${REPOSITORY_URL}/releases/latest`;
 const SUPPORTED_SYSTEMS = ["macOS (Apple Silicon)", "Windows (x64)"];
-const SITE_URL = "https://rebasely.flyandnotdown.com/";
+const SITE_URL = "https://rebaseraven.flyandnotdown.com/";
 
 function decodeText(value) {
   return value.replace(/&(?:#(x[\da-f]+|\d+)|(amp|quot|apos|lt|gt|nbsp));/gi, (entity, numeric, named) => {
@@ -95,7 +95,7 @@ export function validateSiteDocument({ html, sitemap, files, filename = "index.h
     product = JSON.parse(schemas[0].content);
   } catch { fail("provide one valid SoftwareApplication JSON-LD document"); }
   if (product) {
-    if (product["@context"] !== "https://schema.org" || product["@type"] !== "SoftwareApplication" || product.name !== "Rebasely" ||
+    if (product["@context"] !== "https://schema.org" || product["@type"] !== "SoftwareApplication" || product.name !== "RebaseRaven" ||
       product.url !== canonical || product.applicationCategory !== "DeveloperApplication" ||
       typeof product.description !== "string" || !product.description.trim() ||
       product.license !== "https://opensource.org/license/mit" || product.downloadUrl !== DOWNLOAD_URL || product.sameAs !== REPOSITORY_URL ||

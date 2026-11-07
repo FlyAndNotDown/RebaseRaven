@@ -1,24 +1,24 @@
 <p align="center">
-  <img src="site/public/assets/mark.png" width="80" height="80" alt="Rebasely 标志">
+  <img src="site/public/assets/mark.png" width="80" height="80" alt="RebaseRaven 标志">
 </p>
 
-<h1 align="center">Rebasely</h1>
+<h1 align="center">RebaseRaven</h1>
 
 <p align="center">面向 Git 与 Perforce 的开源桌面客户端。</p>
 
 <p align="center">
-  <a href="https://github.com/FlyAndNotDown/Rebasely/releases/latest"><img src="https://img.shields.io/github/v/release/FlyAndNotDown/Rebasely" alt="最新版本"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/FlyAndNotDown/Rebasely" alt="MIT 许可证"></a>
-  <a href="https://github.com/FlyAndNotDown/Rebasely/actions/workflows/check.yml"><img src="https://github.com/FlyAndNotDown/Rebasely/actions/workflows/check.yml/badge.svg?branch=dev&amp;event=pull_request" alt="Check CI"></a>
+  <a href="https://github.com/FlyAndNotDown/RebaseRaven/releases/latest"><img src="https://img.shields.io/github/v/release/FlyAndNotDown/RebaseRaven" alt="最新版本"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/FlyAndNotDown/RebaseRaven" alt="MIT 许可证"></a>
+  <a href="https://github.com/FlyAndNotDown/RebaseRaven/actions/workflows/check.yml"><img src="https://github.com/FlyAndNotDown/RebaseRaven/actions/workflows/check.yml/badge.svg?branch=dev&amp;event=pull_request" alt="Check CI"></a>
 </p>
 
 <p align="center">
-  <a href="https://rebasely.flyandnotdown.com/zh-CN/">官网</a> ·
-  <a href="https://github.com/FlyAndNotDown/Rebasely/releases/latest">下载</a> ·
+  <a href="https://rebaseraven.flyandnotdown.com/zh-CN/">官网</a> ·
+  <a href="https://github.com/FlyAndNotDown/RebaseRaven/releases/latest">下载</a> ·
   <a href="README.md">英语</a>
 </p>
 
-Rebasely 是面向 **Git 与 Perforce** 的开源桌面客户端，使用 React、TypeScript、
+RebaseRaven 是面向 **Git 与 Perforce** 的开源桌面客户端，使用 React、TypeScript、
 Tauri 和 Rust 构建。在专注的工作区中审阅细节、理解历史，准备下一次变更。
 
 ## 清晰掌握你的工作
@@ -37,13 +37,13 @@ Tauri 和 Rust 构建。在专注的工作区中审阅细节、理解历史，�
 | 重命名分支、设置上游和编辑远端地址 | 重命名或移动文件、锁定提交和撤销修订 |
 | 合并、变基和挑选提交 | 在经典工作区中预览单文件集成 |
 
-试试[互动 Git 与 Perforce 演示](https://rebasely.flyandnotdown.com/zh-CN/#features)。
+试试[互动 Git 与 Perforce 演示](https://rebaseraven.flyandnotdown.com/zh-CN/#features)。
 演示使用虚构数据，不会修改真实仓库。
 
 ## 开始使用
 
 1. 下载适用于 **macOS Apple Silicon** 或 **Windows x64** 的
-   [最新版本](https://github.com/FlyAndNotDown/Rebasely/releases/latest)。
+   [最新版本](https://github.com/FlyAndNotDown/RebaseRaven/releases/latest)。
 2. 为 Git 仓库安装 **Git**，为 Perforce 工作区安装 **Perforce CLI（`p4`）**。
    如有需要，在设置中选择对应的可执行文件。
 3. 打开本地文件夹、克隆 Git 仓库，或连接 Perforce。
@@ -76,13 +76,12 @@ npm run build
 ```
 
 项目结构与检查命令见[开发指南](docs/development.md)。
-参与贡献请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)；
-处理代码的代理还应阅读 [AGENTS.md](AGENTS.md)。代码、注释和开发文档使用英文，
+参与贡献请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。代码、注释和开发文档使用英文，
 翻译文本集中存放在语言资源文件中。
 
 ## 反馈与安全
 
-欢迎在 [Issues](https://github.com/FlyAndNotDown/Rebasely/issues) 报告可复现的问题或提出建议。
+欢迎在 [Issues](https://github.com/FlyAndNotDown/RebaseRaven/issues) 报告可复现的问题或提出建议。
 分享附件前，请移除凭据、私有主机、仓库详情和本地路径。
 报告漏洞请遵循[安全政策](SECURITY.md)。
 

@@ -39,7 +39,7 @@ describe("website prerender", () => {
     const first = await render();
     const second = await render();
     expect(first).toContain('data-platform="macos"');
-    expect(first).toContain("rebasely-");
+    expect(first).toContain("rebaseraven-");
     expect(second).toBe(first);
   });
 });

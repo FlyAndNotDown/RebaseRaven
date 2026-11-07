@@ -6,7 +6,7 @@ open an issue first so we can agree on the problem and scope.
 ## Work on a change
 
 1. Fork the repository and branch from `dev`.
-2. Follow the [development guide](docs/development.md) and [project rules](AGENTS.md).
+2. Follow the [development guide](docs/development.md).
 3. Keep the change focused. Add regression coverage when behavior changes.
 4. Run the checks for the code you changed and describe the results.
 5. Open a pull request against `dev`. Maintainers promote reviewed work from

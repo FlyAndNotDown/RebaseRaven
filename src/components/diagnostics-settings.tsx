@@ -90,7 +90,7 @@ export function DiagnosticsSettings({ level, levelControl }: { level: Diagnostic
         case "export": {
           const destination = await save({
             title: t("desktop.diagnosticsSettings.export_local_diagnostics"),
-            defaultPath: "rebasely-diagnostics.zip",
+            defaultPath: "rebaseraven-diagnostics.zip",
             filters: [{ name: t("desktop.diagnosticsSettings.zipArchive"), extensions: ["zip"] }],
           });
           if (!destination || !mounted.current) return;
