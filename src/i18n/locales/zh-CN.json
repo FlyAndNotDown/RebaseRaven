@@ -420,7 +420,8 @@
       "downloadingTotal": "正在下载更新：{{downloaded}} / {{total}} MB",
       "downloading": "正在下载更新：{{downloaded}} MB",
       "availableNotice": "RebaseRaven {{version}} 可用",
-      "could_not_load_release_notes": "无法格式化更新说明，下方仍可查看原文。"
+      "could_not_load_release_notes": "无法格式化更新说明，下方仍可查看原文。",
+      "latest_version": "最新版本"
     },
     "aboutSettings": {
       "a_unified_version_control_client": "统一的版本管理客户端。",

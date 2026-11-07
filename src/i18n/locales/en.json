@@ -420,7 +420,8 @@
       "downloadingTotal": "Downloading update: {{downloaded}} / {{total}} MB",
       "downloading": "Downloading update: {{downloaded}} MB",
       "availableNotice": "RebaseRaven {{version}} is available",
-      "could_not_load_release_notes": "Could not format release notes. The original text is shown below."
+      "could_not_load_release_notes": "Could not format release notes. The original text is shown below.",
+      "latest_version": "Latest version"
     },
     "aboutSettings": {
       "a_unified_version_control_client": "A unified version control client.",
