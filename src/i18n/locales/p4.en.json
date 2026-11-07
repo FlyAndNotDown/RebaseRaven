@@ -316,5 +316,18 @@
     "delete": "Delete",
     "hint": "Only selected files will be opened in the target changelist. Ignore rules are respected; files are not submitted.",
     "apply": "Reconcile {{count}} files"
+  },
+  "streams": {
+    "title": "Integrate streams",
+    "operation": "Stream operation",
+    "merge": "Merge down",
+    "copy": "Copy up",
+    "source": "Source stream",
+    "target": "Target · current workspace",
+    "noSource": "No related source stream is available.",
+    "loading": "Loading streams…",
+    "preview": "Preview · {{count}} files",
+    "mergeHint": "Merge the parent into this workspace. Resolve conflicts and submit from Pending after integration.",
+    "copyHint": "Copy a child into this workspace. This can replace target content. Preview carefully, then review and submit from Pending."
   }
 }

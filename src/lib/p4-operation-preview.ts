@@ -4,6 +4,11 @@ import { t } from "@/i18n";
 export type P4OperationKind = "integrate" | "undo";
 
 const operationErrors: Record<string, string> = {
+  "Choose a stream workspace.": "streamWorkspace",
+  "Choose a related source stream.": "streamSource",
+  "Choose a writable workspace for the current stream.": "streamWritable",
+  "Merge from the parent stream or copy from a child stream.": "streamRelation",
+
   "Manual merge requires UTF-8 text files smaller than 2 MiB.": "manualText",
   "Manual merge requires one text content resolve with a common base.": "manualBase",
   "Remove conflict markers before resolving.": "manualMarkers",

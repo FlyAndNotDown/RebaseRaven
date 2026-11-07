@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { CheckIcon, ChevronDownIcon, FolderOpenIcon, Loader2Icon } from "lucide-react";
 import { useTranslation } from "@/i18n";
+import { P4StreamDialog } from "@/components/p4/p4-stream-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -54,8 +55,7 @@ export function P4OperationDialog({ operation, path, depot, onClose }: {
   const key = connection ? p4OperationKey(operation, connection, operation === "integrate" ? integrateRequest : undoRequest) : "";
   const positive = (value: string) => /^[1-9]\d*$/.test(value.trim());
   const validRange = positive(from) && positive(to) && BigInt(from.trim()) <= BigInt(to.trim());
-  const streamUnsupported = operation === "integrate" && Boolean(connection?.stream);
-  const valid = !streamUnsupported && Boolean(connection && target.trim()) && (operation === "integrate"
+  const valid = Boolean(connection && target.trim()) && (operation === "integrate"
     ? source.startsWith("//") && (!limited || validRange)
     : mode === "revision" ? positive(revision) : mode === "range" ? validRange : positive(submittedChange));
   const blocked = busy !== null || p4.busy;
@@ -126,6 +126,8 @@ export function P4OperationDialog({ operation, path, depot, onClose }: {
     : mode === "range" ? t("p4-operations.undo.rangeScope", { from, to })
       : t("p4-operations.undo.changeScope", { change: submittedChange });
 
+  if (operation === "integrate" && connection?.stream) return <P4StreamDialog onClose={onClose} />;
+
   return (
     <Dialog open onOpenChange={(open) => { if (!open) close(); }}>
       <DialogContent className="flex max-h-[calc(100vh-3rem)] flex-col sm:max-w-2xl" showCloseButton={busy !== "apply"} onOpenAutoFocus={(event) => {
@@ -138,7 +140,6 @@ export function P4OperationDialog({ operation, path, depot, onClose }: {
         </DialogHeader>
         <ScrollArea className="min-h-0 flex-1" viewportClassName="max-h-[min(32rem,65vh)]" scrollbars="vertical">
           <div className="grid gap-4 pr-3 pb-2">
-            {streamUnsupported ? <p role="status" className="rounded-md border p-3 text-sm text-muted-foreground">{t("p4-operations.integrate.streamUnsupported")}</p> : null}
             {operation === "integrate" ? <div className="grid gap-2">
               <Label htmlFor={`${id}-source`}>{t("p4-operations.integrate.source")}</Label>
               <Input id={`${id}-source`} value={source} disabled={blocked} onChange={(event) => edit(() => setSource(event.target.value))} className="font-mono text-xs" placeholder="//depot/main/file.txt" spellCheck={false} autoFocus />

@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { t } from "@/i18n";
 import type {
+  P4StreamRequest,
+  P4StreamPreview,
   P4ReconcilePreview,
   P4ManualResolve,
   P4Auth,
@@ -155,6 +157,8 @@ export const p4Api = {
     call<string>("p4_sync", { connection, paths, activityId: activityId ?? null }),
   getRevision: (connection: P4Connection, request: P4GetRevision, activityId?: string) =>
     call<string>("p4_get_revision", { connection, request, activityId: activityId ?? null }),
+  previewStream: (connection: P4Connection, request: P4StreamRequest) => call<P4StreamPreview>("p4_preview_stream", { connection, request }),
+  applyStream: (connection: P4Connection, request: P4StreamRequest, fingerprint: string) => call<string>("p4_apply_stream", { connection, request, fingerprint }),
   previewIntegrate: (connection: P4Connection, request: P4IntegrateRequest) =>
     call<P4OperationPreview>("p4_preview_integrate", { connection, request }),
   applyIntegrate: (connection: P4Connection, request: P4IntegrateRequest, fingerprint: string) =>

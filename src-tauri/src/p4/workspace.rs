@@ -44,6 +44,7 @@ pub struct P4ClientOption {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct P4StreamOption {
+    pub parent: String,
     pub path: String,
     pub kind: String,
 }
@@ -2953,6 +2954,7 @@ pub fn list_streams(auth: &P4Auth) -> AppResult<Vec<P4StreamOption>> {
         streams.push(P4StreamOption {
             path,
             kind: field(&record, "Type"),
+            parent: field(&record, "Parent"),
         });
     }
     streams.sort_by_key(|item| item.path.to_lowercase());

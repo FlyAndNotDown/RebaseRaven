@@ -12,6 +12,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { P4ConnectionDialog } from "@/components/p4/p4-connection-dialog";
+import { P4StreamDialog } from "@/components/p4/p4-stream-dialog";
 import { P4ReconcileDialog } from "@/components/p4/p4-reconcile-dialog";
 import { P4LoginDialog } from "@/components/p4/p4-login-dialog";
 import { P4WorkspaceDialog } from "@/components/p4/p4-workspace-dialog";
@@ -26,6 +27,8 @@ import { acquireP4Mutation, invalidateP4Session } from "@/state/p4-mutations";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import type { FileDiff } from "@/types/git";
 import type {
+  P4StreamRequest,
+  P4StreamPreview,
   P4ReconcilePreview,
   P4ManualResolve,
   P4Auth,
@@ -86,6 +89,9 @@ interface P4ContextValue {
   createChange: (description: string) => Promise<boolean>;
   deleteChange: (changeId: string) => Promise<boolean>;
   renameFile: (source: string, destination: string) => Promise<boolean>;
+  setStreamOpen: (open: boolean) => void;
+  previewStream: (request: P4StreamRequest) => Promise<P4StreamPreview>;
+  applyStream: (request: P4StreamRequest, preview: P4StreamPreview) => Promise<void>;
   previewIntegrate: (request: P4IntegrateRequest) => Promise<P4OperationPreview>;
   applyIntegrate: (request: P4IntegrateRequest, preview: P4OperationPreview) => Promise<string>;
   previewUndo: (request: P4UndoRequest) => Promise<P4OperationPreview>;
@@ -184,6 +190,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
   }, []);
   const [loginOpen, setLoginOpen] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
+  const [streamOpen, setStreamOpen] = useState(false);
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [filesEpoch, setFilesEpoch] = useState(0);
@@ -678,6 +685,29 @@ export function P4Provider({ children }: { children: ReactNode }) {
       throw caught;
     } finally { endActivity(activity); release(); }
   }, [lockMutation, beginActivity, endActivity, guard, showFileOperation, reloadPending, bumpFiles]);
+
+  const previewStream = useCallback(async (request: P4StreamRequest) => {
+    const current = sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    return guard(current.connection, () => p4Api.previewStream(current.connection, request));
+  }, [guard]);
+
+  const applyStream = useCallback(async (request: P4StreamRequest, preview: P4StreamPreview) => {
+    const current = sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    const release = lockMutation(current, t("p4-operations.integrate.running"));
+    if (!release) throw new Error(t("p4-operations.workspaceBusy"));
+    const activity = beginActivity(t("p4-operations.integrate.running"), current.connection.stream ?? "");
+    try {
+      await guard(current.connection, () => p4Api.applyStream(current.connection, request, preview.fingerprint));
+      await showFileOperation(current, request.changeId, preview.files[0]?.path ?? "");
+      toast.success(t("p4-operations.integrate.completed"));
+    } catch (caught) {
+      await reloadPending(current).catch(() => {});
+      bumpFiles();
+      throw caught;
+    } finally { endActivity(activity); release(); }
+  }, [guard, lockMutation, beginActivity, endActivity, showFileOperation, reloadPending, bumpFiles]);
 
   const applyUndo = useCallback(async (request: P4UndoRequest, preview: P4OperationPreview) => {
     const current = sessionRef.current;
@@ -1369,6 +1399,9 @@ export function P4Provider({ children }: { children: ReactNode }) {
       createChange,
       deleteChange,
       renameFile,
+      setStreamOpen,
+      previewStream,
+      applyStream,
       previewIntegrate,
       applyIntegrate,
       previewUndo,
@@ -1425,6 +1458,9 @@ export function P4Provider({ children }: { children: ReactNode }) {
       createChange,
       deleteChange,
       renameFile,
+      setStreamOpen,
+      previewStream,
+      applyStream,
       previewIntegrate,
       applyIntegrate,
       previewUndo,
@@ -1493,6 +1529,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
         {children}
         <P4ConnectionDialog />
         <P4WorkspaceDialog />
+        {streamOpen && connection ? <P4StreamDialog key={JSON.stringify(connection)} onClose={() => setStreamOpen(false)} /> : null}
         {reconcileOpen && connection ? <P4ReconcileDialog key={JSON.stringify(connection)} onClose={() => setReconcileOpen(false)} /> : null}
         <P4LoginDialog
           open={loginOpen}

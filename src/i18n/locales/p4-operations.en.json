@@ -27,7 +27,11 @@
     "versionedTarget": "Choose an absent target or one versioned workspace file.",
     "manualText": "Manual merge supports UTF-8 text files up to 2 MiB.",
     "manualBase": "Manual merge needs one text content conflict with a common base. Use the other resolve options for this file.",
-    "manualMarkers": "Remove conflict markers before resolving."
+    "manualMarkers": "Remove conflict markers before resolving.",
+    "streamWorkspace": "Choose a stream workspace.",
+    "streamSource": "Choose a related source stream.",
+    "streamWritable": "The workspace stream changed or is pinned to a changelist. Reopen a writable stream workspace.",
+    "streamRelation": "Merge from the parent or copy from a child stream. Switch to the target workspace first."
   },
   "connectionRequired": "Reconnect this workspace before continuing.",
   "workspaceBusy": "Wait for the current workspace operation to finish.",

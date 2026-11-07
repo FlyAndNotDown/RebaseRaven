@@ -1420,6 +1420,23 @@ async fn p4_apply_reconcile(
 }
 
 #[tauri::command]
+async fn p4_preview_stream(
+    connection: p4::P4Connection,
+    request: p4::P4StreamRequest,
+) -> AppResult<p4::P4StreamPreview> {
+    blocking(move || p4::preview_stream(&connection, &request)).await
+}
+
+#[tauri::command]
+async fn p4_apply_stream(
+    connection: p4::P4Connection,
+    request: p4::P4StreamRequest,
+    fingerprint: String,
+) -> AppResult<String> {
+    blocking(move || p4::apply_stream(&connection, &request, &fingerprint)).await
+}
+
+#[tauri::command]
 async fn p4_preview_integrate(
     connection: p4::P4Connection,
     request: p4::P4IntegrateRequest,
@@ -1935,6 +1952,8 @@ pub fn run() {
             p4_apply_reconcile,
             p4_file_action,
             p4_preview_integrate,
+            p4_preview_stream,
+            p4_apply_stream,
             p4_apply_integrate,
             p4_preview_undo,
             p4_apply_undo,

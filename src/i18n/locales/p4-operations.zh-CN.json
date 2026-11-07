@@ -27,7 +27,11 @@
     "versionedTarget": "请选择尚不存在的目标文件或单个受版本控制的工作区文件。",
     "manualText": "手工合并仅支持不超过 2 MiB 的 UTF-8 文本文件。",
     "manualBase": "手工合并需要一个具有共同基线的文本内容冲突。请使用其他解决选项处理此文件。",
-    "manualMarkers": "请先移除冲突标记再解决。"
+    "manualMarkers": "请先移除冲突标记再解决。",
+    "streamWorkspace": "请选择 Stream 工作区。",
+    "streamSource": "请选择关联的源 Stream。",
+    "streamWritable": "工作区 Stream 已变更或固定在历史版本。请重新打开可写的 Stream 工作区。",
+    "streamRelation": "请从父 Stream 向下合并或从子 Stream 向上复制；先切换到目标工作区。"
   },
   "connectionRequired": "请重新连接此工作区后继续。",
   "workspaceBusy": "请等待当前工作区操作完成。",

@@ -146,6 +146,7 @@ export interface P4ClientOption {
 }
 
 export interface P4StreamOption {
+  parent?: string;
   path: string;
   kind: string;
 }
@@ -197,3 +198,10 @@ export interface P4ReconcilePreview {
   files: { path: string; depotPath: string; action: string }[];
   fingerprint: string;
 }
+
+export interface P4StreamRequest {
+  mode: "merge" | "copy";
+  source: string;
+  changeId: string;
+}
+export type P4StreamPreview = P4ReconcilePreview;

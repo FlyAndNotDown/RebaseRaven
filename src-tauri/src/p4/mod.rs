@@ -2,7 +2,9 @@ mod cli;
 mod operations;
 mod parse;
 mod review;
+mod streams;
 pub use review::{apply_reconcile, preview_reconcile, P4ReconcilePreview};
+pub use streams::{apply_stream, preview_stream, P4StreamPreview, P4StreamRequest};
 mod workspace;
 
 pub use cli::{active_p4, check_p4_executable, p4_on_path, prepare_p4_prefs, set_p4_executable};
