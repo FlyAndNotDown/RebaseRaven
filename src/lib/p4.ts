@@ -26,7 +26,8 @@ import type {
   P4Executables,
   P4OpenResult,
   P4ResolveView,
-  P4Revision,
+  P4RevisionPage,
+  P4HistoryCursor,
   RepoDetection,
 } from "@/types/p4";
 import type { FileDiff } from "@/types/git";
@@ -108,8 +109,8 @@ export const p4Api = {
     call<FileDiff>("p4_shelf_diff", { connection, depotPath, changeId }),
   revisionDiff: (connection: P4Connection, depotPath: string, rev: string) =>
     call<FileDiff>("p4_revision_diff", { connection, depotPath, rev }),
-  filelog: (connection: P4Connection, path: string) =>
-    call<P4Revision[]>("p4_filelog", { connection, path }),
+  filelog: (connection: P4Connection, path: string, cursor: P4HistoryCursor | null = null) =>
+    call<P4RevisionPage>("p4_filelog", { connection, path, cursor }),
   locate: (connection: P4Connection, path: string) =>
     call<P4Location>("p4_locate", { connection, path }),
   listDir: (connection: P4Connection, relative: string) =>

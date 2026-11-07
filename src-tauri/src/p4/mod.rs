@@ -25,6 +25,6 @@ pub use workspace::{
     search_depot, search_files, search_submitted, shelf_diff, shelve, submit, submitted, sync,
     unshelve, P4Auth, P4ChangePage, P4Changelist, P4CheckedConnection, P4Connection,
     P4CreateRequest, P4DepotEntry, P4Describe, P4DirEntry, P4EntryStatus, P4FileSearch,
-    P4GetRevision, P4Location, P4ManualResolve, P4Open, P4ResolveView, P4Revision, P4StreamOption,
-    RepoDetection,
+    P4GetRevision, P4HistoryCursor, P4Location, P4ManualResolve, P4Open, P4ResolveView, P4Revision,
+    P4RevisionPage, P4StreamOption, RepoDetection,
 };

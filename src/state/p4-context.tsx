@@ -44,7 +44,8 @@ import type {
   P4UndoRequest,
   P4OperationPreview,
   P4ResolveView,
-  P4Revision,
+  P4RevisionPage,
+  P4HistoryCursor,
   P4StreamOption,
 } from "@/types/p4";
 
@@ -142,7 +143,7 @@ interface P4ContextValue {
   listDir: (relative: string) => Promise<P4DirEntry[]>;
   listDepot: (path: string) => Promise<P4DirEntry[]>;
   searchDepot: (query: string) => Promise<P4FileSearch | null>;
-  filelog: (path: string) => Promise<P4Revision[]>;
+  filelog: (path: string, cursor?: P4HistoryCursor | null) => Promise<P4RevisionPage>;
   revisionDiff: (depotPath: string, rev: string) => Promise<FileDiff | null>;
   searchSubmitted: (
     query: string,
@@ -1323,10 +1324,10 @@ export function P4Provider({ children }: { children: ReactNode }) {
   );
 
   const filelog = useCallback(
-    async (path: string) => {
+    async (path: string, cursor: P4HistoryCursor | null = null) => {
       const current = sessionRef.current;
-      if (!current) return [];
-      return guard(current.connection, () => p4Api.filelog(current.connection, path));
+      if (!current) throw new Error(t("p4-operations.connectionRequired"));
+      return guard(current.connection, () => p4Api.filelog(current.connection, path, cursor));
     },
     [guard],
   );

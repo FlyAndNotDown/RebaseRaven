@@ -54,6 +54,7 @@ export interface P4ResolveView {
 }
 
 export interface P4Revision {
+  depotPath: string;
   rev: string;
   change: string;
   action: string;
@@ -212,3 +213,6 @@ export interface P4UnshelveRequest {
   files: string[];
   stream: string;
 }
+
+export interface P4HistoryCursor { depotPath: string; beforeRevision: number }
+export interface P4RevisionPage { revisions: P4Revision[]; next: P4HistoryCursor | null }

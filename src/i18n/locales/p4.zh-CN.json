@@ -349,5 +349,9 @@
     "mappingHint": "使用 Stream 映射时，将在该 Stream 与其父 Stream 之间恢复整个 Shelf。请先预览并核对目标路径。",
     "hint": "将选中文件恢复到当前工作区，保留源 Shelf；如有冲突，在待提交中继续处理。",
     "restore": "恢复 {{count}} 个文件"
+  },
+  "history": {
+    "revisions": "文件修订",
+    "loadMore": "加载更早的修订"
   }
 }

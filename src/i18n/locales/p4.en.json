@@ -349,5 +349,9 @@
     "mappingHint": "A stream mapping restores the entire shelf between this stream and its parent. Preview the target paths before restoring.",
     "hint": "Restore selected files into the current workspace. The source shelf is kept; conflicts remain for review in Pending.",
     "restore": "Restore {{count}} files"
+  },
+  "history": {
+    "revisions": "File revisions",
+    "loadMore": "Load older revisions"
   }
 }

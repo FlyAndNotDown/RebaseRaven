@@ -1151,8 +1151,12 @@ async fn p4_revision_diff(
 }
 
 #[tauri::command]
-async fn p4_filelog(connection: p4::P4Connection, path: String) -> AppResult<Vec<p4::P4Revision>> {
-    blocking(move || p4::filelog(&connection, &path)).await
+async fn p4_filelog(
+    connection: p4::P4Connection,
+    path: String,
+    cursor: Option<p4::P4HistoryCursor>,
+) -> AppResult<p4::P4RevisionPage> {
+    blocking(move || p4::filelog(&connection, &path, cursor.as_ref())).await
 }
 
 #[tauri::command]

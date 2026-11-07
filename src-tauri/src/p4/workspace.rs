@@ -162,6 +162,7 @@ pub struct P4Describe {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct P4Revision {
+    pub depot_path: String,
     pub rev: String,
     pub change: String,
     pub action: String,
@@ -579,27 +580,101 @@ pub fn revision_diff(connection: &P4Connection, path: &str, rev: &str) -> AppRes
     Ok(parse_single_diff(&text, &depot_path))
 }
 
-pub fn filelog(connection: &P4Connection, path: &str) -> AppResult<Vec<P4Revision>> {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct P4HistoryCursor {
+    pub depot_path: String,
+    pub before_revision: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct P4RevisionPage {
+    pub revisions: Vec<P4Revision>,
+    pub next: Option<P4HistoryCursor>,
+}
+
+pub fn filelog(
+    connection: &P4Connection,
+    path: &str,
+    cursor: Option<&P4HistoryCursor>,
+) -> AppResult<P4RevisionPage> {
     let env = env_for(connection);
-    let spec = workspace_file_spec(&connection.root, path);
-    let stdout = run_ok(&env, &["-ztag", "filelog", "-m", "40", "-t", &spec], None)?;
-    let record = parse_ztag(&stdout).into_iter().next().unwrap_or_default();
+    let spec = if let Some(cursor) = cursor {
+        if !cursor.depot_path.starts_with("//")
+            || !valid_depot_path(&cursor.depot_path)
+            || cursor.depot_path.contains(['*', '#', '@'])
+            || cursor.depot_path.contains("...")
+        {
+            return Err(AppError::msg(
+                "Choose one depot file without wildcards or revision suffixes.",
+            ));
+        }
+        if cursor.before_revision <= 1 {
+            return Ok(P4RevisionPage {
+                revisions: Vec::new(),
+                next: None,
+            });
+        }
+        format!("{}#1,#{}", cursor.depot_path, cursor.before_revision - 1)
+    } else {
+        workspace_file_spec(&connection.root, path)
+    };
+    if spec.contains("...") || spec.contains('*') {
+        return Err(AppError::msg(
+            "Choose one depot file without wildcards or revision suffixes.",
+        ));
+    }
+    let stdout = run_ok(
+        &env,
+        &["-ztag", "filelog", "-m", "51", "-l", "-t", &spec],
+        None,
+    )?;
+    Ok(revision_page(&stdout))
+}
+
+fn revision_page(stdout: &str) -> P4RevisionPage {
     let mut revisions = Vec::new();
-    for group in indexed_groups(&record) {
-        let rev = field(&group, "rev");
-        if rev.is_empty() {
+    for record in parse_ztag(stdout) {
+        let depot_path = field(&record, "depotFile");
+        if depot_path.is_empty() {
             continue;
         }
-        revisions.push(P4Revision {
-            rev,
-            change: field(&group, "change"),
-            action: field(&group, "action"),
-            user: field(&group, "user"),
-            time: field_i64(&group, "time"),
-            description: clean_description(&field(&group, "desc")),
-        });
+        for group in indexed_groups(&record) {
+            let rev = field(&group, "rev");
+            if rev
+                .parse::<u64>()
+                .ok()
+                .filter(|number| *number > 0)
+                .is_none()
+            {
+                continue;
+            }
+            revisions.push(P4Revision {
+                depot_path: depot_path.clone(),
+                rev,
+                change: field(&group, "change"),
+                action: field(&group, "action"),
+                user: field(&group, "user"),
+                time: field_i64(&group, "time"),
+                description: clean_description(&field(&group, "desc")),
+            });
+            if revisions.len() == 51 {
+                break;
+            }
+        }
+        if revisions.len() == 51 {
+            break;
+        }
     }
-    Ok(revisions)
+    let next = revisions.get(50).and_then(|revision| {
+        Some(P4HistoryCursor {
+            depot_path: revision.depot_path.clone(),
+            before_revision: revision.rev.parse::<u64>().ok()?.checked_add(1)?,
+        })
+    });
+    revisions.truncate(50);
+    P4RevisionPage { revisions, next }
 }
 
 pub fn list_dir(connection: &P4Connection, relative: &str) -> AppResult<Vec<P4DirEntry>> {
@@ -3970,6 +4045,33 @@ fn first_text(preferred: Option<&String>, fallback: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn file_history_pages_across_renames_using_the_first_unseen_revision() {
+        let mut text = "... depotFile //depot/new.txt\n".to_string();
+        for index in 0..50 {
+            text.push_str(&format!(
+                "... rev{index} {}\n... change{index} {}\n",
+                50 - index,
+                100 - index
+            ));
+        }
+        text.push_str("\n... depotFile //depot/old.txt\n... rev0 73\n... change0 49\n");
+        let page = super::revision_page(&text);
+        assert_eq!(page.revisions.len(), 50);
+        let next = page.next.unwrap();
+        assert_eq!(next.depot_path, "//depot/old.txt");
+        assert_eq!(next.before_revision, 74);
+        assert_eq!(page.revisions[49].rev, "1");
+    }
+
+    #[test]
+    fn final_history_page_keeps_full_descriptions_and_stops_paging() {
+        let page = super::revision_page("... depotFile //depot/file.txt\n... rev0 2\n... desc0 A complete description\n... user0 alice\n... rev1 1\n");
+        assert_eq!(page.revisions.len(), 2);
+        assert!(page.next.is_none());
+        assert_eq!(page.revisions[0].description, "A complete description");
+    }
+
     use super::*;
 
     struct TestDirectory(PathBuf);
