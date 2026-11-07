@@ -35,8 +35,6 @@ pub struct AppPrefs {
     #[serde(default = "default_analytics_enabled")]
     pub analytics_enabled: bool,
     #[serde(default)]
-    pub diagnostic_level: crate::diagnostics::Level,
-    #[serde(default)]
     pub http_proxy: crate::network::HttpProxy,
     #[serde(default)]
     pub avatar_provider: AvatarProvider,
@@ -137,7 +135,6 @@ impl Default for AppPrefs {
         Self {
             language: LanguagePreference::default(),
             analytics_enabled: default_analytics_enabled(),
-            diagnostic_level: crate::diagnostics::Level::default(),
             http_proxy: crate::network::HttpProxy::default(),
             avatar_provider: AvatarProvider::default(),
             terminal_id: default_terminal_id(),
@@ -209,17 +206,6 @@ pub fn save_prefs(app: &AppHandle, mut prefs: AppPrefs) -> AppResult<AppPrefs> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn diagnostic_level_defaults_to_info_and_preserves_verbose() {
-        let older: AppPrefs = serde_json::from_str("{}").unwrap();
-        assert_eq!(older.diagnostic_level, crate::diagnostics::Level::Info);
-        let verbose: AppPrefs = serde_json::from_str(r#"{"diagnosticLevel":"verbose"}"#).unwrap();
-        assert_eq!(
-            serde_json::to_value(verbose).unwrap()["diagnosticLevel"],
-            "verbose"
-        );
-    }
 
     #[test]
     fn analytics_defaults_on_and_preserves_an_explicit_opt_out() {

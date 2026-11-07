@@ -1,4 +1,3 @@
-import type { DiagnosticLevel } from "@/types/diagnostics";
 
 export type FileKind =
   | "added"
@@ -286,7 +285,6 @@ export interface ToolConfig {
 export interface AppPrefs {
   language: "system" | "en" | "zh-CN";
   analyticsEnabled: boolean;
-  diagnosticLevel: DiagnosticLevel;
   httpProxy: { mode: "none" | "system" | "manual"; url: string };
   avatarProvider: "builtin" | "github" | "gitlab";
   terminalId: string;
