@@ -1744,6 +1744,8 @@ pub fn run() {
                 }
                 window_state::restore(&window, app.handle());
                 window_state::watch(&window, app.handle());
+                #[cfg(target_os = "macos")]
+                platform::watch_main_titlebar(&window);
                 silence_browser_shortcuts(&window);
                 // The page normally reveals the window. This covers a load that never finishes.
                 let app_handle = app.handle().clone();
