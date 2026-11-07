@@ -1151,6 +1151,14 @@ async fn p4_revision_diff(
 }
 
 #[tauri::command]
+async fn p4_image_pair(
+    connection: p4::P4Connection,
+    source: p4::P4ImageSource,
+) -> AppResult<git::ImagePair> {
+    blocking(move || p4::image_pair(&connection, &source)).await
+}
+
+#[tauri::command]
 async fn p4_annotate(
     connection: p4::P4Connection,
     depot_path: String,
@@ -1991,6 +1999,7 @@ pub fn run() {
             p4_filelog,
             p4_compare_files,
             p4_annotate,
+            p4_image_pair,
             p4_locate,
             p4_list_dir,
             p4_list_depot,

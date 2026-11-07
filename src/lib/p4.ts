@@ -29,11 +29,12 @@ import type {
   P4ResolveView,
   P4CompareRequest,
   P4BlameLine,
+  P4ImageSource,
   P4RevisionPage,
   P4HistoryCursor,
   RepoDetection,
 } from "@/types/p4";
-import type { FileDiff } from "@/types/git";
+import type { FileDiff, ImagePair } from "@/types/git";
 import { errorMessage } from "@/lib/git";
 import { pathsIgnoreCase } from "@/lib/format";
 
@@ -110,6 +111,7 @@ export const p4Api = {
     call<FileDiff>("p4_opened_diff", { connection, path }),
   shelfDiff: (connection: P4Connection, depotPath: string, changeId: string) =>
     call<FileDiff>("p4_shelf_diff", { connection, depotPath, changeId }),
+  imagePair: (connection: P4Connection, source: P4ImageSource) => call<ImagePair>("p4_image_pair", {connection, source}),
   annotate: (connection: P4Connection, depotPath: string, revision: string) => call<P4BlameLine[]>("p4_annotate", { connection, depotPath, revision }),
   compareFiles: (connection: P4Connection, request: P4CompareRequest) => call<P4Comparison>("p4_compare_files", { connection, request }).then(p4ComparisonDiff),
   revisionDiff: (connection: P4Connection, depotPath: string, rev: string) =>

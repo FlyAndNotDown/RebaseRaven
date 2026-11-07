@@ -4,6 +4,8 @@ import { t } from "@/i18n";
 export type P4OperationKind = "integrate" | "undo";
 
 const operationErrors: Record<string, string> = {
+  "The file is not a supported image.": "imageInvalid",
+  "The image size is unavailable.": "imageSize",
   "Select a live text revision for line history.": "blameText",
   "Line history is limited to 2 MiB and 20000 lines.": "blameSize",
   "Perforce returned incomplete line history.": "blameIncomplete",

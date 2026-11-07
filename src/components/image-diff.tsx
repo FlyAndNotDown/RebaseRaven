@@ -7,7 +7,7 @@ import { HoverTip } from "@/components/ui/tooltip";
 import { errorMessage, gitApi } from "@/lib/git";
 import { cn } from "@/lib/utils";
 import { createImageLoader, imageLoadKey } from "@/lib/image-load";
-import type { FileDiff, ImageSide, FileSource } from "@/types/git";
+import type { FileDiff, ImageSide, ImagePair, FileSource } from "@/types/git";
 
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif"]);
 
@@ -37,9 +37,6 @@ export function ImageDiff({ repoPath, source, refreshIdentity }: {
   const [loader] = useState(() => createImageLoader(gitApi.getImagePair, errorMessage));
   const loaded = useSyncExternalStore(loader.subscribe, loader.getSnapshot, loader.getSnapshot);
   const [attempt, setAttempt] = useState(0);
-  const [mode, setMode] = useState<Mode>("split");
-  const [amount, setAmount] = useState(50);
-  const [sizes, setSizes] = useState<Partial<Record<"before" | "after", { key: string; url: string; size: Size }>>>({});
 
   useEffect(() => {
     if (!repoPath) return;
@@ -50,6 +47,18 @@ export function ImageDiff({ repoPath, source, refreshIdentity }: {
   const current = loaded.key === key && loaded.identity === refreshIdentity && loaded.attempt === attempt;
   const busy = Boolean(repoPath) && (!current || loaded.busy);
   const error = current ? loaded.error : null;
+  return <ImageComparison pair={pair} busy={busy} error={error} identity={key} disabled={!repoPath} onReload={() => setAttempt((value) => value + 1)} />;
+}
+
+export function ImageComparison({ pair, busy, error, identity: key, disabled, onReload, captions }: {
+  pair: ImagePair | null; busy: boolean; error: string | null; identity: string;
+  disabled?: boolean; onReload: () => void; captions?: [string, string];
+}) {
+  useTranslation();
+  const [mode, setMode] = useState<Mode>("split");
+  const [amount, setAmount] = useState(50);
+  const [sizes, setSizes] = useState<Partial<Record<"before" | "after", { key: string; url: string; size: Size }>>>({});
+
   const before = pair?.before ?? null;
   const after = pair?.after ?? null;
   const beforeSize = sizes.before?.key === key && sizes.before.url === before?.dataUrl ? sizes.before.size : undefined;
@@ -89,7 +98,7 @@ export function ImageDiff({ repoPath, source, refreshIdentity }: {
           ) : null}
         </> : null}
         <HoverTip label={busy ? t("desktop.imageDiff.loading_image") : error ? t("desktop.imageDiff.retry_loading_image") : t("desktop.imageDiff.reload_image")}>
-          <Button variant="ghost" size={comparable ? "icon-xs" : "xs"} className="ml-auto" aria-label={busy ? t("desktop.imageDiff.loading_image") : error ? t("desktop.imageDiff.retry_loading_image") : t("desktop.imageDiff.reload_image")} disabled={busy || !repoPath} onClick={() => setAttempt((value) => value + 1)}>
+          <Button variant="ghost" size={comparable ? "icon-xs" : "xs"} className="ml-auto" aria-label={busy ? t("desktop.imageDiff.loading_image") : error ? t("desktop.imageDiff.retry_loading_image") : t("desktop.imageDiff.reload_image")} disabled={busy || disabled} onClick={onReload}>
             <RefreshCwIcon className={busy ? "motion-safe:animate-spin" : ""} />
             {!comparable ? busy ? t("common.loading") : error ? t("common.retry") : t("desktop.imageDiff.reload_image") : null}
           </Button>
@@ -98,8 +107,8 @@ export function ImageDiff({ repoPath, source, refreshIdentity }: {
       {error ? <p role="alert" className="break-words px-3 py-2 text-xs text-destructive">{error}</p> : null}
       {!pair ? (error ? null : <div className="relative min-h-0 flex-1"><DiffSkeleton fill label={t("desktop.imageDiff.loading_image")} /></div>) : shownMode === "split" ? (
         <div className="grid min-h-0 flex-1 grid-cols-2 gap-3 p-3">
-          <ImagePanel label={t("common.before")} side={before} size={beforeSize} missing={t("desktop.imageDiff.not_in_the_older_version")} onLoad={measure("before")} />
-          <ImagePanel label={t("common.after")} side={after} size={afterSize} missing={t("desktop.imageDiff.deleted")} onLoad={measure("after")} />
+          <ImagePanel label={captions?.[0] ?? t("common.before")} side={before} size={beforeSize} missing={t("desktop.imageDiff.not_in_the_older_version")} onLoad={measure("before")} />
+          <ImagePanel label={captions?.[1] ?? t("common.after")} side={after} size={afterSize} missing={t("desktop.imageDiff.deleted")} onLoad={measure("after")} />
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">

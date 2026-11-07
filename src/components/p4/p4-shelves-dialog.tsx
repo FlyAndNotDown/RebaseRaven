@@ -132,7 +132,7 @@ export function P4ShelvesDialog({ onClose }: { onClose: () => void }) {
                 <FileStatusIcon status={p4ActionStatus(entry.action)} /><button type="button" className="min-w-0 flex-1 truncate text-left font-mono text-[11px]" title={entry.depotPath} onClick={() => setFile(entry.depotPath)}>{entry.depotPath}</button>
               </div>)}
             </div>
-            <div className="relative flex min-h-0 flex-1 flex-col"><P4Diff diff={diff} loading={diffLoading} empty={t("p4.noTextDifferences")} /></div>
+            <div className="relative flex min-h-0 flex-1 flex-col"><P4Diff imageSource={file && detail ? {kind:"shelf",path:file,changeId:detail.id} : undefined} diff={diff} loading={diffLoading} empty={t("p4.noTextDifferences")} /></div>
           </> : <p className="p-8 text-center text-sm text-muted-foreground">{t("p4.shelves.select")}</p>}
         </div>
       </div>

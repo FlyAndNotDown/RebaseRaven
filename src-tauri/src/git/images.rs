@@ -99,6 +99,27 @@ pub(super) fn image_side(path: &str, bytes: &[u8]) -> ImageSide {
     }
 }
 
+/// Validated bounded previews shared with other version-control providers.
+pub(crate) fn image_preview(
+    path: &str,
+    bytes: &[u8],
+    size: u64,
+    truncated: bool,
+) -> AppResult<ImageSide> {
+    if truncated || size > MAX_IMAGE_BYTES as u64 {
+        return Ok(ImageSide {
+            data_url: None,
+            size,
+            lfs: false,
+            too_large: true,
+        });
+    }
+    if !image_magic_matches(path, bytes) {
+        return Err(AppError::msg("The file is not a supported image."));
+    }
+    Ok(image_side(path, bytes))
+}
+
 struct LfsPointer<'a> {
     oid: &'a str,
     size: u64,

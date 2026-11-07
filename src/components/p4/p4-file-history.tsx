@@ -132,7 +132,7 @@ export function P4FileHistory({ path }: { path: string }) {
           <Button size="xs" variant="outline" className="ml-auto" disabled={!selected || !validVersion(base) || !validVersion(head) || diffLoading} onClick={() => void compare()}>{diffLoading ? <LoaderCircleIcon className="animate-spin" /> : null}{t("p4.history.compare")}</Button></> : null}
         </div>
         <div className="relative flex min-h-0 flex-1 flex-col">
-          {mode === "blame" && selected ? <P4Blame revision={selected} openChange={openChange} /> : diffError ? <p role="alert" className="p-3 text-xs text-destructive">{diffError}</p> : <P4Diff diff={diff} loading={diffLoading || (loading && !revisions)} empty={t(selected ? "p4.history.compareHint" : "p4.noRevisionToShow")} captions={applied ? [label(applied.base), label(applied.head)] : undefined} />}
+          {mode === "blame" && selected ? <P4Blame revision={selected} openChange={openChange} /> : diffError ? <p role="alert" className="p-3 text-xs text-destructive">{diffError}</p> : <P4Diff diff={diff} loading={diffLoading || (loading && !revisions)} empty={t(selected ? "p4.history.compareHint" : "p4.noRevisionToShow")} imageSource={applied ? {kind:"compare", request:applied} : undefined} captions={applied ? [label(applied.base), label(applied.head)] : undefined} />}
         </div>
       </div>
     </ResizablePanel>

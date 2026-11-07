@@ -47,7 +47,9 @@
     "compareComplex": "This comparison is too complex to preview. Choose a smaller revision range.",
     "blameText": "Select a live text revision for line history.",
     "blameSize": "Line history is limited to 2 MiB and 20,000 lines.",
-    "blameIncomplete": "Perforce returned incomplete line history."
+    "blameIncomplete": "Perforce returned incomplete line history.",
+    "imageInvalid": "The file is not a supported image.",
+    "imageSize": "The image size is unavailable."
   },
   "connectionRequired": "Reconnect this workspace before continuing.",
   "workspaceBusy": "Wait for the current workspace operation to finish.",

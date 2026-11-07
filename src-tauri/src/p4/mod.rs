@@ -1,6 +1,8 @@
 mod cli;
 mod history;
+mod images;
 pub use history::{annotate, compare_files, P4BlameLine, P4CompareRequest, P4Comparison};
+pub use images::{image_pair, P4ImageSource};
 mod operations;
 mod parse;
 mod review;

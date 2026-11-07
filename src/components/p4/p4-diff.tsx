@@ -1,5 +1,8 @@
 import { t, useTranslation } from "@/i18n";
 import { useMemo } from "react";
+import { P4ImageDiff } from "@/components/p4/p4-image-diff";
+import { isImagePath } from "@/components/image-diff";
+import type { P4ImageSource } from "@/types/p4";
 import { Columns2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { DiffSkeleton } from "@/components/skeletons";
@@ -32,6 +35,7 @@ export function P4Diff({
   split,
   captions,
   chrome = true,
+  imageSource,
 }: {
   diff: FileDiff | null;
   loading: boolean;
@@ -39,11 +43,13 @@ export function P4Diff({
   split?: boolean;
   captions?: [string, string];
   chrome?: boolean;
+  imageSource?: P4ImageSource;
 }) {
   useTranslation();
   const { prefs, setDiffOptions } = useGitPick(["prefs", "setDiffOptions"]);
   const contentLines = useMemo(() => diff?.lines.filter((line) => line.kind !== "hunk") ?? [], [diff]);
   const sideBySide = split ?? prefs.diffSplit;
+  const image = Boolean(imageSource && diff && isImagePath(diff.path));
   const frame = chrome ? "absolute inset-0" : "min-h-0 flex-1";
   if (loading && !diff) {
     return (
@@ -70,7 +76,7 @@ export function P4Diff({
           >
             {diff.path || t("p4.diff")}
           </button>
-          {diff.binary ? null : (
+          {diff.binary || image ? null : (
             <HoverTip label={t("p4.sideBySide")}>
               <Button
                 type="button"
@@ -86,24 +92,24 @@ export function P4Diff({
           )}
         </div>
       ) : null}
-      {captions && sideBySide && !diff.binary ? (
+      {captions && sideBySide && !diff.binary && !image ? (
         <div className="grid shrink-0 grid-cols-2 border-b text-xs text-muted-foreground">
           <div className="px-3 py-1.5">{captions[0]}</div>
           <div className="border-l px-3 py-1.5">{captions[1]}</div>
         </div>
       ) : null}
-      {diff.binary ? (
+      {imageSource && image ? <P4ImageDiff source={imageSource} refreshIdentity={diff} captions={captions} /> : diff.binary ? (
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">{t("p4.binaryFile")}</div>
       ) : contentLines.length === 0 ? (
         <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">
-          {captions ? empty : t("p4.noTextDifferences")}
+          {t("p4.noTextDifferences")}
         </div>
       ) : sideBySide ? (
         <SplitDiff lines={contentLines} />
       ) : (
         <InlineDiff lines={contentLines} />
       )}
-      {diff.truncated ? (
+      {diff.truncated && !image ? (
         <div className="shrink-0 border-t px-3 py-1.5 text-[11px] text-muted-foreground">{t("p4.diffTruncated")}</div>
       ) : null}
     </div>

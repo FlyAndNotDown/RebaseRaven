@@ -221,3 +221,9 @@ export type P4FileVersion = { kind: "revision"; depotPath: string; revision: str
 export interface P4CompareRequest { path: string; base: P4FileVersion; head: P4FileVersion }
 
 export interface P4BlameLine { line: number; change: string; user: string; time: string; content: string }
+
+export type P4ImageSource =
+  | { kind: "opened"; path: string }
+  | { kind: "shelf"; path: string; changeId: string }
+  | { kind: "revision"; path: string; revision: string }
+  | { kind: "compare"; request: P4CompareRequest };
