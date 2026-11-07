@@ -1970,10 +1970,7 @@ pub fn manual_resolve_apply(
     use std::io::Write;
     merge_text(text.as_bytes().to_vec(), false)?;
     if text.lines().any(|line| {
-        line.starts_with("<<<<<<<")
-            || line.starts_with(">>>>>>>")
-            || line.starts_with("|||||||")
-            || line == "======="
+        line.starts_with("<<<<<<<") || line.starts_with(">>>>>>>") || line.starts_with("|||||||")
     }) {
         return Err(AppError::msg("Remove conflict markers before resolving."));
     }

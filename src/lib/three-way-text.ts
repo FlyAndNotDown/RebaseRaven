@@ -78,5 +78,5 @@ export function threeWayText(baseText: string, yoursText: string, theirsText: st
 }
 
 export function hasConflictMarkers(text: string): boolean {
-  return /^(?:<{7}(?:\s|$)|\|{7}(?:\s|$)|={7}\s*$|>{7}(?:\s|$))/m.test(text);
+  return /^(?:<{7}|\|{7}|>{7})/m.test(text);
 }

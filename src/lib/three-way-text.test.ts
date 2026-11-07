@@ -44,5 +44,6 @@ describe("three-way text", () => {
     expect(threeWayText("a\r\nb\r\n", "A\r\nb\r\n", "a\r\nB\r\n")).toBe("A\nB\n");
     expect(hasConflictMarkers("text\n<<<<<<< Yours\nunfinished\n")).toBe(true);
     expect(hasConflictMarkers("clean text\n")).toBe(false);
+    expect(hasConflictMarkers("Heading\n=======\nMarkdown body\n")).toBe(false);
   });
 });
