@@ -552,32 +552,39 @@ pub fn shelf_diff(
 }
 
 pub fn revision_diff(connection: &P4Connection, path: &str, rev: &str) -> AppResult<FileDiff> {
-    let rev_no: u32 = rev
-        .trim()
-        .parse()
-        .map_err(|_| AppError::msg("Revision is not a number."))?;
-    let env = env_for(connection);
-    let spec = workspace_file_spec(&connection.root, path);
-    let depot_path = if spec.starts_with("//") {
-        spec
-    } else {
-        let stdout = run_ok(&env, &["-ztag", "where", &spec], None)?;
-        let record = parse_ztag(&stdout).into_iter().next().unwrap_or_default();
-        let depot = field(&record, "depotFile");
-        if depot.starts_with("//") {
-            depot
-        } else {
-            return Err(AppError::msg("File history needs a depot path."));
-        }
+    use super::history::{
+        compare_files, exact_depot, mapped_local, revision_number, P4CompareRequest, P4Comparison,
+        P4FileVersion,
     };
-    if rev_no <= 1 {
-        let spec = format!("{depot_path}#{rev_no}");
-        return printed_file_diff(&env, &depot_path, &spec, false, false);
+    let number = revision_number(rev)?;
+    if number == 0 {
+        return Err(AppError::msg(
+            "Enter a positive revision or changelist number.",
+        ));
     }
-    let spec = format!("{depot_path}#{rev_no}");
-    let previous = format!("{depot_path}#{}", rev_no - 1);
-    let text = cli::run_p4_diff(&env, &["diff2", "-du", &previous, &spec])?;
-    Ok(parse_single_diff(&text, &depot_path))
+    let depot = if path.starts_with("//") {
+        exact_depot(path)?;
+        path.to_string()
+    } else {
+        mapped_local(connection, path)?.0
+    };
+    let request = P4CompareRequest {
+        path: path.to_string(),
+        base: P4FileVersion::Revision {
+            depot_path: depot.clone(),
+            revision: (number - 1).to_string(),
+        },
+        head: P4FileVersion::Revision {
+            depot_path: depot,
+            revision: number.to_string(),
+        },
+    };
+    match compare_files(connection, &request)? {
+        P4Comparison::Diff { diff } => Ok(diff),
+        P4Comparison::Text { .. } => {
+            Err(AppError::msg("The selected file revision is unavailable."))
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3904,7 +3911,7 @@ fn printed_file_diff(
     Ok(content_file_diff(path, &bytes, truncated, false, deleted))
 }
 
-fn content_file_diff(
+pub(super) fn content_file_diff(
     path: &str,
     bytes: &[u8],
     truncated: bool,

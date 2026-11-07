@@ -216,3 +216,6 @@ export interface P4UnshelveRequest {
 
 export interface P4HistoryCursor { depotPath: string; beforeRevision: number }
 export interface P4RevisionPage { revisions: P4Revision[]; next: P4HistoryCursor | null }
+
+export type P4FileVersion = { kind: "revision"; depotPath: string; revision: string } | { kind: "workspace" };
+export interface P4CompareRequest { path: string; base: P4FileVersion; head: P4FileVersion }

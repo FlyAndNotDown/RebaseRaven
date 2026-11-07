@@ -1,3 +1,4 @@
+import { p4ComparisonDiff, type P4Comparison } from "@/lib/p4-comparison";
 import { invoke } from "@tauri-apps/api/core";
 import { t } from "@/i18n";
 import type {
@@ -26,6 +27,7 @@ import type {
   P4Executables,
   P4OpenResult,
   P4ResolveView,
+  P4CompareRequest,
   P4RevisionPage,
   P4HistoryCursor,
   RepoDetection,
@@ -107,6 +109,7 @@ export const p4Api = {
     call<FileDiff>("p4_opened_diff", { connection, path }),
   shelfDiff: (connection: P4Connection, depotPath: string, changeId: string) =>
     call<FileDiff>("p4_shelf_diff", { connection, depotPath, changeId }),
+  compareFiles: (connection: P4Connection, request: P4CompareRequest) => call<P4Comparison>("p4_compare_files", { connection, request }).then(p4ComparisonDiff),
   revisionDiff: (connection: P4Connection, depotPath: string, rev: string) =>
     call<FileDiff>("p4_revision_diff", { connection, depotPath, rev }),
   filelog: (connection: P4Connection, path: string, cursor: P4HistoryCursor | null = null) =>

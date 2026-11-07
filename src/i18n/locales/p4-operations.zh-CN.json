@@ -39,7 +39,12 @@
     "shelfMappingEmpty": "没有文件可以恢复到当前工作区，请检查工作区视图和 Stream 映射。",
     "mergeToolMissing": "请在设置 → Perforce 中选择已安装的外部合并工具。",
     "mergeToolExit": "外部合并工具未成功返回，工作区文件尚未更改。",
-    "shelfLimit": "Shelf 数量过多，请按用户筛选或直接输入变更列表编号。"
+    "shelfLimit": "Shelf 数量过多，请按用户筛选或直接输入变更列表编号。",
+    "fileRevision": "请输入非负的文件修订号，0 表示空文件。",
+    "fileRevisionMissing": "所选文件修订不可用。",
+    "compareSize": "工作区文本比较支持每个文件最多 2 MiB。",
+    "compareEncoding": "工作区文本比较需要 UTF-8 文本文件。",
+    "compareComplex": "此比较过于复杂，无法预览。请缩小修订范围。"
   },
   "connectionRequired": "请重新连接此工作区后继续。",
   "workspaceBusy": "请等待当前工作区操作完成。",

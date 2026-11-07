@@ -39,7 +39,12 @@
     "shelfMappingEmpty": "No files can be restored into this workspace. Check the workspace view and stream mapping.",
     "mergeToolMissing": "Choose an installed external merge tool in Settings → Perforce.",
     "mergeToolExit": "The external merge tool exited without a successful result. Your workspace file has not been changed.",
-    "shelfLimit": "Too many shelves. Filter by user or open a changelist by number."
+    "shelfLimit": "Too many shelves. Filter by user or open a changelist by number.",
+    "fileRevision": "Enter a non-negative file revision. Revision 0 means an empty file.",
+    "fileRevisionMissing": "The selected file revision is unavailable.",
+    "compareSize": "Workspace text comparison supports up to 2 MiB per file.",
+    "compareEncoding": "Workspace text comparison requires UTF-8 text files.",
+    "compareComplex": "This comparison is too complex to preview. Choose a smaller revision range."
   },
   "connectionRequired": "Reconnect this workspace before continuing.",
   "workspaceBusy": "Wait for the current workspace operation to finish.",

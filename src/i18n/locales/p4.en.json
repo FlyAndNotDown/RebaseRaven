@@ -352,6 +352,16 @@
   },
   "history": {
     "revisions": "File revisions",
-    "loadMore": "Load older revisions"
+    "loadMore": "Load older revisions",
+    "selectionHint": "Click: previous revision · Shift-click: set A",
+    "setBase": "Set as base (A)",
+    "setHead": "Set as target (B)",
+    "openChange": "View changelist",
+    "base": "A",
+    "head": "B",
+    "revision": "File revision",
+    "revisionInput": "{{side}} revision",
+    "compare": "Compare",
+    "compareHint": "Choose versions, then compare."
   }
 }

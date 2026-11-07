@@ -1151,6 +1151,14 @@ async fn p4_revision_diff(
 }
 
 #[tauri::command]
+async fn p4_compare_files(
+    connection: p4::P4Connection,
+    request: p4::P4CompareRequest,
+) -> AppResult<p4::P4Comparison> {
+    blocking(move || p4::compare_files(&connection, &request)).await
+}
+
+#[tauri::command]
 async fn p4_filelog(
     connection: p4::P4Connection,
     path: String,
@@ -1972,6 +1980,7 @@ pub fn run() {
             p4_shelf_diff,
             p4_revision_diff,
             p4_filelog,
+            p4_compare_files,
             p4_locate,
             p4_list_dir,
             p4_list_depot,

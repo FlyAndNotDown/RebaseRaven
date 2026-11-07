@@ -4,6 +4,12 @@ import { t } from "@/i18n";
 export type P4OperationKind = "integrate" | "undo";
 
 const operationErrors: Record<string, string> = {
+  "Enter a non-negative file revision.": "fileRevision",
+  "The selected file revision is unavailable.": "fileRevisionMissing",
+  "Workspace text comparison is limited to 2 MiB per file.": "compareSize",
+  "Workspace text comparison requires UTF-8 files.": "compareEncoding",
+  "The text comparison is too complex to preview.": "compareComplex",
+
   "Too many shelves. Filter by user or open a changelist by number.": "shelfLimit",
   "Choose an installed external merge tool in Perforce settings.": "mergeToolMissing",
   "The external merge tool exited without a successful result.": "mergeToolExit",
