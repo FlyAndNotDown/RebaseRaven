@@ -1264,12 +1264,17 @@ async fn p4_search_submitted(
 }
 
 #[tauri::command]
+async fn p4_workspace_settings(connection: p4::P4Connection) -> AppResult<p4::P4WorkspaceSettings> {
+    blocking(move || p4::workspace_settings(&connection)).await
+}
+
+#[tauri::command]
 async fn p4_save_workspace(
     connection: p4::P4Connection,
-    root: String,
-    stream: String,
+    edit: p4::P4WorkspaceEdit,
+    fingerprint: String,
 ) -> AppResult<p4::P4Connection> {
-    blocking(move || p4::save_workspace(&connection, &root, &stream)).await
+    blocking(move || p4::save_workspace(&connection, &edit, &fingerprint)).await
 }
 
 #[tauri::command]
@@ -2009,6 +2014,7 @@ pub fn run() {
             p4_search_files,
             p4_search_submitted,
             p4_save_workspace,
+            p4_workspace_settings,
             p4_submit,
             p4_save_change,
             p4_new_change,

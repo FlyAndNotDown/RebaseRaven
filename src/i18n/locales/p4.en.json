@@ -367,5 +367,34 @@
     "blame": "Line history",
     "view": "File view",
     "blameHint": "Select a revision; click a changelist to inspect its change."
+  },
+  "workspaceSettings": {
+    "section": "Workspace settings",
+    "general": "General",
+    "mapping": "View mappings",
+    "lineEnd": "Line endings",
+    "rootHint": "Changing the root does not move existing files. Submit, shelve and revert local changes first.",
+    "generatedHint": "Perforce generates these mappings from the stream. Change streams using Switch stream.",
+    "lineEnds": {
+      "local": "System default",
+      "unix": "Unix (LF)",
+      "win": "Windows (CRLF)",
+      "share": "Shared (LF normalization)",
+      "mac": "Classic Mac (CR)"
+    },
+    "options": {
+      "allwrite": "Keep files writable",
+      "clobber": "Allow overwriting writable files",
+      "compress": "Compress server transfers",
+      "modtime": "Preserve file modification times",
+      "rmdir": "Remove empty folders after sync"
+    },
+    "hints": {
+      "allwrite": "Files remain writable without checking them out. Use Reconcile to detect offline edits.",
+      "clobber": "Sync may overwrite writable workspace files.",
+      "compress": "Compress data transferred between this workspace and the server.",
+      "modtime": "Use the depot file timestamp when syncing.",
+      "rmdir": "Delete folders left empty by a sync operation."
+    }
   }
 }

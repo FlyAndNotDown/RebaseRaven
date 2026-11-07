@@ -19,8 +19,8 @@ use crate::p4::parse::{
     blank_change_spec, classic_client_spec, created_change_id, file_type_is_binary, indexed_groups,
     known_p4_value, normalize_charset, parse_p4_set, parse_p4config, parse_single_diff,
     parse_unchanged_diff_paths, parse_ztag, path_depth, path_is_within, read_description,
-    remove_spec_field, set_description, set_spec_field, spec_field, sync_estimate_files,
-    sync_reports_a_file, valid_client_name, valid_depot_path, ZtagRecord,
+    set_description, set_spec_field, spec_field, sync_estimate_files, sync_reports_a_file,
+    valid_client_name, valid_depot_path, ZtagRecord,
 };
 
 #[derive(Debug, Clone, Deserialize)]
@@ -3165,43 +3165,6 @@ pub fn prepare_client(auth: &P4Auth, name: &str) -> AppResult<String> {
     Ok(root.to_string_lossy().into_owned())
 }
 
-pub fn save_workspace(
-    connection: &P4Connection,
-    root: &str,
-    stream: &str,
-) -> AppResult<P4Connection> {
-    let root_path = PathBuf::from(strip_verbatim_prefix(root.trim()));
-    if !root_path.is_absolute() {
-        return Err(AppError::msg(
-            "Choose an absolute folder for the workspace.",
-        ));
-    }
-    let stream = stream.trim();
-    if !stream.is_empty() && !valid_depot_path(stream) {
-        return Err(AppError::msg("Stream should look like //depot/main."));
-    }
-    fs::create_dir_all(&root_path)?;
-    let mut env = env_for(connection);
-    let current = run_ok(&env, &["client", "-o", &connection.client], None)?;
-    let current_stream = spec_field(&current, "Stream");
-    let mut spec = if !stream.is_empty() && stream != current_stream {
-        run_ok(
-            &env,
-            &["client", "-S", stream, "-o", &connection.client],
-            None,
-        )?
-    } else if stream.is_empty() && !current_stream.is_empty() {
-        remove_spec_field(&current, "Stream")
-    } else {
-        current
-    };
-    spec = set_spec_field(&spec, "Root", &root_path.to_string_lossy());
-    run_ok(&env, &["client", "-i"], Some(&spec))?;
-    env.cwd = root_path.clone();
-    update_config_file(&root_path, &env)?;
-    connection_after_create(&env, &root_path, stream)
-}
-
 fn prepare_auth(auth: &P4Auth) -> AppResult<P4Env> {
     let port = auth.port.trim().to_string();
     let user = auth.user.trim().to_string();
@@ -3290,7 +3253,11 @@ fn list_clients(env: &P4Env) -> AppResult<Vec<P4ClientOption>> {
     Ok(clients)
 }
 
-fn connection_after_create(env: &P4Env, root: &Path, stream: &str) -> AppResult<P4Connection> {
+pub(super) fn connection_after_create(
+    env: &P4Env,
+    root: &Path,
+    stream: &str,
+) -> AppResult<P4Connection> {
     let stdout = run_ok(env, &["-ztag", "info"], None).unwrap_or_default();
     let record = parse_ztag(&stdout).into_iter().next().unwrap_or_default();
     let reported = record
@@ -3849,7 +3816,7 @@ fn write_config(root: &Path, env: &P4Env) -> AppResult<()> {
     update_config_file(root, env)
 }
 
-fn update_config_file(root: &Path, env: &P4Env) -> AppResult<()> {
+pub(super) fn update_config_file(root: &Path, env: &P4Env) -> AppResult<()> {
     let names = config_names();
     let path = names
         .iter()

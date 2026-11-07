@@ -49,7 +49,12 @@
     "blameSize": "逐行追溯支持最大 2 MiB、20,000 行的文件。",
     "blameIncomplete": "Perforce 返回的逐行追溯信息不完整。",
     "imageInvalid": "文件不是受支持的图片。",
-    "imageSize": "无法读取图片大小。"
+    "imageSize": "无法读取图片大小。",
+    "workspaceLineEnd": "请选择支持的换行符。",
+    "workspaceGenerated": "Stream 工作区映射由 Perforce 自动生成。",
+    "workspaceMapping": "请每行输入一条有效的工作区映射。",
+    "workspaceDirtyMapping": "修改工作区映射或根目录前，请先提交，或搁置并还原本地修改。",
+    "workspaceRoot": "请选择工作区的绝对目录。"
   },
   "connectionRequired": "请重新连接此工作区后继续。",
   "workspaceBusy": "请等待当前工作区操作完成。",

@@ -1,4 +1,6 @@
 mod cli;
+mod client;
+pub use client::{save_workspace, workspace_settings, P4WorkspaceEdit, P4WorkspaceSettings};
 mod history;
 mod images;
 pub use history::{annotate, compare_files, P4BlameLine, P4CompareRequest, P4Comparison};
@@ -25,10 +27,9 @@ pub use workspace::{
     list_streams, list_user_clients, list_users, listing_status, locate, login,
     manual_resolve_apply, manual_resolve_external, manual_resolve_view, move_file, new_change,
     open_workspace, opened_diff, prepare_client, refresh_pending, reopen, resolve_accept,
-    resolve_view, revert, revert_unchanged, revision_diff, save_change, save_workspace,
-    search_depot, search_files, search_submitted, shelf_diff, shelve, submit, submitted, sync,
-    unshelve, P4Auth, P4ChangePage, P4Changelist, P4CheckedConnection, P4Connection,
-    P4CreateRequest, P4DepotEntry, P4Describe, P4DirEntry, P4EntryStatus, P4FileSearch,
-    P4GetRevision, P4HistoryCursor, P4Location, P4ManualResolve, P4Open, P4ResolveView,
-    P4RevisionPage, P4StreamOption, RepoDetection,
+    resolve_view, revert, revert_unchanged, revision_diff, save_change, search_depot, search_files,
+    search_submitted, shelf_diff, shelve, submit, submitted, sync, unshelve, P4Auth, P4ChangePage,
+    P4Changelist, P4CheckedConnection, P4Connection, P4CreateRequest, P4DepotEntry, P4Describe,
+    P4DirEntry, P4EntryStatus, P4FileSearch, P4GetRevision, P4HistoryCursor, P4Location,
+    P4ManualResolve, P4Open, P4ResolveView, P4RevisionPage, P4StreamOption, RepoDetection,
 };

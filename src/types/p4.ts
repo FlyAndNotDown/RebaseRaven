@@ -227,3 +227,7 @@ export type P4ImageSource =
   | { kind: "shelf"; path: string; changeId: string }
   | { kind: "revision"; path: string; revision: string }
   | { kind: "compare"; request: P4CompareRequest };
+
+export interface P4WorkspaceOptions { allwrite: boolean; clobber: boolean; compress: boolean; modtime: boolean; rmdir: boolean }
+export interface P4WorkspaceEdit { root: string; view: string[]; lineEnd: "local" | "unix" | "mac" | "win" | "share"; options: P4WorkspaceOptions }
+export interface P4WorkspaceSettings extends P4WorkspaceEdit { stream: string; fingerprint: string }

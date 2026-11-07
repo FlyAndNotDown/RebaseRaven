@@ -367,5 +367,34 @@
     "blame": "逐行追溯",
     "view": "文件视图",
     "blameHint": "选择修订；点击变更编号查看对应 Changelist。"
+  },
+  "workspaceSettings": {
+    "section": "工作区设置",
+    "general": "常规",
+    "mapping": "View 映射",
+    "lineEnd": "换行符",
+    "rootHint": "修改根目录不会移动现有文件。请先提交，或搁置并还原本地修改。",
+    "generatedHint": "映射由 Perforce 根据 Stream 自动生成。请通过“切换 Stream”更换分支。",
+    "lineEnds": {
+      "local": "跟随系统",
+      "unix": "Unix（LF）",
+      "win": "Windows（CRLF）",
+      "share": "共享（规范化为 LF）",
+      "mac": "Classic Mac（CR）"
+    },
+    "options": {
+      "allwrite": "保持文件可写",
+      "clobber": "允许覆盖可写文件",
+      "compress": "压缩传输数据",
+      "modtime": "保留文件修改时间",
+      "rmdir": "同步后移除空目录"
+    },
+    "hints": {
+      "allwrite": "无需签出即可编辑文件，通过“整理离线修改”识别改动。",
+      "clobber": "同步时允许覆盖工作区中可写的文件。",
+      "compress": "压缩此工作区与服务器之间传输的数据。",
+      "modtime": "同步文件时使用版本库中的文件时间。",
+      "rmdir": "移除同步后变为空的目录。"
+    }
   }
 }

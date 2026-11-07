@@ -34,6 +34,8 @@ import type {
   P4ReconcilePreview,
   P4ManualResolve,
   P4Auth,
+  P4WorkspaceEdit,
+  P4WorkspaceSettings,
   P4ChangePage,
   P4Changelist,
   P4Connection,
@@ -161,7 +163,8 @@ interface P4ContextValue {
   saveConnection: (edit: P4Auth & { client: string }) => Promise<void>;
   workspaceOpen: boolean;
   setWorkspaceOpen: (open: boolean) => void;
-  saveWorkspace: (root: string, stream: string) => Promise<void>;
+  workspaceSettings: () => Promise<P4WorkspaceSettings>;
+  saveWorkspace: (edit: P4WorkspaceEdit, fingerprint: string) => Promise<void>;
 }
 
 const P4Context = createContext<P4ContextValue | null>(null);
@@ -1381,8 +1384,14 @@ export function P4Provider({ children }: { children: ReactNode }) {
     [guard, report],
   );
 
+  const workspaceSettings = useCallback(async () => {
+    const current = sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    return guard(current.connection, () => p4Api.workspaceSettings(current.connection));
+  }, [guard]);
+
   const saveWorkspace = useCallback(
-    async (root: string, stream: string) => {
+    async (edit: P4WorkspaceEdit, fingerprint: string) => {
       const current = sessionRef.current;
       const tab = activeTabRef.current;
       if (!current || tab.kind !== "repo") return;
@@ -1390,7 +1399,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
       if (!release) return;
       const id = beginActivity(t("p4.savingWorkspace"), current.connection.client);
       try {
-        const next = await guard(current.connection, () => p4Api.saveWorkspace(current.connection, root, stream));
+        const next = await guard(current.connection, () => p4Api.saveWorkspace(current.connection, edit, fingerprint));
         if (!sameRepoPath(current.connection.root, next.root)) {
           cache.current.delete(current.tabId);
           const destination = repoTabId(next.root, "perforce");
@@ -1536,6 +1545,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
       workspaceOpen,
       setWorkspaceOpen,
       saveWorkspace,
+      workspaceSettings,
     }),
     [
       activePerforceId,
@@ -1590,6 +1600,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
       connectionOpen,
       saveConnection,
       saveWorkspace,
+      workspaceSettings,
       searchSubmitted,
       workspaceOpen,
       revertPaths,
@@ -1624,7 +1635,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
       <P4ViewContext.Provider value={value.view}>
         {children}
         <P4ConnectionDialog />
-        <P4WorkspaceDialog />
+        {workspaceOpen && connection ? <P4WorkspaceDialog key={JSON.stringify(connection)} /> : null}
         {shelvesOpen && connection ? <P4ShelvesDialog key={JSON.stringify(connection)} onClose={() => setShelvesOpen(false)} /> : null}
         {streamOpen && connection ? <P4StreamDialog key={JSON.stringify(connection)} onClose={() => setStreamOpen(false)} /> : null}
         {reconcileOpen && connection ? <P4ReconcileDialog key={JSON.stringify(connection)} onClose={() => setReconcileOpen(false)} /> : null}

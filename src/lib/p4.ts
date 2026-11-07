@@ -8,6 +8,8 @@ import type {
   P4ReconcilePreview,
   P4ManualResolve,
   P4Auth,
+  P4WorkspaceEdit,
+  P4WorkspaceSettings,
   P4ChangePage,
   P4Changelist,
   P4CheckedConnection,
@@ -131,8 +133,9 @@ export const p4Api = {
   cancelDepotSearch: (connection: P4Connection) => call<void>("p4_cancel_depot_search", { connection }),
   searchFiles: (connection: P4Connection, query: string) =>
     call<P4FileSearch>("p4_search_files", { connection, query }),
-  saveWorkspace: (connection: P4Connection, root: string, stream: string) =>
-    call<P4Connection>("p4_save_workspace", { connection, root, stream }),
+  workspaceSettings: (connection: P4Connection) => call<P4WorkspaceSettings>("p4_workspace_settings", {connection}),
+  saveWorkspace: (connection: P4Connection, edit: P4WorkspaceEdit, fingerprint: string) =>
+    call<P4Connection>("p4_save_workspace", { connection, edit, fingerprint }),
   submit: (connection: P4Connection, changeId: string, description: string) =>
     call<void>("p4_submit", { connection, changeId, description }),
   saveChange: (connection: P4Connection, changeId: string, description: string) =>
