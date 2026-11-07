@@ -26,7 +26,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { localeHref, rememberSiteLanguage, SITE_LOCALES, type SiteLocale } from "./i18n";
 import { useSiteTheme } from "./theme";
-import { AppMark } from "@/components/app-mark";
+import { BrandMark } from "@/components/brand-mark";
 import { GitHubMark } from "@/components/github-mark";
 import { VcsIcon } from "@/components/vcs-icon";
 import { Button } from "@/components/ui/button";
@@ -74,7 +74,7 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
       <div className="site-header-shell">
         <header className="site-header site-container">
           <a className="site-brand" href={rootPage ? "./" : "../"} aria-label={t("nav.home")}>
-            <AppMark className="site-brand-mark size-9" src={`${rootPage ? "./" : "../"}assets/mark.png`} /><span translate="no">RebaseRaven</span>
+            <BrandMark className="size-10" src={`${rootPage ? "./" : "../"}assets/raven.svg`} /><span translate="no">RebaseRaven</span>
           </a>
           <nav className="site-navigation" aria-label={t("nav.main")}>
             <Button variant="ghost" size="sm" asChild className="overview-link"><a href="#features">{t("nav.features")}</a></Button>
@@ -83,7 +83,7 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
             <HoverTip label={t("nav.source")}><Button variant="ghost" size="icon-sm" asChild className="site-source-link"><a href={REPOSITORY} aria-label={t("nav.source")}><GitHubMark /></a></Button></HoverTip>
             <LanguageMenu rootPage={rootPage} />
             <ThemeMenu />
-            <Button size="sm" asChild className="site-nav-download"><a href={LATEST_RELEASE_URL} onClick={openDownload}>{t("nav.download")}<ArrowDownToLineIcon /></a></Button>
+            <Button size="sm" asChild className="site-nav-download"><a href={LATEST_RELEASE_URL} aria-label={t("nav.download")} onClick={openDownload}><span className="site-nav-download-label">{t("nav.download")}</span><ArrowDownToLineIcon /></a></Button>
           </nav>
         </header>
       </div>
@@ -165,7 +165,7 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
         </section>
 
         <section className="site-download" aria-labelledby="download-title">
-          <div className="site-download-content"><AppMark className="size-14" src={`${rootPage ? "./" : "../"}assets/mark.png`} /><div><p className="site-eyebrow" translate="no">RebaseRaven</p><h2 id="download-title">{t("download.title")}</h2><p>{t("download.body")}</p></div></div>
+          <div className="site-download-content"><BrandMark className="size-16" src={`${rootPage ? "./" : "../"}assets/raven.svg`} /><div><p className="site-eyebrow" translate="no">RebaseRaven</p><h2 id="download-title">{t("download.title")}</h2><p>{t("download.body")}</p></div></div>
           <Button size="lg" asChild><a href={LATEST_RELEASE_URL} onClick={openDownload}>{t("download.action")}<ArrowDownToLineIcon /></a></Button>
         </section>
       </main>

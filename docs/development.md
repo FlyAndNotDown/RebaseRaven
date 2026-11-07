@@ -106,6 +106,10 @@ regenerate desktop icons, small-size favicon variants, website marks, and the
 website and GitHub social cards. The generator preserves the glass icon at
 normal sizes and uses a simplified mark for 16–24 pixel system icons.
 
+Use `BrandMark` with the transparent SVG for website navigation and promotional
+callouts. Its color follows the surrounding text in both themes. Use `AppMark`
+for the glass application icon in desktop identity surfaces.
+
 The website card is `site/public/assets/social.png` (1200 × 630). The GitHub
 repository social preview is `assets/brand/github-social.png` (1280 × 640).
 Both use the bundled Geist font. The PNG glass treatment is static artwork.

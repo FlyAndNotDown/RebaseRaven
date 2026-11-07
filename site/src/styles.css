@@ -1,7 +1,7 @@
 @import "../../src/index.css";
 @source ".";
 @source "../../src/components/ui";
-@source "../../src/components/app-mark.tsx";
+@source "../../src/components/brand-mark.tsx";
 @source "../../src/components/vcs-icon.tsx";
 @source "../../src/components/p4/file-status-icon.tsx";
 
@@ -19,7 +19,6 @@ a { text-decoration: none; }
 .site-header-shell { position: sticky; top: 0; z-index: 30; border-bottom: 1px solid var(--border); background: color-mix(in oklch, var(--background) 94%, transparent); backdrop-filter: blur(12px); }
 .site-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; height: 72px; }
 .site-brand { display: inline-flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 600; letter-spacing: -.6px; }
-.site-brand-mark { filter: drop-shadow(0 2px 3px rgb(0 0 0 / 8%)); }
 .site-navigation { display: flex; align-items: center; gap: 5px; }
 .site-navigation .overview-link { font-size: 13px; }
 .site-nav-download { margin-left: 8px; }
@@ -166,7 +165,7 @@ html[lang="zh-CN"] .site-hero h1 { font-size: clamp(36px, 5vw, 64px); line-heigh
   .site-tool-links { grid-column: 2; }
   .site-download { flex-direction: column; align-items: start; padding: 24px; margin-bottom: 36px; gap: 24px; }
   .site-download-content { align-items: start; gap: 16px; }
-  .site-download-content > div:first-child { width: 40px; height: 40px; }
+  .site-download-content > :first-child { width: 48px; height: 48px; }
   .site-download h2 { font-size: 25px; }
   .site-footer { gap: 22px; padding-block: 26px; }
   .site-footer-brand { flex: 1 0 100%; }
@@ -183,6 +182,10 @@ html[lang="zh-CN"] .site-hero h1 { font-size: clamp(36px, 5vw, 64px); line-heigh
   .site-hero h1 { font-size: clamp(32px, 8vw, 38px); letter-spacing: -.045em; }
   html[lang="zh-CN"] .site-hero h1 { font-size: clamp(30px, 8.5vw, 36px); }
   .site-preview-label > p { display: none; }
+}
+@media (max-width: 360px) {
+  .site-navigation .site-nav-download { width: 32px; padding-inline: 0; }
+  .site-nav-download-label { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 
