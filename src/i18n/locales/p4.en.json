@@ -412,7 +412,7 @@
     "scopeHint": "Generated target mappings. Files in this scope are synced safely to the latest revisions after switching; this is not a file-by-file download estimate.",
     "clean": "No local changes.",
     "unresolved": "Resolve pending integrations before switching streams.",
-    "finishChanges": "Finish local changes, or enable shelving and preview again.",
+    "finishChanges": "Finish local changes, or enable shelving before switching.",
     "shelveApply": "Shelve and switch",
     "apply": "Switch and sync",
     "running": "Switching stream",

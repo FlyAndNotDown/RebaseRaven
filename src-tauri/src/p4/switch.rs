@@ -145,7 +145,6 @@ pub fn preview_switch(
         &connection.client,
         &connection.root,
         &request.target,
-        request.shelve,
         stable_spec(&client),
         stable_spec(&target),
         &view,

@@ -412,7 +412,7 @@
     "scopeHint": "目标 Stream 生成的映射。切换后安全同步该范围内的最新版本；这里展示映射范围，不是逐文件下载量估算。",
     "clean": "没有本地修改。",
     "unresolved": "请先解决待处理的集成冲突，再切换 Stream。",
-    "finishChanges": "请先处理本地修改，或启用搁置并重新预览。",
+    "finishChanges": "请先处理本地修改，或启用搁置后切换。",
     "shelveApply": "搁置并切换",
     "apply": "切换并同步",
     "running": "正在切换 Stream",
