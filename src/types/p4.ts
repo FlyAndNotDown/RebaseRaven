@@ -236,3 +236,25 @@ export interface P4SwitchRequest { target: string; shelve: boolean }
 export interface P4SwitchFile { path: string; depotPath: string; action: string; change: string | null }
 export interface P4SwitchPreview { current: string; target: string; view: string[]; limitView: string[]; changes: P4SwitchFile[]; unresolved: boolean; fingerprint: string }
 export interface P4SwitchOutcome { connection: P4Connection; source: string; target: string; stage: "shelve" | "switch" | "sync" | "done"; backupShelf: string | null; output: string }
+
+export interface P4FileProperties {
+  depotPath: string;
+  localPath: string;
+  headType: string;
+  openType: string;
+  haveRev: string;
+  headRev: string;
+  headChange: string;
+  headTime: number;
+  headModTime: number;
+  size: number | null;
+  digest: string;
+  action: string;
+  changeId: string;
+  owner: string;
+  locked: boolean;
+  otherOpen: { owner: string; action: string; change: string; locked: boolean }[];
+  blocked: string;
+}
+export interface P4FilePropertiesView { files: P4FileProperties[]; fingerprint: string }
+export interface P4FileTypeRequest { paths: string[]; selected: string[]; fileType: string; changeId: string }

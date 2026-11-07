@@ -529,5 +529,48 @@
       "refresh": "刷新"
     },
     "apply": "集成"
+  },
+  "properties": {
+    "title": "文件属性",
+    "editTitle": "修改文件类型",
+    "count": "{{count}} 个文件",
+    "loading": "正在读取属性…",
+    "fileType": "文件类型",
+    "typeHelp": "完整类型（text+x、binary+l）会替换原类型；单独修饰符（+x）会追加到原类型。移除修饰符时请填写完整类型。",
+    "checkoutChange": "将 {{count}} 个未打开文件检出至",
+    "selected": "已选择 {{count}} 个文件",
+    "pendingHelp": "类型修改保留为待提交更改，提交后才生效。已打开文件保留原变更列表；未打开文件会检出至所选变更列表。",
+    "retention": "+S 修饰符可能在后续提交时清除较早的仓库修订。",
+    "checkout": "检出",
+    "changing": "正在修改文件类型",
+    "changed": "已修改文件类型",
+    "copyFailed": "无法复制到剪贴板",
+    "copied": "已复制路径",
+    "copy": "复制路径",
+    "locked": "已锁定",
+    "reload": "重新读取属性",
+    "depotPath": "仓库路径",
+    "localPath": "本地路径",
+    "have": "本地修订",
+    "head": "最新修订",
+    "depotType": "仓库类型",
+    "openType": "待提交类型",
+    "change": "变更列表",
+    "headChange": "最新变更列表",
+    "size": "仓库文件大小",
+    "submitted": "提交时间",
+    "modified": "文件修改时间",
+    "digest": "仓库 MD5",
+    "otherOpen": "其他工作区已打开（{{count}}）",
+    "blocked": {
+      "unmapped": "未映射",
+      "missing": "本地文件不存在",
+      "owner": "其他用户所有",
+      "unresolved": "需先解决冲突",
+      "deleted": "已删除",
+      "unsynced": "需先同步",
+      "action": "不支持此操作"
+    },
+    "placeholder": "text+x"
   }
 }
