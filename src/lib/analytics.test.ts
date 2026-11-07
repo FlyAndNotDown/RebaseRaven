@@ -41,7 +41,7 @@ describe("desktop analytics privacy", () => {
     expect(frames).toHaveLength(1);
     expect(isAnalyticsInit(frames[0].init)).toBe(true);
     frames[0].ready();
-    expect(frames[0].events.map((event) => event.event)).toEqual(["app_open", "pane_view"]);
+    expect(frames[0].events.map((event) => event.event)).toEqual(["app_open", "pane_view", "app_foreground"]);
     expect(frames[0].events.every((event) => isAnalyticsEvent(event, frames[0].init.generation))).toBe(true);
   });
 
@@ -65,6 +65,7 @@ describe("desktop analytics privacy", () => {
     expect(frames[1].events).toEqual([
       { type: "event", generation: GENERATIONS[1], event: "app_open" },
       { type: "event", generation: GENERATIONS[1], event: "pane_view", pane: "p4_pending" },
+      { type: "event", generation: GENERATIONS[1], event: "app_foreground" },
     ]);
   });
 
@@ -86,6 +87,32 @@ describe("desktop analytics privacy", () => {
     controller.pulse();
     const durations = frames[0].events.flatMap((event) => event.event === "app_engagement" ? [event.engagementTimeMsec] : []);
     expect(durations).toEqual([2_300, 1_500, 2_000, 60_000]);
+  });
+
+  it("reports foreground transitions without counting background time or duplicate focus notifications", () => {
+    const { controller, frames, time } = fixture();
+    controller.configure(true, true);
+    frames[0].ready();
+    controller.setForeground(true);
+    controller.setForeground(true);
+    controller.setPane("p4_pending");
+    time(1_250);
+    controller.setForeground(false);
+    controller.setForeground(false);
+    time(20_000);
+    controller.pulse();
+    controller.setForeground(true);
+    const events = frames[0].events;
+    expect(events.filter((event) => event.event === "app_foreground")).toHaveLength(2);
+    expect(events.filter((event) => event.event === "app_background")).toHaveLength(1);
+    expect(events.filter((event) => event.event === "app_engagement")).toEqual([
+      { type: "event", generation: GENERATIONS[0], event: "app_engagement", engagementTimeMsec: 1_250 },
+    ]);
+    controller.configure(true, false);
+    const count = events.length;
+    controller.setForeground(false);
+    controller.setForeground(true);
+    expect(events).toHaveLength(count);
   });
 
   it("bounds startup buffering and fails quietly without retrying a blocked bridge", () => {

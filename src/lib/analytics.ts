@@ -103,6 +103,7 @@ export function createAnalyticsController(options: AnalyticsOptions) {
         send({ type: "event", generation: current, event: "app_open" });
         startedAt = foreground ? options.now() : null;
         sendPane();
+        if (foreground) send({ type: "event", generation: current, event: "app_foreground" });
       } catch {
         stop();
       }
@@ -119,6 +120,9 @@ export function createAnalyticsController(options: AnalyticsOptions) {
       foreground = next;
       startedAt = foreground && enabled ? options.now() : null;
       if (foreground) sendPane();
+      if (enabled && generation) {
+        send({ type: "event", generation, event: foreground ? "app_foreground" : "app_background" });
+      }
     },
     pulse: flushEngagement,
     stop() { enabled = false; stop(); },

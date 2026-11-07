@@ -14,7 +14,10 @@ const init: AnalyticsInit = {
 describe("analytics bridge contract", () => {
   it("accepts exact app metadata and fixed event shapes", () => {
     expect(isAnalyticsInit(init)).toBe(true);
-    expect(isAnalyticsEvent({ type: "event", generation, event: "app_open" }, generation)).toBe(true);
+    for (const event of ["app_open", "app_foreground", "app_background"]) {
+      expect(isAnalyticsEvent({ type: "event", generation, event }, generation)).toBe(true);
+      expect(isAnalyticsEvent({ type: "event", generation, event, path: "/private" }, generation)).toBe(false);
+    }
     for (const pane of ANALYTICS_PANES) {
       expect(isAnalyticsEvent({ type: "event", generation, event: "pane_view", pane }, generation)).toBe(true);
     }
