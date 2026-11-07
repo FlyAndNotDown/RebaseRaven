@@ -106,6 +106,111 @@ pub(super) fn git_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
     crate::platform::background_command(program)
 }
 
+fn append_git_args(
+    command: &mut Command,
+    args: impl IntoIterator<Item = impl AsRef<std::ffi::OsStr>>,
+) {
+    for arg in args {
+        let arg = arg.as_ref();
+        #[cfg(windows)]
+        {
+            use std::os::windows::ffi::{OsStrExt, OsStringExt};
+            use std::os::windows::process::CommandExt;
+            let batch = Path::new(command.get_program())
+                .extension()
+                .and_then(std::ffi::OsStr::to_str)
+                .is_some_and(|extension| {
+                    extension.eq_ignore_ascii_case("cmd") || extension.eq_ignore_ascii_case("bat")
+                });
+            if !batch {
+                // Quote every argument so MSYS launchers cannot expand wildcards.
+                // Preserve the CRT escaping rules, including embedded quotes and
+                // trailing backslashes. Batch wrappers retain Rust's own escaping.
+                let mut quoted = vec![b'"' as u16];
+                let mut slashes = 0;
+                for unit in arg.encode_wide() {
+                    if unit == b'\\' as u16 {
+                        slashes += 1;
+                        continue;
+                    }
+                    quoted.extend(std::iter::repeat_n(
+                        b'\\' as u16,
+                        if unit == b'"' as u16 {
+                            slashes * 2 + 1
+                        } else {
+                            slashes
+                        },
+                    ));
+                    slashes = 0;
+                    quoted.push(unit);
+                }
+                quoted.extend(std::iter::repeat_n(b'\\' as u16, slashes * 2));
+                quoted.push(b'"' as u16);
+                command.raw_arg(std::ffi::OsString::from_wide(&quoted));
+                continue;
+            }
+        }
+        command.arg(arg);
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_argument_tests {
+    use super::*;
+
+    #[test]
+    fn arguments_round_trip_through_a_windows_child() {
+        const FLAG: &str = "REBASERAVEN_GIT_ARGUMENT_TEST";
+        let values = [
+            "",
+            "plain",
+            "[ab]",
+            "*?",
+            "two words",
+            "a\"b",
+            "trailing\\",
+            "C:\\two words\\",
+            "a\\\\\"b",
+            "caf\u{e9}",
+        ];
+        if std::env::var_os(FLAG).is_some() {
+            let actual: Vec<_> = std::env::args_os()
+                .skip_while(|arg| arg.as_os_str() != std::ffi::OsStr::new("--"))
+                .skip(1)
+                .collect();
+            let expected: Vec<_> = values
+                .iter()
+                .map(|value| std::ffi::OsString::from(*value))
+                .collect();
+            assert_eq!(actual, expected);
+            return;
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let mut command = git_command(std::env::current_exe().unwrap());
+        append_git_args(
+            &mut command,
+            [
+                "--exact",
+                "git::cli::windows_argument_tests::arguments_round_trip_through_a_windows_child",
+                "--nocapture",
+                "--",
+            ],
+        );
+        append_git_args(&mut command, values);
+        let output = command
+            .current_dir(directory.path())
+            .env(FLAG, "1")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
 /// A killed git cannot release its lock files, and every later command would
 /// then fail on them. Only locks created after `since` are removed.
 fn git_path(root: &Path, flag: &str) -> Option<PathBuf> {
@@ -238,7 +343,8 @@ pub(super) fn run_git_env(
     let started = Instant::now();
     let output = require_git().and_then(|git| {
         let mut command = git_command(git);
-        command.arg("-C").arg(root).args(args);
+        append_git_args(&mut command, [std::ffi::OsStr::new("-C"), root.as_os_str()]);
+        append_git_args(&mut command, args);
         command.env("GIT_TERMINAL_PROMPT", "0");
         for (key, value) in env {
             command.env(key, value);
@@ -267,7 +373,8 @@ pub(super) fn run_git_input_output(
 fn git_input_output(root: &Path, args: &[&str], input: &[u8]) -> AppResult<std::process::Output> {
     let git = require_git()?;
     let mut command = git_command(git);
-    command.arg("-C").arg(root).args(args);
+    append_git_args(&mut command, [std::ffi::OsStr::new("-C"), root.as_os_str()]);
+    append_git_args(&mut command, args);
     command.env("GIT_TERMINAL_PROMPT", "0");
     command
         .stdin(Stdio::piped())
@@ -344,9 +451,9 @@ pub(super) fn run_git_progress(
     };
     let mut command = git_command(git);
     if let Some(root) = root {
-        command.arg("-C").arg(root);
+        append_git_args(&mut command, [std::ffi::OsStr::new("-C"), root.as_os_str()]);
     }
-    command.args(args);
+    append_git_args(&mut command, args);
     command.env("GIT_TERMINAL_PROMPT", "0");
     command
         .stdin(Stdio::null())
