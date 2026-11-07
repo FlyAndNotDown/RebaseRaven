@@ -30,6 +30,12 @@ import type {
   RemoteProbe,
   RemotePushSettings,
   SubmoduleInfo,
+  SubmoduleSettings,
+  SubmoduleCatalog,
+  SubmoduleAdd,
+  SubmoduleRemovalKind,
+  SubmoduleRemovalPreview,
+  SubmoduleUpdateOptions,
   UndoneCommit,
   WorktreeInfo,
   TerminalOption,
@@ -162,11 +168,19 @@ export const gitApi = {
     call<WorkspaceSnapshot>("checkout_detached", { repoPath, oid }),
   headReflog: (repoPath: string, limit = 200) => call<ReflogEntry[]>("head_reflog", { repoPath, limit }),
   listSubmodules: (repoPath: string) => call<SubmoduleInfo[]>("list_submodules", { repoPath }),
-  updateSubmodules: (repoPath: string, paths: string[], activityId?: string) =>
+  submoduleSettings: (repoPath: string, path: string) => call<SubmoduleSettings>("submodule_settings", { repoPath, path }),
+  submoduleCatalog: (repoPath: string) => call<SubmoduleCatalog>("submodule_catalog", { repoPath }),
+  addSubmodule: (repoPath: string, request: SubmoduleAdd, fingerprint: string, activityId?: string) => call<WorkspaceSnapshot>("add_submodule", { repoPath, request, fingerprint, activityId: activityId || null }),
+  editSubmodule: (repoPath: string, path: string, url: string, branch: string | null, fingerprint: string) => call<WorkspaceSnapshot>("edit_submodule", { repoPath, path, url, branch, fingerprint }),
+  syncSubmodules: (repoPath: string, paths: string[], recursive: boolean) => call<WorkspaceSnapshot>("sync_submodules", { repoPath, paths, recursive }),
+  previewSubmoduleRemoval: (repoPath: string, path: string, kind: SubmoduleRemovalKind, force: boolean) => call<SubmoduleRemovalPreview>("preview_submodule_removal", { repoPath, path, kind, force }),
+  removeSubmodule: (repoPath: string, path: string, kind: SubmoduleRemovalKind, force: boolean, fingerprint: string) => call<WorkspaceSnapshot>("remove_submodule", { repoPath, path, kind, force, fingerprint }),
+  updateSubmodules: (repoPath: string, paths: string[], activityId?: string, options?: SubmoduleUpdateOptions) =>
     call<WorkspaceSnapshot>("update_submodules", {
       repoPath,
       paths: paths.length ? paths : null,
       activityId: activityId || null,
+      options: options ?? null,
     }),
   listWorktrees: (repoPath: string) => call<WorktreeInfo[]>("list_worktrees", { repoPath }),
   addWorktree: (

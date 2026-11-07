@@ -57,6 +57,11 @@ export const BisectDialog = lazyDialog(
   (props) => props.open,
 );
 
+export const AddSubmoduleDialog = lazyDialog(
+  () => import("@/components/submodule-dialogs").then((module) => module.AddSubmoduleDialog),
+  (props) => props.open,
+);
+
 export const InteractiveRebaseDialog = lazyDialog(
   () => import("@/components/interactive-rebase-dialog").then((module) => module.InteractiveRebaseDialog),
   (props) => props.onto !== null,

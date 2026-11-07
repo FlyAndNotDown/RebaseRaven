@@ -30,7 +30,7 @@ verification of every option or platform.
 | History, graph, file history and blame | `git/history.rs`, `git/files.rs` | Arbitrary revision tree browsing and branch/range comparison need inspection |
 | Reflog and lost-commit recovery | `git/reflog.rs` | Verify recovery without overwriting local work |
 | Worktrees | `git/structure.rs` | Audit lock/unlock, move and repair |
-| Submodules | `git/structure.rs` | Add, remove, URL changes, sync and branch updates are missing |
+| Submodules | `git/submodules.rs`, shared sidebar and dialogs: add, edit, sync, update, deinitialize and remove | Repository and component checks pass; native/provider transitions, long-running cancellation and large checkouts remain to audit |
 | Patch import/export | `git/operations.rs` | Audit format-patch/am recovery and selected changes |
 | Bisect | `git/bisect.rs`, shared operation banner and bisect dialog: start, classify, skip, retest, inspect and reset | Repository and component checks pass; native/provider transitions, automation, log import/export and large-session behavior remain to audit |
 | Git LFS | No dedicated command surface found | Inspect installed-tool integration, tracking and locks |
@@ -187,3 +187,36 @@ area. Do not infer full parity from a passing test suite or this inventory.
   Native application entry points and provider transitions remain unverified
   while the host is locked. Candidate inspection is bounded to 500 revisions;
   larger ambiguous sessions and automation/log management remain in the audit.
+
+
+### Git submodule management
+
+- The sidebar and command palette can add submodules with an optional tracking
+  branch, configuration name and shallow depth. Existing entries support URL and
+  branch edits, URL synchronization, recorded or remote updates, checkout/merge/
+  rebase strategies, recursive updates, deinitialization and removal.
+- Configuration edits remain unstaged for review. Add and remove use native Git
+  staging, and reject unstaged metadata edits to avoid staging unrelated work.
+  Paths are literal, remain inside the repository and cannot traverse symlinks.
+  Definitions cannot change during another parent operation.
+- Configuration actions reject stale repository state. Removal previews bind
+  the module configuration and checkout metadata, show local file counts and
+  size, require explicit force for local changes, and retain selected Git
+  history outside the checkout, including old embedded Git directories.
+  Application actions share a per-worktree advisory lock. Failed operations
+  refresh actual state; multi-step native commands are not assumed atomic.
+- Seven new repository tests cover custom names, URL/branch edits, stale and
+  dirty guards, recorded/remote update strategies, literal paths, recursive
+  modules, relative URLs, shallow clones, stored Git directories and retained
+  unpublished history. The three existing submodule tests still pass.
+- Production component checks against real Rust/Git commands cover adding,
+  stale settings rejection, URL/branch edits, synchronization, remote updates,
+  recorded checkout restoration, stale removal rejection, forced deinitialization,
+  reinitialization and staged removal. The 960x640 minimum window remains usable.
+  Native application entry points and provider transitions remain unverified
+  while the host is locked; long-running background cancellation and very large
+  checkout previews remain in the audit.
+- Source, website, version, type, lint and frontend build checks pass, with
+  424 frontend tests passing. Rust formatting, Clippy and tests pass: 321 passed
+  and one existing unrelated test ignored. These checks do not establish
+  complete client parity.

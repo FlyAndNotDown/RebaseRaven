@@ -82,11 +82,13 @@ import type {
   RebaseStep,
   StashDetails,
   StashInfo,
+  SubmoduleChange,
+  SubmoduleUpdateOptions,
   WorkspaceSnapshot,
 } from "@/types/git";
 
 export { COMMIT_PAGE, WELCOME_TAB_ID, defaultFetchRemote, primaryRemote };
-export type Panel = "reflog" | "bisect" | "palette" | "settings" | "settings-about" | "new-branch";
+export type Panel = "reflog" | "bisect" | "add-submodule" | "palette" | "settings" | "settings-about" | "new-branch";
 export type RepoKindPrompt = {
   path: string;
   gitPath: string;
@@ -206,7 +208,8 @@ interface GitContextValue {
   commit: (message: string, amend?: boolean) => Promise<boolean>;
   undoLastCommit: (tabId?: string) => Promise<boolean>;
   checkoutDetached: (oid: string) => Promise<boolean>;
-  updateSubmodules: (paths: string[]) => Promise<boolean>;
+  updateSubmodules: (paths: string[], options?: SubmoduleUpdateOptions) => Promise<boolean>;
+  changeSubmodule: (change: SubmoduleChange) => Promise<boolean>;
   checkoutBranch: (name: string) => Promise<void>;
   fetchRemote: (remote?: string) => Promise<void>;
   fetchAllRemotes: () => Promise<void>;
@@ -1926,14 +1929,17 @@ export function GitProvider({ children }: { children: ReactNode }) {
   );
 
   const updateSubmodules = useCallback(
-    async (paths: string[]) => {
+    async (paths: string[], options?: SubmoduleUpdateOptions) => {
+      const tabId = activeTabIdRef.current;
       const label = paths.length === 1 ? t("operations.updating_submodule", { value: paths[0] }) : t("operations.updating_submodules");
-      return runMutation(
+      const ok = await runMutation(
         label,
-        (repoPath, activityId) => gitApi.updateSubmodules(repoPath, paths, activityId),
+        (repoPath, activityId) => gitApi.updateSubmodules(repoPath, paths, activityId, options),
         paths.length === 1 ? t("operations.updated", { value: paths[0] }) : t("operations.updated_submodules"),
-        { cancellable: true },
+        { cancellable: true, tabId },
       );
+      if (!ok) await refreshAfterReplayRef.current(tabId);
+      return ok;
     },
     [runMutation],
   );
@@ -2345,6 +2351,20 @@ export function GitProvider({ children }: { children: ReactNode }) {
   useLayoutEffect(() => {
     refreshAfterReplayRef.current = refreshAfterReplay;
   }, [refreshAfterReplay]);
+
+  const changeSubmodule = useCallback(async (change: SubmoduleChange) => {
+    const tabId = activeTabIdRef.current;
+    const ok = await runMutation(t(`git.submodule.${change.kind}Activity`), (repoPath, activityId) => {
+      switch (change.kind) {
+        case "add": return gitApi.addSubmodule(repoPath, change.request, change.fingerprint, activityId);
+        case "edit": return gitApi.editSubmodule(repoPath, change.path, change.url, change.branch, change.fingerprint);
+        case "sync": return gitApi.syncSubmodules(repoPath, change.paths, change.recursive);
+        case "remove": return gitApi.removeSubmodule(repoPath, change.path, change.mode, change.force, change.fingerprint);
+      }
+    }, undefined, { tabId, cancellable: change.kind === "add" });
+    if (!ok) await refreshAfterReplay(tabId);
+    return ok;
+  }, [refreshAfterReplay, runMutation]);
 
   const revertCommit = useCallback(
     async (oid: string, tabId = activeTabIdRef.current) => {
@@ -3022,6 +3042,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       undoLastCommit,
       checkoutDetached,
       updateSubmodules,
+      changeSubmodule,
       checkoutBranch,
       fetchRemote,
       fetchAllRemotes,
@@ -3120,6 +3141,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       undoLastCommit,
       checkoutDetached,
       updateSubmodules,
+      changeSubmodule,
       checkoutBranch,
       fetchRemote,
       fetchAllRemotes,

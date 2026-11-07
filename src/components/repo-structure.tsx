@@ -14,6 +14,8 @@ import {
   RefreshCwIcon,
   ScissorsIcon,
   Trash2Icon,
+  Settings2Icon,
+  UnplugIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -41,12 +43,13 @@ import { createExclusiveAction } from "@/lib/async-scope";
 import { pathsIgnoreCase } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useGitPick } from "@/state/git-context";
+import { SubmoduleDialogs, type SubmoduleDialogAction } from "@/components/submodule-dialogs";
 import type { SubmoduleInfo, WorktreeInfo } from "@/types/git";
 
 const STATE_LABEL: Record<string, string> = {
-  uninitialized: "not checked out",
-  modified: "moved",
-  conflicted: "conflict",
+  uninitialized: "git.submodule.uninitialized",
+  modified: "git.submodule.moved",
+  conflicted: "git.submodule.conflicted",
 };
 
 function joinPath(root: string, relative: string) {
@@ -56,12 +59,14 @@ function joinPath(root: string, relative: string) {
 /** Submodule and worktree sections for the branches sidebar. */
 export function RepoStructure({ onReady }: { onReady?: (repoPath: string) => void }) {
   useTranslation();
-  const { snapshot, openPath, updateSubmodules, beginActivity, endActivity } = useGitPick([
+  const { snapshot, openPath, updateSubmodules, beginActivity, endActivity, setOpenPanel, changeSubmodule } = useGitPick([
     "snapshot",
     "openPath",
     "updateSubmodules",
     "beginActivity",
     "endActivity",
+    "setOpenPanel",
+    "changeSubmodule",
   ]);
   const repoPath = snapshot?.repo.path ?? "";
   const canAddWorktree = Boolean(snapshot?.repo.headId) || Boolean(snapshot?.branches.local.some((branch) => !branch.isHead));
@@ -75,7 +80,10 @@ export function RepoStructure({ onReady }: { onReady?: (repoPath: string) => voi
   const [errors, setErrors] = useState<{ submodules: string | null; worktrees: string | null }>({ submodules: null, worktrees: null });
   const [busy, setBusy] = useState(false);
   const [mutation] = useState(createExclusiveAction);
+  const [submoduleDialog, setSubmoduleDialog] = useState<SubmoduleDialogAction | null>(null);
   const structureReady = loadedFor === repoPath && repoPath !== "";
+  const definitionsBlocked = busy || Boolean(snapshot?.repo.operation);
+  const changedPaths = new Set([...(snapshot?.status.staged ?? []), ...(snapshot?.status.unstaged ?? [])].map(file => file.path));
 
   // Any repository change can move a submodule or a worktree's branch.
   useEffect(() => {
@@ -132,6 +140,14 @@ export function RepoStructure({ onReady }: { onReady?: (repoPath: string) => voi
     });
   }
 
+  async function sync(paths: string[]) {
+    await mutation.run(async () => {
+      setBusy(true);
+      try { if (await changeSubmodule({ kind: "sync", paths, recursive: true })) { setReload(value => value + 1); toast.success(t("git.submodule.synced")); } }
+      finally { setBusy(false); }
+    });
+  }
+
   async function remove(tree: WorktreeInfo, force: boolean) {
     let removed = false;
     await mutation.run(async () => {
@@ -152,14 +168,17 @@ export function RepoStructure({ onReady }: { onReady?: (repoPath: string) => voi
 
   return (
     <>
-      {structureReady && (submodules.length > 0 || errors.submodules) ? (
+      {structureReady ? (
         <section>
+          <ContextMenu><ContextMenuTrigger asChild><div>
           <SectionHeader
             label={t("git.ui.submodules")}
             open={openSections.submodules}
             onToggle={() => setOpenSections((current) => ({ ...current, submodules: !current.submodules }))}
             action={
-              <HoverTip label={t("git.ui.update_all_submodules")}>
+              <div className="flex items-center">
+              <HoverTip label={t("git.submodule.addTitle")}><Button variant="ghost" size="icon-xs" className="size-6 rounded-sm" aria-label={t("git.submodule.addTitle")} disabled={definitionsBlocked} onClick={() => setOpenPanel("add-submodule")}><PlusIcon className="size-3.5" /></Button></HoverTip>
+              {submodules.length > 0 ? <HoverTip label={t("git.ui.update_all_submodules")}>
                 <Button
                   variant="ghost"
                   size="icon-xs"
@@ -171,12 +190,21 @@ export function RepoStructure({ onReady }: { onReady?: (repoPath: string) => voi
                 >
                   <RefreshCwIcon className="size-3.5" />
                 </Button>
-              </HoverTip>
+              </HoverTip> : null}
+              </div>
             }
           />
+          </div></ContextMenuTrigger><ContextMenuContent className="min-w-48">
+            <ContextMenuItem disabled={definitionsBlocked} onClick={() => setOpenPanel("add-submodule")}><PlusIcon />{t("git.submodule.addMenu")}</ContextMenuItem>
+            <ContextMenuItem disabled={busy || submodules.length === 0} onClick={() => setSubmoduleDialog({ kind: "update", paths: [], remote: false })}><RefreshCwIcon />{t("git.submodule.updateAllMenu")}</ContextMenuItem>
+            <ContextMenuItem disabled={busy || submodules.length === 0} onClick={() => void sync([])}><LinkIcon />{t("git.submodule.syncAll")}</ContextMenuItem>
+            <ContextMenuItem disabled={busy} onClick={() => setReload(value => value + 1)}><RefreshCwIcon />{t("git.submodule.reload")}</ContextMenuItem>
+          </ContextMenuContent></ContextMenu>
           {errors.submodules ? <StructureError message={errors.submodules} busy={busy} onRetry={() => setReload((value) => value + 1)} /> : null}
           {openSections.submodules && !errors.submodules
-            ? submodules.map((module) => (
+            ? submodules.map((module) => {
+              const stateLabel = STATE_LABEL[module.state] ?? (changedPaths.has(module.path) ? "git.submodule.localChanges" : null);
+              return (
                 <ContextMenu key={module.path}>
                   <HoverTip label={module.url ?? module.path}>
                   <ContextMenuTrigger asChild>
@@ -189,7 +217,7 @@ export function RepoStructure({ onReady }: { onReady?: (repoPath: string) => voi
                     >
                       <BoxIcon className="size-3.5 shrink-0 text-muted-foreground" />
                       <span className="min-w-0 flex-1 truncate font-mono">{module.path}</span>
-                      {STATE_LABEL[module.state] ? (
+                      {stateLabel ? (
                         <span
                           className={cn(
                             "shrink-0 text-[10px]",
@@ -200,7 +228,7 @@ export function RepoStructure({ onReady }: { onReady?: (repoPath: string) => voi
                                 : "text-muted-foreground",
                           )}
                         >
-                          {STATE_LABEL[module.state]}
+                          {t(stateLabel)}
                         </span>
                       ) : null}
                     </button>
@@ -215,6 +243,12 @@ export function RepoStructure({ onReady }: { onReady?: (repoPath: string) => voi
                       {module.state === "uninitialized" ? <DownloadIcon /> : <RefreshCwIcon />}
                       {module.state === "uninitialized" ? t("git.ui.check_out") : t("git.ui.update_to_recorded_commit")}
                     </ContextMenuItem>
+                    <ContextMenuItem disabled={busy || module.state === "conflicted"} onClick={() => setSubmoduleDialog({ kind: "update", paths: [module.path], remote: true })}><DownloadIcon />{t("git.submodule.updateMenu")}</ContextMenuItem>
+                    <ContextMenuItem disabled={busy} onClick={() => void sync([module.path])}><LinkIcon />{t("git.submodule.sync")}</ContextMenuItem>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem disabled={definitionsBlocked} onClick={() => setSubmoduleDialog({ kind: "edit", module })}><Settings2Icon />{t("git.submodule.editMenu")}</ContextMenuItem>
+                    <ContextMenuItem disabled={definitionsBlocked || module.state === "uninitialized"} onClick={() => setSubmoduleDialog({ kind: "remove", module, mode: "deinit" })}><UnplugIcon />{t("git.submodule.deinitMenu")}</ContextMenuItem>
+                    <ContextMenuItem disabled={definitionsBlocked} variant="destructive" onClick={() => setSubmoduleDialog({ kind: "remove", module, mode: "remove" })}><Trash2Icon />{t("git.submodule.removeMenu")}</ContextMenuItem>
                     <ContextMenuSeparator />
                     {module.url ? (
                       <ContextMenuItem onClick={() => void copy(module.url ?? "")}>
@@ -224,7 +258,8 @@ export function RepoStructure({ onReady }: { onReady?: (repoPath: string) => voi
                       <CopyIcon />{t("git.ui.copy_path")}</ContextMenuItem>
                   </ContextMenuContent>
                 </ContextMenu>
-              ))
+              );
+            })
             : null}
         </section>
       ) : null}
@@ -325,6 +360,7 @@ export function RepoStructure({ onReady }: { onReady?: (repoPath: string) => voi
         onClose={() => setRemoving(null)}
         onRemove={remove}
       />
+      {submoduleDialog ? <SubmoduleDialogs key={JSON.stringify([repoPath, submoduleDialog])} repoPath={repoPath} action={submoduleDialog} onClose={() => setSubmoduleDialog(null)} /> : null}
     </>
   );
 }

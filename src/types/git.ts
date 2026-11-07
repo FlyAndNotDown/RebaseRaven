@@ -283,11 +283,25 @@ export interface BlameHunk {
 }
 
 export interface SubmoduleInfo {
+  name: string;
   path: string;
   url: string | null;
+  branch: string | null;
   state: "clean" | "uninitialized" | "modified" | "conflicted" | string;
   commit: string | null;
 }
+
+export interface SubmoduleSettings { module: SubmoduleInfo; fingerprint: string }
+export interface SubmoduleCatalog { modules: SubmoduleInfo[]; fingerprint: string }
+export interface SubmoduleAdd { url: string; path: string; name: string | null; branch: string | null; depth: number | null; force: boolean }
+export type SubmoduleRemovalKind = "deinit" | "remove";
+export interface SubmoduleRemovalPreview { module: SubmoduleInfo; files: number; bytes: number; dirty: boolean; fingerprint: string }
+export interface SubmoduleUpdateOptions { remote: boolean; recursive: boolean; fetch: boolean; strategy: "checkout" | "merge" | "rebase" }
+export type SubmoduleChange =
+  | { kind: "add"; request: SubmoduleAdd; fingerprint: string }
+  | { kind: "edit"; path: string; url: string; branch: string | null; fingerprint: string }
+  | { kind: "sync"; paths: string[]; recursive: boolean }
+  | { kind: "remove"; path: string; mode: SubmoduleRemovalKind; force: boolean; fingerprint: string };
 
 export interface WorktreeInfo {
   path: string;
