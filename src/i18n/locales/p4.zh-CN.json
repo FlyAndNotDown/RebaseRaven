@@ -527,6 +527,7 @@
       "move_delete": "移出",
       "updated": "更新",
       "refresh": "刷新"
-    }
+    },
+    "apply": "集成"
   }
 }

@@ -527,6 +527,7 @@
       "move_delete": "Move from",
       "updated": "Update",
       "refresh": "Refresh"
-    }
+    },
+    "apply": "Integrate"
   }
 }
