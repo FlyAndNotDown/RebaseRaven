@@ -44,7 +44,10 @@
     "fileRevisionMissing": "The selected file revision is unavailable.",
     "compareSize": "Workspace text comparison supports up to 2 MiB per file.",
     "compareEncoding": "Workspace text comparison requires UTF-8 text files.",
-    "compareComplex": "This comparison is too complex to preview. Choose a smaller revision range."
+    "compareComplex": "This comparison is too complex to preview. Choose a smaller revision range.",
+    "blameText": "Select a live text revision for line history.",
+    "blameSize": "Line history is limited to 2 MiB and 20,000 lines.",
+    "blameIncomplete": "Perforce returned incomplete line history."
   },
   "connectionRequired": "Reconnect this workspace before continuing.",
   "workspaceBusy": "Wait for the current workspace operation to finish.",

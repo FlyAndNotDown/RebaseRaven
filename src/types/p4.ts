@@ -219,3 +219,5 @@ export interface P4RevisionPage { revisions: P4Revision[]; next: P4HistoryCursor
 
 export type P4FileVersion = { kind: "revision"; depotPath: string; revision: string } | { kind: "workspace" };
 export interface P4CompareRequest { path: string; base: P4FileVersion; head: P4FileVersion }
+
+export interface P4BlameLine { line: number; change: string; user: string; time: string; content: string }

@@ -362,6 +362,10 @@
     "revision": "File revision",
     "revisionInput": "{{side}} revision",
     "compare": "Compare",
-    "compareHint": "Choose versions, then compare."
+    "compareHint": "Choose versions, then compare.",
+    "diff": "Diff",
+    "blame": "Line history",
+    "view": "File view",
+    "blameHint": "Select a revision; click a changelist to inspect its change."
   }
 }

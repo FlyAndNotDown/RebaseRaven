@@ -4,6 +4,9 @@ import { t } from "@/i18n";
 export type P4OperationKind = "integrate" | "undo";
 
 const operationErrors: Record<string, string> = {
+  "Select a live text revision for line history.": "blameText",
+  "Line history is limited to 2 MiB and 20000 lines.": "blameSize",
+  "Perforce returned incomplete line history.": "blameIncomplete",
   "Enter a non-negative file revision.": "fileRevision",
   "The selected file revision is unavailable.": "fileRevisionMissing",
   "Workspace text comparison is limited to 2 MiB per file.": "compareSize",

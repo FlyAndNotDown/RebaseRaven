@@ -3,6 +3,8 @@ import { ArrowRightIcon, CheckIcon, ChevronDownIcon, ExternalLinkIcon, LoaderCir
 import { useTranslation } from "@/i18n";
 import { AuthorName, ExactTime, RevisionDot } from "@/components/revision-meta";
 import { ChangeBadge } from "@/components/p4/change-badge";
+import { P4Blame } from "@/components/p4/p4-blame";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { P4Diff } from "@/components/p4/p4-diff";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +29,7 @@ const validVersion = (value: P4FileVersion) => value.kind === "workspace" || /^\
 export function P4FileHistory({ path }: { path: string }) {
   const { t } = useTranslation();
   const { filelog, revisionDiff, compareFiles, selectSubmitted, setView } = useP4();
+  const [mode, setMode] = useState<"diff" | "blame">("diff");
   const [revisions, setRevisions] = useState<P4Revision[] | null>(null);
   const [next, setNext] = useState<P4HistoryCursor | null>(null);
   const [loading, setLoading] = useState(true);
@@ -121,13 +124,15 @@ export function P4FileHistory({ path }: { path: string }) {
     <ResizablePanel id="p4-file-diff" defaultSize="66%" minSize="24%">
       <div className="absolute inset-0 flex min-h-0 flex-col">
         <div className="flex h-10 shrink-0 items-center gap-1.5 border-b px-2">
+          <SegmentedControl label={t("p4.history.view")} value={mode} onChange={setMode} options={[{value:"diff",label:t("p4.history.diff")},{value:"blame",label:t("p4.history.blame")}]} />
+          {mode === "diff" ? <>
           <VersionPicker label={t("p4.history.base")} value={base} fallback={selected ? revisionVersion(selected, previous(selected)) : base} disabled={!selected} onChange={(value) => edit("base", value)} />
           <ArrowRightIcon className="size-3.5 shrink-0 text-muted-foreground" />
           <VersionPicker label={t("p4.history.head")} value={head} fallback={selected ? revisionVersion(selected) : head} disabled={!selected} onChange={(value) => edit("head", value)} />
-          <Button size="xs" variant="outline" className="ml-auto" disabled={!selected || !validVersion(base) || !validVersion(head) || diffLoading} onClick={() => void compare()}>{diffLoading ? <LoaderCircleIcon className="animate-spin" /> : null}{t("p4.history.compare")}</Button>
+          <Button size="xs" variant="outline" className="ml-auto" disabled={!selected || !validVersion(base) || !validVersion(head) || diffLoading} onClick={() => void compare()}>{diffLoading ? <LoaderCircleIcon className="animate-spin" /> : null}{t("p4.history.compare")}</Button></> : null}
         </div>
         <div className="relative flex min-h-0 flex-1 flex-col">
-          {diffError ? <p role="alert" className="p-3 text-xs text-destructive">{diffError}</p> : <P4Diff diff={diff} loading={diffLoading || (loading && !revisions)} empty={t(selected ? "p4.history.compareHint" : "p4.noRevisionToShow")} captions={applied ? [label(applied.base), label(applied.head)] : undefined} />}
+          {mode === "blame" && selected ? <P4Blame revision={selected} openChange={openChange} /> : diffError ? <p role="alert" className="p-3 text-xs text-destructive">{diffError}</p> : <P4Diff diff={diff} loading={diffLoading || (loading && !revisions)} empty={t(selected ? "p4.history.compareHint" : "p4.noRevisionToShow")} captions={applied ? [label(applied.base), label(applied.head)] : undefined} />}
         </div>
       </div>
     </ResizablePanel>

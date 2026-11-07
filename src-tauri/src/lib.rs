@@ -1151,6 +1151,15 @@ async fn p4_revision_diff(
 }
 
 #[tauri::command]
+async fn p4_annotate(
+    connection: p4::P4Connection,
+    depot_path: String,
+    revision: String,
+) -> AppResult<Vec<p4::P4BlameLine>> {
+    blocking(move || p4::annotate(&connection, &depot_path, &revision)).await
+}
+
+#[tauri::command]
 async fn p4_compare_files(
     connection: p4::P4Connection,
     request: p4::P4CompareRequest,
@@ -1981,6 +1990,7 @@ pub fn run() {
             p4_revision_diff,
             p4_filelog,
             p4_compare_files,
+            p4_annotate,
             p4_locate,
             p4_list_dir,
             p4_list_depot,

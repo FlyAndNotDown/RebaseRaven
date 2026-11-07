@@ -45,6 +45,7 @@ import type {
   P4OperationPreview,
   P4ResolveView,
   P4CompareRequest,
+  P4BlameLine,
   P4RevisionPage,
   P4HistoryCursor,
   P4StreamOption,
@@ -145,6 +146,7 @@ interface P4ContextValue {
   listDepot: (path: string) => Promise<P4DirEntry[]>;
   searchDepot: (query: string) => Promise<P4FileSearch | null>;
   filelog: (path: string, cursor?: P4HistoryCursor | null) => Promise<P4RevisionPage>;
+  annotate: (depotPath: string, revision: string) => Promise<P4BlameLine[]>;
   compareFiles: (request: P4CompareRequest) => Promise<FileDiff>;
   revisionDiff: (depotPath: string, rev: string) => Promise<FileDiff | null>;
   searchSubmitted: (
@@ -1334,6 +1336,12 @@ export function P4Provider({ children }: { children: ReactNode }) {
     [guard],
   );
 
+  const annotate = useCallback(async (depotPath: string, revision: string) => {
+    const current = sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    return guard(current.connection, () => p4Api.annotate(current.connection, depotPath, revision));
+  }, [guard]);
+
   const compareFiles = useCallback(async (request: P4CompareRequest) => {
     const current = sessionRef.current;
     if (!current) throw new Error(t("p4-operations.connectionRequired"));
@@ -1518,6 +1526,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
       searchDepot,
       filelog,
       compareFiles,
+      annotate,
       revisionDiff,
       searchSubmitted,
       reconnect,
@@ -1587,6 +1596,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
       shelveFiles,
       revertUnchanged,
       compareFiles,
+      annotate,
       revisionDiff,
       saveSelected,
       saveChange,

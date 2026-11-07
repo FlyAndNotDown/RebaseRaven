@@ -50,6 +50,96 @@ pub enum P4Comparison {
     },
 }
 
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct P4BlameLine {
+    pub line: usize,
+    pub change: String,
+    pub user: String,
+    pub time: String,
+    pub content: String,
+}
+
+pub fn annotate(
+    connection: &P4Connection,
+    depot_path: &str,
+    revision: &str,
+) -> AppResult<Vec<P4BlameLine>> {
+    let source = version(
+        connection,
+        depot_path,
+        &P4FileVersion::Revision {
+            depot_path: depot_path.to_string(),
+            revision: revision.to_string(),
+        },
+    )?;
+    if source.absent || source.binary {
+        return Err(AppError::msg(
+            "Select a live text revision for line history.",
+        ));
+    }
+    let (bytes, truncated) = read_version(connection, &source, TEXT_LIMIT)?;
+    if truncated || bytes.split(|byte| *byte == b'\n').count() > 20_000 {
+        return Err(AppError::msg(
+            "Line history is limited to 2 MiB and 20000 lines.",
+        ));
+    }
+    if bytes.contains(&0) || std::str::from_utf8(&bytes).is_err() {
+        return Err(AppError::msg(
+            "Select a live text revision for line history.",
+        ));
+    }
+    let output = run(
+        connection,
+        &[
+            "-ztag",
+            "annotate",
+            "-i",
+            "-u",
+            source.spec.as_deref().unwrap(),
+        ],
+    )?;
+    parse_annotations(&output)
+}
+
+fn parse_annotations(output: &str) -> AppResult<Vec<P4BlameLine>> {
+    let mut lines = Vec::new();
+    let (mut change, mut user, mut time) = (String::new(), String::new(), String::new());
+    for raw in output.lines() {
+        let Some(tag) = raw.strip_prefix("... ") else {
+            continue;
+        };
+        let (key, value) = tag.split_once(' ').unwrap_or((tag, ""));
+        match key {
+            "upper" => {
+                change.clear();
+                user.clear();
+                time.clear();
+            }
+            "lower" => change = value.to_string(),
+            "user" => user = value.to_string(),
+            "time" => time = value.to_string(),
+            "data" => {
+                if change.is_empty()
+                    || !change.bytes().all(|byte| byte.is_ascii_digit())
+                    || user.is_empty()
+                {
+                    return Err(AppError::msg("Perforce returned incomplete line history."));
+                }
+                lines.push(P4BlameLine {
+                    line: lines.len() + 1,
+                    change: change.clone(),
+                    user: user.clone(),
+                    time: time.clone(),
+                    content: value.to_string(),
+                });
+            }
+            _ => {}
+        }
+    }
+    Ok(lines)
+}
+
 pub(super) struct Version {
     pub depot: String,
     pub spec: Option<String>,
@@ -298,5 +388,21 @@ mod tests {
         ] {
             assert!(exact_depot(path).is_err());
         }
+    }
+}
+
+#[cfg(test)]
+mod annotation_tests {
+    #[test]
+    fn annotations_keep_source_whitespace_and_skip_file_metadata() {
+        let output = "... depotFile //depot/file\n... time 100\n\n... upper 9\n... lower 3\n... user alice\n... time 2026/01/01 10:00:00\n... data   indented \n\n... upper 9\n... lower 8\n... user bob\n... time 2026/01/02 10:00:00\n... data \n";
+        let lines = super::parse_annotations(output).unwrap();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].change, "3");
+        assert_eq!(lines[0].content, "  indented ");
+        assert_eq!(lines[1].content, "");
+        assert_eq!(lines[1].line, 2);
+        assert_eq!(lines[1].user, "bob");
+        assert!(super::parse_annotations("... data missing metadata").is_err());
     }
 }

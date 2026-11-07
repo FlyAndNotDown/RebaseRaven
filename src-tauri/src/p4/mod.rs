@@ -1,6 +1,6 @@
 mod cli;
 mod history;
-pub use history::{compare_files, P4CompareRequest, P4Comparison};
+pub use history::{annotate, compare_files, P4BlameLine, P4CompareRequest, P4Comparison};
 mod operations;
 mod parse;
 mod review;

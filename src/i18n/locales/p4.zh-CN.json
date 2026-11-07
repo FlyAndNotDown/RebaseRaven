@@ -362,6 +362,10 @@
     "revision": "文件修订",
     "revisionInput": "{{side}} 的修订号",
     "compare": "比较",
-    "compareHint": "选择版本后点击比较。"
+    "compareHint": "选择版本后点击比较。",
+    "diff": "差异",
+    "blame": "逐行追溯",
+    "view": "文件视图",
+    "blameHint": "选择修订；点击变更编号查看对应 Changelist。"
   }
 }
