@@ -192,7 +192,9 @@ area. Do not infer full parity from a passing test suite or this inventory.
 ### Git submodule management
 
 - The sidebar and command palette can add submodules with an optional tracking
-  branch, configuration name and shallow depth. Existing entries support URL and
+  branch, configuration name and shallow depth. Adding requires a named branch
+  or the remote default; inherited `.` tracking can be set after adding.
+  Existing entries support URL and
   branch edits, URL synchronization, recorded or remote updates, checkout/merge/
   rebase strategies, recursive updates, deinitialization and removal.
 - Configuration edits remain unstaged for review. Add and remove use native Git

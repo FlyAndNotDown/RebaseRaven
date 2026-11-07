@@ -91,17 +91,19 @@ function AddForm({ repoPath, mutation, onClose }: { repoPath: string; mutation: 
   const save = useSave(mutation, onClose);
   const [url, setUrl] = useState(""); const [path, setPath] = useState(""); const [branch, setBranch] = useState("");
   const [name, setName] = useState(""); const [depth, setDepth] = useState(""); const [force, setForce] = useState(false);
+  const inheritedBranch = branch.trim() === ".";
   const validDepth = !depth || (/^[1-9]\d*$/.test(depth) && Number(depth) <= 2147483647);
   const blocked = save.busy || resource.loading;
   const duplicate = resource.value?.modules.some(module => module.path === path || module.name === (name.trim() || path));
-  const ready = Boolean(resource.value && !resource.error && url.trim() && path && validDepth && !duplicate && !blocked);
+  const ready = Boolean(resource.value && !resource.error && url.trim() && path && validDepth && !inheritedBranch && !duplicate && !blocked);
   function submit() { if (ready && resource.value) save.run(() => changeSubmodule({ kind: "add", request: { url, path, branch: branch.trim() || null, name: name.trim() || null, depth: depth ? Number(depth) : null, force }, fingerprint: resource.value!.fingerprint })); }
   return <Frame background title={t("git.submodule.addTitle")} description={t("git.submodule.addDescription")} busy={save.busy} error={save.error ?? resource.error} onClose={onClose} reload={() => { save.clearError(); resource.reload(); }} footer={<Button form="add-submodule" type="submit" disabled={!ready}>{save.busy ? <Loader2Icon className="animate-spin motion-reduce:animate-none" /> : null}{t("git.submodule.add")}</Button>}>
     {resource.loading ? <Loading /> : null}
     {resource.value ? <form id="add-submodule" className="space-y-4" onSubmit={event => { event.preventDefault(); submit(); }}>
       <div className="space-y-2"><Label htmlFor="add-submodule-url">{t("git.submodule.url")}</Label><Input id="add-submodule-url" autoFocus className="font-mono" value={url} disabled={blocked} placeholder={t("git.submodule.urlPlaceholder")} onChange={event => setUrl(event.target.value)} /></div>
       <div className="space-y-2"><Label htmlFor="submodule-path">{t("git.submodule.path")}</Label><Input id="submodule-path" className="font-mono" value={path} disabled={blocked} placeholder={t("git.submodule.pathPlaceholder")} onChange={event => setPath(event.target.value)} />{duplicate ? <p role="alert" className="text-xs text-destructive">{t("git.submodule.duplicate")}</p> : null}</div>
-      <BranchField value={branch} disabled={blocked} onChange={setBranch} />
+      <BranchField adding value={branch} disabled={blocked} onChange={setBranch} />
+      {inheritedBranch ? <p role="alert" className="text-xs text-destructive">{t("git.submodule.addBranchHelp")}</p> : null}
       <details className="group rounded-md border p-3"><summary className="flex cursor-pointer items-center justify-between text-sm font-medium">{t("git.submodule.options")}<ChevronDownIcon className="size-4 group-open:rotate-180" /></summary><div className="mt-3 space-y-4">
         <div className="space-y-2"><Label htmlFor="submodule-name">{t("git.submodule.name")}</Label><Input id="submodule-name" className="font-mono" value={name} disabled={blocked} placeholder={t("git.submodule.namePlaceholder")} onChange={event => setName(event.target.value)} /></div>
         <div className="space-y-2"><Label htmlFor="submodule-depth">{t("git.submodule.depth")}</Label><Input id="submodule-depth" inputMode="numeric" className="font-mono" value={depth} disabled={blocked} placeholder={t("git.submodule.fullHistory")} aria-invalid={!validDepth} onChange={event => setDepth(event.target.value)} /></div>
@@ -111,10 +113,10 @@ function AddForm({ repoPath, mutation, onClose }: { repoPath: string; mutation: 
   </Frame>;
 }
 
-function BranchField({ value, disabled, onChange }: { value: string; disabled: boolean; onChange: (value: string) => void }) {
+function BranchField({ value, disabled, onChange, adding = false }: { value: string; disabled: boolean; onChange: (value: string) => void; adding?: boolean }) {
   const { t } = useTranslation();
   const id = useId();
-  return <div className="space-y-2"><div className="flex items-center gap-2"><Label htmlFor={id}>{t("git.submodule.branch")}</Label><HoverTip label={t("git.submodule.branchHelp")}><InfoIcon className="size-3.5 text-muted-foreground" tabIndex={0} /></HoverTip></div><Input id={id} className="font-mono" value={value} disabled={disabled} placeholder={t("git.submodule.remoteDefault")} onChange={event => onChange(event.target.value)} /></div>;
+  return <div className="space-y-2"><div className="flex items-center gap-2"><Label htmlFor={id}>{t("git.submodule.branch")}</Label><HoverTip label={t(adding ? "git.submodule.addBranchHelp" : "git.submodule.branchHelp")}><InfoIcon className="size-3.5 text-muted-foreground" tabIndex={0} /></HoverTip></div><Input id={id} className="font-mono" aria-invalid={adding && value.trim() === "."} value={value} disabled={disabled} placeholder={t("git.submodule.remoteDefault")} onChange={event => onChange(event.target.value)} /></div>;
 }
 
 function EditForm({ repoPath, path, mutation, onClose }: { repoPath: string; path: string; mutation: Mutation; onClose: () => void }) {

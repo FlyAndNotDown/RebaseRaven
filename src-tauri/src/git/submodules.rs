@@ -505,6 +505,11 @@ pub fn add_submodule(
     let url = valid_url(&request.url)?;
     let path = module_path(repo, &request.path)?;
     let branch = valid_branch(repo, request.branch.as_deref())?;
+    if branch.as_deref() == Some(".") {
+        return Err(AppError::msg(
+            "Choose a named branch when adding a submodule. Parent-branch tracking can be configured after adding it.",
+        ));
+    }
     if request
         .depth
         .is_some_and(|depth| depth == 0 || depth > i32::MAX as u32)

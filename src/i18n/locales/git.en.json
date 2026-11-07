@@ -18,6 +18,7 @@
     "namePlaceholder": "Use the checkout path",
     "branch": "Tracking branch · optional",
     "branchHelp": "Leave empty to use the remote's default branch. Use . to follow the parent repository's branch.",
+    "addBranchHelp": "Choose a named branch or leave empty for the remote default. To follow the parent branch, set . in Submodule settings after adding.",
     "remoteDefault": "Remote default",
     "depth": "Clone depth · optional",
     "fullHistory": "Full history",

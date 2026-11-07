@@ -18,6 +18,7 @@
     "namePlaceholder": "使用检出路径",
     "branch": "跟踪分支 · 可选",
     "branchHelp": "留空使用远端默认分支，填写 . 则跟随父仓库当前分支。",
+    "addBranchHelp": "请选择具体分支，或留空使用远端默认分支。如需跟随父仓库分支，请在添加后进入子模块设置填写 .。",
     "remoteDefault": "远端默认分支",
     "depth": "克隆深度 · 可选",
     "fullHistory": "完整历史",

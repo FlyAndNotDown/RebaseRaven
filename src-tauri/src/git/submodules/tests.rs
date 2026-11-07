@@ -443,6 +443,14 @@ fn submodule_addition_rejects_stale_unsafe_and_unstaged_metadata_inputs() {
         assert!(add_submodule(&mut repo, &request, &fingerprint, |_| {}).is_err());
     }
     request.path = "libraries/core".into();
+    request.branch = Some(".".into());
+    let fingerprint = submodule_catalog(&repo).unwrap().fingerprint;
+    let error = add_submodule(&mut repo, &request, &fingerprint, |_| {}).unwrap_err();
+    assert!(error.to_string().contains("Choose a named branch"));
+    assert!(!repo.workdir().join("libraries").exists());
+    assert!(!repo.workdir().join(".gitmodules").exists());
+    assert!(!repo.commondir().join("modules/libraries/core").exists());
+    request.branch = None;
     fs::write(
         repo.workdir().join(".gitmodules"),
         "# Unstaged local metadata\n",
