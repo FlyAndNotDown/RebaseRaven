@@ -31,7 +31,12 @@
     "streamWorkspace": "Choose a stream workspace.",
     "streamSource": "Choose a related source stream.",
     "streamWritable": "The workspace stream changed or is pinned to a changelist. Reopen a writable stream workspace.",
-    "streamRelation": "Merge from the parent or copy from a child stream. Switch to the target workspace first."
+    "streamRelation": "Merge from the parent or copy from a child stream. Switch to the target workspace first.",
+    "shelfUser": "Enter a Perforce user name.",
+    "shelfEmpty": "This changelist has no shelved files.",
+    "shelfFiles": "Choose files from this shelf.",
+    "shelfMapping": "Stream mapping restores the entire shelf. Select all files.",
+    "shelfMappingEmpty": "No files can be restored into this workspace. Check the workspace view and stream mapping."
   },
   "connectionRequired": "Reconnect this workspace before continuing.",
   "workspaceBusy": "Wait for the current workspace operation to finish.",

@@ -12,6 +12,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { P4ConnectionDialog } from "@/components/p4/p4-connection-dialog";
+import { P4ShelvesDialog } from "@/components/p4/p4-shelves-dialog";
 import { P4StreamDialog } from "@/components/p4/p4-stream-dialog";
 import { P4ReconcileDialog } from "@/components/p4/p4-reconcile-dialog";
 import { P4LoginDialog } from "@/components/p4/p4-login-dialog";
@@ -27,6 +28,7 @@ import { acquireP4Mutation, invalidateP4Session } from "@/state/p4-mutations";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import type { FileDiff } from "@/types/git";
 import type {
+  P4UnshelveRequest,
   P4StreamRequest,
   P4StreamPreview,
   P4ReconcilePreview,
@@ -89,6 +91,12 @@ interface P4ContextValue {
   createChange: (description: string) => Promise<boolean>;
   deleteChange: (changeId: string) => Promise<boolean>;
   renameFile: (source: string, destination: string) => Promise<boolean>;
+  setShelvesOpen: (open: boolean) => void;
+  listShelves: (user: string, before: number | null) => Promise<P4ChangePage>;
+  shelfDetail: (changeId: string) => Promise<P4Changelist>;
+  shelfDiff: (path: string, changeId: string) => Promise<FileDiff>;
+  previewUnshelve: (request: P4UnshelveRequest) => Promise<P4OperationPreview>;
+  restoreShelf: (request: P4UnshelveRequest, preview: P4OperationPreview) => Promise<void>;
   setStreamOpen: (open: boolean) => void;
   previewStream: (request: P4StreamRequest) => Promise<P4StreamPreview>;
   applyStream: (request: P4StreamRequest, preview: P4StreamPreview) => Promise<void>;
@@ -190,6 +198,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
   }, []);
   const [loginOpen, setLoginOpen] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
+  const [shelvesOpen, setShelvesOpen] = useState(false);
   const [streamOpen, setStreamOpen] = useState(false);
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
@@ -685,6 +694,47 @@ export function P4Provider({ children }: { children: ReactNode }) {
       throw caught;
     } finally { endActivity(activity); release(); }
   }, [lockMutation, beginActivity, endActivity, guard, showFileOperation, reloadPending, bumpFiles]);
+
+  const listShelves = useCallback(async (user: string, before: number | null) => {
+    const current = sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    return guard(current.connection, () => p4Api.listShelves(current.connection, user, before));
+  }, [guard]);
+
+  const shelfDetail = useCallback(async (changeId: string) => {
+    const current = sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    return guard(current.connection, () => p4Api.shelfDetail(current.connection, changeId));
+  }, [guard]);
+
+  const shelfDiff = useCallback(async (path: string, changeId: string) => {
+    const current = sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    return guard(current.connection, () => p4Api.shelfDiff(current.connection, path, changeId));
+  }, [guard]);
+
+  const previewUnshelve = useCallback(async (request: P4UnshelveRequest) => {
+    const current = sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    return guard(current.connection, () => p4Api.previewUnshelve(current.connection, request));
+  }, [guard]);
+
+  const restoreShelf = useCallback(async (request: P4UnshelveRequest, preview: P4OperationPreview) => {
+    const current = sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    const release = lockMutation(current, t("p4.unshelving"));
+    if (!release) throw new Error(t("p4-operations.workspaceBusy"));
+    const activity = beginActivity(t("p4.unshelving"), request.changeId);
+    try {
+      await guard(current.connection, () => p4Api.restoreShelf(current.connection, request, preview.fingerprint));
+      toast.success(t("p4.unshelved"));
+      await reloadPending(current, request.target);
+      updateSession(current.tabId, (session) => ({ ...session, view: "pending" }));
+    } finally {
+      await reloadPending(current, request.target).catch(report);
+      bumpFiles(); endActivity(activity); release();
+    }
+  }, [guard, lockMutation, beginActivity, endActivity, reloadPending, bumpFiles, report, updateSession]);
 
   const previewStream = useCallback(async (request: P4StreamRequest) => {
     const current = sessionRef.current;
@@ -1399,6 +1449,12 @@ export function P4Provider({ children }: { children: ReactNode }) {
       createChange,
       deleteChange,
       renameFile,
+      setShelvesOpen,
+      listShelves,
+      shelfDetail,
+      shelfDiff,
+      previewUnshelve,
+      restoreShelf,
       setStreamOpen,
       previewStream,
       applyStream,
@@ -1458,6 +1514,12 @@ export function P4Provider({ children }: { children: ReactNode }) {
       createChange,
       deleteChange,
       renameFile,
+      setShelvesOpen,
+      listShelves,
+      shelfDetail,
+      shelfDiff,
+      previewUnshelve,
+      restoreShelf,
       setStreamOpen,
       previewStream,
       applyStream,
@@ -1529,6 +1591,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
         {children}
         <P4ConnectionDialog />
         <P4WorkspaceDialog />
+        {shelvesOpen && connection ? <P4ShelvesDialog key={JSON.stringify(connection)} onClose={() => setShelvesOpen(false)} /> : null}
         {streamOpen && connection ? <P4StreamDialog key={JSON.stringify(connection)} onClose={() => setStreamOpen(false)} /> : null}
         {reconcileOpen && connection ? <P4ReconcileDialog key={JSON.stringify(connection)} onClose={() => setReconcileOpen(false)} /> : null}
         <P4LoginDialog

@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { t } from "@/i18n";
 import type {
+  P4UnshelveRequest,
   P4StreamRequest,
   P4StreamPreview,
   P4ReconcilePreview,
@@ -157,6 +158,10 @@ export const p4Api = {
     call<string>("p4_sync", { connection, paths, activityId: activityId ?? null }),
   getRevision: (connection: P4Connection, request: P4GetRevision, activityId?: string) =>
     call<string>("p4_get_revision", { connection, request, activityId: activityId ?? null }),
+  listShelves: (connection: P4Connection, user: string, before: number | null) => call<P4ChangePage>("p4_list_shelves", { connection, user, before }),
+  shelfDetail: (connection: P4Connection, changeId: string) => call<P4Changelist>("p4_shelf_detail", { connection, changeId }),
+  previewUnshelve: (connection: P4Connection, request: P4UnshelveRequest) => call<P4OperationPreview>("p4_preview_unshelve", { connection, request }),
+  restoreShelf: (connection: P4Connection, request: P4UnshelveRequest, fingerprint: string) => call<string>("p4_restore_shelf", { connection, request, fingerprint }),
   previewStream: (connection: P4Connection, request: P4StreamRequest) => call<P4StreamPreview>("p4_preview_stream", { connection, request }),
   applyStream: (connection: P4Connection, request: P4StreamRequest, fingerprint: string) => call<string>("p4_apply_stream", { connection, request, fingerprint }),
   previewIntegrate: (connection: P4Connection, request: P4IntegrateRequest) =>

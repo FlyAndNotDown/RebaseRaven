@@ -205,3 +205,10 @@ export interface P4StreamRequest {
   changeId: string;
 }
 export type P4StreamPreview = P4ReconcilePreview;
+
+export interface P4UnshelveRequest {
+  changeId: string;
+  target: string;
+  files: string[];
+  stream: string;
+}

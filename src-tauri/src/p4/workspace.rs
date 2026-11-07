@@ -528,10 +528,12 @@ pub fn shelf_diff(
         return Err(AppError::msg("Shelf diff needs a depot path."));
     }
     let env = env_for(connection);
-    let have = format!("{depot_path}#have");
+
     let shelf = format!("{depot_path}@={id}");
     let meta = run_ok(&env, &["-ztag", "files", &shelf], None)?;
     let record = parse_ztag(&meta).into_iter().next().unwrap_or_default();
+    let base = field(&record, "rev");
+    let have = format!("{depot_path}#{base}");
     let action = field(&record, "action");
     let deleted = action == "delete" || action == "move/delete";
     if deleted || action == "add" || action == "move/add" {
@@ -3321,7 +3323,7 @@ fn file_from_opened(
     }
 }
 
-fn files_from_groups(
+pub(super) fn files_from_groups(
     connection: &P4Connection,
     groups: &[ZtagRecord],
     shelved: bool,
@@ -3351,7 +3353,11 @@ fn files_from_groups(
         .collect()
 }
 
-fn change_from_record(record: &ZtagRecord, files: Vec<P4File>, shelved: bool) -> P4Changelist {
+pub(super) fn change_from_record(
+    record: &ZtagRecord,
+    files: Vec<P4File>,
+    shelved: bool,
+) -> P4Changelist {
     P4Changelist {
         id: field(record, "change"),
         user: field(record, "user"),

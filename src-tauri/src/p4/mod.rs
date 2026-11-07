@@ -2,8 +2,10 @@ mod cli;
 mod operations;
 mod parse;
 mod review;
+mod shelves;
 mod streams;
 pub use review::{apply_reconcile, preview_reconcile, P4ReconcilePreview};
+pub use shelves::{list_shelves, preview_unshelve, restore_shelf, shelf_detail, P4UnshelveRequest};
 pub use streams::{apply_stream, preview_stream, P4StreamPreview, P4StreamRequest};
 mod workspace;
 

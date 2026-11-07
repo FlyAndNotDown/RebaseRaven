@@ -4,6 +4,12 @@ import { t } from "@/i18n";
 export type P4OperationKind = "integrate" | "undo";
 
 const operationErrors: Record<string, string> = {
+  "Choose a Perforce user name.": "shelfUser",
+  "This changelist has no shelved files.": "shelfEmpty",
+  "Choose files from this shelf.": "shelfFiles",
+  "Stream mapping restores the entire shelf. Select all files.": "shelfMapping",
+  "No files can be restored into this workspace.": "shelfMappingEmpty",
+
   "Choose a stream workspace.": "streamWorkspace",
   "Choose a related source stream.": "streamSource",
   "Choose a writable workspace for the current stream.": "streamWritable",

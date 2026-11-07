@@ -329,5 +329,21 @@
     "preview": "Preview · {{count}} files",
     "mergeHint": "Merge the parent into this workspace. Resolve conflicts and submit from Pending after integration.",
     "copyHint": "Copy a child into this workspace. This can replace target content. Preview carefully, then review and submit from Pending."
+  },
+  "shelves": {
+    "title": "Team shelves",
+    "description": "Find shelved changes across users and workspaces.",
+    "user": "User · optional",
+    "number": "Changelist # · optional",
+    "search": "Search",
+    "loading": "Loading shelves…",
+    "empty": "No shelves found.",
+    "more": "Load more",
+    "select": "Select a shelf to review its files.",
+    "selected": "{{count}} / {{total}} files selected",
+    "mapping": "Stream mapping · optional",
+    "mappingHint": "A stream mapping restores the entire shelf between this stream and its parent. Preview the target paths before restoring.",
+    "hint": "Restore selected files into the current workspace. The source shelf is kept; conflicts remain for review in Pending.",
+    "restore": "Restore {{count}} files"
   }
 }

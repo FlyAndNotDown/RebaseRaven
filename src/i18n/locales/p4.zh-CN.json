@@ -329,5 +329,21 @@
     "preview": "预览 · {{count}} 个文件",
     "mergeHint": "将父 Stream 合入当前工作区。集成后在待提交中解决冲突、审阅并提交。",
     "copyHint": "将子 Stream 复制到当前工作区，可能替换目标内容。请先核对预览，再到待提交中审阅并提交。"
+  },
+  "shelves": {
+    "title": "团队 Shelf",
+    "description": "查找不同用户和工作区中的搁置修改。",
+    "user": "用户 · 可选",
+    "number": "变更列表编号 · 可选",
+    "search": "查找",
+    "loading": "正在加载 Shelf…",
+    "empty": "没有找到 Shelf。",
+    "more": "加载更多",
+    "select": "选择 Shelf 查看文件。",
+    "selected": "已选 {{count}} / {{total}} 个文件",
+    "mapping": "Stream 映射 · 可选",
+    "mappingHint": "使用 Stream 映射时，将在该 Stream 与其父 Stream 之间恢复整个 Shelf。请先预览并核对目标路径。",
+    "hint": "将选中文件恢复到当前工作区，保留源 Shelf；如有冲突，在待提交中继续处理。",
+    "restore": "恢复 {{count}} 个文件"
   }
 }

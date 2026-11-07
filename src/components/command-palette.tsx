@@ -84,6 +84,8 @@ export function CommandCenter() {
         { id: "view-submitted", label: t("desktop.commandPalette.go_to_history"), group: t("desktop.commandPalette.navigate"), shortcut: "viewHistory", run: () => p4.setView("submitted") },
         { id: "view-workspace", label: t("desktop.commandPalette.go_to_workspace"), group: t("desktop.commandPalette.navigate"), shortcut: "viewStash", run: () => p4.setView("workspace") },
         { id: "sync", label: t("desktop.commandPalette.get_latest"), group: t("desktop.appSidebar.workspace"), shortcut: "fetch", run: () => void p4.sync() },
+        { id: "team-shelves", label: t("p4.shelves.title"), group: t("desktop.appSidebar.workspace"), run: () => p4.setShelvesOpen(true) },
+        ...(p4.connection?.stream ? [{ id: "stream-integration", label: t("p4.streams.title"), group: t("desktop.appSidebar.workspace"), run: () => p4.setStreamOpen(true) }] : []),
         { id: "reconcile", label: t("desktop.commandPalette.reconcile_offline_work"), group: t("desktop.appSidebar.workspace"), run: () => void p4.reconcile() },
         { id: "refresh-p4", label: t("desktop.commandPalette.refresh_workspace"), group: t("desktop.appSidebar.workspace"), run: () => void p4.refresh() },
         { id: "editor", label: t("desktop.appHeader.open_in_editor"), group: t("desktop.commandPalette.repository"), shortcut: "openInEditor", run: () => void git.openInEditor() },

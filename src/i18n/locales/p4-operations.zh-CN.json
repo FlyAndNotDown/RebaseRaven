@@ -31,7 +31,12 @@
     "streamWorkspace": "请选择 Stream 工作区。",
     "streamSource": "请选择关联的源 Stream。",
     "streamWritable": "工作区 Stream 已变更或固定在历史版本。请重新打开可写的 Stream 工作区。",
-    "streamRelation": "请从父 Stream 向下合并或从子 Stream 向上复制；先切换到目标工作区。"
+    "streamRelation": "请从父 Stream 向下合并或从子 Stream 向上复制；先切换到目标工作区。",
+    "shelfUser": "请输入 Perforce 用户名。",
+    "shelfEmpty": "此变更列表没有搁置文件。",
+    "shelfFiles": "请选择此 Shelf 中的文件。",
+    "shelfMapping": "Stream 映射将恢复整个 Shelf，请选择所有文件。",
+    "shelfMappingEmpty": "没有文件可以恢复到当前工作区，请检查工作区视图和 Stream 映射。"
   },
   "connectionRequired": "请重新连接此工作区后继续。",
   "workspaceBusy": "请等待当前工作区操作完成。",

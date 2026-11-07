@@ -1,6 +1,6 @@
 import { t, useTranslation } from "@/i18n";
 import type { ReactNode } from "react";
-import { GitMergeIcon, ListChecksIcon, CableIcon, DownloadIcon, FolderPenIcon, RefreshCwIcon } from "lucide-react";
+import { ArchiveRestoreIcon, GitMergeIcon, ListChecksIcon, CableIcon, DownloadIcon, FolderPenIcon, RefreshCwIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { HoverTip, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -11,7 +11,7 @@ const actionClass =
 
 export function P4Header() {
   useTranslation();
-  const { connection, busy, refresh, sync, reconcile, setStreamOpen, setConnectionOpen, setWorkspaceOpen } = useP4();
+  const { connection, busy, refresh, sync, reconcile, setShelvesOpen, setStreamOpen, setConnectionOpen, setWorkspaceOpen } = useP4();
   const client = connection?.client ?? "";
 
   return (
@@ -32,6 +32,7 @@ export function P4Header() {
         <HeaderButton label={t("p4.getLatest")} disabled={busy} onClick={() => void sync()}>
           <DownloadIcon className="size-4" />
         </HeaderButton>
+        <HeaderButton label={t("p4.shelves.title")} disabled={busy} onClick={() => setShelvesOpen(true)}><ArchiveRestoreIcon className="size-4" /></HeaderButton>
         {connection?.stream ? <HeaderButton label={t("p4.streams.title")} disabled={busy} onClick={() => setStreamOpen(true)}><GitMergeIcon className="size-4" /></HeaderButton> : null}
         <HeaderButton label={t("p4.reconcileReview.title")} disabled={busy} onClick={() => void reconcile()}><ListChecksIcon className="size-4" /></HeaderButton>
         <span className="h-3.5 w-px self-center bg-foreground/20" />

@@ -1420,6 +1420,40 @@ async fn p4_apply_reconcile(
 }
 
 #[tauri::command]
+async fn p4_list_shelves(
+    connection: p4::P4Connection,
+    user: String,
+    before: Option<u64>,
+) -> AppResult<p4::P4ChangePage> {
+    blocking(move || p4::list_shelves(&connection, &user, before)).await
+}
+
+#[tauri::command]
+async fn p4_shelf_detail(
+    connection: p4::P4Connection,
+    change_id: String,
+) -> AppResult<p4::P4Changelist> {
+    blocking(move || p4::shelf_detail(&connection, &change_id)).await
+}
+
+#[tauri::command]
+async fn p4_preview_unshelve(
+    connection: p4::P4Connection,
+    request: p4::P4UnshelveRequest,
+) -> AppResult<p4::P4OperationPreview> {
+    blocking(move || p4::preview_unshelve(&connection, &request)).await
+}
+
+#[tauri::command]
+async fn p4_restore_shelf(
+    connection: p4::P4Connection,
+    request: p4::P4UnshelveRequest,
+    fingerprint: String,
+) -> AppResult<String> {
+    blocking(move || p4::restore_shelf(&connection, &request, &fingerprint)).await
+}
+
+#[tauri::command]
 async fn p4_preview_stream(
     connection: p4::P4Connection,
     request: p4::P4StreamRequest,
@@ -1952,6 +1986,10 @@ pub fn run() {
             p4_apply_reconcile,
             p4_file_action,
             p4_preview_integrate,
+            p4_list_shelves,
+            p4_shelf_detail,
+            p4_preview_unshelve,
+            p4_restore_shelf,
             p4_preview_stream,
             p4_apply_stream,
             p4_apply_integrate,
