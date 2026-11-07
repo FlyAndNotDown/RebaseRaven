@@ -288,5 +288,21 @@
     "revertDescription_one": "Discard the opened changes in {{count}} file. Added files stay on disk. Shelved files stay on the server.",
     "revertDescription_other": "Discard the opened changes in {{count}} files. Added files stay on disk. Shelved files stay on the server.",
     "revertFailed": "The files could not be reverted. Check the operation error and try again."
+  },
+  "manual": {
+    "open": "Manual merge",
+    "title": "Merge {{file}}",
+    "base": "Base",
+    "yours": "Yours · workspace",
+    "theirs": "Theirs · incoming",
+    "result": "Result · editable",
+    "useYours": "Use entire local file",
+    "useTheirs": "Use entire incoming file",
+    "hint": "The result starts with your workspace file. Edit it using the three versions above, then save and resolve. This does not submit the file.",
+    "apply": "Save and resolve",
+    "back": "Back to resolve options",
+    "discardTitle": "Discard merge edits?",
+    "discardHint": "The edits in this dialog have not been written to your workspace.",
+    "discard": "Discard edits"
   }
 }

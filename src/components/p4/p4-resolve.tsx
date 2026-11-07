@@ -1,6 +1,7 @@
 import { t, useTranslation } from "@/i18n";
 import { useEffect, useRef, useState } from "react";
 import { GitMergeIcon, LoaderCircleIcon } from "lucide-react";
+import { P4ManualResolve } from "@/components/p4/p4-manual-resolve";
 import { P4Diff } from "@/components/p4/p4-diff";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -22,6 +23,7 @@ const choices = [
 export function P4Resolve({ path, onClose }: { path: string; onClose: () => void }) {
   useTranslation();
   const { resolveView, resolveAccept, busy: workspaceBusy } = useP4();
+  const [manual, setManual] = useState(false);
   const [view, setView] = useState<P4ResolveView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -55,6 +57,8 @@ export function P4Resolve({ path, onClose }: { path: string; onClose: () => void
       setBusy(false);
     }
   }
+
+  if (manual) return <P4ManualResolve path={path} onClose={onClose} onBack={() => setManual(false)} />;
 
   return (
     <Dialog open onOpenChange={(open) => !open && !running.current && onClose()}>
@@ -98,6 +102,7 @@ export function P4Resolve({ path, onClose }: { path: string; onClose: () => void
           ) : null)}
         </fieldset>
         <DialogFooter>
+          {view?.content && view.pendingResolves === 1 ? <Button className="mr-auto" variant="outline" disabled={busy || workspaceBusy} onClick={() => setManual(true)}>{t("p4.manual.open")}</Button> : null}
           <Button variant="outline" disabled={busy} onClick={onClose}>{t("common.cancel")}</Button>
           <Button disabled={!view || !mode || busy || workspaceBusy} onClick={() => void accept()}>
             {busy ? <LoaderCircleIcon className="motion-safe:animate-spin" /> : <GitMergeIcon />}

@@ -185,3 +185,10 @@ export interface P4Executables {
   pathP4: string | null;
   active: string | null;
 }
+
+export interface P4ManualResolve {
+  base: string;
+  yours: string;
+  theirs: string;
+  fingerprint: string;
+}

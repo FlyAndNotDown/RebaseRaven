@@ -1353,6 +1353,24 @@ async fn p4_resolve_accept(
 }
 
 #[tauri::command]
+async fn p4_manual_resolve_view(
+    connection: p4::P4Connection,
+    path: String,
+) -> AppResult<p4::P4ManualResolve> {
+    blocking(move || p4::manual_resolve_view(&connection, &path)).await
+}
+
+#[tauri::command]
+async fn p4_manual_resolve_apply(
+    connection: p4::P4Connection,
+    path: String,
+    text: String,
+    fingerprint: String,
+) -> AppResult<()> {
+    blocking(move || p4::manual_resolve_apply(&connection, &path, &text, &fingerprint)).await
+}
+
+#[tauri::command]
 async fn p4_get_revision(
     connection: p4::P4Connection,
     request: p4::P4GetRevision,
@@ -1902,6 +1920,8 @@ pub fn run() {
             p4_unshelve,
             p4_delete_shelf,
             p4_resolve_view,
+            p4_manual_resolve_view,
+            p4_manual_resolve_apply,
             p4_resolve_accept,
             p4_get_revision,
             p4_sync,

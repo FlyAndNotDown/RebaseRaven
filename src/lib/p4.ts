@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { t } from "@/i18n";
 import type {
+  P4ManualResolve,
   P4Auth,
   P4ChangePage,
   P4Changelist,
@@ -141,6 +142,10 @@ export const p4Api = {
     call<void>("p4_unshelve", { connection, changeId, target: target ?? null, files: files ?? null }),
   deleteShelf: (connection: P4Connection, changeId: string) =>
     call<void>("p4_delete_shelf", { connection, changeId }),
+  manualResolveView: (connection: P4Connection, path: string) =>
+    call<P4ManualResolve>("p4_manual_resolve_view", { connection, path }),
+  manualResolveApply: (connection: P4Connection, path: string, text: string, fingerprint: string) =>
+    call<void>("p4_manual_resolve_apply", { connection, path, text, fingerprint }),
   resolveView: (connection: P4Connection, path: string) =>
     call<P4ResolveView>("p4_resolve_view", { connection, path }),
   resolveAccept: (connection: P4Connection, path: string, mode: "yours" | "theirs" | "merge") =>

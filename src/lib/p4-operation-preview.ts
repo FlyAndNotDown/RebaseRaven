@@ -4,6 +4,10 @@ import { t } from "@/i18n";
 export type P4OperationKind = "integrate" | "undo";
 
 const operationErrors: Record<string, string> = {
+  "Manual merge requires UTF-8 text files smaller than 2 MiB.": "manualText",
+  "Manual merge requires one text content resolve with a common base.": "manualBase",
+  "Remove conflict markers before resolving.": "manualMarkers",
+
   "The operation or workspace changed. Preview it again before applying.": "stale",
   "Enter a positive revision or changelist number.": "number",
   "The first revision must not exceed the last revision.": "range",

@@ -25,6 +25,7 @@ import { acquireP4Mutation, invalidateP4Session } from "@/state/p4-mutations";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import type { FileDiff } from "@/types/git";
 import type {
+  P4ManualResolve,
   P4Auth,
   P4ChangePage,
   P4Changelist,
@@ -101,6 +102,8 @@ interface P4ContextValue {
   shelveSelected: () => Promise<void>;
   unshelveSelected: () => Promise<void>;
   deleteSelectedShelf: () => Promise<void>;
+  manualResolveView: (path: string) => Promise<P4ManualResolve>;
+  manualResolveApply: (path: string, text: string, fingerprint: string) => Promise<void>;
   resolveView: (path: string) => Promise<P4ResolveView | null>;
   resolveAccept: (path: string, mode: "yours" | "theirs" | "merge") => Promise<boolean>;
   revertUnchanged: () => Promise<void>;
@@ -938,6 +941,29 @@ export function P4Provider({ children }: { children: ReactNode }) {
     [lockMutation, beginActivity, bumpFiles, endActivity, guard, reloadPending, report],
   );
 
+  const manualResolveView = useCallback(async (path: string) => {
+    const current = sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    return guard(current.connection, () => p4Api.manualResolveView(current.connection, path));
+  }, [guard]);
+
+  const manualResolveApply = useCallback(async (path: string, text: string, fingerprint: string) => {
+    const current = sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    const release = lockMutation(current, t("p4.merging"));
+    if (!release) throw new Error(t("p4-operations.workspaceBusy"));
+    const activity = beginActivity(t("p4.merging"), depotBase(path));
+    try {
+      await guard(current.connection, () => p4Api.manualResolveApply(current.connection, path, text, fingerprint));
+      toast.success(t("p4.merged"));
+    } finally {
+      await reloadPending(current).catch(report);
+      bumpFiles();
+      endActivity(activity);
+      release();
+    }
+  }, [guard, lockMutation, beginActivity, endActivity, reloadPending, bumpFiles, report]);
+
   const revertUnchanged = useCallback(async () => {
     const current = sessionRef.current;
     if (!current) return;
@@ -1346,6 +1372,8 @@ export function P4Provider({ children }: { children: ReactNode }) {
       shelveSelected,
       unshelveSelected,
       deleteSelectedShelf,
+      manualResolveView,
+      manualResolveApply,
       resolveView,
       resolveAccept,
       revertUnchanged,
@@ -1392,6 +1420,8 @@ export function P4Provider({ children }: { children: ReactNode }) {
       lockFiles,
       deleteSelectedShelf,
       resolveAccept,
+      manualResolveView,
+      manualResolveApply,
       resolveView,
       diffLoading,
       error,

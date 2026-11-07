@@ -24,7 +24,10 @@
     "mapping": "请选择在此工作区视图中只有一条映射的文件。",
     "mappingMismatch": "文件映射与所选工作区文件不一致。",
     "exactDepotPath": "请使用 Perforce 返回的确切仓库文件路径。",
-    "versionedTarget": "请选择尚不存在的目标文件或单个受版本控制的工作区文件。"
+    "versionedTarget": "请选择尚不存在的目标文件或单个受版本控制的工作区文件。",
+    "manualText": "手工合并仅支持不超过 2 MiB 的 UTF-8 文本文件。",
+    "manualBase": "手工合并需要一个具有共同基线的文本内容冲突。请使用其他解决选项处理此文件。",
+    "manualMarkers": "请先移除冲突标记再解决。"
   },
   "connectionRequired": "请重新连接此工作区后继续。",
   "workspaceBusy": "请等待当前工作区操作完成。",

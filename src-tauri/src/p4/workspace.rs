@@ -1848,6 +1848,149 @@ pub fn resolve_accept(connection: &P4Connection, path: &str, mode: &str) -> AppR
     Ok(())
 }
 
+const MANUAL_MERGE_LIMIT: usize = 2 * 1024 * 1024;
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct P4ManualResolve {
+    pub base: String,
+    pub yours: String,
+    pub theirs: String,
+    pub fingerprint: String,
+}
+
+fn merge_text(bytes: Vec<u8>, truncated: bool) -> AppResult<String> {
+    if truncated || bytes.len() > MANUAL_MERGE_LIMIT || bytes.contains(&0) {
+        return Err(AppError::msg(
+            "Manual merge requires UTF-8 text files smaller than 2 MiB.",
+        ));
+    }
+    String::from_utf8(bytes)
+        .map_err(|_| AppError::msg("Manual merge requires UTF-8 text files smaller than 2 MiB."))
+}
+
+fn manual_resolve_snapshot(
+    connection: &P4Connection,
+    path: &str,
+) -> AppResult<(P4ManualResolve, PathBuf)> {
+    use std::hash::{Hash, Hasher};
+    let env = env_for(connection);
+    let spec = workspace_file_spec(&connection.root, path);
+    let preview = run_ok(&env, &["-ztag", "resolve", "-n", "-o", &spec], None)?;
+    let (facts, count) = pending_resolve_facts(&preview, &spec)
+        .ok_or_else(|| AppError::msg("This file does not need resolve."))?;
+    if count != 1
+        || !resolve_can_merge(&facts.action, &facts.kind)
+        || facts.base_file.is_empty()
+        || facts.base_rev.parse::<u64>().unwrap_or(0) == 0
+        || facts.from_file.is_empty()
+        || facts.end_rev.parse::<u64>().unwrap_or(0) == 0
+    {
+        return Err(AppError::msg(
+            "Manual merge requires one text content resolve with a common base.",
+        ));
+    }
+    let meta = run_ok(
+        &env,
+        &["-ztag", "fstat", "-T", "clientFile,type,headType", &spec],
+        None,
+    )?;
+    let record = parse_ztag(&meta).into_iter().next().unwrap_or_default();
+    if file_type_is_binary(&field(&record, "type"))
+        || file_type_is_binary(&field(&record, "headType"))
+    {
+        return Err(AppError::msg(
+            "Manual merge requires UTF-8 text files smaller than 2 MiB.",
+        ));
+    }
+    let local = PathBuf::from(field(&record, "clientFile"));
+    if !local.is_absolute() || !fs::symlink_metadata(&local)?.file_type().is_file() {
+        return Err(AppError::msg("Choose a regular workspace file."));
+    }
+    let parent = local
+        .parent()
+        .ok_or_else(|| AppError::msg("Choose a regular workspace file."))?;
+    workspace_directory_path(Path::new(&connection.root), parent.to_path_buf())?;
+    let yours = merge_text(
+        fs::File::open(&local)?
+            .take((MANUAL_MERGE_LIMIT + 1) as u64)
+            .bytes()
+            .collect::<Result<Vec<_>, _>>()?,
+        false,
+    )?;
+    let read_revision = |file: &str, rev: &str| -> AppResult<String> {
+        if !valid_depot_path(file) || !file.starts_with("//") {
+            return Err(AppError::msg(
+                "Choose the exact depot file path returned by Perforce.",
+            ));
+        }
+        let (bytes, truncated) =
+            cli::read_file_prefix(&env, &format!("{file}#{rev}"), MANUAL_MERGE_LIMIT)?;
+        merge_text(bytes, truncated)
+    };
+    let base = read_revision(&facts.base_file, &facts.base_rev)?;
+    let theirs = read_revision(&facts.from_file, &facts.end_rev)?;
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    (
+        &connection.port,
+        &connection.user,
+        &connection.client,
+        &local,
+        &preview,
+        &meta,
+        &base,
+        &yours,
+        &theirs,
+    )
+        .hash(&mut hash);
+    Ok((
+        P4ManualResolve {
+            base,
+            yours,
+            theirs,
+            fingerprint: format!("{:016x}", hash.finish()),
+        },
+        local,
+    ))
+}
+
+pub fn manual_resolve_view(connection: &P4Connection, path: &str) -> AppResult<P4ManualResolve> {
+    manual_resolve_snapshot(connection, path).map(|(view, _)| view)
+}
+
+pub fn manual_resolve_apply(
+    connection: &P4Connection,
+    path: &str,
+    text: &str,
+    fingerprint: &str,
+) -> AppResult<()> {
+    use std::io::Write;
+    merge_text(text.as_bytes().to_vec(), false)?;
+    if text
+        .lines()
+        .any(|line| line.starts_with("<<<<<<< ") || line.starts_with(">>>>>>> "))
+    {
+        return Err(AppError::msg("Remove conflict markers before resolving."));
+    }
+    let (current, local) = manual_resolve_snapshot(connection, path)?;
+    if current.fingerprint != fingerprint {
+        return Err(AppError::msg(
+            "The operation or workspace changed. Preview it again before applying.",
+        ));
+    }
+    let mut result = tempfile::NamedTempFile::new_in(local.parent().unwrap())?;
+    result
+        .as_file()
+        .set_permissions(fs::metadata(&local)?.permissions())?;
+    result.write_all(text.as_bytes())?;
+    result.flush()?;
+    result
+        .persist(&local)
+        .map_err(|error| AppError::msg(error.to_string()))?;
+    // The edited workspace file is now the chosen result. Never submit it here.
+    resolve_accept(connection, path, "yours")
+}
+
 struct ResolveFacts {
     depot: String,
     action: String,

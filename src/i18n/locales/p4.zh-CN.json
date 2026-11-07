@@ -288,5 +288,21 @@
     "revertDescription_one": "放弃 {{count}} 个文件中已签出的修改。新增文件保留在磁盘上，搁置内容保留在服务器上。",
     "revertDescription_other": "放弃 {{count}} 个文件中已签出的修改。新增文件保留在磁盘上，搁置内容保留在服务器上。",
     "revertFailed": "无法还原文件。请查看操作错误后重试。"
+  },
+  "manual": {
+    "open": "手工合并",
+    "title": "合并 {{file}}",
+    "base": "共同基线",
+    "yours": "本地 · 工作区",
+    "theirs": "传入 · 对方版本",
+    "result": "合并结果 · 可编辑",
+    "useYours": "采用整个本地文件",
+    "useTheirs": "采用整个传入文件",
+    "hint": "结果以本地文件为起点。参考上方三个版本编辑后，保存并标记已解决；文件不会自动提交。",
+    "apply": "保存并解决",
+    "back": "返回解决选项",
+    "discardTitle": "放弃合并修改？",
+    "discardHint": "当前弹窗中的修改尚未写入工作区。",
+    "discard": "放弃修改"
   }
 }

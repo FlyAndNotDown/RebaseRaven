@@ -24,7 +24,10 @@
     "mapping": "Choose a file mapped once by this workspace view.",
     "mappingMismatch": "The file mapping does not match the selected workspace file.",
     "exactDepotPath": "Choose the exact depot file path returned by Perforce.",
-    "versionedTarget": "Choose an absent target or one versioned workspace file."
+    "versionedTarget": "Choose an absent target or one versioned workspace file.",
+    "manualText": "Manual merge supports UTF-8 text files up to 2 MiB.",
+    "manualBase": "Manual merge needs one text content conflict with a common base. Use the other resolve options for this file.",
+    "manualMarkers": "Remove conflict markers before resolving."
   },
   "connectionRequired": "Reconnect this workspace before continuing.",
   "workspaceBusy": "Wait for the current workspace operation to finish.",
