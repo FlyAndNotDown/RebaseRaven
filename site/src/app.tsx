@@ -74,7 +74,7 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
       <div className="site-header-shell">
         <header className="site-header site-container">
           <a className="site-brand" href={rootPage ? "./" : "../"} aria-label={t("nav.home")}>
-            <BrandMark className="size-10" src={`${rootPage ? "./" : "../"}assets/raven.svg`} /><span translate="no">RebaseRaven</span>
+            <BrandMark className="site-brand-mark size-8" src={`${rootPage ? "./" : "../"}assets/raven.svg`} /><span translate="no">RebaseRaven</span>
           </a>
           <nav className="site-navigation" aria-label={t("nav.main")}>
             <Button variant="ghost" size="sm" asChild className="overview-link"><a href="#features">{t("nav.features")}</a></Button>
@@ -165,7 +165,7 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
         </section>
 
         <section className="site-download" aria-labelledby="download-title">
-          <div className="site-download-content"><BrandMark className="size-16" src={`${rootPage ? "./" : "../"}assets/raven.svg`} /><div><p className="site-eyebrow" translate="no">RebaseRaven</p><h2 id="download-title">{t("download.title")}</h2><p>{t("download.body")}</p></div></div>
+          <div className="site-download-content"><BrandMark className="size-12" src={`${rootPage ? "./" : "../"}assets/raven.svg`} /><div><p className="site-eyebrow" translate="no">RebaseRaven</p><h2 id="download-title">{t("download.title")}</h2><p>{t("download.body")}</p></div></div>
           <Button size="lg" asChild><a href={LATEST_RELEASE_URL} onClick={openDownload}>{t("download.action")}<ArrowDownToLineIcon /></a></Button>
         </section>
       </main>
