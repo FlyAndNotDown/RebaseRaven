@@ -1,6 +1,6 @@
 [package]
 name = "rebaseraven"
-version = "0.1.5"
+version = "0.1.6"
 description = "A unified version control client"
 license = "MIT"
 edition = "2021"
@@ -35,6 +35,13 @@ zeroize = "1.9"
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.30", features = ["signal", "process"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+dispatch2 = "0.3"
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSButton", "NSControl", "NSResponder", "NSView", "NSWindow", "objc2-core-foundation"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSNotification", "NSObject", "NSOperation", "NSString", "block2"] }
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.39.1"

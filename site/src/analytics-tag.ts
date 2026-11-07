@@ -1,14 +1,30 @@
-import { ANALYTICS_BRIDGE_URL, type AnalyticsEvent, type AnalyticsInit } from "../../src/lib/analytics-protocol";
+import { ANALYTICS_BRIDGE_URL, type AnalyticsEvent, type AnalyticsInit, type AnalyticsPane } from "../../src/lib/analytics-protocol";
 import type { AnalyticsTag } from "./analytics-bridge";
+import { createGoogleTag } from "./google-tag";
 
-const MEASUREMENT_ID = /^G-[A-Z0-9]{4,20}$/;
+export const DESKTOP_ANALYTICS_NAME = "RebaseRavenApp";
+const SCREEN_NAMES = {
+  welcome: "Welcome",
+  git_changes: "Git changes",
+  git_history: "Git history",
+  git_stash: "Git stashes",
+  git_files: "Git files",
+  p4_pending: "Perforce pending changes",
+  p4_files: "Perforce files",
+  p4_history: "Perforce history",
+  p4_depot: "Perforce depot",
+} satisfies Record<AnalyticsPane, string>;
 
 export function analyticsConfiguration(init: AnalyticsInit) {
   return {
     client_id: init.clientId,
     session_id: init.sessionId,
     send_page_view: false,
-    page_title: "RebaseRaven desktop",
+    app_name: DESKTOP_ANALYTICS_NAME,
+    app_version: init.appVersion,
+    app_platform: init.platform,
+    content_group: "Desktop application",
+    page_title: SCREEN_NAMES.welcome,
     page_location: ANALYTICS_BRIDGE_URL,
     page_referrer: "",
     ignore_referrer: true,
@@ -23,77 +39,40 @@ export function analyticsConfiguration(init: AnalyticsInit) {
   } as const;
 }
 
-export function analyticsEventParameters(init: AnalyticsInit, event: AnalyticsEvent, measurementId: string) {
+export function analyticsEventParameters(init: AnalyticsInit, event: AnalyticsEvent, measurementId: string, currentPane: AnalyticsPane = "welcome") {
+  const pane = event.event === "pane_view" ? event.pane : currentPane;
   return {
     send_to: measurementId,
     client_id: init.clientId,
     session_id: init.sessionId,
-    app_name: "RebaseRaven",
+    app_name: DESKTOP_ANALYTICS_NAME,
     app_version: init.appVersion,
     app_platform: init.platform,
-    page_title: "RebaseRaven desktop",
+    content_group: "Desktop application",
+    screen_name: SCREEN_NAMES[pane],
+    screen_class: pane,
+    pane,
+    version_control: pane.startsWith("git_") ? "git" : pane.startsWith("p4_") ? "perforce" : "none",
+    // GA4 uses the web title in its combined Pages and screens report.
+    page_title: SCREEN_NAMES[pane],
     page_location: ANALYTICS_BRIDGE_URL,
     page_referrer: "",
-    ...(event.event === "pane_view" ? { pane: event.pane } : {}),
-    ...(event.event === "app_engagement" ? { engagement_time_msec: event.engagementTimeMsec } : {}),
+    ...(event.event === "app_engagement" ? {
+      engagement_time_msec: event.engagementTimeMsec,
+      foreground_time_sec: event.engagementTimeMsec / 1_000,
+    } : {}),
   };
 }
 
 export function createGoogleAnalyticsTag(host: Window, measurementId: string | undefined, init: AnalyticsInit): AnalyticsTag {
-  if (!measurementId || !MEASUREMENT_ID.test(measurementId)) throw new Error("Analytics is unavailable.");
-  const globals = host as unknown as Record<string, unknown>;
-  const disableKey = `ga-disable-${measurementId}`;
-  const layer: unknown[] = [];
-  let disabled = false;
-  let timeout: number | undefined;
-  let rejectLoad: ((error: Error) => void) | undefined;
-  const script = host.document.createElement("script");
-  globals[disableKey] = false;
-  globals.dataLayer = layer;
-  function gtag(..._parameters: unknown[]) {
-    // Google tag commands require the canonical Arguments object, not an Array.
-    // eslint-disable-next-line prefer-rest-params -- Preserve the official gtag.js command protocol.
-    if (!disabled) layer.push(arguments);
-  }
-  globals.gtag = gtag;
-  // Cross-site cookie attributes support the HTTPS bridge iframe, but browser
-  // privacy settings can still block third-party cookies.
-  // The dedicated GA stream must also have Enhanced Measurement disabled.
-  gtag("consent", "default", {
-    ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied",
-    analytics_storage: "granted",
-  });
-  gtag("js", new Date());
-  gtag("config", measurementId, analyticsConfiguration(init));
-  const ready = new Promise<void>((resolve, reject) => {
-    rejectLoad = reject;
-    script.onload = () => {
-      if (timeout !== undefined) host.clearTimeout(timeout);
-      if (!disabled) resolve();
-    };
-    script.onerror = () => reject(new Error("Analytics is unavailable."));
-    timeout = host.setTimeout(() => reject(new Error("Analytics is unavailable.")), 10_000);
-  });
-  script.async = true;
-  script.referrerPolicy = "no-referrer";
-  script.src = `https://www.googletagmanager.com/gtag/js?id=${measurementId}`;
-  host.document.head.appendChild(script);
+  const tag = createGoogleTag(host, measurementId, analyticsConfiguration(init));
+  let pane: AnalyticsPane = "welcome";
   return {
-    ready,
+    ready: tag.ready,
     send(event) {
-      if (!disabled) gtag("event", event.event, analyticsEventParameters(init, event, measurementId));
+      if (event.event === "pane_view") pane = event.pane;
+      tag.send(event.event === "pane_view" ? "screen_view" : event.event, analyticsEventParameters(init, event, measurementId!, pane));
     },
-    disable() {
-      if (disabled) return;
-      disabled = true;
-      // Google checks this flag before cookies or collection, including unload.
-      globals[disableKey] = true;
-      layer.length = 0;
-      if (timeout !== undefined) host.clearTimeout(timeout);
-      script.onload = null;
-      script.onerror = null;
-      script.remove();
-      rejectLoad?.(new Error("Analytics is disabled."));
-    },
+    disable: tag.disable,
   };
 }

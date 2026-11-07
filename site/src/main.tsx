@@ -1,6 +1,7 @@
 import { createRoot, hydrateRoot } from "react-dom/client";
 import { IDENTIFIER_PREFIX, SiteRoot } from "./app-root";
 import { localeFromPath, localeHref, preferredSiteLocale } from "./i18n";
+import { initializeWebsiteAnalytics } from "./website-analytics";
 import "./styles.css";
 
 const root = document.getElementById("root")!;
@@ -16,6 +17,7 @@ if (rootPage) {
   window.location.replace(target.href);
 }
 document.documentElement.lang = locale;
+if (!rootPage) initializeWebsiteAnalytics(window, import.meta.env.VITE_GA_WEBSITE_MEASUREMENT_ID);
 if (root.dataset.prerendered === "true") {
   hydrateRoot(root, <SiteRoot locale={locale} rootPage={rootPage} />, { identifierPrefix: IDENTIFIER_PREFIX });
 } else {

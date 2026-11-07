@@ -88,5 +88,8 @@
   "selectedLines_other": "{{value}} lines selected",
   "discardLineCount_one": "Discard this line?",
   "discardLineCount_other": "Discard {{value}} lines?",
-  "blameAuthor": "{{author}}, {{when}}"
+  "blameAuthor": "{{author}}, {{when}}",
+  "fullEditing": "Edit full text",
+  "blockEditing": "Edit conflict blocks",
+  "commonBase": "Common base"
 }

@@ -89,11 +89,8 @@ async fn load_session(app: AppHandle) -> AppResult<AppSession> {
 }
 
 #[tauri::command]
-async fn get_diagnostic_view(
-    level: diagnostics::Level,
-    app: AppHandle,
-) -> AppResult<diagnostics::View> {
-    blocking(move || diagnostics::view(&app, level)).await
+async fn get_diagnostic_summary(app: AppHandle) -> AppResult<diagnostics::Summary> {
+    blocking(move || diagnostics::summary(&app)).await
 }
 
 #[tauri::command]
@@ -1154,8 +1151,37 @@ async fn p4_revision_diff(
 }
 
 #[tauri::command]
-async fn p4_filelog(connection: p4::P4Connection, path: String) -> AppResult<Vec<p4::P4Revision>> {
-    blocking(move || p4::filelog(&connection, &path)).await
+async fn p4_image_pair(
+    connection: p4::P4Connection,
+    source: p4::P4ImageSource,
+) -> AppResult<git::ImagePair> {
+    blocking(move || p4::image_pair(&connection, &source)).await
+}
+
+#[tauri::command]
+async fn p4_annotate(
+    connection: p4::P4Connection,
+    depot_path: String,
+    revision: String,
+) -> AppResult<Vec<p4::P4BlameLine>> {
+    blocking(move || p4::annotate(&connection, &depot_path, &revision)).await
+}
+
+#[tauri::command]
+async fn p4_compare_files(
+    connection: p4::P4Connection,
+    request: p4::P4CompareRequest,
+) -> AppResult<p4::P4Comparison> {
+    blocking(move || p4::compare_files(&connection, &request)).await
+}
+
+#[tauri::command]
+async fn p4_filelog(
+    connection: p4::P4Connection,
+    path: String,
+    cursor: Option<p4::P4HistoryCursor>,
+) -> AppResult<p4::P4RevisionPage> {
+    blocking(move || p4::filelog(&connection, &path, cursor.as_ref())).await
 }
 
 #[tauri::command]
@@ -1238,12 +1264,34 @@ async fn p4_search_submitted(
 }
 
 #[tauri::command]
+async fn p4_preview_switch(
+    connection: p4::P4Connection,
+    request: p4::P4SwitchRequest,
+) -> AppResult<p4::P4SwitchPreview> {
+    blocking(move || p4::preview_switch(&connection, &request)).await
+}
+
+#[tauri::command]
+async fn p4_apply_switch(
+    connection: p4::P4Connection,
+    request: p4::P4SwitchRequest,
+    fingerprint: String,
+) -> AppResult<p4::P4SwitchOutcome> {
+    blocking(move || p4::apply_switch(&connection, &request, &fingerprint)).await
+}
+
+#[tauri::command]
+async fn p4_workspace_settings(connection: p4::P4Connection) -> AppResult<p4::P4WorkspaceSettings> {
+    blocking(move || p4::workspace_settings(&connection)).await
+}
+
+#[tauri::command]
 async fn p4_save_workspace(
     connection: p4::P4Connection,
-    root: String,
-    stream: String,
+    edit: p4::P4WorkspaceEdit,
+    fingerprint: String,
 ) -> AppResult<p4::P4Connection> {
-    blocking(move || p4::save_workspace(&connection, &root, &stream)).await
+    blocking(move || p4::save_workspace(&connection, &edit, &fingerprint)).await
 }
 
 #[tauri::command]
@@ -1356,6 +1404,36 @@ async fn p4_resolve_accept(
 }
 
 #[tauri::command]
+async fn p4_manual_resolve_view(
+    connection: p4::P4Connection,
+    path: String,
+) -> AppResult<p4::P4ManualResolve> {
+    blocking(move || p4::manual_resolve_view(&connection, &path)).await
+}
+
+#[tauri::command]
+async fn p4_manual_resolve_external(
+    connection: p4::P4Connection,
+    path: String,
+    text: String,
+    fingerprint: String,
+    tool: String,
+) -> AppResult<String> {
+    blocking(move || p4::manual_resolve_external(&connection, &path, &text, &fingerprint, &tool))
+        .await
+}
+
+#[tauri::command]
+async fn p4_manual_resolve_apply(
+    connection: p4::P4Connection,
+    path: String,
+    text: String,
+    fingerprint: String,
+) -> AppResult<()> {
+    blocking(move || p4::manual_resolve_apply(&connection, &path, &text, &fingerprint)).await
+}
+
+#[tauri::command]
 async fn p4_get_revision(
     connection: p4::P4Connection,
     request: p4::P4GetRevision,
@@ -1390,12 +1468,69 @@ async fn p4_sync(
 }
 
 #[tauri::command]
-async fn p4_reconcile(
+async fn p4_preview_reconcile(connection: p4::P4Connection) -> AppResult<p4::P4ReconcilePreview> {
+    blocking(move || p4::preview_reconcile(&connection)).await
+}
+
+#[tauri::command]
+async fn p4_apply_reconcile(
     connection: p4::P4Connection,
-    activity_id: Option<String>,
-    app: AppHandle,
+    paths: Vec<String>,
+    change_id: String,
+    fingerprint: String,
 ) -> AppResult<String> {
-    blocking(move || p4::reconcile(&connection, progress_sink(&app, activity_id.as_deref()))).await
+    blocking(move || p4::apply_reconcile(&connection, &paths, &change_id, &fingerprint)).await
+}
+
+#[tauri::command]
+async fn p4_list_shelves(
+    connection: p4::P4Connection,
+    user: String,
+    before: Option<u64>,
+) -> AppResult<p4::P4ChangePage> {
+    blocking(move || p4::list_shelves(&connection, &user, before)).await
+}
+
+#[tauri::command]
+async fn p4_shelf_detail(
+    connection: p4::P4Connection,
+    change_id: String,
+) -> AppResult<p4::P4Changelist> {
+    blocking(move || p4::shelf_detail(&connection, &change_id)).await
+}
+
+#[tauri::command]
+async fn p4_preview_unshelve(
+    connection: p4::P4Connection,
+    request: p4::P4UnshelveRequest,
+) -> AppResult<p4::P4OperationPreview> {
+    blocking(move || p4::preview_unshelve(&connection, &request)).await
+}
+
+#[tauri::command]
+async fn p4_restore_shelf(
+    connection: p4::P4Connection,
+    request: p4::P4UnshelveRequest,
+    fingerprint: String,
+) -> AppResult<String> {
+    blocking(move || p4::restore_shelf(&connection, &request, &fingerprint)).await
+}
+
+#[tauri::command]
+async fn p4_preview_stream(
+    connection: p4::P4Connection,
+    request: p4::P4StreamRequest,
+) -> AppResult<p4::P4StreamPreview> {
+    blocking(move || p4::preview_stream(&connection, &request)).await
+}
+
+#[tauri::command]
+async fn p4_apply_stream(
+    connection: p4::P4Connection,
+    request: p4::P4StreamRequest,
+    fingerprint: String,
+) -> AppResult<String> {
+    blocking(move || p4::apply_stream(&connection, &request, &fingerprint)).await
 }
 
 #[tauri::command]
@@ -1747,6 +1882,8 @@ pub fn run() {
                 }
                 window_state::restore(&window, app.handle());
                 window_state::watch(&window, app.handle());
+                #[cfg(target_os = "macos")]
+                platform::watch_main_titlebar(&window);
                 silence_browser_shortcuts(&window);
                 // The page normally reveals the window. This covers a load that never finishes.
                 let app_handle = app.handle().clone();
@@ -1767,7 +1904,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             initialize_repository,
             get_author_avatar,
-            get_diagnostic_view,
+            get_diagnostic_summary,
             clear_diagnostic_logs,
             export_diagnostic_logs,
             open_diagnostic_directory,
@@ -1882,6 +2019,9 @@ pub fn run() {
             p4_shelf_diff,
             p4_revision_diff,
             p4_filelog,
+            p4_compare_files,
+            p4_annotate,
+            p4_image_pair,
             p4_locate,
             p4_list_dir,
             p4_list_depot,
@@ -1891,6 +2031,9 @@ pub fn run() {
             p4_search_files,
             p4_search_submitted,
             p4_save_workspace,
+            p4_workspace_settings,
+            p4_preview_switch,
+            p4_apply_switch,
             p4_submit,
             p4_save_change,
             p4_new_change,
@@ -1903,12 +2046,22 @@ pub fn run() {
             p4_unshelve,
             p4_delete_shelf,
             p4_resolve_view,
+            p4_manual_resolve_view,
+            p4_manual_resolve_apply,
+            p4_manual_resolve_external,
             p4_resolve_accept,
             p4_get_revision,
             p4_sync,
-            p4_reconcile,
+            p4_preview_reconcile,
+            p4_apply_reconcile,
             p4_file_action,
             p4_preview_integrate,
+            p4_list_shelves,
+            p4_shelf_detail,
+            p4_preview_unshelve,
+            p4_restore_shelf,
+            p4_preview_stream,
+            p4_apply_stream,
             p4_apply_integrate,
             p4_preview_undo,
             p4_apply_undo,

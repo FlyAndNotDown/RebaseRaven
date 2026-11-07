@@ -15,7 +15,7 @@ describe("website prerender", () => {
     expect(html.split(`href="${LATEST_RELEASE_URL}"`)).toHaveLength(4);
     expect(html).toContain("Enable JavaScript to try the interactive demo.");
     expect(html).toContain('id="demo-commit-message"');
-    expect(html).toContain('src="./assets/mark.png"');
+    expect(html).toContain("./assets/raven.svg");
     expect(html).not.toContain("/@fs/");
     expect(html).not.toContain('id="demo-changelist-description"');
     expect(html).not.toContain(siteResources.en["demo.loadingPerforce"]);
@@ -28,10 +28,10 @@ describe("website prerender", () => {
     expect(translated).toContain(siteResources["zh-CN"]["demo.gitIntro"]);
     expect(translated).toContain('href="../en/"');
     expect(translated).toContain('href="../zh-CN/"');
-    expect(translated).toContain('src="../assets/mark.png"');
+    expect(translated).toContain("../assets/raven.svg");
     const english = await render("en", false);
     expect(english).toContain(siteResources.en["preview.title"]);
-    expect(english).toContain('src="../assets/mark.png"');
+    expect(english).toContain("../assets/raven.svg");
     expect(english).not.toContain(siteResources["zh-CN"]["preview.title"]);
   });
 

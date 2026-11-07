@@ -8,6 +8,11 @@ use std::process::Stdio;
 
 use crate::error::{AppError, AppResult};
 
+#[cfg(target_os = "macos")]
+mod macos_titlebar;
+#[cfg(target_os = "macos")]
+pub(crate) use macos_titlebar::watch_main_titlebar;
+
 #[cfg(windows)]
 mod windows_probe;
 #[cfg(windows)]
@@ -47,9 +52,8 @@ pub(crate) fn configure_main_webview(config: &mut tauri::Config) {
         window.decorations = true;
         window.title_bar_style = tauri::TitleBarStyle::Overlay;
         window.hidden_title = true;
-        // Wry adds the button frame height to this vertical inset. With the
-        // standard 14-point controls, its container matches the 44-point web
-        // titlebar rather than positioning the controls above the tab centers.
+        // Reserve the full web titlebar height. AppKit's button origin varies
+        // across macOS versions; macos_titlebar aligns the actual native views.
         window.traffic_light_position =
             Some(tauri::utils::config::LogicalPosition { x: 16.0, y: 30.0 });
     }

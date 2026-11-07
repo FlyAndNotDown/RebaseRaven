@@ -20,6 +20,8 @@ export interface AnalyticsInit {
 
 export type AnalyticsEvent = { type: "event"; generation: string } & (
   { event: "app_open" }
+  | { event: "app_foreground" }
+  | { event: "app_background" }
   | { event: "pane_view"; pane: AnalyticsPane }
   | { event: "app_engagement"; engagementTimeMsec: number }
 );
@@ -69,7 +71,9 @@ export function isAnalyticsInit(value: unknown): value is AnalyticsInit {
 
 export function isAnalyticsEvent(value: unknown, generation: string): value is AnalyticsEvent {
   if (!record(value) || value.type !== "event" || value.generation !== generation) return false;
-  if (value.event === "app_open") return exactKeys(value, ["type", "generation", "event"]);
+  if (["app_open", "app_foreground", "app_background"].includes(value.event as string)) {
+    return exactKeys(value, ["type", "generation", "event"]);
+  }
   if (value.event === "pane_view") {
     return exactKeys(value, ["type", "generation", "event", "pane"])
       && ANALYTICS_PANES.includes(value.pane as AnalyticsPane);

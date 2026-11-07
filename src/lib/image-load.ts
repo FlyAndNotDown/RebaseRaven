@@ -1,6 +1,6 @@
 import type { FileSource, ImagePair } from "@/types/git";
 
-export function imageLoadKey(repoPath: string, source: FileSource): string {
+export function imageLoadKey(repoPath: string, source: unknown): string {
   return JSON.stringify([repoPath, source]);
 }
 
@@ -14,8 +14,8 @@ interface ImageLoadState {
 }
 
 /** Refreshes retain only the same repository/source's last successful image. */
-export function createImageLoader(
-  load: (repoPath: string, source: FileSource) => Promise<ImagePair>,
+export function createImageLoader<Source = FileSource>(
+  load: (repoPath: string, source: Source) => Promise<ImagePair>,
   describeError: (error: unknown) => string,
 ) {
   let state: ImageLoadState = { key: "", identity: null, attempt: 0, pair: null, error: null, busy: false };
@@ -31,7 +31,7 @@ export function createImageLoader(
       listeners.add(listener);
       return () => { listeners.delete(listener); };
     },
-    start(repoPath: string, source: FileSource, identity: unknown, attempt: number) {
+    start(repoPath: string, source: Source, identity: unknown, attempt: number) {
       const request = ++generation;
       const key = imageLoadKey(repoPath, source);
       publish({ key, identity, attempt, pair: state.key === key ? state.pair : null, error: null, busy: true });

@@ -360,18 +360,8 @@
       "local_log_contents": "Local logs include commands, exit status, and short output excerpts. Review the export for project details before sharing.",
       "retention": "Keeps up to {{days}} days within {{maximum}}.",
       "about_local_diagnostics": "About local diagnostics",
-      "refresh_diagnostic_storage_usage": "Refresh diagnostic logs and storage usage",
+      "refresh_diagnostic_storage_usage": "Refresh storage usage",
       "storage_refreshed": "Diagnostics refreshed",
-      "level": "Diagnostic level",
-      "levels": {
-        "error": "Error",
-        "warning": "Warning",
-        "info": "Info",
-        "verbose": "Verbose"
-      },
-      "recent_logs": "Recent diagnostic logs",
-      "reading_logs": "Reading recent logs…",
-      "no_logs_at_this_level": "No recent logs at this level.",
       "clear_logs": "Clear logs",
       "clear_logs_confirmation": "Permanently delete all local RebaseRaven diagnostic logs?",
       "logs_cleared": "Diagnostic logs cleared",
@@ -430,7 +420,8 @@
       "downloadingTotal": "Downloading update: {{downloaded}} / {{total}} MB",
       "downloading": "Downloading update: {{downloaded}} MB",
       "availableNotice": "RebaseRaven {{version}} is available",
-      "could_not_load_release_notes": "Could not format release notes. The original text is shown below."
+      "could_not_load_release_notes": "Could not format release notes. The original text is shown below.",
+      "latest_version": "Latest version"
     },
     "aboutSettings": {
       "a_unified_version_control_client": "A unified version control client.",

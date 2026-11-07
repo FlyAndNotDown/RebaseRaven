@@ -1,32 +1,30 @@
 import { formatBytes, t, useTranslation } from "@/i18n";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { CheckIcon, DownloadIcon, ExternalLinkIcon, FolderOpenIcon, InfoIcon, LoaderCircleIcon, RefreshCwIcon, Trash2Icon, TriangleAlertIcon, XIcon, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { HoverTip } from "@/components/ui/tooltip";
 import { diagnosticsApi } from "@/lib/diagnostics";
-import type { DiagnosticLevel, DiagnosticSummary } from "@/types/diagnostics";
+import type { DiagnosticSummary } from "@/types/diagnostics";
 
 type Action = "refresh" | "export" | "directory" | "issues" | "clear";
 type Feedback = { outcome: "success" | "warning" | "error"; message: string };
 const actions: Action[] = ["refresh", "export", "directory", "issues", "clear"];
 
-export function DiagnosticsSettings({ level, levelControl }: { level: DiagnosticLevel; levelControl: ReactNode }) {
+export function DiagnosticsSettings() {
   useTranslation();
   const titleId = useId();
   const [summary, setSummary] = useState<DiagnosticSummary | null>(null);
   const [action, setAction] = useState<Action | null>(null);
   const [feedback, setFeedback] = useState<Partial<Record<Action, Feedback>>>({});
   const [clearOpen, setClearOpen] = useState(false);
-  const [logRevision, setLogRevision] = useState(0);
-  const [logResult, setLogResult] = useState<{ level: DiagnosticLevel; revision: number; text: string | null } | null>(null);
-  const activeLog = logResult?.level === level && logResult.revision === logRevision ? logResult : null;
-  const logView = useRef<HTMLPreElement>(null);
+  const [revision, setRevision] = useState(0);
+  const [loadedRevision, setLoadedRevision] = useState<number | null>(null);
   const mounted = useRef(false);
   const busy = useRef(false);
   const reads = useRef(Promise.resolve());
-  const refreshing = activeLog === null;
+  const refreshing = loadedRevision !== revision;
 
   useEffect(() => {
     mounted.current = true;
@@ -38,20 +36,21 @@ export function DiagnosticsSettings({ level, levelControl }: { level: Diagnostic
     reads.current = reads.current.then(async () => {
       if (!current) return;
       try {
-        const value = await diagnosticsApi.view(level);
+        const value = await diagnosticsApi.summary();
         if (current) {
-          setSummary(value.summary);
-          setLogResult({ level, revision: logRevision, text: value.text });
+          setSummary(value);
+          setLoadedRevision(revision);
           setFeedback((previous) => ({
             ...previous,
-            refresh: logRevision > 0
+            refresh: revision > 0
               ? { outcome: "success", message: t("desktop.diagnosticsSettings.storage_refreshed") }
               : undefined,
           }));
         }
       } catch {
         if (current) {
-          setLogResult({ level, revision: logRevision, text: null });
+          setSummary(null);
+          setLoadedRevision(revision);
           setFeedback((previous) => ({ ...previous, refresh: {
             outcome: "error",
             message: t("desktop.diagnosticsSettings.could_not_read_local_diagnostics_try_again"),
@@ -60,11 +59,7 @@ export function DiagnosticsSettings({ level, levelControl }: { level: Diagnostic
       }
     });
     return () => { current = false; };
-  }, [level, logRevision]);
-
-  useEffect(() => {
-    if (activeLog?.text && logView.current) logView.current.scrollTop = logView.current.scrollHeight;
-  }, [activeLog]);
+  }, [revision]);
 
   async function run(next: Action) {
     if (busy.current) return;
@@ -74,7 +69,7 @@ export function DiagnosticsSettings({ level, levelControl }: { level: Diagnostic
     try {
       switch (next) {
         case "refresh":
-          setLogRevision((revision) => revision + 1);
+          setRevision((revision) => revision + 1);
           break;
         case "clear":
           await reads.current;
@@ -126,7 +121,7 @@ export function DiagnosticsSettings({ level, levelControl }: { level: Diagnostic
       busy.current = false;
       if (mounted.current) {
         setAction(null);
-        if (next === "clear") setLogRevision((revision) => revision + 1);
+        if (next === "clear") setRevision((revision) => revision + 1);
       }
     }
   }
@@ -218,23 +213,6 @@ export function DiagnosticsSettings({ level, levelControl }: { level: Diagnostic
         </Dialog>
       </div>
       {actions.map((next) => <span key={next} id={`${titleId}-${next}-feedback`} role="status" aria-atomic="true" className="sr-only">{announcement(next)}</span>)}
-      <div className="mt-2 grid min-w-0 gap-2">
-        {levelControl}
-        {activeLog?.text ? (
-          <pre
-            ref={logView}
-            tabIndex={0}
-            aria-label={t("desktop.diagnosticsSettings.recent_logs")}
-            className="max-h-64 min-w-0 overflow-auto rounded-md border bg-muted/30 p-2 font-mono text-xs leading-5 whitespace-pre select-text outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-          >{activeLog.text}</pre>
-        ) : (
-          <p role="status" className="rounded-md border p-3 text-xs text-muted-foreground">
-            {activeLog === null ? t("desktop.diagnosticsSettings.reading_logs")
-              : activeLog.text === null ? t("desktop.diagnosticsSettings.could_not_read_local_diagnostics_try_again")
-              : t("desktop.diagnosticsSettings.no_logs_at_this_level")}
-          </p>
-        )}
-      </div>
     </section>
   );
 }

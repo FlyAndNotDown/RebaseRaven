@@ -2983,15 +2983,20 @@ checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
 
 [[package]]
 name = "rebaseraven"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "base64 0.22.1",
+ "block2",
  "chrono",
+ "dispatch2",
  "getrandom 0.4.3",
  "log",
  "log4rs",
  "nix 0.30.1",
  "notify",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "regex",
  "reqwest",
  "rustls",

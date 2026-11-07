@@ -5,7 +5,7 @@ mod event;
 pub use command::CommandOutput;
 use command::{excerpt, CommandReport};
 use event::Event;
-pub use event::{Code, Level, Status};
+pub use event::{Code, Status};
 
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
@@ -29,10 +29,10 @@ use tauri::{AppHandle, Manager};
 
 use crate::error::{AppError, AppResult};
 
-const FILE_BYTES: usize = 1024 * 1024;
+const FILE_BYTES: usize = 5 * 1024 * 1024;
 const RETENTION_DAYS: u64 = 7;
 const PRUNE_INTERVAL: Duration = Duration::from_secs(3600);
-const LOG_NAMES: [&str; 8] = [
+const LOG_NAMES: [&str; 10] = [
     "events.log",
     "events.1.log",
     "events.2.log",
@@ -41,11 +41,10 @@ const LOG_NAMES: [&str; 8] = [
     "events.5.log",
     "events.6.log",
     "events.7.log",
+    "events.8.log",
+    "events.9.log",
 ];
 const MAX_LOG_BYTES: usize = FILE_BYTES * LOG_NAMES.len();
-const TAIL_SCAN_BYTES: usize = FILE_BYTES;
-const TAIL_BYTES: usize = 64 * 1024;
-const TAIL_LINES: usize = 200;
 const MAX_DURATION_MS: u64 = 86_400_000;
 const MAX_TIMESTAMP_MS: u64 = 4_102_444_800_000;
 const ISSUES_URL: &str = "https://github.com/FlyAndNotDown/RebaseRaven/issues";
@@ -58,17 +57,11 @@ enum Work {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct Summary {
+pub struct Summary {
     total_bytes: u64,
     file_count: usize,
     max_bytes: usize,
     retention_days: u64,
-}
-
-#[derive(Serialize)]
-pub struct View {
-    summary: Summary,
-    text: String,
 }
 
 #[derive(Serialize)]
@@ -232,15 +225,10 @@ fn enqueue(
     }
 }
 
-pub fn view(app: &AppHandle, level: Level) -> AppResult<View> {
+pub fn summary(app: &AppHandle) -> AppResult<Summary> {
     let directory = log_directory(app)?;
     Store::new(&directory)
-        .and_then(|store| {
-            Ok(View {
-                summary: store.summary()?,
-                text: store.tail(level, retention_cutoff())?,
-            })
-        })
+        .and_then(|store| store.summary())
         .map_err(|_| AppError::msg("Could not read local diagnostics. Try again."))
 }
 
@@ -441,86 +429,20 @@ impl Store {
     }
 
     fn read(&self, name: &str) -> io::Result<Option<Vec<u8>>> {
-        self.read_window(name, FILE_BYTES)
-            .map(|window| window.map(|(contents, _)| contents))
-    }
-
-    fn read_window(&self, name: &str, limit: usize) -> io::Result<Option<(Vec<u8>, bool)>> {
         let Some(metadata) = self.metadata(name)? else {
             return Ok(None);
         };
         if metadata.len() > FILE_BYTES as u64 {
             return Err(invalid_store());
         }
-        let mut file = open_log(&self.directory.join(name))?;
-        let offset = metadata.len().saturating_sub(limit as u64);
-        let starts_mid_line = if offset > 0 {
-            file.seek(SeekFrom::Start(offset - 1))?;
-            let mut previous = [0];
-            file.read_exact(&mut previous)?;
-            previous[0] != b'\n'
-        } else {
-            false
-        };
+        let file = open_log(&self.directory.join(name))?;
         let mut contents = Vec::new();
-        file.take(limit as u64 + 1).read_to_end(&mut contents)?;
-        if contents.len() > limit {
+        file.take(FILE_BYTES as u64 + 1)
+            .read_to_end(&mut contents)?;
+        if contents.len() > FILE_BYTES {
             return Err(invalid_store());
         }
-        Ok(Some((contents, starts_mid_line)))
-    }
-
-    fn tail(&self, level: Level, cutoff: u64) -> io::Result<String> {
-        let mut remaining = TAIL_SCAN_BYTES;
-        let mut bytes = 0;
-        let mut lines = Vec::new();
-        'files: for name in LOG_NAMES {
-            let Some((contents, starts_mid_line)) = self.read_window(name, remaining)? else {
-                continue;
-            };
-            remaining -= contents.len();
-            // Skip incomplete lines at either edge of the window.
-            let start = if starts_mid_line {
-                contents
-                    .iter()
-                    .position(|byte| *byte == b'\n')
-                    .map_or(contents.len(), |pos| pos + 1)
-            } else {
-                0
-            };
-            if let Some(end) = contents[start..].iter().rposition(|byte| *byte == b'\n') {
-                for line in contents[start..start + end].rsplit(|byte| *byte == b'\n') {
-                    let Some((entry_level, mut line)) = Event::retained_line(line, cutoff) else {
-                        continue;
-                    };
-                    if entry_level > level {
-                        continue;
-                    }
-                    // Previous releases put output in quoted fields on the summary line.
-                    if level < Level::Verbose {
-                        if let Some((summary, _)) = line
-                            .split_once(" stderr=\"")
-                            .or_else(|| line.split_once(" stdout=\""))
-                        {
-                            line = summary;
-                        }
-                    }
-                    bytes += line.len() + 1;
-                    if bytes > TAIL_BYTES {
-                        break 'files;
-                    }
-                    lines.push(line.to_owned());
-                    if lines.len() >= TAIL_LINES {
-                        break 'files;
-                    }
-                }
-            }
-            if remaining == 0 {
-                break;
-            }
-        }
-        lines.reverse();
-        Ok(lines.join("\n"))
+        Ok(Some(contents))
     }
 
     fn prune(&self, cutoff: u64) -> io::Result<()> {
@@ -772,7 +694,6 @@ mod tests {
 
         let store = Store::new(&directory).unwrap();
         assert_eq!(store.summary().unwrap().file_count, 0);
-        assert!(store.tail(Level::Verbose, 0).unwrap().is_empty());
         drop(store);
         assert!(!rolled.exists());
         assert!(!previous_log.exists());
@@ -806,6 +727,28 @@ mod tests {
     }
 
     #[test]
+    fn rotation_bounds_retained_logs_to_fifty_mebibytes() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(&temp.path().join("logs")).unwrap();
+        let contents = vec![b'\n'; FILE_BYTES];
+        for name in LOG_NAMES {
+            fs::write(store.directory.join(name), &contents).unwrap();
+        }
+        let full = store.summary().unwrap();
+        assert_eq!(full.max_bytes, 50 * 1024 * 1024);
+        assert_eq!(full.total_bytes, full.max_bytes as u64);
+        let entry = event();
+        store.append(&entry).unwrap();
+        let rotated = store.summary().unwrap();
+        assert_eq!(rotated.file_count, LOG_NAMES.len());
+        assert!(rotated.total_bytes <= rotated.max_bytes as u64);
+        assert_eq!(
+            store.read(LOG_NAMES[0]).unwrap().unwrap(),
+            entry.line().as_bytes()
+        );
+    }
+
+    #[test]
     fn export_filters_bad_headers_controls_and_incomplete_lines() {
         let valid = event().line();
         let contents = format!(
@@ -823,7 +766,7 @@ mod tests {
     }
 
     #[test]
-    fn recent_logs_filter_output_lines_without_removing_them_from_the_store() {
+    fn command_output_is_retained_in_the_exportable_store() {
         let temp = tempfile::tempdir().unwrap();
         let store = Store::new(&temp.path().join("logs")).unwrap();
         let ui = event().line();
@@ -842,14 +785,8 @@ mod tests {
         ));
         store.append(&fetch).unwrap();
 
-        let info = store.tail(Level::default(), 0).unwrap();
-        assert_eq!(info.lines().count(), 2);
-        assert!(info.starts_with(&ui));
-        assert!(info.contains("][ERROR][Git] git fetch --prune"));
-        assert!(!info.contains("[Commands]"));
-        assert_eq!(store.tail(Level::Warning, 0).unwrap().lines().count(), 1);
-
-        let verbose = store.tail(Level::Verbose, 0).unwrap();
+        assert_eq!(store.read(LOG_NAMES[1]).unwrap().unwrap(), ui.as_bytes());
+        let verbose = String::from_utf8(store.read(LOG_NAMES[0]).unwrap().unwrap()).unwrap();
         let output: Vec<_> = verbose
             .lines()
             .filter_map(|line| line.split_once("][VERBOSE][Commands] "))
@@ -945,7 +882,7 @@ mod tests {
         store.append(&event()).unwrap();
         let summary = store.summary().unwrap();
         assert_eq!(summary.file_count, LOG_NAMES.len());
-        assert_eq!(summary.max_bytes, 8 * 1024 * 1024);
+        assert_eq!(summary.max_bytes, 50 * 1024 * 1024);
         assert!(summary.total_bytes <= summary.max_bytes as u64);
         assert!(store.read(LOG_NAMES[0]).unwrap().unwrap().len() < 1024);
         assert_eq!(store.read(LOG_NAMES[1]).unwrap().unwrap(), full);

@@ -88,5 +88,8 @@
   "selectedLines_other": "已选择 {{value}} 行",
   "discardLineCount_one": "丢弃这一行？",
   "discardLineCount_other": "丢弃 {{value}} 行？",
-  "blameAuthor": "{{author}}，{{when}}"
+  "blameAuthor": "{{author}}，{{when}}",
+  "fullEditing": "编辑全文",
+  "blockEditing": "逐块编辑",
+  "commonBase": "共同基线"
 }

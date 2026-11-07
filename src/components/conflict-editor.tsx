@@ -13,35 +13,75 @@ import {
   type ConflictSide,
 } from "@/lib/conflict-text";
 import { errorMessage, gitApi } from "@/lib/git";
+import { hasConflictMarkers } from "@/lib/three-way-text";
 import { cn } from "@/lib/utils";
 import { useGitPick } from "@/state/git-context";
 
-export function ConflictEditor({
-  repoPath,
-  path,
-  rebasing,
-}: {
-  repoPath: string;
-  path: string;
-  rebasing: boolean;
+export function ConflictEditor({ repoPath, path, rebasing }: { repoPath: string; path: string; rebasing: boolean }) {
+  useTranslation();
+  const { saveConflict, resolveConflict, runMergetool } = useGitPick(["saveConflict", "resolveConflict", "runMergetool"]);
+  const [view, setView] = useState<{ text: string; binary: boolean } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void gitApi.conflictView(repoPath, path).then((next) => { if (live) setView(next); })
+      .catch((caught: unknown) => { if (live) setError(errorMessage(caught)); });
+    return () => { live = false; };
+  }, [repoPath, path]);
+  const current = t(rebasing ? "git-files.target" : "git-files.current");
+  const incoming = t(rebasing ? "git-files.replaying" : "git-files.incoming");
+  if (error) return <p role="alert" className="p-4 text-sm text-destructive">{error}</p>;
+  if (!view) return <p role="status" className="p-4 text-sm text-muted-foreground">{t("git-files.loadingConflict")}</p>;
+  if (view.binary) return <div className="flex flex-wrap items-center gap-2 p-4">
+    <p className="w-full text-sm text-muted-foreground">{t("git-files.noMarkers")}</p>
+    <Button size="xs" variant="outline" onClick={() => void resolveConflict(path, "ours")}>{t("git-files.useSide", { side: current })}</Button>
+    <Button size="xs" variant="outline" onClick={() => void resolveConflict(path, "theirs")}>{t("git-files.useSide", { side: incoming })}</Button>
+    <Button size="xs" variant="outline" onClick={() => void runMergetool(path)}>{t("git-files.openMergeTool")}</Button>
+  </div>;
+  return <ConflictTextEditor key={repoPath + path} initialText={view.text} current={current} incoming={incoming}
+    onSave={async (text) => { await saveConflict(path, view.text.includes("\r\n") ? text.replace(/\n/g, "\r\n") : text); }}
+    onExternal={async () => { await runMergetool(path); }} />;
+}
+
+export function ConflictTextEditor({ initialText, current, incoming, onSave, onExternal, disabled = false, saveLabel, onTextChange, displayError = errorMessage }: {
+  initialText: string;
+  current: string;
+  incoming: string;
+  onSave: (text: string) => Promise<void>;
+  onExternal: (text: string) => Promise<string | void>;
+  disabled?: boolean;
+  saveLabel?: string;
+  onTextChange?: (text: string) => void;
+  displayError?: (error: unknown) => string;
 }) {
   useTranslation();
-  const { saveConflict, resolveConflict, runMergetool } = useGitPick([
-    "saveConflict",
-    "resolveConflict",
-    "runMergetool",
-  ]);
-  const [text, setText] = useState("");
-  const [eol, setEol] = useState<"\n" | "\r\n">("\n");
-  const [binary, setBinary] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [text, setText] = useState(() => initialText.replace(/\r\n/g, "\n"));
+  const [whole, setWhole] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const textRef = useRef(text);
+  const busyRef = useRef(false);
+  const blocked = busy || disabled;
+  useLayoutEffect(() => { busyRef.current = blocked; }, [blocked]);
+  useEffect(() => { onTextChange?.(text); }, [text, onTextChange]);
+
+  async function perform(operation: () => Promise<void>) {
+    if (busyRef.current) return;
+    busyRef.current = true; setBusy(true); setError(null);
+    try { await operation(); }
+    catch (caught) { setError(displayError(caught)); }
+    finally { busyRef.current = false; setBusy(false); }
+  }
+  const save = () => perform(() => onSave(textRef.current));
+  const runExternal = () => perform(async () => {
+    const next = await onExternal(textRef.current);
+    if (typeof next === "string") replaceText(next.replace(/\r\n/g, "\n"), true);
+  });
   const [active, setActive] = useState(0);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const pendingScroll = useRef<number | null>(null);
   const hunkRefs = useRef<Array<HTMLDivElement | null>>([]);
-  const textRef = useRef("");
   const past = useRef<string[]>([]);
   const future = useRef<string[]>([]);
   const echo = useRef(false);
@@ -50,35 +90,7 @@ export function ConflictEditor({
   });
   const hunks = conflictHunks(text);
   const segments = conflictSegments(text);
-  const current = t(rebasing ? "git-files.target" : "git-files.current");
-  const incoming = t(rebasing ? "git-files.replaying" : "git-files.incoming");
   const shown = hunks.length === 0 ? 0 : Math.min(active, hunks.length - 1);
-
-  // The parent keys this editor by file, so each file starts from fresh state.
-  useEffect(() => {
-    let cancelled = false;
-    void gitApi
-      .conflictView(repoPath, path)
-      .then((view) => {
-        if (cancelled) return;
-        setBinary(view.binary);
-        setEol(view.text.includes("\r\n") ? "\r\n" : "\n");
-        const normalized = view.text.replace(/\r\n/g, "\n");
-        echo.current = true;
-        textRef.current = normalized;
-        setText(normalized);
-        pendingScroll.current = 0;
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setError(errorMessage(err));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [path, repoPath]);
 
   useEffect(() => {
     const index = pendingScroll.current;
@@ -110,7 +122,7 @@ export function ConflictEditor({
   }
 
   function edit(next: string) {
-    if (echo.current) return;
+    if (blocked || echo.current) return;
     replaceText(next, true);
   }
 
@@ -151,6 +163,7 @@ export function ConflictEditor({
       const undoKey = key === "z" && !event.shiftKey;
       const redoKey = key === "y" || (key === "z" && event.shiftKey);
       if (!undoKey && !redoKey) return;
+      if (busyRef.current) return;
       const target = event.target;
       if (target instanceof HTMLElement) {
         const field = target.closest("textarea, input, select, [contenteditable='true']");
@@ -178,70 +191,50 @@ export function ConflictEditor({
     setActive(index);
   }
 
-  if (loading) {
-    return <p role="status" className="p-4 text-sm text-muted-foreground">{t("git-files.loadingConflict")}</p>;
-  }
-  if (error) {
-    return <p role="alert" className="p-4 text-sm text-destructive">{error}</p>;
-  }
-  if (binary) {
-    return (
-      <div className="flex flex-wrap items-center gap-2 p-4">
-        <p className="w-full text-sm text-muted-foreground">{t("git-files.noMarkers")}</p>
-        <Button type="button" size="xs" variant="outline" onClick={() => void resolveConflict(path, "ours")}>
-          {t("git-files.useSide", { side: current })}
-        </Button>
-        <Button type="button" size="xs" variant="outline" onClick={() => void resolveConflict(path, "theirs")}>
-          {t("git-files.useSide", { side: incoming })}
-        </Button>
-        <Button type="button" size="xs" variant="outline" onClick={() => void runMergetool(path)}>
-          {t("git-files.openMergeTool")}
-        </Button>
-      </div>
-    );
-  }
-
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-conflict-editor="">
       <div className="flex h-9 shrink-0 items-center gap-1 border-b px-3">
-        <IconButton label={t("git-files.previousConflict")} disabled={hunks.length === 0 || shown === 0} onClick={() => go(shown - 1)}>
+        <IconButton label={t("git-files.previousConflict")} disabled={blocked || hunks.length === 0 || shown === 0} onClick={() => go(shown - 1)}>
           <ChevronUpIcon />
         </IconButton>
-        <IconButton label={t("git-files.nextConflict")} disabled={hunks.length === 0 || shown >= hunks.length - 1} onClick={() => go(shown + 1)}>
+        <IconButton label={t("git-files.nextConflict")} disabled={blocked || hunks.length === 0 || shown >= hunks.length - 1} onClick={() => go(shown + 1)}>
           <ChevronDownIcon />
         </IconButton>
-        <IconButton label={t("git-files.undo")} disabled={!canUndo} onClick={undo}>
+        <IconButton label={t("git-files.undo")} disabled={blocked || !canUndo} onClick={undo}>
           <Undo2Icon />
         </IconButton>
-        <IconButton label={t("git-files.redo")} disabled={!canRedo} onClick={redo}>
+        <IconButton label={t("git-files.redo")} disabled={blocked || !canRedo} onClick={redo}>
           <Redo2Icon />
         </IconButton>
         <span className="text-xs text-muted-foreground">
           {hunks.length === 0 ? t("git-files.noConflicts") : t("git-files.conflictPosition", { position: formatNumber(shown + 1), total: formatNumber(hunks.length) })}
         </span>
+        <Button type="button" size="xs" variant="ghost" className="ml-auto" disabled={blocked} onClick={() => setWhole((value) => !value)}>{t(whole ? "git-files.blockEditing" : "git-files.fullEditing")}</Button>
         <Button
           type="button"
           size="xs"
           variant="ghost"
-          className="ml-auto"
-          onClick={() => void runMergetool(path)}
+          disabled={blocked}
+          onClick={() => void runExternal()}
         >
           {t("git-files.openMergeTool")}
         </Button>
         <Button
           type="button"
           size="xs"
-          disabled={hunks.length > 0}
-          onClick={() => void saveConflict(path, eol === "\r\n" ? text.replace(/\n/g, "\r\n") : text)}
+          disabled={blocked || hasConflictMarkers(text)}
+          onClick={() => void save()}
         >
-          {t("git-files.markResolved")}
+          {saveLabel ?? t("git-files.markResolved")}
         </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto">
+      {error ? <p role="alert" className="shrink-0 px-3 py-2 text-xs text-destructive">{error}</p> : null}
+      {whole ? <textarea aria-label={t("git-files.fullEditing")} value={text} disabled={blocked} onChange={(event) => edit(event.target.value)} spellCheck={false} wrap="off" className="min-h-0 flex-1 resize-none p-3 font-mono text-xs leading-5 outline-none" /> : <div className="min-h-0 flex-1 overflow-auto">
         <div className="min-w-max py-2">
           {segments.map((segment) =>
             segment.kind === "text" ? (
               <FitText
+                disabled={blocked}
                 key={`text-${segment.start}`}
                 value={shownText(segment.text, segment.end < text.length)}
                 onChange={(value) =>
@@ -261,35 +254,37 @@ export function ConflictEditor({
                 onPointerDown={() => setActive(segment.index)}
               >
                 <div className="flex flex-wrap gap-1 border-b bg-muted/40 px-2 py-1">
-                  <Button type="button" size="xs" variant="outline" onClick={() => choose(segment.index, "ours")}>
+                  <Button type="button" size="xs" variant="outline" disabled={blocked} onClick={() => choose(segment.index, "ours")}>
                     {current}
                   </Button>
-                  <Button type="button" size="xs" variant="outline" onClick={() => choose(segment.index, "theirs")}>
+                  <Button type="button" size="xs" variant="outline" disabled={blocked} onClick={() => choose(segment.index, "theirs")}>
                     {incoming}
                   </Button>
-                  <Button type="button" size="xs" variant="outline" onClick={() => choose(segment.index, "both")}>
+                  <Button type="button" size="xs" variant="outline" disabled={blocked} onClick={() => choose(segment.index, "both")}>
                     {t("git-files.both")}
                   </Button>
-                  <Button type="button" size="xs" variant="outline" onClick={() => choose(segment.index, "none")}>
+                  <Button type="button" size="xs" variant="outline" disabled={blocked} onClick={() => choose(segment.index, "none")}>
                     {t("git-files.none")}
                   </Button>
                 </div>
                 <MarkerLine>{t("git-files.currentMarker", { side: current })}</MarkerLine>
                 <FitText
+                disabled={blocked}
                   value={visibleBody(segment.hunk.ours)}
                   className="bg-diff-del-bg text-diff-del"
                   onChange={(value) => edit(setConflictSide(textRef.current, segment.index, "ours", value))}
                 />
                 {segment.hunk.hasBase ? (
-                  <>
-                    <MarkerLine>|||||||</MarkerLine>
+                  <details>
+                    <summary className="cursor-pointer bg-muted/40 px-3 py-1 text-xs text-muted-foreground">{t("git-files.commonBase")}</summary>
                     <pre className="bg-muted/30 px-3 font-mono text-[12px] leading-5 whitespace-pre text-muted-foreground">
                       {visibleBody(segment.hunk.base) || " "}
                     </pre>
-                  </>
+                  </details>
                 ) : null}
                 <MarkerLine>=======</MarkerLine>
                 <FitText
+                disabled={blocked}
                   value={visibleBody(segment.hunk.theirs)}
                   className="bg-diff-add-bg text-diff-add"
                   onChange={(value) => edit(setConflictSide(textRef.current, segment.index, "theirs", value))}
@@ -299,7 +294,7 @@ export function ConflictEditor({
             ),
           )}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -344,10 +339,12 @@ function FitText({
   value,
   onChange,
   className,
+  disabled,
 }: {
   value: string;
   onChange: (value: string) => void;
   className?: string;
+  disabled?: boolean;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   useLayoutEffect(() => {
@@ -362,6 +359,7 @@ function FitText({
     <textarea
       ref={ref}
       value={value}
+      disabled={disabled}
       spellCheck={false}
       autoCorrect="off"
       autoCapitalize="off"

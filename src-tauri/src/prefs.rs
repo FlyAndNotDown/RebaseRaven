@@ -35,8 +35,6 @@ pub struct AppPrefs {
     #[serde(default = "default_analytics_enabled")]
     pub analytics_enabled: bool,
     #[serde(default)]
-    pub diagnostic_level: crate::diagnostics::Level,
-    #[serde(default)]
     pub http_proxy: crate::network::HttpProxy,
     #[serde(default)]
     pub avatar_provider: AvatarProvider,
@@ -70,6 +68,9 @@ pub struct AppPrefs {
     /// Empty uses the `p4` executable on PATH.
     #[serde(default)]
     pub p4_path: String,
+    /// External P4 merge tool id or executable path; empty discovers P4Merge.
+    #[serde(default)]
+    pub p4_merge_tool: String,
     /// User-added p4 executables. The PATH entry is not stored here.
     #[serde(default)]
     pub extra_p4_paths: Vec<String>,
@@ -137,7 +138,6 @@ impl Default for AppPrefs {
         Self {
             language: LanguagePreference::default(),
             analytics_enabled: default_analytics_enabled(),
-            diagnostic_level: crate::diagnostics::Level::default(),
             http_proxy: crate::network::HttpProxy::default(),
             avatar_provider: AvatarProvider::default(),
             terminal_id: default_terminal_id(),
@@ -153,6 +153,7 @@ impl Default for AppPrefs {
             git_path: String::new(),
             extra_git_paths: Vec::new(),
             p4_path: String::new(),
+            p4_merge_tool: String::new(),
             extra_p4_paths: Vec::new(),
             p4_port: String::new(),
             p4_user: String::new(),
@@ -209,17 +210,6 @@ pub fn save_prefs(app: &AppHandle, mut prefs: AppPrefs) -> AppResult<AppPrefs> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn diagnostic_level_defaults_to_info_and_preserves_verbose() {
-        let older: AppPrefs = serde_json::from_str("{}").unwrap();
-        assert_eq!(older.diagnostic_level, crate::diagnostics::Level::Info);
-        let verbose: AppPrefs = serde_json::from_str(r#"{"diagnosticLevel":"verbose"}"#).unwrap();
-        assert_eq!(
-            serde_json::to_value(verbose).unwrap()["diagnosticLevel"],
-            "verbose"
-        );
-    }
 
     #[test]
     fn analytics_defaults_on_and_preserves_an_explicit_opt_out() {

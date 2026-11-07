@@ -52,7 +52,7 @@ import { p4Api } from "@/lib/p4";
 import { loadSettingsData } from "@/lib/settings-data";
 import { createSettingsWriter } from "@/lib/settings-writes";
 import { displayPath } from "@/lib/format";
-import { AUTO_FETCH_CHOICES, DIAGNOSTIC_LEVELS, isGitFileName, isP4FileName, normalizePrefs, sameGitPath, sameP4Path } from "@/lib/prefs";
+import { AUTO_FETCH_CHOICES, isGitFileName, isP4FileName, normalizePrefs, sameGitPath, sameP4Path } from "@/lib/prefs";
 import { cn } from "@/lib/utils";
 import { useGitPick } from "@/state/git-context";
 import { useAnalyticsSessionAllowed } from "@/state/use-analytics";
@@ -535,6 +535,9 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
                   onRemove={removeP4Executable}
                   onAdd={() => void addP4Executable()}
                 />
+                <FieldGroup title={t("p4.manual.externalSetting")} hint={t("p4.manual.externalHint")}>
+                  <ToolPicker emptyLabel={t("p4.manual.externalDefault")} id="p4-merge-tool" label={t("desktop.settingsDialog.merge_tool")} value={prefs.p4MergeTool} tools={guiTools} ready={guiToolsReady} onChange={(p4MergeTool) => { void persistPrefs({ p4MergeTool }); }} />
+                </FieldGroup>
                 <FieldGroup title={t("common.refresh")}>
                   <SelectField
                     id="p4-refresh"
@@ -563,18 +566,7 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
             <>
               <DialogHeader><DialogTitle>{t("desktop.settingsDialog.diagnostics")}</DialogTitle></DialogHeader>
               <div className="mt-6 grid gap-8">
-                <DiagnosticsSettings
-                  level={prefs.diagnosticLevel}
-                  levelControl={
-                    <SelectField
-                      id="diagnostic-level"
-                      label={t("desktop.diagnosticsSettings.level")}
-                      value={prefs.diagnosticLevel}
-                      options={DIAGNOSTIC_LEVELS.map((id) => ({ id, label: t("desktop.diagnosticsSettings.levels." + id) }))}
-                      onChange={(diagnosticLevel) => { void persistPrefs({ diagnosticLevel }); }}
-                    />
-                  }
-                />
+                <DiagnosticsSettings />
                 <FieldGroup title={t("analytics.title")}>
                   <div className="flex items-center gap-2">
                     <label className="flex flex-1 items-center gap-2 text-sm">
@@ -1013,7 +1005,9 @@ function ToolPicker({
   tools,
   ready,
   onChange,
+  emptyLabel,
 }: {
+  emptyLabel?: string;
   id: string;
   label: string;
   value: string;
@@ -1052,7 +1046,7 @@ function ToolPicker({
   const selected = custom ? CUSTOM_TOOL : value;
   const selectedLabel = custom
     ? t("desktop.settingsDialog.custom_executable")
-    : (tools.find((tool) => tool.id === value)?.name ?? (value ? value : t("desktop.settingsDialog.none")));
+    : (tools.find((tool) => tool.id === value)?.name ?? (value ? value : (emptyLabel ?? t("desktop.settingsDialog.none"))));
 
   if (!ready) {
     return (
@@ -1085,7 +1079,7 @@ function ToolPicker({
             }}
           >
             <span className="min-w-4">{selected === "" ? <CheckIcon className="size-3.5" /> : null}</span>
-            {t("desktop.settingsDialog.none")}</DropdownMenuItem>
+            {(emptyLabel ?? t("desktop.settingsDialog.none"))}</DropdownMenuItem>
           {choices.map((tool) => (
             <DropdownMenuItem
               key={tool.id}

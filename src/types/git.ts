@@ -1,4 +1,3 @@
-import type { DiagnosticLevel } from "@/types/diagnostics";
 
 export type FileKind =
   | "added"
@@ -286,7 +285,6 @@ export interface ToolConfig {
 export interface AppPrefs {
   language: "system" | "en" | "zh-CN";
   analyticsEnabled: boolean;
-  diagnosticLevel: DiagnosticLevel;
   httpProxy: { mode: "none" | "system" | "manual"; url: string };
   avatarProvider: "builtin" | "github" | "gitlab";
   terminalId: string;
@@ -311,6 +309,7 @@ export interface AppPrefs {
   extraGitPaths: string[];
   /** Empty uses the p4 executable on PATH. Otherwise an absolute path. */
   p4Path: string;
+  p4MergeTool: string;
   /** User-added p4 executables. The PATH entry is not included. */
   extraP4Paths: string[];
   /** Default P4PORT for a new workspace. */

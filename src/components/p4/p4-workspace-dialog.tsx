@@ -1,195 +1,65 @@
-import { t, useTranslation } from "@/i18n";
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { CheckIcon, ChevronDownIcon, Loader2Icon } from "lucide-react";
-import { toast } from "sonner";
+import { ChevronDownIcon, InfoIcon, LoaderCircleIcon, LockKeyholeIcon } from "lucide-react";
+import { useTranslation } from "@/i18n";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { HoverTip } from "@/components/ui/tooltip";
 import { errorMessage } from "@/lib/git";
+import { p4DisplayError } from "@/lib/p4-operation-preview";
 import { useP4 } from "@/state/p4-context";
-import type { P4StreamOption } from "@/types/p4";
+import type { P4WorkspaceEdit, P4WorkspaceOptions, P4WorkspaceSettings } from "@/types/p4";
 
 export function P4WorkspaceDialog() {
-  useTranslation();
-  const { connection, workspaceOpen, setWorkspaceOpen, saveWorkspace, listStreams } = useP4();
-  const [root, setRoot] = useState("");
-  const [stream, setStream] = useState("");
-  const [streams, setStreams] = useState<P4StreamOption[] | null>(null);
-  const [streamQuery, setStreamQuery] = useState("");
+  const { t } = useTranslation();
+  const p4 = useP4();
+  const { workspaceSettings, saveWorkspace } = p4;
+  const [loaded, setLoaded] = useState<P4WorkspaceSettings | null>(null);
+  const [edit, setEdit] = useState<P4WorkspaceEdit | null>(null);
+  const [tab, setTab] = useState<"general" | "mapping">("general");
+  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [seed, setSeed] = useState("");
-  const nextSeed = workspaceOpen && connection ? `${connection.root}\n${connection.stream ?? ""}` : "";
-  if (nextSeed !== seed) {
-    setSeed(nextSeed);
-    setRoot(connection?.root ?? "");
-    setStream(connection?.stream ?? "");
-    setStreams(null);
-    setStreamQuery("");
-    setSaving(false);
-  }
-
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    if (!workspaceOpen) return;
-    let live = true;
-    void listStreams()
-      .then((next) => {
-        if (live) setStreams(next);
-      })
-      .catch((caught) => {
-        if (!live) return;
-        setStreams([]);
-        const message = errorMessage(caught);
-        if (message && message !== "Login cancelled") toast.error(message);
-      });
-    return () => {
-      live = false;
-    };
-  }, [listStreams, workspaceOpen]);
-
-  const needle = streamQuery.trim().toLowerCase();
-  const visible = (streams ?? []).filter((item) => item.path.toLowerCase().includes(needle)).slice(0, 80);
-  if (
-    stream &&
-    stream.toLowerCase().includes(needle) &&
-    !visible.some((item) => item.path === stream)
-  ) {
-    visible.unshift({ path: stream, kind: "" });
-  }
-
+    let active = true;
+    void workspaceSettings().then((value) => { if (active) { setLoaded(value); setEdit(value); setError(null); } }).catch((caught: unknown) => { if (active) setError(p4DisplayError(errorMessage(caught))); });
+    return () => { active = false; };
+  }, [workspaceSettings, attempt]);
+  const blocked = saving || p4.busy;
+  const dirty = loaded && edit && JSON.stringify(edit) !== JSON.stringify(loaded);
+  function change<K extends keyof P4WorkspaceEdit>(key: K, value: P4WorkspaceEdit[K]) { setEdit((current) => current ? {...current, [key]:value} : current); setError(null); }
   async function browse() {
-    const picked = await open({
-      directory: true,
-      multiple: false,
-      title: t("p4.workspaceFolder"),
-      defaultPath: root || undefined,
-    });
-    if (typeof picked === "string") setRoot(picked);
+    const picked = await open({directory:true,multiple:false,title:t("p4.workspaceFolder"),defaultPath:edit?.root || undefined});
+    if (typeof picked === "string") change("root", picked);
   }
-
-  async function submit() {
-    if (!root.trim() || saving) return;
-    setSaving(true);
-    try {
-      await saveWorkspace(root.trim(), stream.trim());
-      setWorkspaceOpen(false);
-    } catch {
-      // The workspace save already reports the error.
-    } finally {
-      setSaving(false);
-    }
+  async function save() {
+    if (!edit || !loaded || blocked) return;
+    setSaving(true); setError(null);
+    try { await saveWorkspace({...edit,view:edit.view.filter((line) => line.trim())}, loaded.fingerprint); p4.setWorkspaceOpen(false); }
+    catch (caught) { setError(p4DisplayError(errorMessage(caught))); }
+    finally { setSaving(false); }
   }
-
-  return (
-    <Dialog open={workspaceOpen} onOpenChange={(open) => !saving && setWorkspaceOpen(open)}>
-      <DialogContent
-        className="sm:max-w-md"
-        onOpenAutoFocus={(event) => {
-          event.preventDefault();
-          const input = document.getElementById("edit-p4-root");
-          if (!(input instanceof HTMLInputElement)) return;
-          const placeCaret = () => {
-            if (document.activeElement !== input) return;
-            if (input.selectionStart === 0 && input.selectionEnd === input.value.length) {
-              const end = input.value.length;
-              input.setSelectionRange(end, end);
-            }
-          };
-          // WebView2 selects the whole field when a dialog focuses it.
-          placeCaret();
-          requestAnimationFrame(placeCaret);
-          window.setTimeout(placeCaret, 0);
-          window.setTimeout(placeCaret, 50);
-        }}
-      >
-        <DialogHeader>
-          <DialogTitle>{t("p4.editWorkspace")}</DialogTitle>
-          <DialogDescription>{t("p4.workspaceDescription", { client: connection?.client || t("p4.thisClient") })}</DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-3">
-          <div className="grid gap-2">
-            <Label htmlFor="edit-p4-root">{t("p4.folder")}</Label>
-            <div className="flex gap-2">
-              <Input
-                id="edit-p4-root"
-                className="font-mono"
-                value={root}
-                spellCheck={false}
-                onChange={(event) => setRoot(event.target.value)}
-              />
-              <Button type="button" variant="outline" disabled={saving} onClick={() => void browse()}>{t("p4.browse")}</Button>
-            </div>
-          </div>
-          <div className="grid gap-2">
-            <Label>{t("p4.stream")}</Label>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={saving}
-                  className="w-full justify-between px-2 font-normal"
-                >
-                  <span className="min-w-0 truncate font-mono text-xs">{stream || t("p4.classicClient")}</span>
-                  <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width)">
-                <div
-                  className="px-1.5 pb-1.5"
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onKeyDown={(event) => event.stopPropagation()}
-                >
-                  <Input
-                    value={streamQuery}
-                    onChange={(event) => setStreamQuery(event.target.value)}
-                    placeholder={streams ? t("p4.filterStreams") : t("p4.loadingStreams")}
-                    className="h-7 font-mono"
-                    spellCheck={false}
-                  />
-                </div>
-                <div className="max-h-64 overflow-auto">
-                  {!needle ? (
-                    <DropdownMenuItem onClick={() => setStream("")}>
-                      <span className="min-w-4">{stream === "" ? <CheckIcon className="size-3.5" /> : null}</span>{t("p4.classicClient")}</DropdownMenuItem>
-                  ) : null}
-                  {streams === null ? (
-                    <p className="px-3 py-2 text-xs text-muted-foreground">{t("p4.loadingStreams")}</p>
-                  ) : visible.length === 0 ? (
-                    <p className="px-3 py-2 text-xs text-muted-foreground">{t("p4.noMatchingStreams")}</p>
-                  ) : (
-                    visible.map((item) => (
-                      <DropdownMenuItem key={item.path} onClick={() => setStream(item.path)}>
-                        <span className="min-w-4">{stream === item.path ? <CheckIcon className="size-3.5" /> : null}</span>
-                        <span className="min-w-0 truncate font-mono">{item.path}</span>
-                      </DropdownMenuItem>
-                    ))
-                  )}
-                </div>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+  return <Dialog open onOpenChange={(open) => { if (!open && !saving) p4.setWorkspaceOpen(false); }}>
+    <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-xl" showCloseButton={!saving}>
+      <DialogHeader><DialogTitle>{t("p4.editWorkspace")}</DialogTitle><DialogDescription className="font-mono text-xs">{p4.connection?.client}</DialogDescription></DialogHeader>
+      {edit && loaded ? <>
+        <SegmentedControl label={t("p4.workspaceSettings.section")} value={tab} onChange={setTab} options={[{value:"general",label:t("p4.workspaceSettings.general")},{value:"mapping",label:t("p4.workspaceSettings.mapping")}]} />
+        <div className="min-h-0 overflow-auto py-1">
+          {tab === "general" ? <div className="grid gap-4">
+            <div className="grid gap-2"><div className="flex items-center gap-2"><Label htmlFor="edit-p4-root">{t("p4.folder")}</Label><HoverTip label={t("p4.workspaceSettings.rootHint")}><InfoIcon className="size-3.5 text-muted-foreground" /></HoverTip></div><div className="flex gap-2"><Input id="edit-p4-root" value={edit.root} disabled={blocked} className="font-mono text-xs" onChange={(event) => change("root",event.target.value)} /><Button variant="outline" disabled={blocked} onClick={() => void browse()}>{t("p4.browse")}</Button></div></div>
+            <div className="grid grid-cols-[1fr_auto] items-center gap-3"><Label>{t("p4.workspaceSettings.lineEnd")}</Label><DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" disabled={blocked}>{t(`p4.workspaceSettings.lineEnds.${edit.lineEnd}`)}<ChevronDownIcon /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">{(["local","unix","win","share","mac"] as const).map((value) => <DropdownMenuItem key={value} onClick={() => change("lineEnd",value)}>{t(`p4.workspaceSettings.lineEnds.${value}`)}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu></div>
+            <div className="grid gap-0 rounded-lg border px-3">{(["allwrite","clobber","compress","modtime","rmdir"] as const).map((option) => <div key={option} className="flex min-h-10 items-center gap-2 border-b last:border-0"><Label className="flex flex-1 items-center gap-2 text-xs"><Checkbox disabled={blocked} checked={edit.options[option]} onCheckedChange={(checked) => change("options",{...edit.options,[option]:checked === true} satisfies P4WorkspaceOptions)} />{t(`p4.workspaceSettings.options.${option}`)}</Label><HoverTip label={t(`p4.workspaceSettings.hints.${option}`)}><InfoIcon className="size-3.5 text-muted-foreground" /></HoverTip></div>)}</div>
+          </div> : <div className="grid gap-3"><div className="flex items-center gap-2 text-xs text-muted-foreground">{loaded.stream ? <><LockKeyholeIcon className="size-3.5" /><span className="truncate font-mono">{loaded.stream}</span><HoverTip label={t("p4.workspaceSettings.generatedHint")}><InfoIcon className="ml-auto size-3.5" /></HoverTip></> : t("p4.classicClient")}</div><Textarea aria-label={t("p4.workspaceSettings.mapping")} readOnly={Boolean(loaded.stream)} disabled={blocked} value={edit.view.join("\n")} onChange={(event) => change("view",event.target.value.split("\n"))} spellCheck={false} className="h-56 min-h-56 resize-none whitespace-pre font-mono text-xs [field-sizing:fixed]" /></div>}
         </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" disabled={saving} onClick={() => setWorkspaceOpen(false)}>{t("p4.cancel")}</Button>
-          <Button type="button" disabled={saving || !root.trim()} onClick={() => void submit()}>
-            {saving ? <Loader2Icon className="animate-spin" /> : null}{t("p4.save")}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
+      </> : !error ? <div role="status" className="flex h-40 items-center justify-center text-muted-foreground"><LoaderCircleIcon className="size-5 animate-spin" /></div> : null}
+      {error ? <p role="alert" className="whitespace-pre-wrap text-xs text-destructive">{error}</p> : null}
+      <DialogFooter>{!loaded && error ? <Button variant="ghost" className="mr-auto" onClick={() => {setError(null);setAttempt((value) => value + 1);}}>{t("common.retry")}</Button> : null}<Button variant="outline" disabled={saving} onClick={() => p4.setWorkspaceOpen(false)}>{t("common.cancel")}</Button><Button disabled={blocked || !dirty || !edit?.root.trim()} onClick={() => void save()}>{saving ? <LoaderCircleIcon className="animate-spin" /> : null}{t("p4.save")}</Button></DialogFooter>
+    </DialogContent>
+  </Dialog>;
 }

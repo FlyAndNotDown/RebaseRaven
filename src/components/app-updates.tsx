@@ -87,9 +87,17 @@ export function AppUpdateBanner() {
 }
 
 export function UpdatesSettings() {
-  useTranslation();
   const state = useAppUpdates();
-  const [notesOpen, setNotesOpen] = useState(false);
+  return <UpdatesSettingsView state={state} onCheck={() => void appUpdates.check()} onInstall={(version) => void appUpdates.install(version)} onRestart={() => void appUpdates.restart()} />;
+}
+
+export function UpdatesSettingsView({ state, onCheck, onInstall, onRestart }: {
+  state: UpdateSnapshot;
+  onCheck: () => void;
+  onInstall: (version: string) => void;
+  onRestart: () => void;
+}) {
+  useTranslation();
   const busy = updateBusy(state);
   const update = state.update;
   const canInstall = update && ["available", "error"].includes(state.status);
@@ -119,7 +127,7 @@ export function UpdatesSettings() {
               disabled={busy || state.status === "installed"}
               aria-busy={checking}
               aria-label={checkFeedback ? `${t("desktop.appUpdates.check_for_updates")}: ${checkFeedback}` : undefined}
-              onClick={() => void appUpdates.check()}
+              onClick={onCheck}
             >
               <span className="inline-flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
                 {checking ? <RefreshCwIcon className="motion-safe:animate-spin" /> : checkFailed ? <XIcon className="text-destructive" /> : checkSucceeded ? <CheckIcon /> : <RefreshCwIcon />}
@@ -150,27 +158,32 @@ export function UpdatesSettings() {
           ) : null}
         </div>
       ) : null}
-      {update?.notes ? (
-        <details className="text-xs text-muted-foreground" onToggle={(event) => setNotesOpen(event.currentTarget.open)}>
-          <summary className="w-fit cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-ring">{t("desktop.appUpdates.release_notes")}</summary>
-          {notesOpen ? <ScrollArea className="mt-2 rounded-lg border bg-muted/30" viewportClassName="max-h-64 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50" viewportProps={{ role: "region", "aria-label": t("desktop.appUpdates.release_notes"), tabIndex: 0 }} scrollbars="vertical">
-            <ReleaseNotesContent notes={update.notes} />
-          </ScrollArea> : null}
-        </details>
-      ) : null}
-      {canInstall ? (
-        <div>
-          <HoverTip label={installFailed ? state.error : undefined}>
-            <Button size="sm" disabled={busy} onClick={() => void appUpdates.install(update.version)}>
-              {installFailed ? <XIcon /> : <ArrowDownToLineIcon />}{t("desktop.appUpdates.update_to")}{" "}{versionLabel(update.version)}
-            </Button>
-          </HoverTip>
+      {update ? (
+        <div className="grid min-w-0 gap-3 rounded-lg border bg-muted/20 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="grid gap-1">
+              <p className="text-xs text-muted-foreground">{t("desktop.appUpdates.latest_version")}</p>
+              <h4 className="text-lg leading-6 font-medium tracking-tight">{versionLabel(update.version)}</h4>
+            </div>
+            {canInstall ? (
+              <HoverTip label={installFailed ? state.error : undefined}>
+                <Button size="sm" disabled={busy} onClick={() => onInstall(update.version)}>
+                  {installFailed ? <XIcon /> : <ArrowDownToLineIcon />}{t("desktop.appUpdates.update")}
+                </Button>
+              </HoverTip>
+            ) : null}
+          </div>
+          {update.notes?.trim() ? (
+            <ScrollArea className="min-w-0 border-t pt-1" gutter={false} viewportClassName="max-h-[min(40vh,24rem)] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50" viewportProps={{ role: "region", "aria-label": t("desktop.appUpdates.release_notes"), tabIndex: 0 }} scrollbars="vertical">
+              <ReleaseNotesContent notes={update.notes} />
+            </ScrollArea>
+          ) : null}
         </div>
       ) : null}
       {state.status === "installed" ? (
         <div>
           <HoverTip label={restartFailed ? state.error : undefined}>
-            <Button size="sm" disabled={busy} onClick={() => void appUpdates.restart()}>
+            <Button size="sm" disabled={busy} onClick={onRestart}>
               <span className="inline-flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
                 {state.request === "restart" ? <RotateCwIcon className="motion-safe:animate-spin" /> : restartFailed ? <XIcon /> : <RotateCwIcon />}
               </span>

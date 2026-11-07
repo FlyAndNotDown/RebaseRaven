@@ -214,6 +214,7 @@ pub fn spec_field(spec: &str, field: &str) -> String {
     String::new()
 }
 
+#[cfg(test)]
 pub fn remove_spec_field(spec: &str, field: &str) -> String {
     let mut out = String::new();
     for raw in spec.split('\n') {

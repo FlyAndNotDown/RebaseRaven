@@ -1,7 +1,18 @@
+import { p4ComparisonDiff, type P4Comparison } from "@/lib/p4-comparison";
 import { invoke } from "@tauri-apps/api/core";
 import { t } from "@/i18n";
 import type {
+  P4UnshelveRequest,
+  P4StreamRequest,
+  P4StreamPreview,
+  P4ReconcilePreview,
+  P4ManualResolve,
   P4Auth,
+  P4WorkspaceEdit,
+  P4SwitchRequest,
+  P4SwitchPreview,
+  P4SwitchOutcome,
+  P4WorkspaceSettings,
   P4ChangePage,
   P4Changelist,
   P4CheckedConnection,
@@ -21,10 +32,14 @@ import type {
   P4Executables,
   P4OpenResult,
   P4ResolveView,
-  P4Revision,
+  P4CompareRequest,
+  P4BlameLine,
+  P4ImageSource,
+  P4RevisionPage,
+  P4HistoryCursor,
   RepoDetection,
 } from "@/types/p4";
-import type { FileDiff } from "@/types/git";
+import type { FileDiff, ImagePair } from "@/types/git";
 import { errorMessage } from "@/lib/git";
 import { pathsIgnoreCase } from "@/lib/format";
 
@@ -101,10 +116,13 @@ export const p4Api = {
     call<FileDiff>("p4_opened_diff", { connection, path }),
   shelfDiff: (connection: P4Connection, depotPath: string, changeId: string) =>
     call<FileDiff>("p4_shelf_diff", { connection, depotPath, changeId }),
+  imagePair: (connection: P4Connection, source: P4ImageSource) => call<ImagePair>("p4_image_pair", {connection, source}),
+  annotate: (connection: P4Connection, depotPath: string, revision: string) => call<P4BlameLine[]>("p4_annotate", { connection, depotPath, revision }),
+  compareFiles: (connection: P4Connection, request: P4CompareRequest) => call<P4Comparison>("p4_compare_files", { connection, request }).then(p4ComparisonDiff),
   revisionDiff: (connection: P4Connection, depotPath: string, rev: string) =>
     call<FileDiff>("p4_revision_diff", { connection, depotPath, rev }),
-  filelog: (connection: P4Connection, path: string) =>
-    call<P4Revision[]>("p4_filelog", { connection, path }),
+  filelog: (connection: P4Connection, path: string, cursor: P4HistoryCursor | null = null) =>
+    call<P4RevisionPage>("p4_filelog", { connection, path, cursor }),
   locate: (connection: P4Connection, path: string) =>
     call<P4Location>("p4_locate", { connection, path }),
   listDir: (connection: P4Connection, relative: string) =>
@@ -118,8 +136,11 @@ export const p4Api = {
   cancelDepotSearch: (connection: P4Connection) => call<void>("p4_cancel_depot_search", { connection }),
   searchFiles: (connection: P4Connection, query: string) =>
     call<P4FileSearch>("p4_search_files", { connection, query }),
-  saveWorkspace: (connection: P4Connection, root: string, stream: string) =>
-    call<P4Connection>("p4_save_workspace", { connection, root, stream }),
+  previewSwitch: (connection: P4Connection, request: P4SwitchRequest) => call<P4SwitchPreview>("p4_preview_switch", {connection, request}),
+  applySwitch: (connection: P4Connection, request: P4SwitchRequest, fingerprint: string) => call<P4SwitchOutcome>("p4_apply_switch", {connection, request, fingerprint}),
+  workspaceSettings: (connection: P4Connection) => call<P4WorkspaceSettings>("p4_workspace_settings", {connection}),
+  saveWorkspace: (connection: P4Connection, edit: P4WorkspaceEdit, fingerprint: string) =>
+    call<P4Connection>("p4_save_workspace", { connection, edit, fingerprint }),
   submit: (connection: P4Connection, changeId: string, description: string) =>
     call<void>("p4_submit", { connection, changeId, description }),
   saveChange: (connection: P4Connection, changeId: string, description: string) =>
@@ -141,6 +162,11 @@ export const p4Api = {
     call<void>("p4_unshelve", { connection, changeId, target: target ?? null, files: files ?? null }),
   deleteShelf: (connection: P4Connection, changeId: string) =>
     call<void>("p4_delete_shelf", { connection, changeId }),
+  manualResolveView: (connection: P4Connection, path: string) =>
+    call<P4ManualResolve>("p4_manual_resolve_view", { connection, path }),
+  manualResolveExternal: (connection: P4Connection, path: string, text: string, fingerprint: string, tool: string) => call<string>("p4_manual_resolve_external", { connection, path, text, fingerprint, tool }),
+  manualResolveApply: (connection: P4Connection, path: string, text: string, fingerprint: string) =>
+    call<void>("p4_manual_resolve_apply", { connection, path, text, fingerprint }),
   resolveView: (connection: P4Connection, path: string) =>
     call<P4ResolveView>("p4_resolve_view", { connection, path }),
   resolveAccept: (connection: P4Connection, path: string, mode: "yours" | "theirs" | "merge") =>
@@ -149,6 +175,12 @@ export const p4Api = {
     call<string>("p4_sync", { connection, paths, activityId: activityId ?? null }),
   getRevision: (connection: P4Connection, request: P4GetRevision, activityId?: string) =>
     call<string>("p4_get_revision", { connection, request, activityId: activityId ?? null }),
+  listShelves: (connection: P4Connection, user: string, before: number | null) => call<P4ChangePage>("p4_list_shelves", { connection, user, before }),
+  shelfDetail: (connection: P4Connection, changeId: string) => call<P4Changelist>("p4_shelf_detail", { connection, changeId }),
+  previewUnshelve: (connection: P4Connection, request: P4UnshelveRequest) => call<P4OperationPreview>("p4_preview_unshelve", { connection, request }),
+  restoreShelf: (connection: P4Connection, request: P4UnshelveRequest, fingerprint: string) => call<string>("p4_restore_shelf", { connection, request, fingerprint }),
+  previewStream: (connection: P4Connection, request: P4StreamRequest) => call<P4StreamPreview>("p4_preview_stream", { connection, request }),
+  applyStream: (connection: P4Connection, request: P4StreamRequest, fingerprint: string) => call<string>("p4_apply_stream", { connection, request, fingerprint }),
   previewIntegrate: (connection: P4Connection, request: P4IntegrateRequest) =>
     call<P4OperationPreview>("p4_preview_integrate", { connection, request }),
   applyIntegrate: (connection: P4Connection, request: P4IntegrateRequest, fingerprint: string) =>
@@ -157,8 +189,9 @@ export const p4Api = {
     call<P4OperationPreview>("p4_preview_undo", { connection, request }),
   applyUndo: (connection: P4Connection, request: P4UndoRequest, fingerprint: string) =>
     call<string>("p4_apply_undo", { connection, request, fingerprint }),
-  reconcile: (connection: P4Connection, activityId?: string) =>
-    call<string>("p4_reconcile", { connection, activityId: activityId ?? null }),
+  previewReconcile: (connection: P4Connection) => call<P4ReconcilePreview>("p4_preview_reconcile", { connection }),
+  applyReconcile: (connection: P4Connection, paths: string[], changeId: string, fingerprint: string) =>
+    call<string>("p4_apply_reconcile", { connection, paths, changeId, fingerprint }),
   fileAction: (connection: P4Connection, action: "edit" | "add" | "delete" | "lock" | "unlock", paths: string[], changeId?: string) =>
     call<void>("p4_file_action", { connection, action, paths, changeId: changeId ?? null }),
   login: (connection: P4Connection, password: string) =>

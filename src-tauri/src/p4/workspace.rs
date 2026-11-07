@@ -19,8 +19,8 @@ use crate::p4::parse::{
     blank_change_spec, classic_client_spec, created_change_id, file_type_is_binary, indexed_groups,
     known_p4_value, normalize_charset, parse_p4_set, parse_p4config, parse_single_diff,
     parse_unchanged_diff_paths, parse_ztag, path_depth, path_is_within, read_description,
-    remove_spec_field, set_description, set_spec_field, spec_field, sync_estimate_files,
-    sync_reports_a_file, valid_client_name, valid_depot_path, ZtagRecord,
+    set_description, set_spec_field, spec_field, sync_estimate_files, sync_reports_a_file,
+    valid_client_name, valid_depot_path, ZtagRecord,
 };
 
 #[derive(Debug, Clone, Deserialize)]
@@ -44,6 +44,7 @@ pub struct P4ClientOption {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct P4StreamOption {
+    pub parent: String,
     pub path: String,
     pub kind: String,
 }
@@ -161,6 +162,7 @@ pub struct P4Describe {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct P4Revision {
+    pub depot_path: String,
     pub rev: String,
     pub change: String,
     pub action: String,
@@ -527,10 +529,12 @@ pub fn shelf_diff(
         return Err(AppError::msg("Shelf diff needs a depot path."));
     }
     let env = env_for(connection);
-    let have = format!("{depot_path}#have");
+
     let shelf = format!("{depot_path}@={id}");
     let meta = run_ok(&env, &["-ztag", "files", &shelf], None)?;
     let record = parse_ztag(&meta).into_iter().next().unwrap_or_default();
+    let base = field(&record, "rev");
+    let have = format!("{depot_path}#{base}");
     let action = field(&record, "action");
     let deleted = action == "delete" || action == "move/delete";
     if deleted || action == "add" || action == "move/add" {
@@ -548,55 +552,136 @@ pub fn shelf_diff(
 }
 
 pub fn revision_diff(connection: &P4Connection, path: &str, rev: &str) -> AppResult<FileDiff> {
-    let rev_no: u32 = rev
-        .trim()
-        .parse()
-        .map_err(|_| AppError::msg("Revision is not a number."))?;
-    let env = env_for(connection);
-    let spec = workspace_file_spec(&connection.root, path);
-    let depot_path = if spec.starts_with("//") {
-        spec
-    } else {
-        let stdout = run_ok(&env, &["-ztag", "where", &spec], None)?;
-        let record = parse_ztag(&stdout).into_iter().next().unwrap_or_default();
-        let depot = field(&record, "depotFile");
-        if depot.starts_with("//") {
-            depot
-        } else {
-            return Err(AppError::msg("File history needs a depot path."));
-        }
+    use super::history::{
+        compare_files, exact_depot, mapped_local, revision_number, P4CompareRequest, P4Comparison,
+        P4FileVersion,
     };
-    if rev_no <= 1 {
-        let spec = format!("{depot_path}#{rev_no}");
-        return printed_file_diff(&env, &depot_path, &spec, false, false);
+    let number = revision_number(rev)?;
+    if number == 0 {
+        return Err(AppError::msg(
+            "Enter a positive revision or changelist number.",
+        ));
     }
-    let spec = format!("{depot_path}#{rev_no}");
-    let previous = format!("{depot_path}#{}", rev_no - 1);
-    let text = cli::run_p4_diff(&env, &["diff2", "-du", &previous, &spec])?;
-    Ok(parse_single_diff(&text, &depot_path))
+    let depot = if path.starts_with("//") {
+        exact_depot(path)?;
+        path.to_string()
+    } else {
+        mapped_local(connection, path)?.0
+    };
+    let request = P4CompareRequest {
+        path: path.to_string(),
+        base: P4FileVersion::Revision {
+            depot_path: depot.clone(),
+            revision: (number - 1).to_string(),
+        },
+        head: P4FileVersion::Revision {
+            depot_path: depot,
+            revision: number.to_string(),
+        },
+    };
+    match compare_files(connection, &request)? {
+        P4Comparison::Diff { diff } => Ok(diff),
+        P4Comparison::Text { .. } => {
+            Err(AppError::msg("The selected file revision is unavailable."))
+        }
+    }
 }
 
-pub fn filelog(connection: &P4Connection, path: &str) -> AppResult<Vec<P4Revision>> {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct P4HistoryCursor {
+    pub depot_path: String,
+    pub before_revision: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct P4RevisionPage {
+    pub revisions: Vec<P4Revision>,
+    pub next: Option<P4HistoryCursor>,
+}
+
+pub fn filelog(
+    connection: &P4Connection,
+    path: &str,
+    cursor: Option<&P4HistoryCursor>,
+) -> AppResult<P4RevisionPage> {
     let env = env_for(connection);
-    let spec = workspace_file_spec(&connection.root, path);
-    let stdout = run_ok(&env, &["-ztag", "filelog", "-m", "40", "-t", &spec], None)?;
-    let record = parse_ztag(&stdout).into_iter().next().unwrap_or_default();
+    let spec = if let Some(cursor) = cursor {
+        if !cursor.depot_path.starts_with("//")
+            || !valid_depot_path(&cursor.depot_path)
+            || cursor.depot_path.contains(['*', '#', '@'])
+            || cursor.depot_path.contains("...")
+        {
+            return Err(AppError::msg(
+                "Choose one depot file without wildcards or revision suffixes.",
+            ));
+        }
+        if cursor.before_revision <= 1 {
+            return Ok(P4RevisionPage {
+                revisions: Vec::new(),
+                next: None,
+            });
+        }
+        format!("{}#1,#{}", cursor.depot_path, cursor.before_revision - 1)
+    } else {
+        workspace_file_spec(&connection.root, path)
+    };
+    if spec.contains("...") || spec.contains('*') {
+        return Err(AppError::msg(
+            "Choose one depot file without wildcards or revision suffixes.",
+        ));
+    }
+    let stdout = run_ok(
+        &env,
+        &["-ztag", "filelog", "-m", "51", "-l", "-t", &spec],
+        None,
+    )?;
+    Ok(revision_page(&stdout))
+}
+
+fn revision_page(stdout: &str) -> P4RevisionPage {
     let mut revisions = Vec::new();
-    for group in indexed_groups(&record) {
-        let rev = field(&group, "rev");
-        if rev.is_empty() {
+    for record in parse_ztag(stdout) {
+        let depot_path = field(&record, "depotFile");
+        if depot_path.is_empty() {
             continue;
         }
-        revisions.push(P4Revision {
-            rev,
-            change: field(&group, "change"),
-            action: field(&group, "action"),
-            user: field(&group, "user"),
-            time: field_i64(&group, "time"),
-            description: clean_description(&field(&group, "desc")),
-        });
+        for group in indexed_groups(&record) {
+            let rev = field(&group, "rev");
+            if rev
+                .parse::<u64>()
+                .ok()
+                .filter(|number| *number > 0)
+                .is_none()
+            {
+                continue;
+            }
+            revisions.push(P4Revision {
+                depot_path: depot_path.clone(),
+                rev,
+                change: field(&group, "change"),
+                action: field(&group, "action"),
+                user: field(&group, "user"),
+                time: field_i64(&group, "time"),
+                description: clean_description(&field(&group, "desc")),
+            });
+            if revisions.len() == 51 {
+                break;
+            }
+        }
+        if revisions.len() == 51 {
+            break;
+        }
     }
-    Ok(revisions)
+    let next = revisions.get(50).and_then(|revision| {
+        Some(P4HistoryCursor {
+            depot_path: revision.depot_path.clone(),
+            before_revision: revision.rev.parse::<u64>().ok()?.checked_add(1)?,
+        })
+    });
+    revisions.truncate(50);
+    P4RevisionPage { revisions, next }
 }
 
 pub fn list_dir(connection: &P4Connection, relative: &str) -> AppResult<Vec<P4DirEntry>> {
@@ -1848,6 +1933,201 @@ pub fn resolve_accept(connection: &P4Connection, path: &str, mode: &str) -> AppR
     Ok(())
 }
 
+const MANUAL_MERGE_LIMIT: usize = 2 * 1024 * 1024;
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct P4ManualResolve {
+    pub base: String,
+    pub yours: String,
+    pub theirs: String,
+    pub fingerprint: String,
+}
+
+fn merge_text(bytes: Vec<u8>, truncated: bool) -> AppResult<String> {
+    if truncated || bytes.len() > MANUAL_MERGE_LIMIT || bytes.contains(&0) {
+        return Err(AppError::msg(
+            "Manual merge requires UTF-8 text files smaller than 2 MiB.",
+        ));
+    }
+    String::from_utf8(bytes)
+        .map_err(|_| AppError::msg("Manual merge requires UTF-8 text files smaller than 2 MiB."))
+}
+
+fn manual_resolve_snapshot(
+    connection: &P4Connection,
+    path: &str,
+) -> AppResult<(P4ManualResolve, PathBuf)> {
+    use std::hash::{Hash, Hasher};
+    let env = env_for(connection);
+    let spec = workspace_file_spec(&connection.root, path);
+    let preview = run_ok(&env, &["-ztag", "resolve", "-n", "-o", &spec], None)?;
+    let (facts, count) = pending_resolve_facts(&preview, &spec)
+        .ok_or_else(|| AppError::msg("This file does not need resolve."))?;
+    if count != 1
+        || !resolve_can_merge(&facts.action, &facts.kind)
+        || facts.base_file.is_empty()
+        || facts.base_rev.parse::<u64>().unwrap_or(0) == 0
+        || facts.from_file.is_empty()
+        || facts.end_rev.parse::<u64>().unwrap_or(0) == 0
+    {
+        return Err(AppError::msg(
+            "Manual merge requires one text content resolve with a common base.",
+        ));
+    }
+    let meta = run_ok(
+        &env,
+        &["-ztag", "fstat", "-T", "clientFile,type,headType", &spec],
+        None,
+    )?;
+    let record = parse_ztag(&meta).into_iter().next().unwrap_or_default();
+    if file_type_is_binary(&field(&record, "type"))
+        || file_type_is_binary(&field(&record, "headType"))
+    {
+        return Err(AppError::msg(
+            "Manual merge requires UTF-8 text files smaller than 2 MiB.",
+        ));
+    }
+    let local = PathBuf::from(field(&record, "clientFile"));
+    if !local.is_absolute() || !fs::symlink_metadata(&local)?.file_type().is_file() {
+        return Err(AppError::msg("Choose a regular workspace file."));
+    }
+    let parent = local
+        .parent()
+        .ok_or_else(|| AppError::msg("Choose a regular workspace file."))?;
+    workspace_directory_path(Path::new(&connection.root), parent.to_path_buf())?;
+    let yours = merge_text(
+        std::io::BufReader::new(fs::File::open(&local)?)
+            .take((MANUAL_MERGE_LIMIT + 1) as u64)
+            .bytes()
+            .collect::<Result<Vec<_>, _>>()?,
+        false,
+    )?;
+    let read_revision = |file: &str, rev: &str| -> AppResult<String> {
+        if !valid_depot_path(file) || !file.starts_with("//") {
+            return Err(AppError::msg(
+                "Choose the exact depot file path returned by Perforce.",
+            ));
+        }
+        let (bytes, truncated) =
+            cli::read_file_prefix(&env, &format!("{file}#{rev}"), MANUAL_MERGE_LIMIT)?;
+        merge_text(bytes, truncated)
+    };
+    let base = read_revision(&facts.base_file, &facts.base_rev)?;
+    let theirs = read_revision(&facts.from_file, &facts.end_rev)?;
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    (
+        &connection.port,
+        &connection.user,
+        &connection.client,
+        &local,
+        &preview,
+        &meta,
+        &base,
+        &yours,
+        &theirs,
+    )
+        .hash(&mut hash);
+    Ok((
+        P4ManualResolve {
+            base,
+            yours,
+            theirs,
+            fingerprint: format!("{:016x}", hash.finish()),
+        },
+        local,
+    ))
+}
+
+pub fn manual_resolve_view(connection: &P4Connection, path: &str) -> AppResult<P4ManualResolve> {
+    manual_resolve_snapshot(connection, path).map(|(view, _)| view)
+}
+
+pub fn manual_resolve_apply(
+    connection: &P4Connection,
+    path: &str,
+    text: &str,
+    fingerprint: &str,
+) -> AppResult<()> {
+    use std::io::Write;
+    merge_text(text.as_bytes().to_vec(), false)?;
+    if text.lines().any(|line| {
+        line.starts_with("<<<<<<<") || line.starts_with(">>>>>>>") || line.starts_with("|||||||")
+    }) {
+        return Err(AppError::msg("Remove conflict markers before resolving."));
+    }
+    let (current, local) = manual_resolve_snapshot(connection, path)?;
+    if current.fingerprint != fingerprint {
+        return Err(AppError::msg(
+            "The operation or workspace changed. Preview it again before applying.",
+        ));
+    }
+    let mut result = tempfile::NamedTempFile::new_in(local.parent().unwrap())?;
+    result
+        .as_file()
+        .set_permissions(fs::metadata(&local)?.permissions())?;
+    result.write_all(text.as_bytes())?;
+    result.flush()?;
+    #[cfg(windows)]
+    let original_permissions = fs::metadata(&local)?.permissions();
+    #[cfg(windows)]
+    if original_permissions.readonly() {
+        let mut writable = original_permissions.clone();
+        #[allow(
+            clippy::permissions_set_readonly_false,
+            reason = "This Windows-only branch clears a DOS attribute, not Unix permission bits"
+        )]
+        writable.set_readonly(false);
+        fs::set_permissions(&local, writable)?;
+    }
+    if let Err(error) = result.persist(&local) {
+        #[cfg(windows)]
+        let _ = fs::set_permissions(&local, original_permissions);
+        return Err(AppError::msg(error.to_string()));
+    }
+    // The edited workspace file is now the chosen result. Never submit it here.
+    resolve_accept(connection, path, "yours")
+}
+
+pub fn manual_resolve_external(
+    connection: &P4Connection,
+    path: &str,
+    text: &str,
+    fingerprint: &str,
+    tool: &str,
+) -> AppResult<String> {
+    let (view, _) = manual_resolve_snapshot(connection, path)?;
+    if view.fingerprint != fingerprint {
+        return Err(AppError::msg(
+            "The operation or workspace changed. Preview it again before applying.",
+        ));
+    }
+    merge_text(text.as_bytes().to_vec(), false)?;
+    let directory = tempfile::tempdir()?;
+    let base = directory.path().join("base.txt");
+    let yours = directory.path().join("yours.txt");
+    let theirs = directory.path().join("theirs.txt");
+    let result = directory.path().join("result.txt");
+    fs::write(&base, &view.base)?;
+    fs::write(&yours, &view.yours)?;
+    fs::write(&theirs, &view.theirs)?;
+    fs::write(&result, text)?;
+    crate::git::merge_files_external(tool, directory.path(), &base, &yours, &theirs, &result)?;
+    let result = merge_text(
+        std::io::BufReader::new(fs::File::open(result)?)
+            .take((MANUAL_MERGE_LIMIT + 1) as u64)
+            .bytes()
+            .collect::<Result<Vec<_>, _>>()?,
+        false,
+    )?;
+    if manual_resolve_snapshot(connection, path)?.0.fingerprint != fingerprint {
+        return Err(AppError::msg(
+            "The operation or workspace changed. Preview it again before applying.",
+        ));
+    }
+    Ok(result)
+}
+
 struct ResolveFacts {
     depot: String,
     action: String,
@@ -2538,17 +2818,6 @@ fn parallel_rejected(message: &str) -> bool {
             || lower.contains("ignored"))
 }
 
-pub fn reconcile(connection: &P4Connection, mut progress: impl FnMut(&str)) -> AppResult<String> {
-    let env = env_for(connection);
-    cli::run_p4_stream(
-        &env,
-        &["reconcile", "-e", "-a", "-d"],
-        &mut |line: String| {
-            progress(&line);
-        },
-    )
-}
-
 pub fn file_action(
     connection: &P4Connection,
     action: &str,
@@ -2821,6 +3090,7 @@ pub fn list_streams(auth: &P4Auth) -> AppResult<Vec<P4StreamOption>> {
         streams.push(P4StreamOption {
             path,
             kind: field(&record, "Type"),
+            parent: field(&record, "Parent"),
         });
     }
     streams.sort_by_key(|item| item.path.to_lowercase());
@@ -2897,43 +3167,6 @@ pub fn prepare_client(auth: &P4Auth, name: &str) -> AppResult<String> {
     }
     update_config_file(&root, &env)?;
     Ok(root.to_string_lossy().into_owned())
-}
-
-pub fn save_workspace(
-    connection: &P4Connection,
-    root: &str,
-    stream: &str,
-) -> AppResult<P4Connection> {
-    let root_path = PathBuf::from(strip_verbatim_prefix(root.trim()));
-    if !root_path.is_absolute() {
-        return Err(AppError::msg(
-            "Choose an absolute folder for the workspace.",
-        ));
-    }
-    let stream = stream.trim();
-    if !stream.is_empty() && !valid_depot_path(stream) {
-        return Err(AppError::msg("Stream should look like //depot/main."));
-    }
-    fs::create_dir_all(&root_path)?;
-    let mut env = env_for(connection);
-    let current = run_ok(&env, &["client", "-o", &connection.client], None)?;
-    let current_stream = spec_field(&current, "Stream");
-    let mut spec = if !stream.is_empty() && stream != current_stream {
-        run_ok(
-            &env,
-            &["client", "-S", stream, "-o", &connection.client],
-            None,
-        )?
-    } else if stream.is_empty() && !current_stream.is_empty() {
-        remove_spec_field(&current, "Stream")
-    } else {
-        current
-    };
-    spec = set_spec_field(&spec, "Root", &root_path.to_string_lossy());
-    run_ok(&env, &["client", "-i"], Some(&spec))?;
-    env.cwd = root_path.clone();
-    update_config_file(&root_path, &env)?;
-    connection_after_create(&env, &root_path, stream)
 }
 
 fn prepare_auth(auth: &P4Auth) -> AppResult<P4Env> {
@@ -3024,7 +3257,11 @@ fn list_clients(env: &P4Env) -> AppResult<Vec<P4ClientOption>> {
     Ok(clients)
 }
 
-fn connection_after_create(env: &P4Env, root: &Path, stream: &str) -> AppResult<P4Connection> {
+pub(super) fn connection_after_create(
+    env: &P4Env,
+    root: &Path,
+    stream: &str,
+) -> AppResult<P4Connection> {
     let stdout = run_ok(env, &["-ztag", "info"], None).unwrap_or_default();
     let record = parse_ztag(&stdout).into_iter().next().unwrap_or_default();
     let reported = record
@@ -3187,7 +3424,7 @@ fn file_from_opened(
     }
 }
 
-fn files_from_groups(
+pub(super) fn files_from_groups(
     connection: &P4Connection,
     groups: &[ZtagRecord],
     shelved: bool,
@@ -3217,7 +3454,11 @@ fn files_from_groups(
         .collect()
 }
 
-fn change_from_record(record: &ZtagRecord, files: Vec<P4File>, shelved: bool) -> P4Changelist {
+pub(super) fn change_from_record(
+    record: &ZtagRecord,
+    files: Vec<P4File>,
+    shelved: bool,
+) -> P4Changelist {
     P4Changelist {
         id: field(record, "change"),
         user: field(record, "user"),
@@ -3579,7 +3820,7 @@ fn write_config(root: &Path, env: &P4Env) -> AppResult<()> {
     update_config_file(root, env)
 }
 
-fn update_config_file(root: &Path, env: &P4Env) -> AppResult<()> {
+pub(super) fn update_config_file(root: &Path, env: &P4Env) -> AppResult<()> {
     let names = config_names();
     let path = names
         .iter()
@@ -3641,7 +3882,7 @@ fn printed_file_diff(
     Ok(content_file_diff(path, &bytes, truncated, false, deleted))
 }
 
-fn content_file_diff(
+pub(super) fn content_file_diff(
     path: &str,
     bytes: &[u8],
     truncated: bool,
@@ -3782,6 +4023,33 @@ fn first_text(preferred: Option<&String>, fallback: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn file_history_pages_across_renames_using_the_first_unseen_revision() {
+        let mut text = "... depotFile //depot/new.txt\n".to_string();
+        for index in 0..50 {
+            text.push_str(&format!(
+                "... rev{index} {}\n... change{index} {}\n",
+                50 - index,
+                100 - index
+            ));
+        }
+        text.push_str("\n... depotFile //depot/old.txt\n... rev0 73\n... change0 49\n");
+        let page = super::revision_page(&text);
+        assert_eq!(page.revisions.len(), 50);
+        let next = page.next.unwrap();
+        assert_eq!(next.depot_path, "//depot/old.txt");
+        assert_eq!(next.before_revision, 74);
+        assert_eq!(page.revisions[49].rev, "1");
+    }
+
+    #[test]
+    fn final_history_page_keeps_full_descriptions_and_stops_paging() {
+        let page = super::revision_page("... depotFile //depot/file.txt\n... rev0 2\n... desc0 A complete description\n... user0 alice\n... rev1 1\n");
+        assert_eq!(page.revisions.len(), 2);
+        assert!(page.next.is_none());
+        assert_eq!(page.revisions[0].description, "A complete description");
+    }
+
     use super::*;
 
     struct TestDirectory(PathBuf);

@@ -54,6 +54,7 @@ export interface P4ResolveView {
 }
 
 export interface P4Revision {
+  depotPath: string;
   rev: string;
   change: string;
   action: string;
@@ -146,6 +147,7 @@ export interface P4ClientOption {
 }
 
 export interface P4StreamOption {
+  parent?: string;
   path: string;
   kind: string;
 }
@@ -185,3 +187,52 @@ export interface P4Executables {
   pathP4: string | null;
   active: string | null;
 }
+
+export interface P4ManualResolve {
+  base: string;
+  yours: string;
+  theirs: string;
+  fingerprint: string;
+}
+
+export interface P4ReconcilePreview {
+  files: { path: string; depotPath: string; action: string }[];
+  fingerprint: string;
+}
+
+export interface P4StreamRequest {
+  mode: "merge" | "copy";
+  source: string;
+  changeId: string;
+}
+export type P4StreamPreview = P4ReconcilePreview;
+
+export interface P4UnshelveRequest {
+  changeId: string;
+  target: string;
+  files: string[];
+  stream: string;
+}
+
+export interface P4HistoryCursor { depotPath: string; beforeRevision: number }
+export interface P4RevisionPage { revisions: P4Revision[]; next: P4HistoryCursor | null }
+
+export type P4FileVersion = { kind: "revision"; depotPath: string; revision: string } | { kind: "workspace" };
+export interface P4CompareRequest { path: string; base: P4FileVersion; head: P4FileVersion }
+
+export interface P4BlameLine { line: number; change: string; user: string; time: string; content: string }
+
+export type P4ImageSource =
+  | { kind: "opened"; path: string }
+  | { kind: "shelf"; path: string; changeId: string }
+  | { kind: "revision"; path: string; revision: string }
+  | { kind: "compare"; request: P4CompareRequest };
+
+export interface P4WorkspaceOptions { allwrite: boolean; clobber: boolean; compress: boolean; modtime: boolean; rmdir: boolean }
+export interface P4WorkspaceEdit { root: string; view: string[]; lineEnd: "local" | "unix" | "mac" | "win" | "share"; options: P4WorkspaceOptions }
+export interface P4WorkspaceSettings extends P4WorkspaceEdit { stream: string; fingerprint: string }
+
+export interface P4SwitchRequest { target: string; shelve: boolean }
+export interface P4SwitchFile { path: string; depotPath: string; action: string; change: string | null }
+export interface P4SwitchPreview { current: string; target: string; view: string[]; limitView: string[]; changes: P4SwitchFile[]; unresolved: boolean; fingerprint: string }
+export interface P4SwitchOutcome { connection: P4Connection; source: string; target: string; stage: "shelve" | "switch" | "sync" | "done"; backupShelf: string | null; output: string }

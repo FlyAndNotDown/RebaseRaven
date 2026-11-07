@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { DiagnosticExport, DiagnosticLevel, DiagnosticView } from "@/types/diagnostics";
+import type { DiagnosticExport, DiagnosticSummary } from "@/types/diagnostics";
 
 export const diagnosticsApi = {
-  view: (level: DiagnosticLevel) => invoke<DiagnosticView>("get_diagnostic_view", { level }),
+  summary: () => invoke<DiagnosticSummary>("get_diagnostic_summary"),
   clear: () => invoke<void>("clear_diagnostic_logs"),
   export: (destination: string) => invoke<DiagnosticExport>("export_diagnostic_logs", { destination }),
   openDirectory: () => invoke<void>("open_diagnostic_directory"),

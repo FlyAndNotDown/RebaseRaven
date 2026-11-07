@@ -93,7 +93,6 @@
   "download.latest": "最新版本",
   "download.viewLatest": "查看最新版本",
   "download.version": "版本 · {{version}}",
-  "download.requires": "Git 仓库需要 Git，Perforce 工作区需要 Perforce CLI。",
   "download.build": "从源码构建",
   "footer.tagline": "统一的版本管理客户端。",
   "demo.gitIntro": "选择一个文件，暂存一个差异块，然后创建示例提交。",
