@@ -1,6 +1,9 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type {
   AppPrefs,
+  BisectAction,
+  BisectState,
+  BisectOutcome,
   AppSession,
   BranchInfo,
   BranchList,
@@ -93,6 +96,9 @@ export function subscribeGitMissing(listener: () => void) {
 }
 
 export const gitApi = {
+  bisectState: (repoPath: string) => call<BisectState>("bisect_state", { repoPath }),
+  bisectAction: (repoPath: string, action: BisectAction, fingerprint: string) =>
+    call<BisectOutcome>("bisect_action", { repoPath, action, fingerprint }),
   listRecents: () => call<RecentRepo[]>("list_recents"),
   forgetRecent: (path: string) => call<RecentRepo[]>("forget_recent", { path }),
   loadSession: () => call<AppSession>("load_session"),

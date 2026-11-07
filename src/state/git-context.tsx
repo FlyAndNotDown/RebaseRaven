@@ -63,6 +63,9 @@ import {
 } from "@/state/snapshot-compare";
 import type {
   Activity,
+  BisectAction,
+  BisectOutcome,
+  BisectUpdate,
   AppPrefs,
   AppSession,
   PanelLayout,
@@ -83,7 +86,7 @@ import type {
 } from "@/types/git";
 
 export { COMMIT_PAGE, WELCOME_TAB_ID, defaultFetchRemote, primaryRemote };
-export type Panel = "reflog" | "palette" | "settings" | "settings-about" | "new-branch";
+export type Panel = "reflog" | "bisect" | "palette" | "settings" | "settings-about" | "new-branch";
 export type RepoKindPrompt = {
   path: string;
   gitPath: string;
@@ -230,6 +233,7 @@ interface GitContextValue {
   mergeRef: (onto: string, label: string) => Promise<boolean>;
   operationContinue: (message?: string) => Promise<boolean>;
   operationAbort: () => Promise<boolean>;
+  bisectAction: (action: BisectAction, fingerprint: string) => Promise<BisectUpdate | null>;
   resolveConflict: (path: string, side: "ours" | "theirs" | "both") => Promise<boolean>;
   saveConflict: (path: string, text: string) => Promise<boolean>;
   resetCommit: (oid: string, mode: ResetMode) => Promise<boolean>;
@@ -2454,6 +2458,22 @@ export function GitProvider({ children }: { children: ReactNode }) {
     );
   }, [runMutation]);
 
+  const bisectAction = useCallback(async (action: BisectAction, fingerprint: string): Promise<BisectUpdate | null> => {
+    const tabId = activeTabIdRef.current;
+    const received: { value: BisectOutcome | null } = { value: null };
+    const ok = await runMutation(
+      t(`git.bisect.${action.kind}Activity`),
+      async (repoPath) => {
+        received.value = await gitApi.bisectAction(repoPath, action, fingerprint);
+        return received.value.snapshot;
+      },
+      undefined,
+      { tabId },
+    );
+    if (!ok) await refreshAfterReplay(tabId);
+    return ok && received.value ? { state: received.value.state, report: received.value.report } : null;
+  }, [refreshAfterReplay, runMutation]);
+
   const resolveConflict = useCallback(
     async (path: string, side: "ours" | "theirs" | "both") => {
       return runMutation(
@@ -3027,6 +3047,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       mergeRef,
       operationContinue,
       operationAbort,
+      bisectAction,
       resolveConflict,
       saveConflict,
       resetCommit,
@@ -3124,6 +3145,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       mergeRef,
       operationContinue,
       operationAbort,
+      bisectAction,
       resolveConflict,
       saveConflict,
       resetCommit,

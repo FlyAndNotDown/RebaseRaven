@@ -6,7 +6,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { AppUpdateBanner } from "@/components/app-updates";
 import { AskpassDialog } from "@/components/askpass-dialog";
 import { CommandCenter } from "@/components/command-palette";
-import { ReflogDialog } from "@/components/lazy-dialogs";
+import { BisectDialog, ReflogDialog } from "@/components/lazy-dialogs";
 import { RepoKindDialog } from "@/components/repo-kind-dialog";
 import { WelcomeScreen } from "@/components/welcome-screen";
 import { WorkspaceSkeleton } from "@/components/skeletons";
@@ -56,6 +56,11 @@ export default function App() {
       <ReflogDialog
         open={openPanel === "reflog" && activeTabId !== WELCOME_TAB_ID && !perforce}
         onOpenChange={(open) => setOpenPanel(open ? "reflog" : null)}
+      />
+      <BisectDialog
+        key={activeTabId}
+        open={openPanel === "bisect" && activeTabId !== WELCOME_TAB_ID && !perforce}
+        onOpenChange={(open) => setOpenPanel(open ? "bisect" : null)}
       />
     </div>
   );

@@ -9,7 +9,9 @@ Sources: [P4V navigation](https://help.perforce.com/helix-core/server-apps/p4v/c
 [P4V labels](https://help.perforce.com/helix-core/server-apps/p4v/2026.1/Content/P4V/branches.labels.html),
 [P4V branch mappings](https://help.perforce.com/helix-core/server-apps/p4v/current/Content/P4V/branches.mapping.html),
 [Fork feature overview](https://git-fork.com/), and the corresponding Git/P4
-command references. A source implementation is inventory evidence, not runtime
+command references, including [Git bisect](https://git-scm.com/docs/git-bisect)
+and [TortoiseGit bisect](https://tortoisegit.org/docs/tortoisegit/tgit-dug-bisect.html).
+A source implementation is inventory evidence, not runtime
 verification of every option or platform.
 
 ## Git
@@ -30,7 +32,7 @@ verification of every option or platform.
 | Worktrees | `git/structure.rs` | Audit lock/unlock, move and repair |
 | Submodules | `git/structure.rs` | Add, remove, URL changes, sync and branch updates are missing |
 | Patch import/export | `git/operations.rs` | Audit format-patch/am recovery and selected changes |
-| Bisect | No command surface found | Implement interactive diagnosis and reset |
+| Bisect | `git/bisect.rs`, shared operation banner and bisect dialog: start, classify, skip, retest, inspect and reset | Repository and component checks pass; native/provider transitions, automation, log import/export and large-session behavior remain to audit |
 | Git LFS | No dedicated command surface found | Inspect installed-tool integration, tracking and locks |
 | Git-flow | No dedicated command surface found | Inspect branch workflow coverage and explicit operations |
 | Sparse checkout | No command surface found | Audit mainstream-client coverage and working-tree controls |
@@ -150,3 +152,38 @@ area. Do not infer full parity from a passing test suite or this inventory.
 - Current checks: 424 frontend tests and 303 Rust tests pass; formatting, Clippy,
   source, website, version and type checks pass. The existing unrelated test
   remains ignored. These checks do not establish complete client parity.
+
+### Interactive Git bisect
+
+- The history toolbar and command palette open an interactive session. Starting
+  accepts a bad revision, multiple good revisions, optional path filters and
+  first-parent traversal. Active sessions have their own operation banner and
+  cannot accidentally enter the generic continue/commit workflow.
+- Users can classify or skip the checked-out candidate, classify another known
+  revision, inspect a result, test an ambiguous candidate, and end the session to
+  restore its original branch or detached HEAD. External custom terms and
+  no-checkout sessions are recognized rather than silently reinterpreted.
+- Actions bind the session files, native refs and current HEAD. Tracked local
+  edits, staged changes, stale decisions and nested operations are rejected.
+  Git protects untracked checkout collisions. A per-worktree advisory lock
+  serializes application bisect actions; failures refresh actual repository
+  state instead of assuming an operation was atomic.
+- Candidate analysis explicitly preserves the session's Git-quoted paths and
+  first-parent mode. A sole untested candidate is not presented as a proven
+  result. Retesting a skipped revision clears its skip ref and replay-log entry;
+  the resulting native log was replayed successfully in a real repository test.
+- Eleven focused tests cover linear diagnosis, ambiguous skips and retesting,
+  invalid/stale/dirty requests, untracked collisions, action locking, linked
+  worktrees, detached restoration, custom terms, no-checkout sessions, path
+  quoting, first-parent merges and generic operation guards. A separate real
+  reftable repository also completes the full diagnosis and reset flow.
+- Production dialog and banner checks against real Rust/Git commands cover
+  start, classification, reopening, unique and ambiguous results, candidate
+  checkout, focus/scroll recovery, retesting, external command changes and dirty
+  mark/reset rejection. The minimum 960x640 window remains usable, and fixture
+  branches and worktrees were restored after testing.
+- Checks: 424 frontend tests and 314 Rust tests pass, with the existing unrelated
+  test ignored. Source, website, version, type, lint, formatting and Clippy pass.
+  Native application entry points and provider transitions remain unverified
+  while the host is locked. Candidate inspection is bounded to 500 revisions;
+  larger ambiguous sessions and automation/log management remain in the audit.

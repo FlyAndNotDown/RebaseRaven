@@ -151,7 +151,8 @@ export function ChangesPane() {
     "runMergetool",
     "updatePrefs",
   ]);
-  const operation = snapshot?.repo.operation ?? null;
+  const bisecting = snapshot?.repo.operation?.kind === "bisect";
+  const operation = bisecting ? null : snapshot?.repo.operation ?? null;
   const preparedMessage = operation?.message ?? "";
   const [message, setMessage] = useState(preparedMessage);
   const [shownPrepared, setShownPrepared] = useState(preparedMessage);
@@ -241,13 +242,13 @@ export function ChangesPane() {
     return selected.length > 1 && selected.includes(path) ? selected : [path];
   };
 
-  const canAmend = Boolean(snapshot?.headCommit) && !operation;
+  const canAmend = Boolean(snapshot?.headCommit) && !operation && !bisecting;
   const canCommitAndPush =
-    !operation && !committing && message.trim().length > 0 && files.staged.length > 0;
+    !operation && !bisecting && !committing && message.trim().length > 0 && files.staged.length > 0;
   const canOpenCommitMenu = canCommitAndPush || canAmend;
-  const canCommit = operation
+  const canCommit = !bisecting && (operation
     ? !committing && !conflicted
-    : !committing && message.trim().length > 0 && (amend ? canAmend : files.staged.length > 0);
+    : !committing && message.trim().length > 0 && (amend ? canAmend : files.staged.length > 0));
   const primaryLabel = operation
     ? t(CONTINUE_LABEL[operation.kind] ?? "git.ui.continue")
     : amend
@@ -743,7 +744,7 @@ export function ChangesPane() {
           >
             <Undo2Icon data-icon="inline-start" />{t("git.ui.discard_all")}</Button>
           <div className="inline-flex overflow-hidden rounded-lg">
-            <HoverTip label={operation && conflicted ? t("git.ui.resolve_every_conflict_first") : undefined}>
+            <HoverTip label={bisecting ? t("git.bisect.finishBeforeCommit") : operation && conflicted ? t("git.ui.resolve_every_conflict_first") : undefined}>
               <span className="inline-flex">
                 <Button type="submit" disabled={!canCommit} className="rounded-none">
                   {primaryLabel}

@@ -23,6 +23,7 @@ import {
   MessageSquareTextIcon,
   RotateCcwIcon,
   SearchIcon,
+  BinaryIcon,
   Undo2Icon,
   UndoDotIcon,
   UserIcon,
@@ -405,6 +406,11 @@ export function HistoryPane() {
             />
           </HoverTip>
         </div>
+        <HoverTip label={t("git.bisect.title")}>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={t("git.bisect.title")} onClick={() => setOpenPanel("bisect")}>
+            <BinaryIcon />
+          </Button>
+        </HoverTip>
         <HoverTip label={t("git.ui.reflog")}>
           <Button
             type="button"

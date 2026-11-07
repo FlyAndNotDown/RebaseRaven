@@ -13,6 +13,7 @@ use serde::Serialize;
 use crate::error::{AppError, AppResult};
 
 // Submodules share this module's imports and helpers through `use super::*`.
+mod bisect;
 mod changes;
 mod cli;
 mod conflicts;
@@ -37,6 +38,7 @@ mod structure;
 mod tests;
 mod tools;
 
+pub use bisect::*;
 pub use changes::*;
 use cli::*;
 pub use cli::{

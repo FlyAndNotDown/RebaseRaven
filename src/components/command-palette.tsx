@@ -131,6 +131,7 @@ export function CommandCenter() {
         { id: "undo-commit", label: t("desktop.commandPalette.undo_last_commit"), group: t("desktop.appSidebar.changes"), run: () => void git.undoLastCommit() },
         { id: "apply-patch", label: t("desktop.commandPalette.apply_patch"), group: t("desktop.appSidebar.changes"), run: () => void git.applyPatch() },
         { id: "reflog", label: t("desktop.commandPalette.show_reflog"), group: t("desktop.appSidebar.history"), shortcut: "reflog", run: () => setOpenPanel("reflog") },
+        { id: "bisect", label: t("git.bisect.title"), detail: t("git.bisect.command"), group: t("desktop.appSidebar.history"), run: () => setOpenPanel("bisect") },
         { id: "editor", label: t("desktop.appHeader.open_in_editor"), group: t("desktop.commandPalette.repository"), shortcut: "openInEditor", run: () => void git.openInEditor() },
         { id: "terminal", label: t("desktop.appHeader.open_terminal"), group: t("desktop.commandPalette.repository"), shortcut: "openTerminal", run: () => void git.openTerminal() },
         { id: "reveal", label: t("desktop.sshKeysSettings.open_folder"), group: t("desktop.commandPalette.repository"), run: () => void git.revealRepo() },
