@@ -65,9 +65,18 @@ jobs:
             node scripts/site-release-downloads.mjs
       - name: Build site
         env:
-          VITE_GA_MEASUREMENT_ID: ${{ vars.GA_MEASUREMENT_ID }}
+          VITE_GA_APP_MEASUREMENT_ID: ${{ vars.GA_APP_MEASUREMENT_ID }}
+          VITE_GA_WEBSITE_MEASUREMENT_ID: ${{ vars.GA_WEBSITE_MEASUREMENT_ID }}
           VITE_RELEASE_DOWNLOADS: ${{ steps.downloads.outputs.release }}
-        run: npm run check:site
+        run: |
+          node --input-type=module <<'JS'
+          import assert from "node:assert/strict";
+          const app = process.env.VITE_GA_APP_MEASUREMENT_ID ?? "";
+          const website = process.env.VITE_GA_WEBSITE_MEASUREMENT_ID ?? "";
+          for (const id of [app, website]) assert.match(id, /^G-[A-Z0-9]{4,20}$/, "Missing or invalid analytics destination.");
+          assert.notEqual(app, website, "Desktop and website analytics must use separate destinations.");
+          JS
+          npm run check:site
       - name: Configure Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
       - name: Upload site

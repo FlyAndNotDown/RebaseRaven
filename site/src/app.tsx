@@ -50,6 +50,7 @@ import {
 import { HoverTip } from "@/components/ui/tooltip";
 import { WorkspacePreview } from "./workspace-preview";
 import { LATEST_RELEASE_URL, readBundledReleaseDownloads, REPOSITORY_URL } from "./release-downloads";
+import { trackDemoStart, trackDownloadDialog, trackInstallerDownload } from "./website-analytics";
 
 const REPOSITORY = REPOSITORY_URL;
 const capabilityIcons = { review: FileDiffIcon, organize: LayersIcon, history: HistoryIcon, advanced: GitForkIcon, tools: TerminalIcon };
@@ -60,11 +61,20 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
   const { t } = useTranslation();
   const [downloadOpen, setDownloadOpen] = useState(false);
   const downloadTrigger = useRef<HTMLAnchorElement | null>(null);
+  const demoStarted = useRef(false);
+
+  function startDemo() {
+    if (demoStarted.current) return;
+    demoStarted.current = true;
+    trackDemoStart();
+  }
 
   function openDownload(event: MouseEvent<HTMLAnchorElement>) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     downloadTrigger.current = event.currentTarget;
+    const source = event.currentTarget.dataset.downloadSource;
+    if (source === "header" || source === "hero" || source === "footer") trackDownloadDialog(source);
     setDownloadOpen(true);
   }
 
@@ -83,7 +93,7 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
             <HoverTip label={t("nav.source")}><Button variant="ghost" size="icon-sm" asChild className="site-source-link"><a href={REPOSITORY} aria-label={t("nav.source")}><GitHubMark /></a></Button></HoverTip>
             <LanguageMenu rootPage={rootPage} />
             <ThemeMenu />
-            <Button size="sm" asChild className="site-nav-download"><a href={LATEST_RELEASE_URL} aria-label={t("nav.download")} onClick={openDownload}><span className="site-nav-download-label">{t("nav.download")}</span><ArrowDownToLineIcon /></a></Button>
+            <Button size="sm" asChild className="site-nav-download"><a href={LATEST_RELEASE_URL} aria-label={t("nav.download")} data-download-source="header" onClick={openDownload}><span className="site-nav-download-label">{t("nav.download")}</span><ArrowDownToLineIcon /></a></Button>
           </nav>
         </header>
       </div>
@@ -94,7 +104,7 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
           <h1 id="hero-title">{t("hero.title").split("\n").map((line, index) => <span key={line} className={index ? "site-hero-title-secondary" : undefined}>{index ? ` ${line}` : line}</span>)}</h1>
           <p className="site-hero-description">{t("hero.description")}</p>
           <div className="site-actions">
-            <Button size="lg" asChild><a href={LATEST_RELEASE_URL} onClick={openDownload}><ArrowDownToLineIcon />{t("hero.download")}</a></Button>
+            <Button size="lg" asChild><a href={LATEST_RELEASE_URL} data-download-source="hero" onClick={openDownload}><ArrowDownToLineIcon />{t("hero.download")}</a></Button>
             <Button variant="outline" size="lg" asChild><a href="#features"><MousePointer2Icon />{t("hero.explore")}</a></Button>
           </div>
           <p className="site-platforms"><span className="site-supported-platforms">{t("hero.platforms")}</span><span className="site-platform-separator" aria-hidden="true">·</span><span className="site-license-note">{t("hero.note")}</span></p>
@@ -105,7 +115,7 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
             <div><p className="site-eyebrow">{t("preview.eyebrow")}</p><h2 id="workspace-title">{t("preview.title")}</h2></div>
             <p>{t("preview.label")}</p>
           </div>
-          <div className="site-preview-frame">
+          <div className="site-preview-frame" onPointerDownCapture={startDemo} onKeyDownCapture={startDemo}>
             <noscript className="site-preview-caption">{t("preview.noscript")}</noscript>
             <WorkspacePreview />
           </div>
@@ -166,7 +176,7 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
 
         <section className="site-download" aria-labelledby="download-title">
           <div className="site-download-content"><BrandMark className="size-12" src={`${rootPage ? "./" : "../"}assets/raven.svg`} /><div><p className="site-eyebrow" translate="no">RebaseRaven</p><h2 id="download-title">{t("download.title")}</h2><p>{t("download.body")}</p></div></div>
-          <Button size="lg" asChild><a href={LATEST_RELEASE_URL} onClick={openDownload}>{t("download.action")}<ArrowDownToLineIcon /></a></Button>
+          <Button size="lg" asChild><a href={LATEST_RELEASE_URL} data-download-source="footer" onClick={openDownload}>{t("download.action")}<ArrowDownToLineIcon /></a></Button>
         </section>
       </main>
 
@@ -249,8 +259,8 @@ function DownloadDialog({ open, onOpenChange, returnFocusTo }: {
 }) {
   const { t } = useTranslation();
   const platforms = [
-    { label: "macOS", detail: "Apple Silicon", format: "DMG", icon: LaptopIcon, url: downloads?.macos },
-    { label: "Windows", detail: "x64", format: t("download.installer"), icon: MonitorIcon, url: downloads?.windows },
+    { platform: "macos" as const, label: "macOS", detail: "Apple Silicon", format: "DMG", icon: LaptopIcon, url: downloads?.macos },
+    { platform: "windows" as const, label: "Windows", detail: "x64", format: t("download.installer"), icon: MonitorIcon, url: downloads?.windows },
   ];
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -263,9 +273,9 @@ function DownloadDialog({ open, onOpenChange, returnFocusTo }: {
           <DialogDescription>{t("download.dialog.body")}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-1">
-          {platforms.map(({ label, detail, format, icon: Icon, url }) => (
+          {platforms.map(({ platform, label, detail, format, icon: Icon, url }) => (
             <Button key={label} variant="ghost" asChild className="h-auto justify-start gap-3 px-2 py-3">
-              <a href={url ?? LATEST_RELEASE_URL}>
+              <a href={url ?? LATEST_RELEASE_URL} onClick={() => { if (url && downloads) trackInstallerDownload(platform, url, downloads.tag); }}>
                 <Icon className="size-5 text-muted-foreground" />
                 <span className="grid min-w-0 flex-1 gap-1 text-left">
                   <span>{label}<span className="ml-1 text-xs text-muted-foreground">{detail}</span></span>
