@@ -39,7 +39,9 @@
     "nameTaken": "A remote named {{name}} already exists.",
     "renameFailed": "Could not rename this remote. Review the error and retry.",
     "renaming": "Renaming {{name}}",
-    "renamed": "Renamed remote to {{name}}"
+    "renamed": "Renamed remote to {{name}}",
+    "newName": "New remote name",
+    "renamingLabel": "Renaming…"
   },
   "sidebar": {
     "filter": "Filter branches and tags",

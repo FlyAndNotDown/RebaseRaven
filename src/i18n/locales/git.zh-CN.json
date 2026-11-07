@@ -39,7 +39,9 @@
     "nameTaken": "已存在名为 {{name}} 的远端。",
     "renameFailed": "无法重命名此远端，请查看错误后重试。",
     "renaming": "正在重命名 {{name}}",
-    "renamed": "远端已重命名为 {{name}}"
+    "renamed": "远端已重命名为 {{name}}",
+    "newName": "新远端名称",
+    "renamingLabel": "正在重命名…"
   },
   "sidebar": {
     "filter": "筛选分支和标签",

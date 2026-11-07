@@ -69,7 +69,7 @@ function RenameGitItemDialog({originalName,kind,existingNames,onOpenChange,onRen
             <DialogDescription>{t(`git.${kind}.renameDescription`, { name: originalName })}</DialogDescription>
           </DialogHeader>
           <div className="my-4 grid gap-2">
-            <Label htmlFor="rename-git-item-name">{t("git.branch.newName")}</Label>
+            <Label htmlFor="rename-git-item-name">{t(`git.${kind}.newName`)}</Label>
             <Input id="rename-git-item-name" autoFocus className="font-mono" value={name} disabled={busy} onChange={(event) => { setName(event.target.value); setFailed(false); }} />
             {taken ? <p role="alert" className="text-xs text-destructive">{t(`git.${kind}.nameTaken`, { name: next })}</p> : null}
             {failed ? <p role="alert" className="text-xs text-destructive">{t(`git.${kind}.renameFailed`)}</p> : null}
@@ -78,7 +78,7 @@ function RenameGitItemDialog({originalName,kind,existingNames,onOpenChange,onRen
             <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
             <Button type="submit" disabled={!next || next === originalName || taken || busy}>
               {busy ? <Loader2Icon aria-hidden className="animate-spin motion-reduce:animate-none" /> : null}
-              <span role={busy ? "status" : undefined}>{t(busy ? "git.branch.renamingLabel" : "git.branch.rename")}</span>
+              <span role={busy ? "status" : undefined}>{t(busy ? `git.${kind}.renamingLabel` : `git.${kind}.rename`)}</span>
             </Button>
           </DialogFooter>
         </form>
