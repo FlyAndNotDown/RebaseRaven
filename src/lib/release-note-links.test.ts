@@ -9,8 +9,8 @@ describe("release note links", () => {
   });
 
   it("resolves release-relative links to the public release page", () => {
-    expect(releaseNoteLink("#changes")).toBe("https://github.com/FlyAndNotDown/Rebasely/releases/latest#changes");
-    expect(releaseNoteLink("./tag/v1.2.3")).toBe("https://github.com/FlyAndNotDown/Rebasely/releases/tag/v1.2.3");
+    expect(releaseNoteLink("#changes")).toBe("https://github.com/FlyAndNotDown/RebaseRaven/releases/latest#changes");
+    expect(releaseNoteLink("./tag/v1.2.3")).toBe("https://github.com/FlyAndNotDown/RebaseRaven/releases/tag/v1.2.3");
     expect(releaseNoteLink("//example.com/docs")).toBe("https://example.com/docs");
   });
 

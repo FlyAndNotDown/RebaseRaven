@@ -3,7 +3,7 @@ import { createAnalyticsFrame } from "./analytics-frame";
 import { ANALYTICS_BRIDGE_URL, type AnalyticsInit } from "./analytics-protocol";
 
 const init: AnalyticsInit = {
-  type: "rebasely:analytics:init", protocol: 1,
+  type: "rebaseraven:analytics:init", protocol: 1,
   generation: "22222222-2222-4222-8222-222222222222",
   clientId: "11111111-1111-4111-8111-111111111111",
   sessionId: 1_700_000_000, platform: "windows", appVersion: "1.2.3",

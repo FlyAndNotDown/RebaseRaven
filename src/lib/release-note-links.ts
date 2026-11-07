@@ -1,4 +1,4 @@
-const RELEASE_PAGE = "https://github.com/FlyAndNotDown/Rebasely/releases/latest";
+const RELEASE_PAGE = "https://github.com/FlyAndNotDown/RebaseRaven/releases/latest";
 const MAX_LINK_LENGTH = 8192;
 
 /** Resolve release-relative links without allowing webview or executable schemes. */

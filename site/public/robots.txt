@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://rebasely.flyandnotdown.com/sitemap.xml
+Sitemap: https://rebaseraven.flyandnotdown.com/sitemap.xml

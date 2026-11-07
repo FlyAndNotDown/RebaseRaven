@@ -1,6 +1,6 @@
 import type { AnalyticsEvent, AnalyticsInit, AnalyticsPane, AnalyticsPlatform } from "./analytics-protocol";
 
-const INSTALL_ID_KEY = "rebasely.analytics.install-id";
+const INSTALL_ID_KEY = "rebaseraven.analytics.install-id";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_PENDING_EVENTS = 16;
 export const ANALYTICS_PULSE_MS = 30_000;
@@ -87,7 +87,7 @@ export function createAnalyticsController(options: AnalyticsOptions) {
         const current = options.randomUUID();
         generation = current;
         const init: AnalyticsInit = {
-          type: "rebasely:analytics:init", protocol: 1, generation: current,
+          type: "rebaseraven:analytics:init", protocol: 1, generation: current,
           clientId: options.installId(), sessionId, platform: options.platform, appVersion: options.appVersion,
         };
         bridge = options.createBridge(init, {

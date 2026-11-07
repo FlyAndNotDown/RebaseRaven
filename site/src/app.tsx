@@ -74,7 +74,7 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
       <div className="site-header-shell">
         <header className="site-header site-container">
           <a className="site-brand" href={rootPage ? "./" : "../"} aria-label={t("nav.home")}>
-            <AppMark className="site-brand-mark size-9" src={`${rootPage ? "./" : "../"}assets/mark.png`} /><span translate="no">Rebasely</span>
+            <AppMark className="site-brand-mark size-9" src={`${rootPage ? "./" : "../"}assets/mark.png`} /><span translate="no">RebaseRaven</span>
           </a>
           <nav className="site-navigation" aria-label={t("nav.main")}>
             <Button variant="ghost" size="sm" asChild className="overview-link"><a href="#features">{t("nav.features")}</a></Button>
@@ -165,13 +165,13 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
         </section>
 
         <section className="site-download" aria-labelledby="download-title">
-          <div className="site-download-content"><AppMark className="size-14" src={`${rootPage ? "./" : "../"}assets/mark.png`} /><div><p className="site-eyebrow" translate="no">Rebasely</p><h2 id="download-title">{t("download.title")}</h2><p>{t("download.body")}</p></div></div>
+          <div className="site-download-content"><AppMark className="size-14" src={`${rootPage ? "./" : "../"}assets/mark.png`} /><div><p className="site-eyebrow" translate="no">RebaseRaven</p><h2 id="download-title">{t("download.title")}</h2><p>{t("download.body")}</p></div></div>
           <Button size="lg" asChild><a href={LATEST_RELEASE_URL} onClick={openDownload}>{t("download.action")}<ArrowDownToLineIcon /></a></Button>
         </section>
       </main>
 
       <footer className="site-footer site-container">
-        <div className="site-footer-brand"><a href={rootPage ? "./" : "../"} translate="no">Rebasely</a><p>{t("footer.tagline")}</p></div>
+        <div className="site-footer-brand"><a href={rootPage ? "./" : "../"} translate="no">RebaseRaven</a><p>{t("footer.tagline")}</p></div>
         <nav aria-label={t("nav.footer")}><a href={`${REPOSITORY}/issues`}><MessageSquareIcon aria-hidden="true" />{t("nav.feedback")}</a><a href={`${REPOSITORY}/blob/dev/CONTRIBUTING.md`}><GitPullRequestIcon aria-hidden="true" />{t("nav.contribute")}</a><a href={`${REPOSITORY}/blob/dev/LICENSE`}><ScaleIcon aria-hidden="true" />{t("nav.license")}</a></nav>
       </footer>
       <DownloadDialog open={downloadOpen} onOpenChange={setDownloadOpen} returnFocusTo={downloadTrigger} />

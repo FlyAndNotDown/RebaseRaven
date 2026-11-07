@@ -28,7 +28,7 @@ export function WelcomeScreen() {
         <div className="mb-10 flex items-center gap-3">
           <AppMark className="size-11" />
           <div>
-            <p className="text-sm font-medium">Rebasely</p>
+            <p className="text-sm font-medium">RebaseRaven</p>
             <p className="text-xs text-muted-foreground">{t("desktop.welcomeScreen.a_unified_version_control_client")}</p>
           </div>
         </div>

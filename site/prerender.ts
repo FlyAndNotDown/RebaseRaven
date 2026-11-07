@@ -17,14 +17,14 @@ function metadata(locale: SiteLocale, rootPage: boolean) {
     <title>${title}</title>
     <meta name="description" content="${description}">
     <meta property="og:type" content="website">
-    <meta property="og:site_name" content="Rebasely">
+    <meta property="og:site_name" content="RebaseRaven">
     <meta property="og:title" content="${title}">
     <meta property="og:description" content="${description}">
     <meta property="og:image" content="${SITE_URL}assets/social.png">
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="Rebasely — Git + Perforce">
+    <meta property="og:image:alt" content="RebaseRaven — Git + Perforce">
     <meta property="og:url" content="${url}">
     <meta property="og:locale" content="${locale === "en" ? "en_US" : "zh_CN"}">
     <meta name="twitter:card" content="summary_large_image">
@@ -40,7 +40,7 @@ function metadata(locale: SiteLocale, rootPage: boolean) {
 
 export function productMetadata(): Plugin {
   return {
-    name: "rebasely-product-metadata",
+    name: "rebaseraven-product-metadata",
     transformIndexHtml(html, context) {
       const locale = localeFromPath(context.path);
       return html.replace("<!--site-metadata-->", metadata(locale ?? "en", locale === null))
@@ -52,7 +52,7 @@ export function productMetadata(): Plugin {
 export function prerender(root: string): Plugin {
   let outputDirectory: string;
   return {
-    name: "rebasely-prerender",
+    name: "rebaseraven-prerender",
     apply: "build",
     configResolved(config) {
       outputDirectory = path.resolve(config.root, config.build.outDir);

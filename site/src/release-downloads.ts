@@ -1,4 +1,4 @@
-export const REPOSITORY_URL = "https://github.com/FlyAndNotDown/Rebasely";
+export const REPOSITORY_URL = "https://github.com/FlyAndNotDown/RebaseRaven";
 export const LATEST_RELEASE_URL = `${REPOSITORY_URL}/releases/latest`;
 
 export type ReleaseDownloads = {
@@ -18,8 +18,8 @@ export function parseReleaseDownloads(value: unknown): ReleaseDownloads {
   }
   const tag = value.tag_name;
   const filenames = {
-    macos: [`Rebasely_${tag}_macos_arm64.dmg`],
-    windows: [`Rebasely_${tag}_windows_x64.exe`, `Rebasely_${tag}_windows_x64.msi`],
+    macos: [`RebaseRaven_${tag}_macos_arm64.dmg`],
+    windows: [`RebaseRaven_${tag}_windows_x64.exe`, `RebaseRaven_${tag}_windows_x64.msi`],
   };
   const result: ReleaseDownloads = { tag };
   for (const platform of ["macos", "windows"] as const) {

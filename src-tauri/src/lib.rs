@@ -1634,7 +1634,7 @@ fn macos_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::men
     // Close Window is omitted. Command-W closes the repository tab.
     let app_menu = Submenu::with_items(
         app,
-        "Rebasely",
+        "RebaseRaven",
         true,
         &[
             &PredefinedMenuItem::about(app, None, None)?,
@@ -1932,5 +1932,5 @@ pub fn run() {
             sync_window_chrome
         ])
         .run(context)
-        .expect("error while running Rebasely");
+        .expect("error while running RebaseRaven");
 }

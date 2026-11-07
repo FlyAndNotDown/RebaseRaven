@@ -1,7 +1,7 @@
 import { createContext, useContext, useSyncExternalStore, type ReactNode } from "react";
 
-const STORAGE_KEY = "rebasely-site-theme";
-const CHANGE_EVENT = "rebasely-site-theme-change";
+const STORAGE_KEY = "rebaseraven-site-theme";
+const CHANGE_EVENT = "rebaseraven-site-theme-change";
 type Theme = "light" | "dark" | "system";
 const ThemeContext = createContext<{ theme: Theme; setTheme: (theme: Theme) => void } | null>(null);
 

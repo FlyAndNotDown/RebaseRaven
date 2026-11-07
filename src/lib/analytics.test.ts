@@ -127,7 +127,7 @@ describe("installation identity", () => {
     expect(random).not.toHaveBeenCalled();
     storage.getItem.mockReturnValue("invalid old value");
     expect(analyticsInstallId(storage, random)).toBe(ID);
-    expect(storage.setItem).toHaveBeenCalledWith("rebasely.analytics.install-id", ID);
+    expect(storage.setItem).toHaveBeenCalledWith("rebaseraven.analytics.install-id", ID);
   });
 
   it("uses an ephemeral random ID if storage is unavailable", () => {

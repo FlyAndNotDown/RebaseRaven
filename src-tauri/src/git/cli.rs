@@ -1059,7 +1059,7 @@ mod git_executable_tests {
             "Choose a file named git."
         );
         assert_eq!(
-            validate_git_choice("rebasely-no-such-dir/git.exe")
+            validate_git_choice("rebaseraven-no-such-dir/git.exe")
                 .unwrap_err()
                 .to_string(),
             crate::error::GIT_MISSING
@@ -1107,7 +1107,7 @@ mod git_executable_tests {
     #[cfg(windows)]
     #[test]
     fn keeps_the_on_disk_extension_case() {
-        let dir = std::env::temp_dir().join(format!("rebasely-git-case-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("rebaseraven-git-case-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let real = dir.join("git.exe");
         std::fs::write(&real, b"").unwrap();
@@ -1129,7 +1129,7 @@ mod git_executable_tests {
 
     #[test]
     fn rejects_a_file_that_is_not_git() {
-        let dir = std::env::temp_dir().join(format!("rebasely-not-git-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("rebaseraven-not-git-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join(if cfg!(windows) { "git.exe" } else { "git" });
         std::fs::write(&path, b"not a git executable").unwrap();
@@ -1147,7 +1147,7 @@ mod git_executable_tests {
     #[test]
     fn reports_a_removed_git_executable_with_the_recovery_error() {
         let message = super::git_start_error(
-            Path::new("rebasely-missing-executable/git").as_os_str(),
+            Path::new("rebaseraven-missing-executable/git").as_os_str(),
             std::io::Error::from(std::io::ErrorKind::NotFound),
         );
         assert_eq!(message.to_string(), crate::error::GIT_MISSING);
@@ -1157,7 +1157,7 @@ mod git_executable_tests {
     #[test]
     fn rejects_unix_git_files_without_execute_permissions() {
         use std::os::unix::fs::PermissionsExt;
-        let dir = std::env::temp_dir().join(format!("rebasely-git-mode-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("rebaseraven-git-mode-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("git");
         std::fs::write(&path, b"#!/bin/sh\n").unwrap();
@@ -1223,7 +1223,7 @@ mod progress_tests {
     use super::*;
     use std::io::Write;
 
-    const FIXTURE_ENV: &str = "REBASELY_GIT_PROGRESS_FIXTURE";
+    const FIXTURE_ENV: &str = "REBASERAVEN_GIT_PROGRESS_FIXTURE";
     const FIXTURE_TEST: &str = "git::cli::progress_tests::progress_fixture";
 
     fn fixture(mode: &str) -> Command {
@@ -1295,7 +1295,7 @@ mod progress_tests {
                 // The runner owns and terminates this intentionally surviving
                 // fixture, even after this launcher has exited.
                 let helper = child.spawn().unwrap();
-                if let Some(path) = std::env::var_os("REBASELY_GIT_PROGRESS_HELPER_PID") {
+                if let Some(path) = std::env::var_os("REBASERAVEN_GIT_PROGRESS_HELPER_PID") {
                     fs::write(path, helper.id().to_string()).unwrap();
                 }
                 std::process::exit(0);
@@ -1343,7 +1343,7 @@ mod progress_tests {
                 .unwrap();
             let started = Instant::now();
             let result = run_progress_command(
-                fixture(mode).env("REBASELY_GIT_PROGRESS_HELPER_PID", &helper_pid),
+                fixture(mode).env("REBASERAVEN_GIT_PROGRESS_HELPER_PID", &helper_pid),
                 None,
                 Some(active_limits()),
                 &mut |_| {},

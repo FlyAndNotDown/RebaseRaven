@@ -1,4 +1,4 @@
-export const ANALYTICS_BRIDGE_URL = "https://rebasely.flyandnotdown.com/analytics/";
+export const ANALYTICS_BRIDGE_URL = "https://rebaseraven.flyandnotdown.com/analytics/";
 
 export const ANALYTICS_PANES = [
   "welcome", "git_changes", "git_history", "git_stash", "git_files",
@@ -9,7 +9,7 @@ export type AnalyticsPane = typeof ANALYTICS_PANES[number];
 export type AnalyticsPlatform = "windows" | "macos" | "linux" | "other";
 
 export interface AnalyticsInit {
-  type: "rebasely:analytics:init";
+  type: "rebaseraven:analytics:init";
   protocol: 1;
   generation: string;
   clientId: string;
@@ -59,7 +59,7 @@ export function isTrustedAnalyticsParent(origin: string, source: unknown, parent
 export function isAnalyticsInit(value: unknown): value is AnalyticsInit {
   return record(value)
     && exactKeys(value, ["type", "protocol", "generation", "clientId", "sessionId", "platform", "appVersion"])
-    && value.type === "rebasely:analytics:init" && value.protocol === 1
+    && value.type === "rebaseraven:analytics:init" && value.protocol === 1
     && typeof value.generation === "string" && UUID.test(value.generation)
     && typeof value.clientId === "string" && UUID.test(value.clientId)
     && typeof value.sessionId === "number" && Number.isSafeInteger(value.sessionId) && value.sessionId > 0

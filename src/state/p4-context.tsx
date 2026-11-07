@@ -42,7 +42,7 @@ import type {
 
 export type { P4View };
 
-const OPEN_SETTINGS_EVENT = "rebasely-open-settings";
+const OPEN_SETTINGS_EVENT = "rebaseraven-open-settings";
 
 class LoginCancelled extends Error {
   constructor() {

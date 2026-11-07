@@ -75,13 +75,13 @@ describe("website browser theme color", () => {
     expect(attributes.get("content")).toBe("#0a0a0a");
     expect(onChange).not.toHaveBeenCalled();
 
-    storage("rebasely-site-theme", "light");
+    storage("rebaseraven-site-theme", "light");
     expect(attributes.get("content")).toBe("#fafafa");
     expect(root.dataset.siteTheme).toBe("light");
     expect(onChange).toHaveBeenCalledOnce();
 
     systemTheme.matches = true;
-    storage("rebasely-site-theme", "system");
+    storage("rebaseraven-site-theme", "system");
     expect(attributes.get("content")).toBe("#0a0a0a");
     expect(root.dataset.siteTheme).toBe("system");
 
@@ -97,7 +97,7 @@ describe("website browser theme color", () => {
     stop();
     systemTheme.matches = true;
     systemTheme.dispatchEvent(new Event("change"));
-    storage("rebasely-site-theme", "dark");
+    storage("rebaseraven-site-theme", "dark");
     expect(attributes.get("content")).toBe("#fafafa");
     expect(root.dataset.siteTheme).toBe("system");
   });

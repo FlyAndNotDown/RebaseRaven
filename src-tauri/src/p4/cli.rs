@@ -1090,7 +1090,7 @@ mod tests {
     #[test]
     fn reports_a_removed_p4_executable_with_the_recovery_error() {
         let error = super::p4_start_error(
-            Path::new("rebasely-missing-executable/p4").as_os_str(),
+            Path::new("rebaseraven-missing-executable/p4").as_os_str(),
             std::io::Error::from(std::io::ErrorKind::NotFound),
         );
         assert_eq!(error.to_string(), crate::error::P4_MISSING);
@@ -1100,7 +1100,7 @@ mod tests {
     #[test]
     fn rejects_unix_p4_files_without_execute_permissions() {
         use std::os::unix::fs::PermissionsExt;
-        let dir = std::env::temp_dir().join(format!("rebasely-p4-mode-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("rebaseraven-p4-mode-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("p4");
         std::fs::write(&path, b"#!/bin/sh\n").unwrap();

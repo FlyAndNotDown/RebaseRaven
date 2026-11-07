@@ -71,7 +71,7 @@ jobs:
       - name: Frontend build
         run: npm run vite:build
       - name: Askpass helper
-        run: cargo build --manifest-path src-tauri/Cargo.toml --locked --bin rebasely
+        run: cargo build --manifest-path src-tauri/Cargo.toml --locked --bin rebaseraven
       - name: Rust checks
         run: npm run check:rust
       - name: Source proof
@@ -79,4 +79,4 @@ jobs:
         run: |
           git diff --quiet HEAD --
           checked_tree="$(git rev-parse 'HEAD^{tree}')"
-          printf '::notice title=Rebasely checked source::%s\n' "$checked_tree"
+          printf '::notice title=RebaseRaven checked source::%s\n' "$checked_tree"

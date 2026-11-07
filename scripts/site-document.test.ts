@@ -1,25 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { validateSiteDocument, validateSiteRouting } from "./site-document.mjs";
 
-const canonical = "https://rebasely.flyandnotdown.com/";
-const download = "https://github.com/FlyAndNotDown/Rebasely/releases/latest";
+const canonical = "https://rebaseraven.flyandnotdown.com/";
+const download = "https://github.com/FlyAndNotDown/RebaseRaven/releases/latest";
 const product = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  name: "Rebasely",
+  name: "RebaseRaven",
   url: canonical,
   description: "A unified version control client.",
   applicationCategory: "DeveloperApplication",
   operatingSystem: ["macOS (Apple Silicon)", "Windows (x64)"],
   license: "https://opensource.org/license/mit",
   downloadUrl: download,
-  sameAs: "https://github.com/FlyAndNotDown/Rebasely",
+  sameAs: "https://github.com/FlyAndNotDown/RebaseRaven",
 };
 const content = `<main><h1>A unified version control client</h1><p>${"Review changes and follow repository history. ".repeat(5)}</p><p>macOS Apple Silicon and Windows x64. MIT License.</p><a href="${download}"><svg><path /></svg>Download</a></main>`;
 
 function fixture() {
   return {
-    html: `<html><head><link rel="alternate" hreflang="en" href="${canonical}en/"><link rel="alternate" hreflang="zh-CN" href="${canonical}zh-CN/"><link rel="alternate" hreflang="x-default" href="${canonical}"><link href="${canonical}" rel="canonical"><meta content="${canonical}" property="og:url"><script type="application/ld+json">${JSON.stringify(product)}</script></head><body><div id="root" data-prerendered="true"><div>Rebasely</div>${content}</div></body></html>`,
+    html: `<html><head><link rel="alternate" hreflang="en" href="${canonical}en/"><link rel="alternate" hreflang="zh-CN" href="${canonical}zh-CN/"><link rel="alternate" hreflang="x-default" href="${canonical}"><link href="${canonical}" rel="canonical"><meta content="${canonical}" property="og:url"><script type="application/ld+json">${JSON.stringify(product)}</script></head><body><div id="root" data-prerendered="true"><div>RebaseRaven</div>${content}</div></body></html>`,
     sitemap: `<urlset><url><loc>${canonical}</loc></url></urlset>`,
     files: new Set(["index.html", "sitemap.xml", "assets/index-abc.js", "assets/index-abc.css"]),
   };
@@ -32,7 +32,7 @@ describe("published website document", () => {
 
   it("rejects an empty hydration root even when product text exists elsewhere", () => {
     const value = fixture();
-    value.html = value.html.replace(`<div id="root" data-prerendered="true"><div>Rebasely</div>${content}</div>`, `<div id="root" data-prerendered="true"></div>${content}`);
+    value.html = value.html.replace(`<div id="root" data-prerendered="true"><div>RebaseRaven</div>${content}</div>`, `<div id="root" data-prerendered="true"></div>${content}`);
     expect(validateSiteDocument(value)).toContainEqual(expect.stringContaining("prerendered root"));
   });
 
@@ -82,7 +82,7 @@ describe("published website document", () => {
 describe("published custom-domain routing", () => {
   it("accepts the canonical host and its discoverable sitemap", () => {
     expect(validateSiteRouting({
-      cname: "rebasely.flyandnotdown.com\n",
+      cname: "rebaseraven.flyandnotdown.com\n",
       robots: `User-agent: *\nAllow: /\n\nSitemap: ${canonical}sitemap.xml\n`,
     })).toEqual([]);
   });
@@ -96,7 +96,7 @@ describe("published custom-domain routing", () => {
       expect.stringContaining("CNAME:"), expect.stringContaining("robots.txt:"),
     ]));
     expect(validateSiteRouting({
-      cname: "rebasely.flyandnotdown.com\n",
+      cname: "rebaseraven.flyandnotdown.com\n",
       robots: `Sitemap: ${canonical}sitemap.xml\nSitemap: ${canonical}sitemap.xml\n`,
     })).toContainEqual(expect.stringContaining("advertise the canonical website sitemap once"));
   });

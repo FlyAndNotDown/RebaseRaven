@@ -326,7 +326,7 @@ export interface AppPrefs {
 export interface GitExecutables {
   /** Full path of `git` on PATH, or null when PATH has none. */
   pathGit: string | null;
-  /** Full path Rebasely will run, or null when none is usable. */
+  /** Full path RebaseRaven will run, or null when none is usable. */
   active: string | null;
 }
 

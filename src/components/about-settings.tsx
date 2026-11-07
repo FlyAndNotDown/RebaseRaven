@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { t, useTranslation } from "@/i18n";
 import { errorMessage, gitApi } from "@/lib/git";
 
-const REPOSITORY_URL = "https://github.com/FlyAndNotDown/Rebasely";
+const REPOSITORY_URL = "https://github.com/FlyAndNotDown/RebaseRaven";
 const AUTHOR = "FlyAndNotDown";
 const EMAIL = "johnkindem@qq.com";
 
@@ -16,12 +16,12 @@ export function AboutSettings() {
   useTranslation();
   return (
     <div className="grid gap-6">
-      <section aria-label="Rebasely" className="grid gap-5">
+      <section aria-label="RebaseRaven" className="grid gap-5">
         <div className="flex items-center gap-4">
           <AppMark className="size-14" />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2.5">
-              <h2 className="text-2xl leading-none font-medium tracking-tight">Rebasely</h2>
+              <h2 className="text-2xl leading-none font-medium tracking-tight">RebaseRaven</h2>
               <span className="rounded-md border bg-muted/40 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">v{version}</span>
             </div>
             <p className="mt-2 text-sm text-muted-foreground">{t("desktop.aboutSettings.a_unified_version_control_client")}</p>
