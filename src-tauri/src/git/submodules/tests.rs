@@ -219,14 +219,22 @@ fn submodule_updates_distinguish_recorded_remote_merge_rebase_and_literal_paths(
     let child = open_at(&child_root).unwrap();
     let other = open_at(&repo.workdir().join("libraries/a")).unwrap();
     let settings = submodule_settings(&repo, &paths[0]).unwrap();
+    let quoted_url = "https://example.invalid/team/quoted\"name.git";
     edit_submodule(
         &mut repo,
         &paths[0],
-        source.workdir().to_str().unwrap(),
+        quoted_url,
         Some("."),
         &settings.fingerprint,
     )
     .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(
+            &run_git_stdout(child.workdir(), &["remote", "get-url", "origin"]).unwrap()
+        )
+        .trim(),
+        quoted_url
+    );
     assert_eq!(
         submodule_settings(&repo, &paths[0])
             .unwrap()
