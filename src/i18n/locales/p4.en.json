@@ -396,5 +396,37 @@
       "modtime": "Use the depot file timestamp when syncing.",
       "rmdir": "Delete folders left empty by a sync operation."
     }
+  },
+  "switchStream": {
+    "title": "Switch stream",
+    "choose": "Choose a stream",
+    "current": "Current stream",
+    "target": "Target stream",
+    "refine": "Type to narrow the results.",
+    "changes": "Local changes · {{count}}",
+    "more": "{{count}} more files",
+    "offline": "Offline",
+    "shelve": "Save local changes to a new shelf",
+    "backupHint": "All local changes are saved together in one new shelf before reverting and switching. Existing shelves are preserved.",
+    "scope": "Sync scope",
+    "scopeHint": "Generated target mappings. Files in this scope are synced safely to the latest revisions after switching; this is not a file-by-file download estimate.",
+    "clean": "No local changes.",
+    "unresolved": "Resolve pending integrations before switching streams.",
+    "finishChanges": "Finish local changes, or enable shelving and preview again.",
+    "shelveApply": "Shelve and switch",
+    "apply": "Switch and sync",
+    "running": "Switching stream",
+    "saveDescription": "Save the changelist description before switching streams.",
+    "completed": "Stream switched",
+    "interrupted": "Stream switch interrupted",
+    "backup": "Recovery changelist",
+    "restoreHint": "Use Team Shelf to open this changelist by number and restore its shelf. If shelving did not finish, inspect its opened files.",
+    "result": {
+      "done": "The workspace is synced to the target stream.",
+      "shelve": "Shelving did not finish. The stream was not switched. Inspect the recovery changelist and local files.",
+      "switch": "The stream switch did not finish. Inspect the current stream before retrying.",
+      "sync": "The stream changed, but sync did not finish. Use Get latest to finish syncing."
+    },
+    "limitView": "LimitView"
   }
 }

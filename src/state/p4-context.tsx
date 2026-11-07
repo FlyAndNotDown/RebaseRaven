@@ -16,6 +16,7 @@ import { P4ShelvesDialog } from "@/components/p4/p4-shelves-dialog";
 import { P4StreamDialog } from "@/components/p4/p4-stream-dialog";
 import { P4ReconcileDialog } from "@/components/p4/p4-reconcile-dialog";
 import { P4LoginDialog } from "@/components/p4/p4-login-dialog";
+import { P4SwitchDialog, P4SwitchResultDialog } from "@/components/p4/p4-switch-dialog";
 import { P4WorkspaceDialog } from "@/components/p4/p4-workspace-dialog";
 import { errorMessage } from "@/lib/git";
 import { depotBase, P4_LOGIN, P4_MISSING, p4Api, syncSummary } from "@/lib/p4";
@@ -35,6 +36,9 @@ import type {
   P4ManualResolve,
   P4Auth,
   P4WorkspaceEdit,
+  P4SwitchRequest,
+  P4SwitchPreview,
+  P4SwitchOutcome,
   P4WorkspaceSettings,
   P4ChangePage,
   P4Changelist,
@@ -163,6 +167,9 @@ interface P4ContextValue {
   saveConnection: (edit: P4Auth & { client: string }) => Promise<void>;
   workspaceOpen: boolean;
   setWorkspaceOpen: (open: boolean) => void;
+  switchStream: (target?: string) => void;
+  previewSwitch: (request: P4SwitchRequest) => Promise<P4SwitchPreview>;
+  applySwitch: (request: P4SwitchRequest, fingerprint: string) => Promise<void>;
   workspaceSettings: () => Promise<P4WorkspaceSettings>;
   saveWorkspace: (edit: P4WorkspaceEdit, fingerprint: string) => Promise<void>;
 }
@@ -210,6 +217,9 @@ export function P4Provider({ children }: { children: ReactNode }) {
   const [shelvesOpen, setShelvesOpen] = useState(false);
   const [streamOpen, setStreamOpen] = useState(false);
   const [reconcileOpen, setReconcileOpen] = useState(false);
+  const [switchTarget, setSwitchTarget] = useState<string | null>(null);
+  const [switchOutcome, setSwitchOutcome] = useState<P4SwitchOutcome | null>(null);
+  const switchStream = useCallback((target = "") => setSwitchTarget(target), []);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [filesEpoch, setFilesEpoch] = useState(0);
   const bumpFiles = useCallback(() => setFilesEpoch((value) => value + 1), []);
@@ -1384,6 +1394,28 @@ export function P4Provider({ children }: { children: ReactNode }) {
     [guard, report],
   );
 
+  const previewSwitch = useCallback(async (request: P4SwitchRequest) => {
+    const current = sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    return guard(current.connection, () => p4Api.previewSwitch(current.connection, request));
+  }, [guard]);
+
+  const applySwitch = useCallback(async (request: P4SwitchRequest, fingerprint: string) => {
+    const current = sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    if (current.description !== (current.pending.find((change) => change.id === current.selectedChange)?.description ?? "")) {
+      throw new Error(t("p4.switchStream.saveDescription"));
+    }
+    const release = lockMutation(current, t("p4.switchStream.running"));
+    if (!release) throw new Error(t("p4-operations.workspaceBusy"));
+    const activity = beginActivity(t("p4.switchStream.running"), request.target);
+    try {
+      const outcome = await guard(current.connection, () => p4Api.applySwitch(current.connection, request, fingerprint));
+      setSwitchTarget(null); setSwitchOutcome(outcome);
+      invalidateP4Session(cache.current, current.tabId, activeTabRef.current.id, reconnect);
+    } finally { endActivity(activity); release(); }
+  }, [guard, lockMutation, beginActivity, endActivity, reconnect]);
+
   const workspaceSettings = useCallback(async () => {
     const current = sessionRef.current;
     if (!current) throw new Error(t("p4-operations.connectionRequired"));
@@ -1546,6 +1578,9 @@ export function P4Provider({ children }: { children: ReactNode }) {
       setWorkspaceOpen,
       saveWorkspace,
       workspaceSettings,
+      switchStream,
+      previewSwitch,
+      applySwitch,
     }),
     [
       activePerforceId,
@@ -1601,6 +1636,9 @@ export function P4Provider({ children }: { children: ReactNode }) {
       saveConnection,
       saveWorkspace,
       workspaceSettings,
+      switchStream,
+      previewSwitch,
+      applySwitch,
       searchSubmitted,
       workspaceOpen,
       revertPaths,
@@ -1639,6 +1677,8 @@ export function P4Provider({ children }: { children: ReactNode }) {
         {shelvesOpen && connection ? <P4ShelvesDialog key={JSON.stringify(connection)} onClose={() => setShelvesOpen(false)} /> : null}
         {streamOpen && connection ? <P4StreamDialog key={JSON.stringify(connection)} onClose={() => setStreamOpen(false)} /> : null}
         {reconcileOpen && connection ? <P4ReconcileDialog key={JSON.stringify(connection)} onClose={() => setReconcileOpen(false)} /> : null}
+        {switchTarget !== null && connection ? <P4SwitchDialog key={JSON.stringify([connection,switchTarget])} initialTarget={switchTarget} onClose={() => setSwitchTarget(null)} /> : null}
+        {switchOutcome ? <P4SwitchResultDialog outcome={switchOutcome} onClose={() => setSwitchOutcome(null)} /> : null}
         <P4LoginDialog
           open={loginOpen}
           client={loginTarget.client}

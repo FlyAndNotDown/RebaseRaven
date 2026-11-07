@@ -396,5 +396,37 @@
       "modtime": "同步文件时使用版本库中的文件时间。",
       "rmdir": "移除同步后变为空的目录。"
     }
+  },
+  "switchStream": {
+    "title": "切换 Stream",
+    "choose": "选择 Stream",
+    "current": "当前 Stream",
+    "target": "目标 Stream",
+    "refine": "输入名称缩小搜索范围。",
+    "changes": "本地修改 · {{count}}",
+    "more": "还有 {{count}} 个文件",
+    "offline": "离线修改",
+    "shelve": "将本地修改保存到一个新的 Shelf",
+    "backupHint": "所有本地修改会集中保存到一个新 Shelf，完成后还原并切换。已有 Shelf 会保留。",
+    "scope": "同步范围",
+    "scopeHint": "目标 Stream 生成的映射。切换后安全同步该范围内的最新版本；这里展示映射范围，不是逐文件下载量估算。",
+    "clean": "没有本地修改。",
+    "unresolved": "请先解决待处理的集成冲突，再切换 Stream。",
+    "finishChanges": "请先处理本地修改，或启用搁置并重新预览。",
+    "shelveApply": "搁置并切换",
+    "apply": "切换并同步",
+    "running": "正在切换 Stream",
+    "saveDescription": "切换 Stream 前，请先保存变更列表描述。",
+    "completed": "Stream 已切换",
+    "interrupted": "Stream 切换中断",
+    "backup": "恢复用变更列表",
+    "restoreHint": "在“团队 Shelf”中输入此变更编号查看并恢复搁置内容。如果搁置未完成，请检查该变更列表中的待提交文件。",
+    "result": {
+      "done": "工作区已同步到目标 Stream。",
+      "shelve": "搁置未完成，尚未切换 Stream。请检查恢复用变更列表与本地文件。",
+      "switch": "Stream 切换未完成，请核对当前 Stream 后重试。",
+      "sync": "Stream 已切换，但同步未完成。请使用“获取最新版本”继续同步。"
+    },
+    "limitView": "LimitView 过滤"
   }
 }

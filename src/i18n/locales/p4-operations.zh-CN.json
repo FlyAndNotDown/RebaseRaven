@@ -54,7 +54,13 @@
     "workspaceGenerated": "Stream 工作区映射由 Perforce 自动生成。",
     "workspaceMapping": "请每行输入一条有效的工作区映射。",
     "workspaceDirtyMapping": "修改工作区映射或根目录前，请先提交，或搁置并还原本地修改。",
-    "workspaceRoot": "请选择工作区的绝对目录。"
+    "workspaceRoot": "请选择工作区的绝对目录。",
+    "switchWorkspace": "请刷新并选择可写的 Stream 工作区。",
+    "switchDifferent": "请选择其他 Stream。",
+    "switchVirtual": "请选择非 Virtual 类型的 Stream。",
+    "switchUnresolved": "请先解决待处理的集成冲突，再切换 Stream。",
+    "switchChanges": "切换 Stream 前，请先搁置或处理本地修改。",
+    "switchIncomplete": "工作区尚未完全同步，请使用“获取最新版本”继续同步。"
   },
   "connectionRequired": "请重新连接此工作区后继续。",
   "workspaceBusy": "请等待当前工作区操作完成。",
