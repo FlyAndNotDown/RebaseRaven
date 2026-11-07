@@ -428,5 +428,28 @@
       "sync": "Stream 已切换，但同步未完成。请使用“获取最新版本”继续同步。"
     },
     "limitView": "LimitView 过滤"
+  },
+  "streamTree": {
+    "title": "Stream 关系",
+    "locate": "定位当前 Stream",
+    "current": "当前 Stream",
+    "workspace": "工作区：{{client}}",
+    "parent": "父 Stream",
+    "children": "子 Stream · {{count}}",
+    "noParent": "没有父 Stream",
+    "noChildren": "没有子 Stream",
+    "select": "选择 Stream",
+    "merge": "从父 Stream 合入当前",
+    "copy": "将子 Stream 复制到当前",
+    "expand": "展开 {{stream}}",
+    "collapse": "折叠 {{stream}}",
+    "limit": "最多展示 2,000 个有权限访问的 Stream。",
+    "kinds": {
+      "mainline": "主线",
+      "development": "开发",
+      "release": "发布",
+      "virtual": "虚拟",
+      "task": "任务"
+    }
   }
 }

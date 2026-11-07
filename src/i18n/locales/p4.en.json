@@ -428,5 +428,28 @@
       "sync": "The stream changed, but sync did not finish. Use Get latest to finish syncing."
     },
     "limitView": "LimitView"
+  },
+  "streamTree": {
+    "title": "Streams",
+    "locate": "Locate current stream",
+    "current": "Current stream",
+    "workspace": "Workspace: {{client}}",
+    "parent": "Parent",
+    "children": "Children · {{count}}",
+    "noParent": "No parent",
+    "noChildren": "No child streams",
+    "select": "Select a stream",
+    "merge": "Merge from parent into current",
+    "copy": "Copy child into current",
+    "expand": "Expand {{stream}}",
+    "collapse": "Collapse {{stream}}",
+    "limit": "Showing up to 2,000 accessible streams.",
+    "kinds": {
+      "mainline": "Mainline",
+      "development": "Development",
+      "release": "Release",
+      "virtual": "Virtual",
+      "task": "Task"
+    }
   }
 }

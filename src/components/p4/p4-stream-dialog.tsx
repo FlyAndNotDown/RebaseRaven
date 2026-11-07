@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDownIcon, CheckIcon, ChevronDownIcon, GitMergeIcon, LoaderCircleIcon } from "lucide-react";
+import { ArrowDownIcon, GitMergeIcon, LoaderCircleIcon } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { P4ChangeSelect } from "@/components/p4/p4-change-select";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { P4StreamSelect } from "@/components/p4/p4-stream-select";
 import { Label } from "@/components/ui/label";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { errorMessage } from "@/lib/git";
@@ -13,13 +13,13 @@ import { p4DisplayError } from "@/lib/p4-operation-preview";
 import { useP4 } from "@/state/p4-context";
 import type { P4StreamOption, P4StreamPreview, P4StreamRequest } from "@/types/p4";
 
-export function P4StreamDialog({ onClose }: { onClose: () => void }) {
+export function P4StreamDialog({ onClose, initial }: { onClose: () => void; initial?: Pick<P4StreamRequest,"mode"|"source"> | null }) {
   const { t } = useTranslation();
   const p4 = useP4();
   const listStreams = p4.listStreams;
   const [streams, setStreams] = useState<P4StreamOption[] | null>(null);
-  const [mode, setMode] = useState<P4StreamRequest["mode"]>("merge");
-  const [child, setChild] = useState("");
+  const [mode, setMode] = useState<P4StreamRequest["mode"]>(initial?.mode ?? "merge");
+  const [child, setChild] = useState(initial?.mode === "copy" ? initial.source : "");
   const [changeId, setChangeId] = useState(p4.selectedChange);
   const [preview, setPreview] = useState<{ key: string; value: P4StreamPreview } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -41,10 +41,10 @@ export function P4StreamDialog({ onClose }: { onClose: () => void }) {
     void listStreams().then((next) => {
       if (!mounted.current) return;
       setStreams(next);
-      setMode(next.find((stream) => stream.path === target)?.parent?.startsWith("//") ? "merge" : "copy");
+      if (!initial) setMode(next.find((stream) => stream.path === target)?.parent?.startsWith("//") ? "merge" : "copy");
     }).catch((caught: unknown) => { if (mounted.current) setError(p4DisplayError(errorMessage(caught))); });
     return () => { mounted.current = false; };
-  }, [listStreams, target, attempt]);
+  }, [listStreams, target, attempt, initial]);
 
   function edit(update: () => void) { setPreview(null); setError(null); update(); }
 
@@ -72,7 +72,7 @@ export function P4StreamDialog({ onClose }: { onClose: () => void }) {
       <SegmentedControl label={t("p4.streams.operation")} value={mode} disabled={blocked || !streams} onChange={(value) => edit(() => setMode(value))} options={[{ value: "merge", label: t("p4.streams.merge") }, { value: "copy", label: t("p4.streams.copy") }]} />
       <div className="grid gap-2 rounded-lg border p-3">
         <Label className="text-xs text-muted-foreground">{t("p4.streams.source")}</Label>
-        {mode === "copy" && children.length ? <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" className="justify-between font-mono text-xs" disabled={blocked} aria-label={t("p4.streams.source")}><span className="truncate">{source}</span><ChevronDownIcon /></Button></DropdownMenuTrigger><DropdownMenuContent className="max-h-60 overflow-auto">{children.map((stream) => <DropdownMenuItem key={stream.path} onClick={() => edit(() => setChild(stream.path))}><span className="min-w-4">{source === stream.path ? <CheckIcon className="size-3.5" /> : null}</span><span className="font-mono text-xs">{stream.path}</span></DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu> : <p className="break-all font-mono text-xs">{source || t(streams ? "p4.streams.noSource" : "p4.streams.loading")}</p>}
+        {mode === "copy" && children.length ? <P4StreamSelect streams={children} value={source} onChange={(value) => edit(() => setChild(value))} disabled={blocked} label={t("p4.streams.source")} /> : <p className="break-all font-mono text-xs">{source || t(streams ? "p4.streams.noSource" : "p4.streams.loading")}</p>}
         <ArrowDownIcon className="size-4 text-muted-foreground" />
         <Label className="text-xs text-muted-foreground">{t("p4.streams.target")}</Label><p className="break-all font-mono text-xs">{target}</p>
       </div>

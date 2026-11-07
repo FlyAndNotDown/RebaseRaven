@@ -82,6 +82,7 @@ export function CommandCenter() {
       list.push(
         { id: "view-pending", label: t("desktop.commandPalette.go_to_pending"), group: t("desktop.commandPalette.navigate"), shortcut: "viewChanges", run: () => p4.setView("pending") },
         { id: "view-submitted", label: t("desktop.commandPalette.go_to_history"), group: t("desktop.commandPalette.navigate"), shortcut: "viewHistory", run: () => p4.setView("submitted") },
+        { id: "view-streams", label:t("p4.streamTree.title"), group:t("desktop.commandPalette.navigate"), run:() => p4.setView("streams") },
         { id: "view-workspace", label: t("desktop.commandPalette.go_to_workspace"), group: t("desktop.commandPalette.navigate"), shortcut: "viewStash", run: () => p4.setView("workspace") },
         { id: "sync", label: t("desktop.commandPalette.get_latest"), group: t("desktop.appSidebar.workspace"), shortcut: "fetch", run: () => void p4.sync() },
         { id: "team-shelves", label: t("p4.shelves.title"), group: t("desktop.appSidebar.workspace"), run: () => p4.setShelvesOpen(true) },

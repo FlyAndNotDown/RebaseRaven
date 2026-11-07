@@ -107,6 +107,7 @@ interface P4ContextValue {
   previewUnshelve: (request: P4UnshelveRequest) => Promise<P4OperationPreview>;
   restoreShelf: (request: P4UnshelveRequest, preview: P4OperationPreview) => Promise<void>;
   setStreamOpen: (open: boolean) => void;
+  openStreamIntegration: (mode: P4StreamRequest["mode"], source: string) => void;
   previewStream: (request: P4StreamRequest) => Promise<P4StreamPreview>;
   applyStream: (request: P4StreamRequest, preview: P4StreamPreview) => Promise<void>;
   previewIntegrate: (request: P4IntegrateRequest) => Promise<P4OperationPreview>;
@@ -215,7 +216,10 @@ export function P4Provider({ children }: { children: ReactNode }) {
   const [loginOpen, setLoginOpen] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [shelvesOpen, setShelvesOpen] = useState(false);
-  const [streamOpen, setStreamOpen] = useState(false);
+  const [streamOpen, updateStreamOpen] = useState(false);
+  const [streamInitial, setStreamInitial] = useState<Pick<P4StreamRequest,"mode"|"source"> | null>(null);
+  const setStreamOpen = useCallback((open: boolean) => {setStreamInitial(null);updateStreamOpen(open);},[]);
+  const openStreamIntegration = useCallback((mode:P4StreamRequest["mode"],source:string) => {setStreamInitial({mode,source});updateStreamOpen(true);},[]);
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const [switchTarget, setSwitchTarget] = useState<string | null>(null);
   const [switchOutcome, setSwitchOutcome] = useState<P4SwitchOutcome | null>(null);
@@ -1525,6 +1529,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
       previewUnshelve,
       restoreShelf,
       setStreamOpen,
+      openStreamIntegration,
       previewStream,
       applyStream,
       previewIntegrate,
@@ -1597,6 +1602,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
       previewUnshelve,
       restoreShelf,
       setStreamOpen,
+      openStreamIntegration,
       previewStream,
       applyStream,
       previewIntegrate,
@@ -1675,7 +1681,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
         <P4ConnectionDialog />
         {workspaceOpen && connection ? <P4WorkspaceDialog key={JSON.stringify(connection)} /> : null}
         {shelvesOpen && connection ? <P4ShelvesDialog key={JSON.stringify(connection)} onClose={() => setShelvesOpen(false)} /> : null}
-        {streamOpen && connection ? <P4StreamDialog key={JSON.stringify(connection)} onClose={() => setStreamOpen(false)} /> : null}
+        {streamOpen && connection ? <P4StreamDialog initial={streamInitial} key={JSON.stringify([connection,streamInitial])} onClose={() => setStreamOpen(false)} /> : null}
         {reconcileOpen && connection ? <P4ReconcileDialog key={JSON.stringify(connection)} onClose={() => setReconcileOpen(false)} /> : null}
         {switchTarget !== null && connection ? <P4SwitchDialog key={JSON.stringify([connection,switchTarget])} initialTarget={switchTarget} onClose={() => setSwitchTarget(null)} /> : null}
         {switchOutcome ? <P4SwitchResultDialog outcome={switchOutcome} onClose={() => setSwitchOutcome(null)} /> : null}
