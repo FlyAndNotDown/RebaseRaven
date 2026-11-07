@@ -47,11 +47,10 @@ pub(crate) fn configure_main_webview(config: &mut tauri::Config) {
         window.decorations = true;
         window.title_bar_style = tauri::TitleBarStyle::Overlay;
         window.hidden_title = true;
-        // Wry adds the button frame height to this vertical inset. With the
-        // standard 14-point controls, its container matches the 44-point web
-        // titlebar rather than positioning the controls above the tab centers.
+        // Wry grows the container while retaining the native button's bottom
+        // inset. A 33-point container aligns its center with the 44-point web row.
         window.traffic_light_position =
-            Some(tauri::utils::config::LogicalPosition { x: 16.0, y: 30.0 });
+            Some(tauri::utils::config::LogicalPosition { x: 16.0, y: 19.0 });
     }
 }
 
