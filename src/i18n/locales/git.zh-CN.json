@@ -209,6 +209,16 @@
     "tagLabel": "标签 {{name}}",
     "branchLabel": "分支 {{name}}"
   },
+  "signing": {
+    "signature": "签名",
+    "modes": { "default": "按 Git 配置", "sign": "签名", "unsigned": "不签名" },
+    "hint": "使用 Git 已配置的签名方式和密钥，仅对本次提交或标签生效。",
+    "signoff": "添加 Signed-off-by",
+    "signoffTrailer": "Signed-off-by",
+    "signoffHint": "将提交者身份添加为 Signed-off-by 尾注。加密签名通过独立选项控制。",
+    "tagName": "标签名称",
+    "annotationRequired": "注释（签名时必填）"
+  },
   "ui": {
     "continue": "继续",
     "amend": "修订",

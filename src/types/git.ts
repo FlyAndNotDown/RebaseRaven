@@ -223,6 +223,12 @@ export interface GitIdentity {
   email: string;
 }
 
+export type GitSigningMode = "default" | "sign" | "unsigned";
+export interface CommitOptions {
+  signing: GitSigningMode;
+  signoff: boolean;
+}
+
 export interface TerminalOption {
   id: string;
   name: string;

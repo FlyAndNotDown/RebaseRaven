@@ -10,6 +10,8 @@ import type {
   BranchInfo,
   BranchList,
   CommitDetails,
+  CommitOptions,
+  GitSigningMode,
   CommitFile,
   CommitSummary,
   DirEntry,
@@ -171,8 +173,8 @@ export const gitApi = {
     call<WorkspaceSnapshot>("apply_lines", { repoPath, path, staged, action, lines }),
   discardPaths: (repoPath: string, paths: string[]) =>
     call<WorkspaceSnapshot>("discard_paths", { repoPath, paths }),
-  commit: (repoPath: string, message: string, amend = false) =>
-    call<WorkspaceSnapshot>("commit_changes", { repoPath, message, amend }),
+  commit: (repoPath: string, message: string, amend = false, options?: CommitOptions) =>
+    call<WorkspaceSnapshot>("commit_changes", { repoPath, message, amend, options }),
   checkoutBranch: (repoPath: string, name: string) =>
     call<WorkspaceSnapshot>("checkout_branch", { repoPath, name }),
   checkoutDetached: (repoPath: string, oid: string) =>
@@ -263,12 +265,13 @@ export const gitApi = {
       setUpstream: options?.setUpstream ?? false,
       expectedBranch: options?.expectedBranch ?? null,
     }),
-  createTag: (repoPath: string, name: string, message?: string, target?: string) =>
+  createTag: (repoPath: string, name: string, message?: string, target?: string, signing?: GitSigningMode) =>
     call<WorkspaceSnapshot>("create_tag", {
       repoPath,
       name,
       message: message || null,
       target: target || null,
+      signing,
     }),
   deleteTag: (repoPath: string, name: string) =>
     call<WorkspaceSnapshot>("delete_tag", { repoPath, name }),

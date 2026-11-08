@@ -361,6 +361,27 @@ it("keeps the editor and amend choice on a failed commit", async () => {
   expect(resolveCommitEditor(model).amend).toBe(true);
 });
 
+it("retains signing choices on failure and isolates them by repository until a successful commit", async () => {
+  await type("Signed revision");
+  await act(async()=>model.setCommitEditor(model.activeTabId,{...resolveCommitEditor(model),signing:"sign",signoff:true}));
+  const failed=await start();
+  expect(gitApi.commit).toHaveBeenLastCalledWith(A,"Signed revision",false,{signing:"sign",signoff:true});
+  await act(async()=>pending.shift()!.reject(new Error("Signing key unavailable")));
+  expect(await failed.result).toBe(false);await remount();
+  expect(resolveCommitEditor(model)).toMatchObject({signing:"sign",signoff:true,text:"Signed revision"});
+  await open(B);expect(resolveCommitEditor(model)).toMatchObject({signing:"default",signoff:false});
+  await switchTo(A);const retry=await start();await finish();expect(await retry.result).toBe(true);
+  expect(resolveCommitEditor(model)).toMatchObject({signing:"default",signoff:false,text:""});
+});
+
+it("passes the reviewed signature and signoff choices through commit and push", async () => {
+  await enablePush();await type("Signed then pushed");
+  await act(async()=>model.setCommitEditor(model.activeTabId,{...resolveCommitEditor(model),signing:"unsigned",signoff:true}));
+  const operation=await startPush();
+  expect(gitApi.commit).toHaveBeenLastCalledWith(A,"Signed then pushed",false,{signing:"unsigned",signoff:true});
+  await finish();expect(await operation.result).toBe(true);expect(gitApi.pushRemote).toHaveBeenCalled();
+});
+
 it("restores Undo messages on remount and respects an explicit clear", async () => {
   await act(async () => {
     await model.undoLastCommit();
@@ -627,7 +648,7 @@ it("respects amend mode in the actual menu without automatically force pushing",
     item!.click();
     await Promise.resolve();
   });
-  expect(gitApi.commit).toHaveBeenCalledWith(A, "Amended message", true);
+  expect(gitApi.commit).toHaveBeenCalledWith(A, "Amended message", true, {signing:"default",signoff:false});
   await open(B);
   await finish();
   expect(gitApi.pushRemote).toHaveBeenCalledWith(

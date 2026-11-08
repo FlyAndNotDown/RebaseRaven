@@ -355,9 +355,15 @@ async fn commit_changes(
     repo_path: String,
     message: String,
     amend: Option<bool>,
+    options: Option<git::CommitOptions>,
 ) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, move |repo| {
-        git::commit(repo, &message, amend.unwrap_or(false))?;
+        git::commit_with_options(
+            repo,
+            &message,
+            amend.unwrap_or(false),
+            options.unwrap_or_default(),
+        )?;
         git::snapshot(repo)
     })
     .await
@@ -684,9 +690,21 @@ async fn create_tag(
     name: String,
     message: Option<String>,
     target: Option<String>,
+    signing: Option<git::GitSigningMode>,
 ) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, move |repo| {
-        git::create_tag(repo, &name, message.as_deref(), target.as_deref())?;
+        match signing.unwrap_or_default() {
+            git::GitSigningMode::Default => {
+                git::create_tag(repo, &name, message.as_deref(), target.as_deref())?
+            }
+            mode => git::create_tag_with_signing(
+                repo,
+                &name,
+                message.as_deref(),
+                target.as_deref(),
+                mode,
+            )?,
+        }
         git::snapshot(repo)
     })
     .await

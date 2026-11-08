@@ -22,7 +22,7 @@ import type { LfsAction, LfsOutcome, LfsUpdate } from "@/types/lfs";
 import { normalizeRepoPath, sameRepoPath } from "@/lib/format";
 import { DEFAULT_HISTORY_EXPANDED, renamedRemoteViews } from "@/lib/remote-refs";
 import { repositoryUndoAction } from "@/state/repository-actions";
-import { canClearCommitEditor, commitEditorSubmission, editCommitEditor, type CommitEditorState } from "@/state/commit-editor";
+import { canClearCommitEditor, commitEditorSubmission, editCommitEditor, resolveCommitEditor, type CommitEditorState } from "@/state/commit-editor";
 import { defaultPrefs, normalizePrefs, sameLayout } from "@/lib/prefs";
 import {
   COMMIT_PAGE,
@@ -76,6 +76,7 @@ import type {
   PanelLayout,
   PanelLayoutId,
   CommitDetails,
+  GitSigningMode,
   CommitSummary,
   CompareRevision,
   RevisionComparison,
@@ -234,7 +235,7 @@ interface GitContextValue {
   createBranch: (name: string, switchTo: boolean, start?: string) => Promise<boolean>;
   renameBranch: (name: string, newName: string) => Promise<boolean>;
   setBranchUpstream: (name: string, upstream: string | null) => Promise<boolean>;
-  createTag: (name: string, message?: string, target?: string) => Promise<boolean>;
+  createTag: (name: string, message?: string, target?: string, signing?: GitSigningMode) => Promise<boolean>;
   deleteTag: (name: string) => Promise<boolean>;
   pushTag: (remote: string, name: string) => Promise<boolean>;
   deleteRemoteTag: (remote: string, name: string) => Promise<boolean>;
@@ -1947,8 +1948,12 @@ export function GitProvider({ children }: { children: ReactNode }) {
     async (message: string, amend = false) => {
       const tabId = activeTabIdRef.current;
       const submission = commitEditorSubmission(sessionsRef.current[tabId], message);
+      const session = sessionsRef.current[tabId];
+      if (!session) return false;
+      const editor = resolveCommitEditor(session);
+      const options = {signing: editor.signing, signoff: editor.signoff};
       const ok = await runMutation(amend ? t("operations.amending_commit") : t("operations.creating_commit"), (repoPath) =>
-        gitApi.commit(repoPath, message, amend),
+        gitApi.commit(repoPath, message, amend, options),
         undefined, { tabId },
       );
       if (ok) {
@@ -2290,10 +2295,10 @@ export function GitProvider({ children }: { children: ReactNode }) {
   );
 
   const createTag = useCallback(
-    async (name: string, message?: string, target?: string) => {
+    async (name: string, message?: string, target?: string, signing?: GitSigningMode) => {
       return runMutation(
         t("operations.creating_tag", { value: name }),
-        (repoPath) => gitApi.createTag(repoPath, name, message, target),
+        (repoPath) => gitApi.createTag(repoPath, name, message, target, signing),
         t("operations.created_tag", { value: name }),
       );
     },

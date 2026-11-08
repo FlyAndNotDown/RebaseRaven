@@ -1,9 +1,9 @@
-import type { WorkspaceSnapshot } from "@/types/git";
+import type { CommitOptions, WorkspaceSnapshot } from "@/types/git";
 
 /** Text requested by an operation such as undoing a commit. */
 export type CommitDraft = { text: string; nonce: number };
 
-export interface CommitEditorState {
+export interface CommitEditorState extends CommitOptions {
   text: string;
   amend: boolean;
   headId: string | null;
@@ -39,6 +39,8 @@ export function resolveCommitEditor(session: EditorSession): CommitEditorState {
     headId,
     preparedMessage,
     draftNonce: draft?.nonce ?? editor?.draftNonce ?? 0,
+    signing: editor?.signing ?? "default",
+    signoff: editor?.signoff ?? false,
   };
 }
 
@@ -48,6 +50,8 @@ export function editCommitEditor(session: EditorSession, edit: CommitEditorState
   return {
     ...current,
     text: edit.text,
+    signing: edit.signing,
+    signoff: edit.signoff,
     amend: Boolean(edit.amend && current.headId && edit.headId === current.headId && !session.snapshot?.repo.operation),
   };
 }

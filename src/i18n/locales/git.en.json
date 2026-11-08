@@ -209,6 +209,16 @@
     "tagLabel": "Tag {{name}}",
     "branchLabel": "Branch {{name}}"
   },
+  "signing": {
+    "signature": "Signature",
+    "modes": { "default": "Use Git configuration", "sign": "Sign", "unsigned": "Do not sign" },
+    "hint": "Uses the signing backend and key configured in Git. Applies only to this commit or tag.",
+    "signoff": "Add Signed-off-by",
+    "signoffTrailer": "Signed-off-by",
+    "signoffHint": "Adds your committer identity as a Signed-off-by trailer. Cryptographic signing is controlled separately.",
+    "tagName": "Tag name",
+    "annotationRequired": "Annotation (required for signing)"
+  },
   "ui": {
     "continue": "Continue",
     "amend": "Amend",
