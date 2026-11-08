@@ -1724,8 +1724,14 @@ fn push_line(lines: &mut Vec<String>, line: String) {
 pub fn submit(connection: &P4Connection, change_id: &str, description: &str) -> AppResult<()> {
     require_description(description)?;
     let env = env_for(connection);
-    let spec = set_description(&change_spec(&env, change_id)?, description);
-    run_ok(&env, &["submit", "-i"], Some(&spec))?;
+    let (spec, fix_statuses) = change_spec(&env, change_id)?;
+    let spec = set_description(&spec, description);
+    let args: &[&str] = if fix_statuses {
+        &["submit", "-s", "-i"]
+    } else {
+        &["submit", "-i"]
+    };
+    run_ok(&env, args, Some(&spec))?;
     Ok(())
 }
 
@@ -1736,8 +1742,14 @@ pub fn save_change(
 ) -> AppResult<String> {
     require_description(description)?;
     let env = env_for(connection);
-    let spec = set_description(&change_spec(&env, change_id)?, description);
-    let output = run_ok(&env, &["change", "-i"], Some(&spec))?;
+    let (spec, fix_statuses) = change_spec(&env, change_id)?;
+    let spec = set_description(&spec, description);
+    let args: &[&str] = if fix_statuses {
+        &["change", "-s", "-i"]
+    } else {
+        &["change", "-i"]
+    };
+    let output = run_ok(&env, args, Some(&spec))?;
     Ok(created_change_id(&output).unwrap_or_else(|| change_id.to_string()))
 }
 
@@ -3858,11 +3870,13 @@ pub(super) fn update_config_file(root: &Path, env: &P4Env) -> AppResult<()> {
     Ok(())
 }
 
-fn change_spec(env: &P4Env, change_id: &str) -> AppResult<String> {
+fn change_spec(env: &P4Env, change_id: &str) -> AppResult<(String, bool)> {
     if change_id.is_empty() || change_id == "default" || change_id == "new" {
-        run_ok(env, &["change", "-o"], None)
+        // A new -s form marks JobView suggestions as ignore. Keep the native
+        // default form until a numbered changelist has explicit fix records.
+        Ok((run_ok(env, &["change", "-o"], None)?, false))
     } else {
-        run_ok(env, &["change", "-o", change_id], None)
+        Ok((run_ok(env, &["change", "-s", "-o", change_id], None)?, true))
     }
 }
 

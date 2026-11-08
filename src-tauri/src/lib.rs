@@ -1562,6 +1562,60 @@ async fn p4_delete_stream_spec(
 }
 
 #[tauri::command]
+async fn p4_list_jobs(connection: p4::P4Connection, query: String) -> AppResult<p4::P4JobPage> {
+    blocking(move || p4::list_jobs(&connection, &query)).await
+}
+
+#[tauri::command]
+async fn p4_read_job(connection: p4::P4Connection, job: Option<String>) -> AppResult<p4::P4Job> {
+    blocking(move || p4::read_job(&connection, job.as_deref())).await
+}
+
+#[tauri::command]
+async fn p4_save_job(
+    connection: p4::P4Connection,
+    edit: p4::P4JobEdit,
+    fingerprint: Option<String>,
+) -> AppResult<p4::P4Job> {
+    blocking(move || p4::save_job(&connection, &edit, fingerprint.as_deref())).await
+}
+
+#[tauri::command]
+async fn p4_delete_job(
+    connection: p4::P4Connection,
+    job: String,
+    fingerprint: String,
+) -> AppResult<()> {
+    blocking(move || p4::delete_job(&connection, &job, &fingerprint)).await
+}
+
+#[tauri::command]
+async fn p4_job_fixes(
+    connection: p4::P4Connection,
+    job: String,
+    change: String,
+) -> AppResult<p4::P4FixPage> {
+    blocking(move || p4::job_fixes(&connection, &job, &change)).await
+}
+
+#[tauri::command]
+async fn p4_preview_job_fix(
+    connection: p4::P4Connection,
+    request: p4::P4FixRequest,
+) -> AppResult<p4::P4FixPreview> {
+    blocking(move || p4::preview_job_fix(&connection, &request)).await
+}
+
+#[tauri::command]
+async fn p4_apply_job_fix(
+    connection: p4::P4Connection,
+    request: p4::P4FixRequest,
+    fingerprint: String,
+) -> AppResult<()> {
+    blocking(move || p4::apply_job_fix(&connection, &request, &fingerprint)).await
+}
+
+#[tauri::command]
 async fn p4_list_specs(
     connection: p4::P4Connection,
     kind: p4::P4SpecKind,
@@ -2428,6 +2482,13 @@ pub fn run() {
             p4_workspace_settings,
             p4_preview_integration,
             p4_apply_integration,
+            p4_list_jobs,
+            p4_read_job,
+            p4_save_job,
+            p4_delete_job,
+            p4_job_fixes,
+            p4_preview_job_fix,
+            p4_apply_job_fix,
             p4_list_specs,
             p4_new_stream_spec,
             p4_read_stream_spec,

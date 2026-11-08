@@ -1,3 +1,4 @@
+import type { P4JobPage, P4Job, P4JobEdit, P4FixPage, P4FixRequest, P4FixPreview } from "@/types/p4-jobs";
 import { p4ComparisonDiff, type P4Comparison } from "@/lib/p4-comparison";
 import { invoke } from "@tauri-apps/api/core";
 import { t } from "@/i18n";
@@ -83,6 +84,14 @@ function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
 }
 
 export const p4Api = {
+  listJobs: (connection: P4Connection, query: string) => call<P4JobPage>("p4_list_jobs", {connection, query}),
+  readJob: (connection: P4Connection, job: string | null) => call<P4Job>("p4_read_job", {connection, job}),
+  saveJob: (connection: P4Connection, edit: P4JobEdit, fingerprint: string | null) => call<P4Job>("p4_save_job", {connection, edit, fingerprint}),
+  deleteJob: (connection: P4Connection, job: string, fingerprint: string) => call<void>("p4_delete_job", {connection, job, fingerprint}),
+  jobFixes: (connection: P4Connection, job: string, change: string) => call<P4FixPage>("p4_job_fixes", {connection, job, change}),
+  previewJobFix: (connection: P4Connection, request: P4FixRequest) => call<P4FixPreview>("p4_preview_job_fix", {connection, request}),
+  applyJobFix: (connection: P4Connection, request: P4FixRequest, fingerprint: string) => call<void>("p4_apply_job_fix", {connection, request, fingerprint}),
+
   newStreamSpec: (connection: P4Connection, setup: P4StreamSetup) => call<P4StreamSpec>("p4_new_stream_spec", {connection, setup}),
   readStreamSpec: (connection: P4Connection, path: string) => call<P4StreamSpec>("p4_read_stream_spec", {connection, path}),
   saveStreamSpec: (connection: P4Connection, edit: P4StreamSpecEdit, fingerprint: string | null) => call<P4StreamSpec>("p4_save_stream_spec", {connection, edit, fingerprint}),

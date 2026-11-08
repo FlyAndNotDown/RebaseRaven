@@ -1,5 +1,6 @@
+import { P4ChangeJobsDialog } from "@/components/p4/p4-job-fixes";
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { ArchiveIcon, ArchiveRestoreIcon, ChevronDownIcon, CopyIcon, GitMergeIcon, InfoIcon, Settings2Icon, Loader2Icon, PencilIcon, PlusIcon, SendIcon, Trash2Icon, Undo2Icon } from "lucide-react";
+import { ClipboardListIcon, ArchiveIcon, ArchiveRestoreIcon, ChevronDownIcon, CopyIcon, GitMergeIcon, InfoIcon, Settings2Icon, Loader2Icon, PencilIcon, PlusIcon, SendIcon, Trash2Icon, Undo2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { ChangeBadge } from "@/components/p4/change-badge";
 import { P4FilePropertiesDialog } from "@/components/p4/p4-file-properties";
@@ -37,6 +38,7 @@ import { t, useTranslation } from "@/i18n";
 export function P4Pending() {
   const { t } = useTranslation();
   const p4 = useP4();
+  const [jobsChange, setJobsChange] = useState<string | null>(null);
   const [properties, setProperties] = useState<{ paths: string[]; edit: boolean } | null>(null);
   const [creating, setCreating] = useState(false);
   const [changeDialog, setChangeDialog] = useState<ChangeDialogRequest | null>(null);
@@ -359,6 +361,7 @@ export function P4Pending() {
                         <ContextMenuItem disabled={p4.busy} onClick={() => openChangeDialog(change, "edit")}>
                           <PencilIcon />{t("p4.editChangelist")}
                         </ContextMenuItem>
+                        <ContextMenuItem disabled={p4.busy || change.id === "default"} onClick={() => setJobsChange(change.id)}><ClipboardListIcon />{t("p4.jobs.linkedJobs")}</ContextMenuItem>
                         {change.id !== "default" ? (
                           <ContextMenuItem onSelect={async () => {
                             try {
@@ -498,6 +501,7 @@ export function P4Pending() {
       </ResizablePanelGroup>
       {resolvingPath ? <P4Resolve key={resolvingPath} path={resolvingPath} onClose={closeResolution} /> : null}
       {properties ? <P4FilePropertiesDialog key={JSON.stringify(properties)} {...properties} onClose={() => setProperties(null)} /> : null}
+      {jobsChange ? <P4ChangeJobsDialog change={jobsChange} onClose={() => setJobsChange(null)} /> : null}
       {changeDialog ? (
         <P4ChangeDialog
           key={`${changeDialog.mode}:${changeDialog.id}`}

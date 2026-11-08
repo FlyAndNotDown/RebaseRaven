@@ -1,3 +1,4 @@
+import type { P4JobActions } from "@/types/p4-jobs";
 import { t, useTranslation } from "@/i18n";
 import {
   createContext,
@@ -75,6 +76,7 @@ class LoginCancelled extends Error {
 }
 
 interface P4ContextValue {
+  jobs: P4JobActions;
   specs: P4SpecActions;
   streamSpecs: P4StreamSpecActions;
   openIntegration: (initial?: P4IntegrationInitial) => void;
@@ -1552,21 +1554,21 @@ export function P4Provider({ children }: { children: ReactNode }) {
     [lockMutation, beginActivity, endActivity, reconnect, report, retargetRepoTab, setTabMeta],
   );
 
-  const { specs, streamSpecs } = useMemo<{specs: P4SpecActions; streamSpecs: P4StreamSpecActions}>(() => {
+  const { specs, streamSpecs, jobs } = useMemo<{specs: P4SpecActions; streamSpecs: P4StreamSpecActions; jobs: P4JobActions}>(() => {
     async function read<T>(action: (connection: P4Connection) => Promise<T>): Promise<T> {
       const owner = sessionRef.current;
       if (!owner) throw new Error(t("p4-operations.connectionRequired"));
       return guard(owner.connection, () => action(owner.connection));
     }
-    async function write<T>(action: (connection: P4Connection) => Promise<T>, stream = false): Promise<T> {
+    async function write<T>(action: (connection: P4Connection) => Promise<T>, refreshWorkspace = false, label = t("p4.specs.updating")): Promise<T> {
       const owner = sessionRef.current;
       if (!owner) throw new Error(t("p4-operations.connectionRequired"));
-      const release = lockMutation(owner, t("p4.specs.updating"));
+      const release = lockMutation(owner, label);
       if (!release) throw new Error(t("p4-operations.workspaceBusy"));
-      const activity = beginActivity(t("p4.specs.updating"));
+      const activity = beginActivity(label);
       try {
         const result = await guard(owner.connection, () => action(owner.connection));
-        if (stream) {
+        if (refreshWorkspace) {
           setFilesEpoch(value => value + 1);
           void reloadPending(owner, undefined, true).catch(report);
         }
@@ -1574,7 +1576,15 @@ export function P4Provider({ children }: { children: ReactNode }) {
       }
       finally { endActivity(activity); release(); }
     }
-    return { specs: {
+    return { jobs: {
+      list: query => read(c => p4Api.listJobs(c, query)),
+      read: job => read(c => p4Api.readJob(c, job)),
+      save: (edit, fingerprint) => write(c => p4Api.saveJob(c, edit, fingerprint), false, t("p4.jobs.updating")),
+      remove: (job, fingerprint) => write(c => p4Api.deleteJob(c, job, fingerprint), false, t("p4.jobs.updating")),
+      fixes: (job, change) => read(c => p4Api.jobFixes(c, job, change)),
+      previewFix: request => read(c => p4Api.previewJobFix(c, request)),
+      applyFix: (request, fingerprint) => write(c => p4Api.applyJobFix(c, request, fingerprint), true, t("p4.jobs.updating")),
+    }, specs: {
       list: (kind, query, owner) => read(c => p4Api.listSpecs(c, kind, query, owner)),
       read: (kind, name) => read(c => p4Api.readSpec(c, kind, name)),
       files: name => read(c => p4Api.labelFiles(c, name)),
@@ -1594,6 +1604,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
     () => ({
       specs,
       streamSpecs,
+      jobs,
       openIntegration,
       previewIntegration,
       applyIntegration,
@@ -1699,6 +1710,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
     [
       specs,
       streamSpecs,
+      jobs,
       openIntegration,
       previewIntegration,
       applyIntegration,
