@@ -4,7 +4,7 @@ use std::hash::{Hash, Hasher};
 
 use serde::{Deserialize, Serialize};
 
-use super::client::{set_block, stable_spec};
+use super::client::{block, set_block, stable_spec};
 use super::parse::{parse_ztag, read_description, set_description, set_spec_field, spec_field};
 use super::review::run;
 use super::workspace::{env_for, P4Connection};
@@ -45,6 +45,8 @@ pub struct P4StreamSpec {
     #[serde(flatten)]
     pub edit: P4StreamSpecEdit,
     pub fingerprint: String,
+    pub opened: bool,
+    pub editable_fields: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -56,7 +58,7 @@ pub struct P4StreamSetup {
     pub parent_view: Option<String>,
 }
 
-fn stream_path(value: &str) -> AppResult<&str> {
+pub(super) fn stream_path(value: &str) -> AppResult<&str> {
     let parts: Vec<_> = value.strip_prefix("//").unwrap_or("").split('/').collect();
     if value.len() > 1024
         || parts.len() < 2
@@ -110,7 +112,7 @@ fn validate_setup(setup: &P4StreamSetup) -> AppResult<()> {
     Ok(())
 }
 
-fn fingerprint(connection: &P4Connection, spec: &str) -> String {
+pub(super) fn fingerprint(connection: &P4Connection, spec: &str) -> String {
     let mut hash = DefaultHasher::new();
     (
         &connection.port,
@@ -135,7 +137,7 @@ fn mapping(spec: &str, field: &str) -> Vec<String> {
         .collect()
 }
 
-fn parsed(connection: &P4Connection, spec: &str) -> P4StreamSpec {
+pub(super) fn parsed(connection: &P4Connection, spec: &str) -> P4StreamSpec {
     let options = spec_field(spec, "Options");
     let has = |value| options.split_whitespace().any(|word| word == value);
     P4StreamSpec {
@@ -159,6 +161,8 @@ fn parsed(connection: &P4Connection, spec: &str) -> P4StreamSpec {
             ignored: mapping(spec, "Ignored"),
         },
         fingerprint: fingerprint(connection, spec),
+        opened: false,
+        editable_fields: Vec::new(),
     }
 }
 
@@ -203,8 +207,32 @@ pub fn new_stream_spec(
     Ok(parsed(connection, &template(connection, setup)?))
 }
 
+pub(super) fn loaded(connection: &P4Connection, path: &str) -> AppResult<(String, P4StreamSpec)> {
+    let spec = existing(connection, path)?;
+    let mut result = parsed(connection, &spec);
+    if connection.stream.as_deref() == Some(path) {
+        let opened = run(connection, &["-ztag", "opened", "-So"])?;
+        if parse_ztag(&opened)
+            .iter()
+            .any(|row| row.get("stream").is_some_and(|value| value == path))
+        {
+            let schema = run(connection, &["spec", "-o", "stream"])?;
+            result.opened = true;
+            result.editable_fields = block(&schema, "Openable")
+                .iter()
+                .filter_map(|line| {
+                    let (field, mode) = line.split_once(char::is_whitespace)?;
+                    matches!(mode.trim(), "isolate" | "propagate").then(|| field.to_string())
+                })
+                .collect();
+            result.fingerprint = fingerprint(connection, &format!("{spec}\n{opened}\n{schema}"));
+        }
+    }
+    Ok((spec, result))
+}
+
 pub fn read_stream_spec(connection: &P4Connection, path: &str) -> AppResult<P4StreamSpec> {
-    Ok(parsed(connection, &existing(connection, path)?))
+    loaded(connection, path).map(|(_, spec)| spec)
 }
 
 fn edited_spec(spec: &str, edit: &P4StreamSpecEdit) -> AppResult<String> {
@@ -322,9 +350,13 @@ pub fn save_stream_spec(
         }));
     }
     let original = if let Some(expected) = expected {
-        let original = existing(connection, &edit.path)?;
-        if fingerprint(connection, &original) != expected {
+        let (original, current) = loaded(connection, &edit.path)?;
+        if current.fingerprint != expected {
             return Err(AppError::msg(STALE));
+        }
+        if current.opened {
+            let updated = edited_spec(&original, edit)?;
+            validate_private_fields(&original, &updated, &current.editable_fields)?;
         }
         original
     } else {
@@ -344,12 +376,47 @@ pub fn save_stream_spec(
 }
 
 pub fn delete_stream_spec(connection: &P4Connection, path: &str, expected: &str) -> AppResult<()> {
-    let original = existing(connection, path)?;
-    if fingerprint(connection, &original) != expected {
+    let current = read_stream_spec(connection, path)?;
+    if current.fingerprint != expected {
         return Err(AppError::msg(STALE));
+    }
+    if current.opened {
+        return Err(AppError::msg(
+            "Revert or submit the private stream definition before deleting the stream.",
+        ));
     }
     // Keep server protections for populated streams, child streams and clients.
     run(connection, &["stream", "-d", path])?;
+    Ok(())
+}
+
+fn validate_private_fields(before: &str, after: &str, editable: &[String]) -> AppResult<()> {
+    for field in [
+        "Owner",
+        "Name",
+        "Parent",
+        "Type",
+        "Description",
+        "Options",
+        "Paths",
+        "Remapped",
+        "Ignored",
+    ] {
+        let get = |spec: &str| match field {
+            "Description" => read_description(spec),
+            "Paths" | "Remapped" | "Ignored" => mapping(spec, field).join("\n"),
+            "Options" => {
+                let value = spec_field(spec, field);
+                let mut values: Vec<_> = value.split_whitespace().collect();
+                values.sort_unstable();
+                values.join(" ")
+            }
+            _ => spec_field(spec, field),
+        };
+        if get(before) != get(after) && !editable.iter().any(|value| value == field) {
+            return Err(AppError::msg("This field is not isolated by the server's stream definition. Submit or revert the private edit first."));
+        }
+    }
     Ok(())
 }
 
@@ -437,5 +504,17 @@ mod tests {
         let mut other = connection.clone();
         other.port = "other:1666".into();
         assert_ne!(fingerprint(&connection, SPEC), fingerprint(&other, SPEC));
+    }
+    #[test]
+    fn private_edits_cannot_change_fields_excluded_from_server_isolation() {
+        let mut edit = parsed(&connection(), SPEC).edit;
+        edit.paths.push("exclude generated/...".into());
+        let updated = edited_spec(SPEC, &edit).unwrap();
+        assert!(validate_private_fields(SPEC, &updated, &["Paths".into()]).is_ok());
+        edit.name = "Would publish immediately".into();
+        let updated = edited_spec(SPEC, &edit).unwrap();
+        assert!(validate_private_fields(SPEC, &updated, &["Paths".into()]).is_err());
+        assert!(validate_private_fields(SPEC, &updated, &["Paths".into(), "Name".into()]).is_ok());
+        assert!(updated.contains("Custom: preserved"));
     }
 }

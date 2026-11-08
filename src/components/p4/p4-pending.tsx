@@ -1,6 +1,8 @@
+import { P4StreamWorkDialog, P4StreamDiffDialog } from "@/components/p4/p4-stream-work";
+import type { P4StreamDiffRequest } from "@/types/p4-stream-specs";
 import { P4ChangeJobsDialog } from "@/components/p4/p4-job-fixes";
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { ClipboardListIcon, ArchiveIcon, ArchiveRestoreIcon, ChevronDownIcon, CopyIcon, GitMergeIcon, InfoIcon, Settings2Icon, Loader2Icon, PencilIcon, PlusIcon, SendIcon, Trash2Icon, Undo2Icon } from "lucide-react";
+import { GitBranchIcon, ClipboardListIcon, ArchiveIcon, ArchiveRestoreIcon, ChevronDownIcon, CopyIcon, GitMergeIcon, InfoIcon, Settings2Icon, Loader2Icon, PencilIcon, PlusIcon, SendIcon, Trash2Icon, Undo2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { ChangeBadge } from "@/components/p4/change-badge";
 import { P4FilePropertiesDialog } from "@/components/p4/p4-file-properties";
@@ -38,6 +40,8 @@ import { t, useTranslation } from "@/i18n";
 export function P4Pending() {
   const { t } = useTranslation();
   const p4 = useP4();
+  const [streamWorkOpen, setStreamWorkOpen] = useState(false);
+  const [streamDiff, setStreamDiff] = useState<P4StreamDiffRequest | null>(null);
   const [jobsChange, setJobsChange] = useState<string | null>(null);
   const [properties, setProperties] = useState<{ paths: string[]; edit: boolean } | null>(null);
   const [creating, setCreating] = useState(false);
@@ -60,7 +64,7 @@ export function P4Pending() {
   const resolvingPath = currentResolve?.change === p4.selectedChange ? currentResolve.path : null;
   const openChanges = expanded ?? new Set(p4.selectedChange ? [p4.selectedChange] : []);
   const changeToDelete = p4.pending.find((change) => change.id === deletingChange);
-  const canDeleteChange = changeToDelete != null && !changeToDelete.shelved && changeToDelete.files.length === 0;
+  const canDeleteChange = changeToDelete != null && !changeToDelete.shelved && !changeToDelete.stream && !changeToDelete.shelvedStream && changeToDelete.files.length === 0;
   const dialogChange = changeDialog ? p4.pending.find((change) => change.id === changeDialog.id) : null;
 
   function openChangeDialog(change: P4Changelist, mode: ChangeDialogRequest["mode"]) {
@@ -353,7 +357,7 @@ export function P4Pending() {
                       </ContextMenuTrigger>
                       <ContextMenuContent className="min-w-56">
                         <ContextMenuItem
-                          disabled={p4.busy || changeOpened.length === 0}
+                          disabled={p4.busy || changeOpened.length === 0 && !change.stream}
                           onClick={() => openChangeDialog(change, "submit")}
                         >
                           <SendIcon />{t("p4.submitChangelist")}
@@ -376,7 +380,7 @@ export function P4Pending() {
                         ) : null}
                         <ContextMenuSeparator />
                         <ContextMenuItem
-                          disabled={p4.busy || change.id === "default" || changeOpened.length === 0}
+                          disabled={p4.busy || change.id === "default" || changeOpened.length === 0 && !change.stream}
                           onClick={() => {
                             p4.selectChange(change.id);
                             void p4.shelveSelected();
@@ -409,6 +413,7 @@ export function P4Pending() {
                           data-drop="open"
                           data-change={change.id}
                         >
+                          {change.stream ? <button type="button" className="flex w-full items-center gap-2 rounded-md py-1.5 pl-9 pr-2 text-left text-xs hover:bg-muted/70" onClick={() => {p4.selectChange(change.id); setStreamWorkOpen(true);}}><GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 truncate">{t("p4.streamWork.title")}</span><span className="truncate font-mono text-[11px] text-muted-foreground">{depotBase(change.stream.path)}</span></button> : null}
                           <PendingFiles
                             changeId={change.id}
                             files={changeOpened}
@@ -441,6 +446,8 @@ export function P4Pending() {
                             data-change={change.id}
                           >
                           <FileGroup
+                            extraCount={change.shelvedStream ? 1 : 0}
+                            extra={change.shelvedStream ? <ContextMenu><ContextMenuTrigger asChild><button type="button" className="flex w-full items-center gap-2 rounded-md py-1.5 pl-9 pr-2 text-left text-xs hover:bg-muted/70" onClick={() => setStreamDiff({kind:"shelf", path:change.shelvedStream!.path, change:change.id})}><GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 truncate">{t("p4.streamWork.shelved")}</span><span className="truncate font-mono text-[11px] text-muted-foreground">{depotBase(change.shelvedStream.path)}</span></button></ContextMenuTrigger><ContextMenuContent><ContextMenuItem variant="destructive" disabled={p4.busy} onClick={() => {p4.selectChange(change.id); setDeletingShelf(true);}}><Trash2Icon />{t("p4.delete")}</ContextMenuItem></ContextMenuContent></ContextMenu> : null}
                             title={t("p4.shelved")}
                             changeId={change.id}
                             open={shelvedOpen.has(change.id)}
@@ -501,12 +508,17 @@ export function P4Pending() {
       </ResizablePanelGroup>
       {resolvingPath ? <P4Resolve key={resolvingPath} path={resolvingPath} onClose={closeResolution} /> : null}
       {properties ? <P4FilePropertiesDialog key={JSON.stringify(properties)} {...properties} onClose={() => setProperties(null)} /> : null}
+      {streamWorkOpen ? <P4StreamWorkDialog onClose={() => setStreamWorkOpen(false)} /> : null}
+      {streamDiff ? <P4StreamDiffDialog target={streamDiff} onClose={() => setStreamDiff(null)} /> : null}
       {jobsChange ? <P4ChangeJobsDialog change={jobsChange} onClose={() => setJobsChange(null)} /> : null}
       {changeDialog ? (
         <P4ChangeDialog
           key={`${changeDialog.mode}:${changeDialog.id}`}
           request={changeDialog}
           openedCount={dialogChange?.files.filter((file) => !file.shelved).length ?? 0}
+          openedStream={Boolean(dialogChange?.stream)}
+          shelved={Boolean(dialogChange?.shelved)}
+          onManageShelf={() => {p4.selectChange(changeDialog.id); setChangeDialog(null); setDeletingShelf(true);}}
           available={!!dialogChange}
           busy={p4.busy}
           onConfirm={(description) => changeDialog.mode === "submit"
@@ -611,6 +623,8 @@ function FileGroup({
   onSelect,
   onPointerDown,
   menu,
+  extra,
+  extraCount = 0,
 }: {
   title: string;
   changeId: string;
@@ -623,6 +637,8 @@ function FileGroup({
   onSelect: (event: MouseEvent, path: string) => void;
   onPointerDown: (event: ReactPointerEvent, file: PendingDragFile) => void;
   menu?: ReactNode;
+  extra?: ReactNode;
+  extraCount?: number;
 }) {
   useTranslation();
   const header = (
@@ -634,7 +650,7 @@ function FileGroup({
     >
       <ChevronDownIcon className={cn("size-3.5 text-muted-foreground transition-transform", !open && "-rotate-90")} />
       <span className="text-xs font-medium">{title}</span>
-      <span className="tabular-nums text-xs text-muted-foreground">{files.length}</span>
+      <span className="tabular-nums text-xs text-muted-foreground">{files.length + extraCount}</span>
     </button>
   );
   return (
@@ -647,7 +663,8 @@ function FileGroup({
       ) : (
         header
       )}
-      {open ? (
+      {open ? <>
+        {extra}
         <PendingFiles
           changeId={changeId}
           files={files}
@@ -658,7 +675,7 @@ function FileGroup({
           onSelect={onSelect}
           onPointerDown={onPointerDown}
         />
-      ) : null}
+      </> : null}
     </div>
   );
 }

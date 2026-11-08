@@ -1567,14 +1567,15 @@ export function P4Provider({ children }: { children: ReactNode }) {
       if (!release) throw new Error(t("p4-operations.workspaceBusy"));
       const activity = beginActivity(label);
       try {
-        const result = await guard(owner.connection, () => action(owner.connection));
+        return await guard(owner.connection, () => action(owner.connection));
+      }
+      finally {
         if (refreshWorkspace) {
           setFilesEpoch(value => value + 1);
           void reloadPending(owner, undefined, true).catch(report);
         }
-        return result;
+        endActivity(activity); release();
       }
-      finally { endActivity(activity); release(); }
     }
     return { jobs: {
       list: query => read(c => p4Api.listJobs(c, query)),
@@ -1593,6 +1594,10 @@ export function P4Provider({ children }: { children: ReactNode }) {
       remove: (kind, name, fingerprint) => write(c => p4Api.deleteSpec(c, kind, name, fingerprint)),
       applyTag: (request, fingerprint) => write(c => p4Api.applyLabelTag(c, request, fingerprint)),
     }, streamSpecs: {
+      work: () => read(c => p4Api.streamWork(c)),
+      previewWork: request => read(c => p4Api.previewStreamWork(c, request)),
+      applyWork: (request, fingerprint) => write(c => p4Api.applyStreamWork(c, request, fingerprint), true, t("p4.streamWork.updating")),
+      changeDiff: request => read(c => p4Api.streamChangeDiff(c, request)),
       read: path => read(c => p4Api.readStreamSpec(c, path)),
       template: setup => read(c => p4Api.newStreamSpec(c, setup)),
       save: (edit, fingerprint) => write(c => p4Api.saveStreamSpec(c, edit, fingerprint), true),

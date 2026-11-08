@@ -146,7 +146,7 @@ export function shownFile(files: P4File[], preferred?: { path: string | null; sh
 
 export function defaultChange(pending: P4Changelist[]) {
   const defaultList = pending.find((change) => change.id === "default");
-  const hasContent = (change: P4Changelist) => change.files.length > 0 || change.shelved;
+  const hasContent = (change: P4Changelist) => change.files.length > 0 || Boolean(change.stream) || change.shelved;
   if (defaultList && hasContent(defaultList)) return defaultList.id;
   return pending.find(hasContent)?.id ?? defaultList?.id ?? pending[0]?.id ?? "default";
 }

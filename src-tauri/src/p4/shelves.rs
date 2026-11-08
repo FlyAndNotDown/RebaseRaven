@@ -83,7 +83,7 @@ fn shelf_record(connection: &P4Connection, change: &str) -> AppResult<(String, P
     let output = run(connection, &["-ztag", "describe", "-S", "-s", &id])?;
     let record = parse_ztag(&output).into_iter().next().unwrap_or_default();
     let files = files_from_groups(connection, &indexed_groups(&record), true);
-    if files.is_empty() {
+    if files.is_empty() && !record.contains_key("stream") {
         return Err(AppError::msg("This changelist has no shelved files."));
     }
     Ok((output, change_from_record(&record, files, true)))

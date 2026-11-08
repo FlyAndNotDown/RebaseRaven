@@ -106,7 +106,7 @@
   "creating": "Creating",
   "create": "Create",
   "deleteShelf": "Delete shelf",
-  "thisRemovesTheShelvedFilesForThisChangelistFromTheServerOpenedFilesStayInTheWorkspace": "This removes the shelved files for this changelist from the server. Opened files stay in the workspace.",
+  "thisRemovesTheShelvedFilesForThisChangelistFromTheServerOpenedFilesStayInTheWorkspace": "Remove this changelist's shelved content from the server. Opened files and private stream edits stay in the workspace.",
   "thisDiscardsTheOpenedChangesAndRestoresTheHaveRevisionAShelfOnTheServerIsLeftInPlace": "This discards the opened changes and restores the have revision. A shelf on the server is left in place.",
   "thisRemovesTheAddedFilesFromTheChangelistAndDeletesThemFromDisk": "This removes the added files from the changelist and deletes them from disk.",
   "addedFilesAreDeletedFromDiskOtherOpenedFilesGoBackToTheRevisionYouHave": "Added files are deleted from disk. Other opened files go back to the revision you have.",
@@ -280,6 +280,7 @@
     "editDescription": "Update the description of this pending changelist.",
     "defaultDescription": "Save the default changelist as a numbered changelist, including its opened files.",
     "submitDescription": "Submit all opened files in this changelist with the description below.",
+    "shelvedSubmit": "Remove this changelist's shelved content before submitting.",
     "openedFiles_one": "{{count}} opened file",
     "openedFiles_other": "{{count}} opened files",
     "unavailable": "This changelist is no longer pending. Close this dialog and refresh the workspace.",
@@ -654,5 +655,53 @@
     "previewFix": "Preview association",
     "applyKeepStatus": "The association is updated. The job’s current status is preserved.",
     "linkChange": "Link changelist"
+  },
+  "streamWork": {
+    "title": "Stream definition",
+    "edit": "Edit private definition",
+    "privateHint": "Changes stay private to this workspace until the changelist is submitted.",
+    "updating": "Updating stream definition",
+    "privateChange": "Private · {{change}}",
+    "publicRevision": "Public · @{{change}}",
+    "unresolved": "Resolve the stream fields before submitting.",
+    "operation": "Operation",
+    "resolveMethod": "Resolve method",
+    "back": "Back",
+    "confirmRevert": "Type the full stream path to discard the private edit.",
+    "noChanges": "No stream definition changes.",
+    "openHint": "Open the definition for private editing, or preview a parent-view conversion.",
+    "showPending": "Show pending changelist",
+    "shelved": "Shelved stream definition",
+    "submitHint": "Submit the opened files and stream definition in this changelist.",
+    "shelf": "Shelf changelist",
+    "actions": {
+      "open": "Open for private editing",
+      "move": "Move to changelist",
+      "revert": "Revert private edit",
+      "parentview": "Convert parent view",
+      "resolve": "Resolve stream fields",
+      "unshelve": "Restore stream definition",
+      "deleteShelf": "Remove definition from shelf"
+    },
+    "modes": {
+      "inherit": "Inherit parent view",
+      "noinherit": "Independent view",
+      "safe": "Safe resolve",
+      "merge": "Merge automatically",
+      "yours": "Accept yours",
+      "theirs": "Accept theirs"
+    },
+    "effects": {
+      "open": "The definition opens in the selected changelist. Changes remain private until submitted.",
+      "move": "Move only the opened stream definition to the selected changelist.",
+      "revert": "Discard the private stream edit and return to the latest public definition.",
+      "parentview": "P4 prepares the converted mappings in the selected changelist. Review the changes before submitting.",
+      "resolve": "Apply this method to the stream fields. Fields left unresolved still need attention before submitting.",
+      "unshelve": "Restore the shelved stream definition into the selected changelist. Files are excluded; conflicting stream fields need resolving.",
+      "deleteShelf": "Remove only the shelved stream definition. Shelved files and the current private edit are preserved."
+    },
+    "resolveComparison": "Version comparison · private → public @{{change}}",
+    "shelfComparison": "Version comparison · workspace → shelf #{{change}}",
+    "confirmDeleteShelf": "Type the full stream path to remove its shelved definition."
   }
 }

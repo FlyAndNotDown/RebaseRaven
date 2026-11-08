@@ -21,6 +21,8 @@ export interface P4File {
   detail: string;
 }
 
+export interface P4StreamChange { path: string; baseChange: string }
+
 export interface P4Changelist {
   id: string;
   user: string;
@@ -30,6 +32,8 @@ export interface P4Changelist {
   time: number;
   shelved: boolean;
   files: P4File[];
+  stream?: P4StreamChange | null;
+  shelvedStream?: P4StreamChange | null;
 }
 
 export interface P4ChangePage {

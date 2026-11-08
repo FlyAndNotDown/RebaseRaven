@@ -1,7 +1,9 @@
+import { P4StreamDiffDialog } from "@/components/p4/p4-stream-work";
+import type { P4StreamDiffRequest } from "@/types/p4-stream-specs";
 import { P4ChangeJobsDialog } from "@/components/p4/p4-job-fixes";
 import { t, useTranslation } from "@/i18n";
 import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
-import { ClipboardListIcon, CheckIcon, ChevronDownIcon, DownloadIcon, HistoryIcon } from "lucide-react";
+import { GitBranchIcon, ClipboardListIcon, CheckIcon, ChevronDownIcon, DownloadIcon, HistoryIcon } from "lucide-react";
 import { toast } from "sonner";
 import { AuthorAvatar } from "@/components/author-avatar";
 import { AuthorName, ExactTime, RevisionDot } from "@/components/revision-meta";
@@ -62,6 +64,7 @@ interface SubmittedSearch {
 export function P4Submitted() {
   useTranslation();
   const p4 = useP4();
+  const [streamDiff, setStreamDiff] = useState<P4StreamDiffRequest | null>(null);
   const [jobsChange, setJobsChange] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
@@ -388,6 +391,7 @@ export function P4Submitted() {
             )}
           </div>
         </div>
+        {streamDiff ? <P4StreamDiffDialog target={streamDiff} onClose={() => setStreamDiff(null)} /> : null}
         {jobsChange ? <P4ChangeJobsDialog change={jobsChange} onClose={() => setJobsChange(null)} /> : null}
         {revisionTarget ? <P4GetRevisionDialog target={revisionTarget} onClose={() => setRevisionTarget(null)} /> : null}
       </ResizablePanel>
@@ -436,6 +440,7 @@ export function P4Submitted() {
               <div className="relative min-h-0 flex-1">
                 {p4.selectedSubmitted && !detail ? <FileRowsSkeleton fill /> : null}
                 <div className={cn("absolute inset-0 overflow-auto px-1 py-1", p4.selectedSubmitted && !detail && "hidden")}>
+                {detail?.stream ? <button type="button" className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted/70" onClick={() => setStreamDiff({kind:"submitted", path:detail.stream!.path, change:detail.id})}><GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 truncate">{t("p4.streamWork.title")}</span><span className="font-mono text-[11px] text-muted-foreground">{depotBase(detail.stream.path)}</span></button> : null}
                 {detail?.files.map((item) => (
                   <button
                     key={item.depotPath}

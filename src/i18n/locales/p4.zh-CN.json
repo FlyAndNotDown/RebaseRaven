@@ -106,7 +106,7 @@
   "creating": "正在创建",
   "create": "创建",
   "deleteShelf": "删除搁置内容",
-  "thisRemovesTheShelvedFilesForThisChangelistFromTheServerOpenedFilesStayInTheWorkspace": "从服务器移除此变更列表的搁置文件。已签出的文件保留在工作区中。",
+  "thisRemovesTheShelvedFilesForThisChangelistFromTheServerOpenedFilesStayInTheWorkspace": "从服务器移除此变更列表的搁置内容。已签出的文件和 Stream 私有修改保留在工作区中。",
   "thisDiscardsTheOpenedChangesAndRestoresTheHaveRevisionAShelfOnTheServerIsLeftInPlace": "放弃已签出的修改，并恢复工作区原有版本。服务器上的搁置内容会保留。",
   "thisRemovesTheAddedFilesFromTheChangelistAndDeletesThemFromDisk": "从变更列表移除新增文件，并从磁盘删除这些文件。",
   "addedFilesAreDeletedFromDiskOtherOpenedFilesGoBackToTheRevisionYouHave": "新增文件将从磁盘删除。其他已签出的文件将恢复到工作区原有版本。",
@@ -280,6 +280,7 @@
     "editDescription": "更新此待处理变更列表的描述。",
     "defaultDescription": "将默认变更列表及其已签出文件保存为编号变更列表。",
     "submitDescription": "使用以下描述提交此变更列表中所有已签出的文件。",
+    "shelvedSubmit": "请先移除此变更列表中的搁置内容，再提交修改。",
     "openedFiles_one": "{{count}} 个已签出文件",
     "openedFiles_other": "{{count}} 个已签出文件",
     "unavailable": "此变更列表已不在待处理列表中。请关闭此对话框并刷新工作区。",
@@ -654,5 +655,53 @@
     "previewFix": "预览关联",
     "applyKeepStatus": "仅更新关联，任务的当前状态保持不变。",
     "linkChange": "关联变更列表"
+  },
+  "streamWork": {
+    "title": "Stream 定义",
+    "edit": "编辑私有定义",
+    "privateHint": "修改仅对当前工作区生效，提交变更列表后才会公开。",
+    "updating": "正在更新 Stream 定义",
+    "privateChange": "私有修改 · {{change}}",
+    "publicRevision": "公开版本 · @{{change}}",
+    "unresolved": "请先解决 Stream 字段冲突，再提交。",
+    "operation": "操作",
+    "resolveMethod": "合并方式",
+    "back": "返回",
+    "confirmRevert": "输入完整的 Stream 路径以放弃私有修改。",
+    "noChanges": "Stream 定义暂无更改。",
+    "openHint": "签出定义进行私有编辑，或预览父视图转换。",
+    "showPending": "查看待提交变更列表",
+    "shelved": "已搁置的 Stream 定义",
+    "submitHint": "提交此变更列表中的已签出文件和 Stream 定义。",
+    "shelf": "Shelf 变更列表",
+    "actions": {
+      "open": "签出以私有编辑",
+      "move": "移至变更列表",
+      "revert": "还原私有修改",
+      "parentview": "转换父视图",
+      "resolve": "解决 Stream 字段冲突",
+      "unshelve": "恢复 Stream 定义",
+      "deleteShelf": "从 Shelf 移除定义"
+    },
+    "modes": {
+      "inherit": "继承父视图",
+      "noinherit": "独立视图",
+      "safe": "安全合并",
+      "merge": "自动合并",
+      "yours": "接受本地版本",
+      "theirs": "接受服务端版本"
+    },
+    "effects": {
+      "open": "在所选变更列表中签出定义，提交之前修改仅对当前工作区生效。",
+      "move": "仅将已签出的 Stream 定义移至所选变更列表。",
+      "revert": "放弃私有修改，并返回最新的公开定义。",
+      "parentview": "由 P4 在所选变更列表中准备转换后的映射，请检查更改后再提交。",
+      "resolve": "对 Stream 字段应用此合并方式，未解决的字段仍需在提交前处理。",
+      "unshelve": "将搁置的 Stream 定义恢复至所选变更列表，不包含文件；存在冲突的字段需要合并。",
+      "deleteShelf": "仅移除 Shelf 中的 Stream 定义，保留已搁置的文件和当前私有修改。"
+    },
+    "resolveComparison": "版本对比 · 私有 → 公开 @{{change}}",
+    "shelfComparison": "版本对比 · 工作区 → Shelf #{{change}}",
+    "confirmDeleteShelf": "输入完整的 Stream 路径以移除搁置的定义。"
   }
 }

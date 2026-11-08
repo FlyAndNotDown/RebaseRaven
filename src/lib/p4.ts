@@ -47,7 +47,7 @@ import { errorMessage } from "@/lib/git";
 import { pathsIgnoreCase } from "@/lib/format";
 import type { P4IntegrationRequest, P4IntegrationPreview } from "@/types/p4-integration";
 import type { P4SpecKind, P4SpecEdit, P4Spec, P4SpecPage, P4LabelFiles, P4LabelTagRequest, P4LabelTagPreview } from "@/types/p4-specs";
-import type { P4StreamSetup, P4StreamSpec, P4StreamSpecEdit } from "@/types/p4-stream-specs";
+import type { P4StreamWork, P4StreamWorkRequest, P4StreamWorkPreview, P4StreamDiffRequest, P4StreamSetup, P4StreamSpec, P4StreamSpecEdit } from "@/types/p4-stream-specs";
 
 /** Matches `P4_MISSING` in the Rust backend. */
 export const P4_MISSING = "p4 executable was not found. Choose one in Settings.";
@@ -84,6 +84,10 @@ function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
 }
 
 export const p4Api = {
+  streamWork: (connection: P4Connection) => call<P4StreamWork>("p4_stream_work", {connection}),
+  previewStreamWork: (connection: P4Connection, request: P4StreamWorkRequest) => call<P4StreamWorkPreview>("p4_preview_stream_work", {connection, request}),
+  applyStreamWork: (connection: P4Connection, request: P4StreamWorkRequest, fingerprint: string) => call<P4StreamWork>("p4_apply_stream_work", {connection, request, fingerprint}),
+  streamChangeDiff: (connection: P4Connection, request: P4StreamDiffRequest) => call<FileDiff>("p4_stream_change_diff", {connection, request}),
   listJobs: (connection: P4Connection, query: string) => call<P4JobPage>("p4_list_jobs", {connection, query}),
   readJob: (connection: P4Connection, job: string | null) => call<P4Job>("p4_read_job", {connection, job}),
   saveJob: (connection: P4Connection, edit: P4JobEdit, fingerprint: string | null) => call<P4Job>("p4_save_job", {connection, edit, fingerprint}),

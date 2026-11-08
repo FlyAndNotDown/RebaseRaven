@@ -8,6 +8,25 @@ export const P4_STREAM_SPEC_STALE = "The stream definition changed. Reload it be
 export type P4OperationKind = "integrate" | "undo";
 
 const operationErrors: Record<string, string> = {
+  "The stream definition was not removed from the shelf.": "streamWorkShelfDelete",
+  "The stream, workspace, or changelist changed. Preview the stream operation again.": "streamWorkStale",
+  "The server did not return the stream revision.": "streamWorkRevision",
+  "Submit or revert the already opened stream definition first.": "streamWorkOpened",
+  "Choose a different parent view supported by this stream type.": "streamWorkView",
+  "The stream definition is no longer opened in this workspace.": "streamWorkMissing",
+  "Choose a different changelist.": "streamWorkChange",
+  "Choose a resolve method for the pending stream conflicts.": "streamWorkResolve",
+  "Choose a supported stream operation.": "streamWorkAction",
+  "The stream's parent chain is invalid or too deep.": "streamWorkAncestors",
+  "The stream operation did not complete. Refresh the pending changes.": "streamWorkIncomplete",
+  "Choose a shelved or submitted stream definition.": "streamWorkSource",
+  "The stream revision is unavailable.": "streamWorkSourceMissing",
+  "Revert or submit the private stream definition before deleting the stream.": "streamWorkDelete",
+  "This field is not isolated by the server's stream definition. Submit or revert the private edit first.": "streamWorkField",
+  "Submit or revert the opened stream definition first.": "streamWorkChangeDelete",
+  "Move the opened stream definition to the selected changelist first.": "streamWorkRestoreChange",
+  "This shelf has no definition for the workspace's stream.": "streamWorkShelf",
+
   "The job association was not updated.": "fixNotUpdated",
   "The job was not deleted.": "jobNotDeleted",
   "Remove the job's changelist links before deleting it.": "jobLinked",

@@ -1562,6 +1562,36 @@ async fn p4_delete_stream_spec(
 }
 
 #[tauri::command]
+async fn p4_stream_work(connection: p4::P4Connection) -> AppResult<p4::P4StreamWork> {
+    blocking(move || p4::stream_work(&connection)).await
+}
+
+#[tauri::command]
+async fn p4_preview_stream_work(
+    connection: p4::P4Connection,
+    request: p4::P4StreamWorkRequest,
+) -> AppResult<p4::P4StreamWorkPreview> {
+    blocking(move || p4::preview_stream_work(&connection, &request)).await
+}
+
+#[tauri::command]
+async fn p4_apply_stream_work(
+    connection: p4::P4Connection,
+    request: p4::P4StreamWorkRequest,
+    fingerprint: String,
+) -> AppResult<p4::P4StreamWork> {
+    blocking(move || p4::apply_stream_work(&connection, &request, &fingerprint)).await
+}
+
+#[tauri::command]
+async fn p4_stream_change_diff(
+    connection: p4::P4Connection,
+    request: p4::P4StreamDiffRequest,
+) -> AppResult<git::FileDiff> {
+    blocking(move || p4::stream_change_diff(&connection, &request)).await
+}
+
+#[tauri::command]
 async fn p4_list_jobs(connection: p4::P4Connection, query: String) -> AppResult<p4::P4JobPage> {
     blocking(move || p4::list_jobs(&connection, &query)).await
 }
@@ -2482,6 +2512,10 @@ pub fn run() {
             p4_workspace_settings,
             p4_preview_integration,
             p4_apply_integration,
+            p4_stream_work,
+            p4_preview_stream_work,
+            p4_apply_stream_work,
+            p4_stream_change_diff,
             p4_list_jobs,
             p4_read_job,
             p4_save_job,

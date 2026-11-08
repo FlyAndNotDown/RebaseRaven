@@ -1,3 +1,4 @@
+import { P4StreamWorkDialog } from "@/components/p4/p4-stream-work";
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { ArrowDownIcon, ArrowRightLeftIcon, ChevronDownIcon, ChevronRightIcon, GitBranchIcon, GitMergeIcon, LoaderCircleIcon, LocateFixedIcon, PencilIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
 import { P4StreamSpecDialog, type StreamSpecTarget } from "@/components/p4/p4-stream-spec-dialog";
@@ -24,6 +25,7 @@ export function P4Streams() {
   const [collapsed,setCollapsed]=useState<Set<string>>(()=>new Set());
   const [loading,setLoading]=useState(true);const [error,setError]=useState<string|null>(null);
   const [attempt,setAttempt]=useState(0);
+  const [privateOpen, setPrivateOpen] = useState(false);
   const [definition, setDefinition] = useState<StreamSpecTarget | null>(null);
   function definitionChanged(spec: P4StreamSpec | null) {
     const removed = definition && definition.mode !== "new" ? definition.path : null;
@@ -81,9 +83,10 @@ export function P4Streams() {
           {parent?<ArrowDownIcon className="ml-4 size-4 text-muted-foreground"/>:null}<StreamNode stream={selected} active onSelect={setPicked}/>
           <LabelText>{t("p4.streamTree.children",{count:children.length})}</LabelText>{children.length?<div className="ml-4 grid gap-1 border-l pl-3">{children.map(child=><StreamNode key={child.path} stream={child} onSelect={setPicked}/>)}</div>:<p className="px-2 py-1 text-xs text-muted-foreground">{t("p4.streamTree.noChildren")}</p>}
         </div>
-        <div className="grid gap-2"><div className="flex gap-2"><Button variant="outline" size="sm" disabled={blocked} onClick={() => setDefinition({mode:"edit", path:selected.path})}><PencilIcon />{t("p4.streamSpec.edit")}</Button><HoverTip label={t("p4.streamSpec.delete")}><Button variant="ghost" size="icon-sm" disabled={blocked} aria-label={t("p4.streamSpec.delete")} onClick={() => setDefinition({mode:"delete", path:selected.path})}><Trash2Icon /></Button></HoverTip></div><Button variant="outline" className="justify-start" disabled={blocked||!current||relation==="current"} onClick={()=>p4.switchStream(selected.path)}><ArrowRightLeftIcon/>{t("p4.switchStream.title")}</Button>{canMerge?<Button variant="outline" className="justify-start" disabled={blocked} onClick={()=>p4.openStreamIntegration("merge",current!.parent!)}><GitMergeIcon/>{t("p4.streamTree.merge")}</Button>:null}{canCopy?<Button variant="outline" className="justify-start" disabled={blocked} onClick={()=>p4.openStreamIntegration("copy",selected.path)}><GitMergeIcon/>{t("p4.streamTree.copy")}</Button>:null}</div>
+        <div className="grid gap-2">{relation === "current" ? <Button variant="outline" className="justify-start" disabled={blocked} onClick={() => setPrivateOpen(true)}><GitBranchIcon />{t("p4.streamWork.title")}</Button> : null}<div className="flex gap-2"><Button variant="outline" size="sm" disabled={blocked} onClick={() => setDefinition({mode:"edit", path:selected.path})}><PencilIcon />{t("p4.streamSpec.edit")}</Button><HoverTip label={t("p4.streamSpec.delete")}><Button variant="ghost" size="icon-sm" disabled={blocked} aria-label={t("p4.streamSpec.delete")} onClick={() => setDefinition({mode:"delete", path:selected.path})}><Trash2Icon /></Button></HoverTip></div><Button variant="outline" className="justify-start" disabled={blocked||!current||relation==="current"} onClick={()=>p4.switchStream(selected.path)}><ArrowRightLeftIcon/>{t("p4.switchStream.title")}</Button>{canMerge?<Button variant="outline" className="justify-start" disabled={blocked} onClick={()=>p4.openStreamIntegration("merge",current!.parent!)}><GitMergeIcon/>{t("p4.streamTree.merge")}</Button>:null}{canCopy?<Button variant="outline" className="justify-start" disabled={blocked} onClick={()=>p4.openStreamIntegration("copy",selected.path)}><GitMergeIcon/>{t("p4.streamTree.copy")}</Button>:null}</div>
       </div>:<p className="p-6 text-xs text-muted-foreground">{t("p4.streamTree.select")}</p>}</div></ResizablePanel>
     </ResizablePanelGroup>
+    {privateOpen ? <P4StreamWorkDialog onClose={() => {setPrivateOpen(false); setLoading(true); setAttempt(value => value + 1);}} /> : null}
     {definition ? <P4StreamSpecDialog key={JSON.stringify(definition)} target={definition} onClose={() => setDefinition(null)} onChanged={definitionChanged} /> : null}
   </div>;
 }

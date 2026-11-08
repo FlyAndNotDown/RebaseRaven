@@ -1,5 +1,7 @@
+import { P4StreamDiffDialog } from "@/components/p4/p4-stream-work";
+import type { P4StreamDiffRequest } from "@/types/p4-stream-specs";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArchiveRestoreIcon, LoaderCircleIcon, SearchIcon } from "lucide-react";
+import { GitBranchIcon, ArchiveRestoreIcon, LoaderCircleIcon, SearchIcon } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { P4ChangeSelect } from "@/components/p4/p4-change-select";
 import { ChangeBadge } from "@/components/p4/change-badge";
@@ -21,6 +23,7 @@ import type { P4ChangePage, P4Changelist, P4OperationPreview, P4UnshelveRequest 
 export function P4ShelvesDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const { connection, listShelves, shelfDetail, shelfDiff, previewUnshelve, restoreShelf, busy: workspaceBusy, selectedChange } = useP4();
+  const [streamDiff, setStreamDiff] = useState<P4StreamDiffRequest | null>(null);
   const [user, setUser] = useState("");
   const [number, setNumber] = useState("");
   const [page, setPage] = useState<P4ChangePage | null>(null);
@@ -126,6 +129,7 @@ export function P4ShelvesDialog({ onClose }: { onClose: () => void }) {
           {detailLoading ? <p role="status" className="p-6 text-sm text-muted-foreground">{t("p4.shelves.loading")}</p> : detail ? <>
             <div className="shrink-0 space-y-1 border-b px-3 py-2"><p className="truncate text-sm font-medium">{changeSummary(detail.description)}</p><p className="truncate font-mono text-[11px] text-muted-foreground">{detail.user} · {detail.client}</p></div>
             <div className="max-h-[19vh] shrink-0 overflow-auto border-b">
+              {detail.shelvedStream ? <button type="button" className="flex w-full items-center gap-2 border-b px-3 py-2 text-left text-xs hover:bg-muted/50" onClick={() => setStreamDiff({kind:"shelf", path:detail.shelvedStream!.path, change:detail.id})}><GitBranchIcon className="size-3.5 text-muted-foreground" />{t("p4.streamWork.shelved")}</button> : null}
               <Label className="flex min-h-8 items-center gap-2 px-3 text-xs"><Checkbox checked={picked.size === detail.files.length ? true : picked.size ? "indeterminate" : false} disabled={blocked || Boolean(stream.trim())} onCheckedChange={(checked) => edit(() => setPicked(new Set(checked ? detail.files.map((entry) => entry.depotPath) : [])))} />{t("p4.shelves.selected", { count: picked.size, total: detail.files.length })}</Label>
               {detail.files.map((entry) => <div key={entry.depotPath} className={cn("flex items-center gap-2 px-3 py-1 text-xs hover:bg-muted/50", file === entry.depotPath && "bg-muted/60")}>
                 <Checkbox aria-label={entry.depotPath} checked={picked.has(entry.depotPath)} disabled={blocked || Boolean(stream.trim())} onCheckedChange={(checked) => edit(() => setPicked((current) => { const next = new Set(current); if (checked) next.add(entry.depotPath); else next.delete(entry.depotPath); return next; }))} />
@@ -144,6 +148,7 @@ export function P4ShelvesDialog({ onClose }: { onClose: () => void }) {
       <p className="shrink-0 text-xs text-muted-foreground">{t(stream.trim() ? "p4.shelves.mappingHint" : "p4.shelves.hint")}</p>
       {error ? <p role="alert" className="max-h-20 shrink-0 overflow-auto whitespace-pre-wrap text-xs text-destructive">{error}</p> : null}
       <DialogFooter className="shrink-0"><Button variant="outline" disabled={busy === "restore"} onClick={onClose}>{t("common.cancel")}</Button><Button variant="outline" disabled={blocked || !detail || !picked.size} onClick={() => void inspect()}>{busy === "preview" ? <LoaderCircleIcon className="animate-spin" /> : null}{t("p4-operations.preview")}</Button><Button disabled={blocked || !preview || preview.key !== key} onClick={() => void restore()}>{busy === "restore" ? <LoaderCircleIcon className="animate-spin" /> : <ArchiveRestoreIcon />}{t("p4.shelves.restore", { count: picked.size })}</Button></DialogFooter>
+    {streamDiff ? <P4StreamDiffDialog target={streamDiff} onClose={() => setStreamDiff(null)} /> : null}
     </DialogContent>
   </Dialog>;
 }

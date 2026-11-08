@@ -25,6 +25,11 @@ pub use specs::{
     apply_label_tag, delete_spec, label_files, list_specs, preview_label_tag, read_spec, save_spec,
     P4LabelFiles, P4LabelTagPreview, P4LabelTagRequest, P4Spec, P4SpecEdit, P4SpecKind, P4SpecPage,
 };
+mod stream_work;
+pub use stream_work::{
+    apply_stream_work, preview_stream_work, stream_change_diff, stream_work, P4StreamDiffRequest,
+    P4StreamWork, P4StreamWorkPreview, P4StreamWorkRequest,
+};
 mod stream_specs;
 mod streams;
 pub use stream_specs::{

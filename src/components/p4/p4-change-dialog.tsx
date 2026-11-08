@@ -11,6 +11,9 @@ export type ChangeDialogRequest = { id: string; description: string; mode: "edit
 export function P4ChangeDialog({
   request,
   openedCount,
+  openedStream = false,
+  shelved = false,
+  onManageShelf,
   available,
   busy,
   onConfirm,
@@ -18,6 +21,9 @@ export function P4ChangeDialog({
 }: {
   request: ChangeDialogRequest;
   openedCount: number;
+  openedStream?: boolean;
+  shelved?: boolean;
+  onManageShelf?: () => void;
   available: boolean;
   busy: boolean;
   onConfirm: (description: string) => Promise<boolean>;
@@ -31,7 +37,7 @@ export function P4ChangeDialog({
   const running = useRef(false);
   const submitting = request.mode === "submit";
   const blocked = busy || working;
-  const canConfirm = available && (!submitting || openedCount > 0) && !!description.trim();
+  const canConfirm = available && (!submitting || (openedCount > 0 || openedStream) && !shelved) && !!description.trim();
 
   async function confirm() {
     if (blocked || running.current || !canConfirm) return;
@@ -54,12 +60,12 @@ export function P4ChangeDialog({
           <DialogHeader>
             <DialogTitle>{t(submitting ? "p4.changeDialog.submitTitle" : "p4.changeDialog.editTitle")}</DialogTitle>
             <DialogDescription>
-              {t(submitting ? "p4.changeDialog.submitDescription" : request.id === "default" ? "p4.changeDialog.defaultDescription" : "p4.changeDialog.editDescription")}
+              {t(submitting ? openedStream ? "p4.streamWork.submitHint" : "p4.changeDialog.submitDescription" : request.id === "default" ? "p4.changeDialog.defaultDescription" : "p4.changeDialog.editDescription")}
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <ChangeBadge id={request.id} />
-            <span>{t("p4.changeDialog.openedFiles", { count: openedCount })}</span>
+            <span>{t("p4.changeDialog.openedFiles", { count: openedCount })}{openedStream ? ` · ${t("p4.streamWork.title")}` : ""}</span>
           </div>
           <div className="grid gap-2">
             <label htmlFor={descriptionId} className="text-sm font-medium">{t("p4.description")}</label>
@@ -72,6 +78,7 @@ export function P4ChangeDialog({
               onChange={(event) => { setDescription(event.target.value); setFailed(false); }}
             />
           </div>
+          {submitting && shelved ? <div className="grid gap-2"><p role="alert" className="text-xs text-muted-foreground">{t("p4.changeDialog.shelvedSubmit")}</p>{onManageShelf ? <Button variant="outline" size="sm" className="justify-self-start" disabled={blocked} onClick={onManageShelf}>{t("p4.deleteShelf")}</Button> : null}</div> : null}
           {!available ? <p role="alert" className="text-sm text-destructive">{t("p4.changeDialog.unavailable")}</p> : null}
           {failed ? <p role="alert" className="text-sm text-destructive">{t("p4.changeDialog.failed")}</p> : null}
           <DialogFooter>

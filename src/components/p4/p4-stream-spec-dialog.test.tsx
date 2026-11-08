@@ -113,3 +113,14 @@ it("requires a fresh typed confirmation after reloading a changed deletion targe
   await enter("p4-delete-stream", "//project/feature"); await click("Delete stream");
   expect(actions.remove).toHaveBeenLastCalledWith("//project/feature", "latest-definition");
 });
+
+it("labels private edits and disables fields not isolated by the server", async () => {
+  actions.read.mockResolvedValue({...spec(), opened:true, editableFields:["Paths", "Remapped", "Ignored"]});
+  await show({mode:"edit", path:"//project/feature"});
+  expect(document.body.textContent).toContain("Edit private definition");
+  expect(document.body.textContent).toContain("Changes stay private");
+  expect((document.getElementById("p4-stream-name") as HTMLInputElement).disabled).toBe(true);
+  expect((document.getElementById("p4-stream-owner") as HTMLInputElement).disabled).toBe(true);
+  await click("View mappings");
+  expect((document.getElementById("p4-stream-paths") as HTMLTextAreaElement).disabled).toBe(false);
+});
