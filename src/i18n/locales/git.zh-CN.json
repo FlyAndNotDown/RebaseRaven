@@ -620,9 +620,39 @@
       "pattern": "请输入小于 8 KiB 的单行规则。",
       "empty": "请输入 Git LFS 规则。",
       "rule": "请刷新后选择可编辑的跟踪规则。",
-      "remote": "请选择已有的 Git 远端。"
+      "remote": "请选择已有的 Git 远端。",
+      "lockLimit": "Git LFS 文件锁数据超过 32 MiB。",
+      "lockRead": "无法读取 Git LFS 文件锁数据。",
+      "lockStale": "文件锁已变化，请刷新后重试。",
+      "lockPath": "请选择仓库内的单个文件。",
+      "lockFile": "请选择已跟踪且存在的文件。",
+      "lockConfirmation": "请输入锁定路径以确认强制解锁。",
+      "lockOwner": "此文件锁属于其他用户。",
+      "lockDirty": "请先提交或丢弃本地修改，再解锁此文件。"
     },
     "modified": "本地更改",
-    "patternPlaceholder": "*.psd"
+    "patternPlaceholder": "*.psd",
+    "locks": {
+      "title": "文件锁",
+      "refresh": "刷新文件锁",
+      "path": "要锁定的文件",
+      "placeholder": "assets/model.psd",
+      "lock": "锁定文件",
+      "count": "{{count}} 个锁",
+      "verified": "已向服务端核验",
+      "search": "筛选文件锁",
+      "unknownOwner": "未知所有者",
+      "mine": "我的锁",
+      "unlockNamed": "解锁 {{path}}",
+      "unlock": "解锁",
+      "forceHint": "强制解锁，包括其他用户的锁以及有本地修改的文件。",
+      "forceNamed": "强制解锁 {{path}}",
+      "forceConfirm": "输入完整路径以强制解锁，本地内容会保留。",
+      "confirm": "解锁此文件？请先提交或丢弃未提交的修改。",
+      "confirmation": "锁定路径确认",
+      "force": "强制解锁",
+      "empty": "当前没有锁定的文件。",
+      "loadHint": "刷新以获取文件锁并核验所有者，需要服务端支持文件锁。"
+    }
   }
 }

@@ -7,7 +7,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { gitApi } from "@/lib/git";
 import { setLanguagePreference } from "@/i18n";
-import type { LfsState, LfsUpdate } from "@/types/lfs";
+import type { LfsAction, LfsLocks, LfsState, LfsUpdate } from "@/types/lfs";
 import type { Activity } from "@/types/git";
 
 const model=vi.hoisted(()=>({change:vi.fn(),activities:[] as Activity[]}));
@@ -77,4 +77,28 @@ it("ignores an older state read after switching repositories",async()=>{
   const old=deferred<LfsState>();vi.mocked(gitApi.lfsState).mockReturnValueOnce(old.promise);await show();await show("/work/second");
   await act(async()=>old.resolve({...state(),version:"outdated"}));expect(document.body.textContent).not.toContain("outdated");
   await click("Checkout cached");expect(model.change).toHaveBeenLastCalledWith("/work/second",{kind:"checkout"},"current-lfs");
+});
+
+function locks(remote="origin"):LfsLocks{return {remote,fingerprint:`verified:${remote}`,locks:[{id:"own-lock",path:"assets/model.bin",owner:{name:"Alice"},locked_at:"2026-01-01T00:00:00Z",ours:true},{id:"peer-lock",path:"media/shared.psd",owner:{name:"Bob"},locked_at:"2026-01-01T00:00:00Z",ours:false}]};}
+async function lockPanel(){model.change.mockImplementation((_repo:string,action:LfsAction)=>Promise.resolve({state:state(),report:"",locks:locks("remote" in action ? action.remote : "origin")}));await show();await click("Locks");}
+async function confirmation(value:string){const element=document.querySelector<HTMLInputElement>('[aria-label="Locked path confirmation"]')!;await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")!.set!.call(element,value);element.dispatchEvent(new Event("input",{bubbles:true}));});}
+
+it("queries locks only on request and submits an exact file path to the selected remote",async()=>{
+  await lockPanel();expect(model.change).not.toHaveBeenCalled();await click("Refresh locks");
+  expect(model.change).toHaveBeenLastCalledWith("/work/project",{kind:"locks",remote:"origin"},"current-lfs");expect(document.body.textContent).toContain("Alice");expect(document.body.textContent).toContain("Bob");expect(button("Unlock media/shared.psd").disabled).toBe(true);
+  await input("lfs-lock-path","assets/model [1].psd");await click("Lock file");expect(model.change).toHaveBeenLastCalledWith("/work/project",{kind:"lock",remote:"origin",path:"assets/model [1].psd"},"current-lfs");
+});
+
+it("requires an exact path confirmation and a reviewed lock fingerprint for forced unlocks",async()=>{
+  await lockPanel();await click("Refresh locks");model.change.mockClear();await click("Force unlock media/shared.psd");expect(model.change).not.toHaveBeenCalled();expect(button("Force unlock").disabled).toBe(true);
+  await confirmation("media/shared.psd ");expect(button("Force unlock").disabled).toBe(true);await confirmation("media/shared.psd");await click("Force unlock");
+  expect(model.change).toHaveBeenCalledExactlyOnceWith("/work/project",{kind:"unlock",remote:"origin",id:"peer-lock",path:"media/shared.psd",force:true,confirmation:"media/shared.psd",lockFingerprint:"verified:origin"},"current-lfs");
+});
+
+it("invalidates lock lists and forced confirmations when the remote changes or an action fails",async()=>{
+  await lockPanel();await click("Refresh locks");await click("Force unlock media/shared.psd");await confirmation("media/shared.psd");
+  const remote=document.getElementById("lfs-lock-remote") as HTMLSelectElement;await act(async()=>{remote.value="upstream";remote.dispatchEvent(new Event("change",{bubbles:true}));});
+  expect(document.querySelector('[aria-label="Locked path confirmation"]')).toBeNull();expect(document.body.textContent).not.toContain("Bob");await click("Refresh locks");expect(model.change).toHaveBeenLastCalledWith("/work/project",{kind:"locks",remote:"upstream"},"current-lfs");
+  model.change.mockResolvedValue(null);await click("Force unlock media/shared.psd");await confirmation("media/shared.psd");await click("Force unlock");expect(document.body.textContent).not.toContain("Bob");expect(document.body.textContent).toContain("Current data was refreshed");
+  model.change.mockResolvedValue({state:state(),report:"",locks:locks("upstream")});await click("Refresh locks");expect(document.body.textContent).toContain("Bob");expect(document.querySelector('[aria-label="Locked path confirmation"]')).toBeNull();
 });

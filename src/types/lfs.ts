@@ -17,6 +17,11 @@ export type LfsAction =
   | {kind:"fetch"; remote:string; include:string; exclude:string; recent:boolean}
   | {kind:"pull"; remote:string; include:string; exclude:string}
   | {kind:"checkout"}
-  | {kind:"push"; remote:string};
-export interface LfsUpdate {state:LfsState; report:string}
+  | {kind:"push"; remote:string}
+  | {kind:"locks";remote:string}
+  | {kind:"lock";remote:string;path:string}
+  | {kind:"unlock";remote:string;id:string;path:string;force:boolean;confirmation:string;lockFingerprint:string};
+export interface LfsLock {id:string;path:string;owner:{name:string}|null;locked_at:string;ours:boolean}
+export interface LfsLocks {remote:string;locks:LfsLock[];fingerprint:string}
+export interface LfsUpdate {state:LfsState; report:string;locks?:LfsLocks}
 export interface LfsOutcome extends LfsUpdate {snapshot:WorkspaceSnapshot}

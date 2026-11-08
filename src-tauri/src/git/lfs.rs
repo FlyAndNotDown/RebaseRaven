@@ -9,6 +9,9 @@ use super::*;
 const STALE: &str = "Git LFS settings changed. Refresh before trying again.";
 const JSON_LIMIT: u64 = 32 * 1024 * 1024;
 
+mod locks;
+pub use locks::LfsLocks;
+
 #[derive(Clone, Debug, Deserialize, Serialize, Hash)]
 pub struct LfsPattern {
     pub pattern: String,
@@ -69,12 +72,30 @@ pub enum LfsAction {
     Push {
         remote: String,
     },
+    Locks {
+        remote: String,
+    },
+    Lock {
+        remote: String,
+        path: String,
+    },
+    Unlock {
+        remote: String,
+        id: String,
+        path: String,
+        force: bool,
+        confirmation: String,
+        #[serde(rename = "lockFingerprint")]
+        lock_fingerprint: String,
+    },
 }
 
 #[derive(Debug, Serialize)]
 pub struct LfsUpdate {
     pub state: LfsState,
     pub report: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locks: Option<LfsLocks>,
 }
 
 #[derive(Debug, Serialize)]
@@ -370,6 +391,20 @@ pub fn lfs_action(
     if state.version.is_none() {
         return Err(AppError::msg("Git LFS is not installed."));
     }
+    if matches!(
+        action,
+        LfsAction::Locks { .. } | LfsAction::Lock { .. } | LfsAction::Unlock { .. }
+    ) {
+        let locks = locks::action(repo, &state, action, &mut on_progress)?;
+        return Ok(LfsOutcome {
+            update: LfsUpdate {
+                state: lfs_state(repo)?,
+                report: String::new(),
+                locks: Some(locks),
+            },
+            snapshot: snapshot(repo)?,
+        });
+    }
     let cwd = repo.workdir().to_path_buf();
     let args: Vec<String> =
         match action {
@@ -428,6 +463,9 @@ pub fn lfs_action(
                 args.push("HEAD".into());
                 args
             }
+            LfsAction::Locks { .. } | LfsAction::Lock { .. } | LfsAction::Unlock { .. } => {
+                unreachable!("lock actions are handled above")
+            }
         };
     let mut report = String::new();
     let refs: Vec<_> = args.iter().map(String::as_str).collect();
@@ -444,6 +482,7 @@ pub fn lfs_action(
         update: LfsUpdate {
             state: lfs_state(repo)?,
             report,
+            locks: None,
         },
         snapshot: snapshot(repo)?,
     })

@@ -620,9 +620,39 @@
       "pattern": "Enter a single pattern smaller than 8 KiB.",
       "empty": "Enter a Git LFS pattern.",
       "rule": "Refresh and select an editable tracking rule.",
-      "remote": "Choose an existing Git remote."
+      "remote": "Choose an existing Git remote.",
+      "lockLimit": "Git LFS lock data exceeds 32 MiB.",
+      "lockRead": "Could not read Git LFS lock data.",
+      "lockStale": "File locks changed. Refresh locks before trying again.",
+      "lockPath": "Choose one file inside this repository.",
+      "lockFile": "Choose an existing tracked file to lock.",
+      "lockConfirmation": "Type the locked path to confirm a forced unlock.",
+      "lockOwner": "This lock belongs to another user.",
+      "lockDirty": "Commit or discard local changes before unlocking this file."
     },
     "modified": "Local changes",
-    "patternPlaceholder": "*.psd"
+    "patternPlaceholder": "*.psd",
+    "locks": {
+      "title": "Locks",
+      "refresh": "Refresh locks",
+      "path": "File to lock",
+      "placeholder": "assets/model.psd",
+      "lock": "Lock file",
+      "count": "{{count}} locks",
+      "verified": "Verified on the server",
+      "search": "Filter locks",
+      "unknownOwner": "Unknown owner",
+      "mine": "Mine",
+      "unlockNamed": "Unlock {{path}}",
+      "unlock": "Unlock",
+      "forceHint": "Force unlock, including locks owned by other users and files with local changes.",
+      "forceNamed": "Force unlock {{path}}",
+      "forceConfirm": "Type the full path to force unlock. Local content is preserved.",
+      "confirm": "Unlock this file? Uncommitted changes must be committed or discarded first.",
+      "confirmation": "Locked path confirmation",
+      "force": "Force unlock",
+      "empty": "No files are locked.",
+      "loadHint": "Refresh to retrieve locks and verify their owners. Locking requires server support."
+    }
   }
 }

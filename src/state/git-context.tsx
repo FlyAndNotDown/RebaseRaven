@@ -2584,7 +2584,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       return received.value.snapshot;
     }, undefined, {tabId, cancellable:true});
     if (!ok) await refreshAfterReplay(tabId);
-    return ok && received.value ? {state:received.value.state, report:received.value.report} : null;
+    return ok && received.value ? {state:received.value.state, report:received.value.report, locks:received.value.locks} : null;
   }, [refreshAfterReplay, runMutation]);
 
   const bisectAction = useCallback(async (action: BisectAction, fingerprint: string): Promise<BisectUpdate | null> => {
