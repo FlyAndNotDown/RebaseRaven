@@ -1,6 +1,6 @@
 import { t, useTranslation } from "@/i18n";
 import { useEffect, useRef, useState } from "react";
-import { FolderTreeIcon, RotateCcwIcon } from "lucide-react";
+import { FolderTreeIcon, HardDriveIcon, RotateCcwIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { HoverTip } from "@/components/ui/tooltip";
@@ -40,14 +40,14 @@ export function RepoSettingsDialog({
           </DialogDescription>
         </DialogHeader>
         {open && repoPath ? (
-          <RepoSettingsForm key={repoPath} repoPath={repoPath} onClose={() => onOpenChange(false)} onSparse={() => {onOpenChange(false); setOpenPanel("sparse-checkout");}} />
+          <RepoSettingsForm key={repoPath} repoPath={repoPath} onClose={() => onOpenChange(false)} onSparse={() => {onOpenChange(false); setOpenPanel("sparse-checkout");}} onLfs={() => {onOpenChange(false); setOpenPanel("lfs");}} />
         ) : null}
       </DialogContent>
     </Dialog>
   );
 }
 
-function RepoSettingsForm({ repoPath, onClose, onSparse }: { repoPath: string; onClose: () => void; onSparse: () => void }) {
+function RepoSettingsForm({ repoPath, onClose, onSparse, onLfs }: { repoPath: string; onClose: () => void; onSparse: () => void; onLfs: () => void }) {
   useTranslation();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -129,8 +129,11 @@ function RepoSettingsForm({ repoPath, onClose, onSparse }: { repoPath: string; o
           <Skeleton className="h-14 w-full" />
         </div>
       ) : null}
+      <div className="flex flex-wrap gap-2 border-t pt-4">
+        <Button type="button" variant="outline" size="sm" disabled={saving} onClick={onSparse}><FolderTreeIcon />{t("git.sparse.title")}</Button>
+        <Button type="button" variant="outline" size="sm" disabled={saving} onClick={onLfs}><HardDriveIcon />{t("git.lfs.title")}</Button>
+      </div>
       <DialogFooter>
-        <Button type="button" variant="ghost" className="sm:mr-auto" disabled={saving} onClick={onSparse}><FolderTreeIcon />{t("git.sparse.title")}</Button>
         <Button type="button" variant="outline" onClick={onClose}>{t("git.ui.cancel")}</Button>
         <Button type="button" onClick={() => void save()} disabled={saving || !globalIdentity}>
           {saving ? t("git.ui.saving") : t("git.ui.save")}

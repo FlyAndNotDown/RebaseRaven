@@ -62,6 +62,11 @@ export const SparseCheckoutDialog = lazyDialog(
   (props) => props.open,
 );
 
+export const LfsDialog = lazyDialog(
+  () => import("@/components/lfs-dialog").then((module) => module.LfsDialog),
+  (props) => props.open,
+);
+
 export const AddSubmoduleDialog = lazyDialog(
   () => import("@/components/submodule-dialogs").then((module) => module.AddSubmoduleDialog),
   (props) => props.open,

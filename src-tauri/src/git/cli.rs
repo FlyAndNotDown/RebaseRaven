@@ -1061,10 +1061,19 @@ pub(super) fn which(name: &str) -> Option<PathBuf> {
 }
 
 pub(super) fn spawn_git_stdout(root: &Path, args: &[&str]) -> AppResult<std::process::Child> {
+    spawn_git_stdout_env(root, args, &[])
+}
+
+pub(super) fn spawn_git_stdout_env(
+    root: &Path,
+    args: &[&str],
+    env: &[(&str, &str)],
+) -> AppResult<std::process::Child> {
     let git = require_git()?;
     let mut command = git_command(git);
     command.arg("-C").arg(root).args(args);
     command.env("GIT_TERMINAL_PROMPT", "0");
+    command.envs(env.iter().copied());
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

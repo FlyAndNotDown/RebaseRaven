@@ -880,6 +880,32 @@ async fn sparse_checkout_state(repo_path: String) -> AppResult<git::SparseChecko
 }
 
 #[tauri::command]
+async fn git_lfs_state(repo_path: String) -> AppResult<git::LfsState> {
+    with_repo_async(repo_path, move |repo| git::lfs_state(repo)).await
+}
+
+#[tauri::command]
+async fn git_lfs_action(
+    repo_path: String,
+    action: git::LfsAction,
+    fingerprint: String,
+    activity_id: Option<String>,
+    app: AppHandle,
+) -> AppResult<git::LfsOutcome> {
+    with_repo_async(repo_path, move |repo| {
+        git::with_cancel(activity_id.as_deref(), || {
+            git::lfs_action(
+                repo,
+                &action,
+                &fingerprint,
+                progress_sink(&app, activity_id.as_deref()),
+            )
+        })
+    })
+    .await
+}
+
+#[tauri::command]
 async fn preview_sparse_checkout(
     repo_path: String,
     request: git::SparseCheckoutRequest,
@@ -2333,6 +2359,8 @@ pub fn run() {
             bisect_state,
             bisect_action,
             sparse_checkout_state,
+            git_lfs_state,
+            git_lfs_action,
             preview_sparse_checkout,
             apply_sparse_checkout,
             resolve_conflict,

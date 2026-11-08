@@ -133,6 +133,7 @@ export function CommandCenter() {
         { id: "reflog", label: t("desktop.commandPalette.show_reflog"), group: t("desktop.appSidebar.history"), shortcut: "reflog", run: () => setOpenPanel("reflog") },
         { id: "bisect", label: t("git.bisect.title"), detail: t("git.bisect.command"), group: t("desktop.appSidebar.history"), run: () => setOpenPanel("bisect") },
         { id: "sparse-checkout", label: t("git.sparse.title"), detail: t("git.sparse.command"), group: t("desktop.commandPalette.repository"), run: () => setOpenPanel("sparse-checkout") },
+        { id: "lfs", label: t("git.lfs.title"), detail: t("git.lfs.description"), group: t("desktop.commandPalette.repository"), run: () => setOpenPanel("lfs") },
         ...(!snapshot?.repo.operation ? [{ id: "add-submodule", label: t("git.submodule.addTitle"), group: t("desktop.commandPalette.repository"), run: () => setOpenPanel("add-submodule") }] : []),
         { id: "editor", label: t("desktop.appHeader.open_in_editor"), group: t("desktop.commandPalette.repository"), shortcut: "openInEditor", run: () => void git.openInEditor() },
         { id: "terminal", label: t("desktop.appHeader.open_terminal"), group: t("desktop.commandPalette.repository"), shortcut: "openTerminal", run: () => void git.openTerminal() },
