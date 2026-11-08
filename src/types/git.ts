@@ -224,6 +224,14 @@ export interface GitIdentity {
 }
 
 export type GitSigningMode = "default" | "sign" | "unsigned";
+export type GitSignatureTarget = {kind: "commit" | "tag"; value: string};
+export type GitSignatureStatus = "verified" | "untrusted" | "expiredSignature" | "expiredKey" | "revoked" | "invalid" | "failed" | "unsigned" | "lightweight" | "changed";
+export interface GitSignatureVerification {
+  oid: string;
+  status: GitSignatureStatus;
+  output: string;
+  truncated: boolean;
+}
 export interface CommitOptions {
   signing: GitSigningMode;
   signoff: boolean;

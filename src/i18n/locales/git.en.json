@@ -227,6 +227,41 @@
     "stale": "The draft or checked-out revision changed. Review the current draft again.",
     "empty": "This commit has no message."
   },
+  "signature": {
+    "action": "Verify signature…",
+    "title": "Signature verification",
+    "commit": "Commit signature",
+    "tag": "Tag signature",
+    "localHint": "Verified locally using this repository’s Git configuration, keys, and trust settings.",
+    "verifying": "Verifying signature…",
+    "retry": "Verify again",
+    "output": "Git output",
+    "truncated": "Output truncated.",
+    "status": {
+      "verified": "Signature verified",
+      "untrusted": "Signer not trusted",
+      "expiredSignature": "Signature expired",
+      "expiredKey": "Signing key expired",
+      "revoked": "Signing key revoked",
+      "invalid": "Invalid signature",
+      "failed": "Unable to verify",
+      "unsigned": "Not signed",
+      "lightweight": "Lightweight tag",
+      "changed": "Tag changed"
+    },
+    "detail": {
+      "verified": "Accepted by the local Git verifier.",
+      "untrusted": "The signature is valid, but the signer is not fully trusted locally.",
+      "expiredSignature": "This signature has expired.",
+      "expiredKey": "The key used for this signature has expired.",
+      "revoked": "The key used for this signature has been revoked.",
+      "invalid": "The signature does not match the object.",
+      "failed": "Check the verifier output and local key or trust configuration.",
+      "unsigned": "This object has no signature.",
+      "lightweight": "A lightweight tag has no tag signature. Its target’s signature is separate.",
+      "changed": "This tag was moved or deleted during verification. Verify again to check its current object."
+    }
+  },
   "signing": {
     "signature": "Signature",
     "modes": { "default": "Use Git configuration", "sign": "Sign", "unsigned": "Do not sign" },

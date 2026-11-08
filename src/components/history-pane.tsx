@@ -23,6 +23,7 @@ import {
   MessageSquareTextIcon,
   RotateCcwIcon,
   SearchIcon,
+  ShieldCheckIcon,
   BinaryIcon,
   Undo2Icon,
   UndoDotIcon,
@@ -31,6 +32,7 @@ import {
 import { AuthorName, ExactTime } from "@/components/revision-meta";
 import { CommitLine, CreateBranchDialog, CreateTagDialog } from "@/components/create-ref-dialogs";
 import { ReuseCommitMessageDialog, type CommitMessageTarget } from "@/components/reuse-commit-message-dialog";
+import { SignatureVerificationDialog, type SignatureDialogTarget } from "@/components/signature-verification-dialog";
 import { Button } from "@/components/ui/button";
 import { HoverTip } from "@/components/ui/tooltip";
 import {
@@ -70,6 +72,7 @@ type CommitRowAction =
   | { type: "branch"; commit: CommitSummary }
   | { type: "tag"; commit: CommitSummary }
   | { type: "reuse-message"; commit: CommitSummary }
+  | { type: "verify-signature"; commit: CommitSummary }
   | { type: "copy-message"; commit: CommitSummary }
   | { type: "compare"; commits: CommitSummary[] }
   | { type: "revert-many"; commits: CommitSummary[] }
@@ -171,6 +174,7 @@ export function HistoryPane() {
   const [branchCommit, setBranchCommit] = useState<CommitSummary | null>(null);
   const [tagCommit, setTagCommit] = useState<CommitSummary | null>(null);
   const [messageTarget, setMessageTarget] = useState<CommitMessageTarget | null>(null);
+  const [signatureTarget, setSignatureTarget] = useState<SignatureDialogTarget | null>(null);
   const [confirm, setConfirm] = useState<{ kind: "revert" | "cherry-pick"; commits: CommitSummary[] } | null>(
     null,
   );
@@ -229,6 +233,9 @@ export function HistoryPane() {
           break;
         case "reuse-message":
           if (repoPath) setMessageTarget({tabId:activeTabId, path:repoPath, commit:action.commit});
+          break;
+        case "verify-signature":
+          if (repoPath) setSignatureTarget({tabId:activeTabId, path:repoPath, object:{kind:"commit",value:action.commit.id}});
           break;
         case "copy-message":
           if (repoPath) void gitApi.getCommitMessage(repoPath, action.commit.id).then(async message => {
@@ -487,6 +494,7 @@ export function HistoryPane() {
         }}
       />
       {messageTarget && messageTarget.tabId === activeTabId && messageTarget.path === repoPath ? <ReuseCommitMessageDialog key={`${messageTarget.tabId}:${messageTarget.commit.id}`} target={messageTarget} onClose={() => setMessageTarget(null)} /> : null}
+      {signatureTarget && signatureTarget.tabId === activeTabId && signatureTarget.path === repoPath ? <SignatureVerificationDialog key={`${signatureTarget.tabId}:${signatureTarget.object.value}`} target={signatureTarget} onClose={() => setSignatureTarget(null)} /> : null}
       <Dialog open={confirmUndo} onOpenChange={setConfirmUndo}>
         <DialogContent>
           <DialogHeader>
@@ -841,6 +849,8 @@ const CommitRow = memo(function CommitRow({
           <FileDiffIcon />{t("git.ui.create_patch")}</ContextMenuItem>
         <ContextMenuItem onClick={() => onAction({ type: "reuse-message", commit })}>
           <MessageSquareTextIcon />{t("git.reuseMessage.title")}</ContextMenuItem>
+        <ContextMenuItem onClick={() => onAction({ type: "verify-signature", commit })}>
+          <ShieldCheckIcon />{t("git.signature.action")}</ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuSub>
           <ContextMenuSubTrigger>

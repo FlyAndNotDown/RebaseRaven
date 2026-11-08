@@ -12,6 +12,8 @@ import type {
   CommitDetails,
   CommitOptions,
   GitSigningMode,
+  GitSignatureTarget,
+  GitSignatureVerification,
   CommitFile,
   CommitSummary,
   DirEntry,
@@ -110,6 +112,7 @@ export function subscribeGitMissing(listener: () => void) {
 }
 
 export const gitApi = {
+  verifySignature: (repoPath: string, target: GitSignatureTarget, activityId: string) => call<GitSignatureVerification>("verify_git_signature", {repoPath, target, activityId}),
   lfsState: (repoPath: string) => call<LfsState>("git_lfs_state", {repoPath}),
   lfsAction: (repoPath: string, action: LfsAction, fingerprint: string, activityId?: string) => call<LfsOutcome>("git_lfs_action", {repoPath, action, fingerprint, activityId:activityId || null}),
   sparseCheckoutState: (repoPath: string) => call<SparseCheckoutState>("sparse_checkout_state", {repoPath}),

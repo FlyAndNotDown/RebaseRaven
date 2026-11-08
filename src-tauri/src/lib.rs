@@ -269,6 +269,22 @@ async fn get_commit_message(repo_path: String, oid: String) -> AppResult<String>
 }
 
 #[tauri::command]
+async fn verify_git_signature(
+    repo_path: String,
+    target: git::GitSignatureTarget,
+    activity_id: String,
+) -> AppResult<git::GitSignatureVerification> {
+    blocking(move || {
+        git::with_cancel(Some(&activity_id), || {
+            git::with_background(true, || {
+                with_repo(&repo_path, |repo| git::verify_signature(repo, &target))
+            })
+        })
+    })
+    .await
+}
+
+#[tauri::command]
 async fn get_commit_diff(
     repo_path: String,
     oid: String,
@@ -2409,6 +2425,7 @@ pub fn run() {
             get_workdir_diff,
             get_commit_details,
             get_commit_message,
+            verify_git_signature,
             list_directory,
             search_files,
             read_file,

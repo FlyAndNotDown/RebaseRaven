@@ -2745,6 +2745,253 @@ fn staged_signing_edit(repo: &Repository, root: &Path, contents: &str) {
 }
 
 #[test]
+fn native_signature_verification_distinguishes_commit_tag_and_lightweight_objects() {
+    let Some((root, repo)) = signing_repo() else {
+        return;
+    };
+    let unsigned = head_id(&repo);
+    assert_eq!(
+        verify_signature(&repo, &GitSignatureTarget::Commit(unsigned.clone()))
+            .unwrap()
+            .status,
+        GitSignatureStatus::Unsigned
+    );
+    staged_signing_edit(&repo, &root, "signed\n");
+    commit_with_options(
+        &repo,
+        "Signed revision",
+        false,
+        CommitOptions {
+            signing: GitSigningMode::Sign,
+            signoff: false,
+        },
+    )
+    .unwrap();
+    let signed = head_id(&repo);
+    let result = verify_signature(&repo, &GitSignatureTarget::Commit(signed.clone())).unwrap();
+    assert_eq!(
+        result.status,
+        GitSignatureStatus::Verified,
+        "{}",
+        result.output
+    );
+    assert_eq!(result.oid, signed);
+    assert!(result.output.contains("test@example.com"));
+    create_tag_with_signing(
+        &repo,
+        "signed",
+        Some("Signed tag"),
+        None,
+        GitSigningMode::Sign,
+    )
+    .unwrap();
+    create_tag_with_signing(
+        &repo,
+        "unsigned",
+        Some("Unsigned tag"),
+        None,
+        GitSigningMode::Unsigned,
+    )
+    .unwrap();
+    create_tag_with_signing(&repo, "lightweight", None, None, GitSigningMode::Unsigned).unwrap();
+    for (name, status) in [
+        ("signed", GitSignatureStatus::Verified),
+        ("unsigned", GitSignatureStatus::Unsigned),
+        ("lightweight", GitSignatureStatus::Lightweight),
+    ] {
+        let result = verify_signature(&repo, &GitSignatureTarget::Tag(name.into())).unwrap();
+        assert_eq!(result.status, status, "{}", result.output);
+        if name == "signed" {
+            assert_ne!(result.oid, signed);
+        }
+    }
+    // A replacement ref must not make an unsigned object appear signed, or vice versa.
+    run_git_stdout(&root, &["replace", &unsigned, &signed]).unwrap();
+    assert_eq!(
+        verify_signature(&repo, &GitSignatureTarget::Commit(unsigned))
+            .unwrap()
+            .status,
+        GitSignatureStatus::Unsigned
+    );
+    config_set_local(
+        &repo,
+        "gpg.ssh.allowedSignersFile",
+        root.join("missing-signers").to_str().unwrap(),
+    )
+    .unwrap();
+    let missing = verify_signature(&repo, &GitSignatureTarget::Commit(signed)).unwrap();
+    assert_eq!(missing.status, GitSignatureStatus::Failed);
+    assert!(!missing.output.is_empty());
+    assert_eq!(
+        verify_signature(&repo, &GitSignatureTarget::Tag("signed".into()))
+            .unwrap()
+            .status,
+        GitSignatureStatus::Failed
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn native_signature_verification_detects_tampering_and_rejects_revision_expressions() {
+    let Some((root, repo)) = signing_repo() else {
+        return;
+    };
+    staged_signing_edit(&repo, &root, "signed\n");
+    commit_with_options(
+        &repo,
+        "Signed revision",
+        false,
+        CommitOptions {
+            signing: GitSigningMode::Sign,
+            signoff: false,
+        },
+    )
+    .unwrap();
+    create_tag_with_signing(
+        &repo,
+        "signed",
+        Some("Signed tag"),
+        None,
+        GitSigningMode::Sign,
+    )
+    .unwrap();
+    for (kind, reference) in [("commit", "HEAD"), ("tag", "refs/tags/signed")] {
+        let raw = run_git_stdout(&root, &["cat-file", kind, reference]).unwrap();
+        let changed = String::from_utf8(raw).unwrap().replace("Signed", "Altered");
+        let oid = run_git_input(
+            &root,
+            &["hash-object", "-w", "-t", kind, "--stdin"],
+            changed.as_bytes(),
+        )
+        .unwrap();
+        let oid = String::from_utf8(oid).unwrap().trim().to_string();
+        let target = if kind == "tag" {
+            run_git_stdout(&root, &["update-ref", "refs/tags/tampered", &oid]).unwrap();
+            GitSignatureTarget::Tag("tampered".into())
+        } else {
+            GitSignatureTarget::Commit(oid)
+        };
+        let result = verify_signature(&repo, &target).unwrap();
+        assert_eq!(
+            result.status,
+            GitSignatureStatus::Failed,
+            "{}",
+            result.output
+        );
+        assert!(!result.output.is_empty());
+    }
+    for target in [
+        GitSignatureTarget::Commit("HEAD".into()),
+        GitSignatureTarget::Commit("--all".into()),
+        GitSignatureTarget::Tag("signed^{commit}".into()),
+        GitSignatureTarget::Tag("../heads/main".into()),
+        GitSignatureTarget::Tag("missing".into()),
+    ] {
+        assert!(verify_signature(&repo, &target).is_err());
+    }
+    let tag_oid = run_git_stdout(&root, &["rev-parse", "refs/tags/signed"]).unwrap();
+    assert!(verify_signature(
+        &repo,
+        &GitSignatureTarget::Commit(String::from_utf8(tag_oid).unwrap().trim().into())
+    )
+    .is_err());
+    assert_eq!(
+        config_get_local(&repo, "gpg.format").as_deref(),
+        Some("ssh")
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[cfg(unix)]
+#[test]
+fn native_signature_verification_rechecks_the_tag_after_the_verifier_runs() {
+    use std::os::unix::fs::PermissionsExt;
+    let Some((root, repo)) = signing_repo() else {
+        return;
+    };
+    let unsigned = head_id(&repo);
+    create_tag_with_signing(
+        &repo,
+        "moving",
+        Some("Signed tag"),
+        None,
+        GitSigningMode::Sign,
+    )
+    .unwrap();
+    let original = run_git_stdout(&root, &["rev-parse", "refs/tags/moving"]).unwrap();
+    let verifier = root.join("changing-verifier");
+    let keygen = crate::locate::which("ssh-keygen").unwrap();
+    let quote = |value: &str| format!("'{}'", value.replace('\'', "'\\''"));
+    let git = require_git().unwrap();
+    fs::write(&verifier, format!("#!/bin/sh\nif [ \"$2\" = verify ]; then\n  {} -C {} update-ref refs/tags/moving {} || exit 1\nfi\nexec {} \"$@\"\n", quote(&git.to_string_lossy()), quote(&root.to_string_lossy()), unsigned, quote(&keygen.to_string_lossy()))).unwrap();
+    fs::set_permissions(&verifier, fs::Permissions::from_mode(0o700)).unwrap();
+    config_set_local(&repo, "gpg.ssh.program", verifier.to_str().unwrap()).unwrap();
+    let result = verify_signature(&repo, &GitSignatureTarget::Tag("moving".into())).unwrap();
+    assert_eq!(
+        result.status,
+        GitSignatureStatus::Changed,
+        "{}",
+        result.output
+    );
+    assert_eq!(result.oid, String::from_utf8(original).unwrap().trim());
+    assert!(result.output.contains("Good"));
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[cfg(unix)]
+#[test]
+fn native_signature_verification_can_cancel_a_waiting_verifier() {
+    use std::os::unix::fs::PermissionsExt;
+    let Some((root, repo)) = signing_repo() else {
+        return;
+    };
+    create_tag_with_signing(
+        &repo,
+        "signed",
+        Some("Signed tag"),
+        None,
+        GitSigningMode::Sign,
+    )
+    .unwrap();
+    let head = head_id(&repo);
+    let ready = root.join("verifier-ready");
+    let verifier = root.join("waiting-verifier");
+    let quote = |value: &str| format!("'{}'", value.replace('\'', "'\\''"));
+    fs::write(
+        &verifier,
+        format!(
+            "#!/bin/sh\n: > {}\nsleep 30\n",
+            quote(&ready.to_string_lossy())
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&verifier, fs::Permissions::from_mode(0o700)).unwrap();
+    config_set_local(&repo, "gpg.ssh.program", verifier.to_str().unwrap()).unwrap();
+    let id = format!("verify-{}", root.file_name().unwrap().to_string_lossy());
+    let worker_id = id.clone();
+    let worker_root = root.clone();
+    let worker = thread::spawn(move || {
+        with_cancel(Some(&worker_id), || {
+            with_background(true, || {
+                let repo = open_at(&worker_root).unwrap();
+                verify_signature(&repo, &GitSignatureTarget::Tag("signed".into()))
+            })
+        })
+    });
+    let started = std::time::Instant::now();
+    while !ready.exists() && started.elapsed() < Duration::from_secs(5) {
+        thread::sleep(Duration::from_millis(10));
+    }
+    let reached_verifier = ready.exists();
+    assert!(cancel_activity(&id));
+    let result = worker.join().unwrap();
+    assert!(reached_verifier, "The native verifier did not start.");
+    assert!(result.unwrap_err().is_cancelled());
+    assert_eq!(head_id(&repo), head);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn native_commit_signing_signoff_and_amend_keep_configuration_and_trailers() {
     let Some((root, repo)) = signing_repo() else {
         return;

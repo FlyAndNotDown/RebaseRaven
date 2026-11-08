@@ -1,8 +1,9 @@
 import { t, useTranslation } from "@/i18n";
-import { memo, useCallback } from "react";
-import { ArrowLeftRightIcon, XIcon } from "lucide-react";
+import { memo, useCallback, useState } from "react";
+import { ArrowLeftRightIcon, ShieldCheckIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 import { AuthorAvatar } from "@/components/author-avatar";
+import { SignatureVerificationDialog, type SignatureDialogTarget } from "@/components/signature-verification-dialog";
 import { CommitFilesSkeleton } from "@/components/skeletons";
 import { Button } from "@/components/ui/button";
 import { HoverTip } from "@/components/ui/tooltip";
@@ -16,6 +17,8 @@ import type { CommitFile } from "@/types/git";
 export function CommitFiles() {
   useTranslation();
   const {
+    activeTabId,
+    snapshot,
     commitDetails,
     historySelection,
     selectCommitFile,
@@ -25,6 +28,8 @@ export function CommitFiles() {
     selectCompareFile,
     closeCommit,
   } = useGitPick([
+    "activeTabId",
+    "snapshot",
     "commitDetails",
     "historySelection",
     "selectCommitFile",
@@ -34,6 +39,7 @@ export function CommitFiles() {
     "selectCompareFile",
     "closeCommit",
   ]);
+  const [signatureTarget, setSignatureTarget] = useState<SignatureDialogTarget | null>(null);
   const selectedPath = comparison ? comparison.path : historySelection?.path;
   const onSelect = useCallback(
     (path: string) => {
@@ -131,9 +137,15 @@ export function CommitFiles() {
 
   return (
     <div className="absolute inset-0 flex min-h-0 flex-col">
+      {signatureTarget && signatureTarget.tabId === activeTabId && signatureTarget.path === snapshot?.repo.path && signatureTarget.object.value === commit.id ? <SignatureVerificationDialog key={`${signatureTarget.tabId}:${commit.id}`} target={signatureTarget} onClose={() => setSignatureTarget(null)} /> : null}
       <div className="shrink-0 px-3 py-2">
         <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1 text-sm font-medium">{commit.summary}</div>
+          <HoverTip label={t("git.signature.action")}>
+            <Button type="button" size="icon-xs" variant="ghost" aria-label={t("git.signature.action")} disabled={!snapshot} onClick={() => {if (snapshot) setSignatureTarget({tabId:activeTabId,path:snapshot.repo.path,object:{kind:"commit",value:commit.id}});}}>
+              <ShieldCheckIcon />
+            </Button>
+          </HoverTip>
           <HoverTip label={t("git-files.close")}>
             <Button type="button" size="icon-xs" variant="ghost" aria-label={t("git-files.close")} onClick={closeCommit}>
               <XIcon />

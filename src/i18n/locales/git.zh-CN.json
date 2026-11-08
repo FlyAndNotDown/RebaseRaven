@@ -227,6 +227,41 @@
     "stale": "草稿或检出的版本已变化，请重新审阅当前草稿。",
     "empty": "此提交没有说明。"
   },
+  "signature": {
+    "action": "验证签名…",
+    "title": "签名验证",
+    "commit": "提交签名",
+    "tag": "标签签名",
+    "localHint": "使用此仓库的 Git 配置、公钥和信任设置在本机验证。",
+    "verifying": "正在验证签名…",
+    "retry": "重新验证",
+    "output": "Git 输出",
+    "truncated": "输出已截断。",
+    "status": {
+      "verified": "签名验证通过",
+      "untrusted": "签名者未受信任",
+      "expiredSignature": "签名已过期",
+      "expiredKey": "签名密钥已过期",
+      "revoked": "签名密钥已撤销",
+      "invalid": "签名无效",
+      "failed": "无法验证",
+      "unsigned": "未签名",
+      "lightweight": "轻量标签",
+      "changed": "标签已变化"
+    },
+    "detail": {
+      "verified": "已通过本机 Git 验证。",
+      "untrusted": "签名有效，但本机尚未完全信任该签名者。",
+      "expiredSignature": "此签名已过期。",
+      "expiredKey": "此签名使用的密钥已过期。",
+      "revoked": "此签名使用的密钥已被撤销。",
+      "invalid": "签名与对象内容不匹配。",
+      "failed": "请检查验证器输出，以及本机公钥或信任配置。",
+      "unsigned": "此对象没有签名。",
+      "lightweight": "轻量标签本身没有标签签名，其目标的签名需单独验证。",
+      "changed": "验证期间此标签被移动或删除，请重新验证当前对象。"
+    }
+  },
   "signing": {
     "signature": "签名",
     "modes": { "default": "按 Git 配置", "sign": "签名", "unsigned": "不签名" },
