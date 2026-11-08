@@ -20,8 +20,9 @@ verification of every option or platform.
 | --- | --- | --- |
 | Initialize, clone, recent repositories | `git/initialize.rs`, `git/remote.rs` | Bare repository navigation, edge cases and UI need verification |
 | Fetch, pull, push and upstreams | `git/remote.rs`, `git/refs.rs` | Remote rename and explicit push URL lists are implemented and repository-tested; audit remaining fetch/push options and cross-platform UI |
+| Transport credentials and SSH keys | `git/cli.rs`, `askpass.rs`, `sshkeys.rs` | Windows protected-key integration has intermittent failures requiring diagnosis; audit native credential and provider transitions |
 | Stage, unstage, discard, ignore | `git/changes.rs`, `git/partial.rs` | Audit selective stash, clean preview and ignored files |
-| Commit and amend | `git/changes.rs`, repository commit editor | In-memory drafts and amend choices survive view/tab remounts. Audit signing, message reuse, commit-and-push ownership and restart recovery |
+| Commit and amend | `git/changes.rs`, repository commit editor | In-memory drafts and amend choices survive view/tab remounts; commit-and-push retains its repository. Audit signing, message reuse and closed-tab/restart recovery |
 | Branches and tags | `git/refs.rs` | Audit annotated/signed tags and multiple selection |
 | Merge, revert, reset, cherry-pick | `git/operations.rs` | Audit range/sequenced actions, merge options and operation recovery |
 | Rebase and interactive rebase | `git/operations.rs` | Audit editing, reordering, squashing and recovery end to end |
@@ -310,3 +311,27 @@ area. Do not infer full parity from a passing test suite or this inventory.
   frontend tests passing. Twelve isolated DOM scenarios exercise the production
   provider and Changes pane with controlled Git responses. These verify React
   ownership and remount behavior, not native rendering or command execution.
+
+### Repository-owned push continuations
+
+- Commit-and-push retains its original repository, branch and remote while the
+  commit is pending. Tab switches do not redirect it, closing the owning tab
+  cancels the push, and a changed branch is rejected before invoking Git.
+  The native command also validates the expected checked-out branch before
+  constructing its explicit branch refspec.
+- Branch publication confirmations retain the same ownership and show the
+  repository name alongside the branch. Closing or relocating the owning tab
+  dismisses an obsolete confirmation. Confirmation after a branch change is
+  rejected rather than publishing a different branch.
+- The Changes menu respects amend mode, including message-only amendments, and
+  labels the action accordingly. Amending never automatically enables force push.
+  Detached HEADs and repositories without a remote cannot start commit-and-push.
+- Twenty-one permanent DOM tests exercise the production provider, Changes menu
+  and publication dialog with controlled backend responses. A real Git test
+  verifies rejection of a stale branch without changing remote refs, repository
+  configuration or local files, followed by a successful push of the reviewed
+  branch. The existing differently named upstream test still passes.
+- Clean dependency installation, source, website, version, type, lint and frontend
+  build checks pass. Current local checks cover 459 frontend tests and 348 Rust
+  tests, with one existing unrelated Rust test ignored. Native visual checks and
+  Windows/Linux CI for these changes remain pending.

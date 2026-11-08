@@ -1667,13 +1667,91 @@ fn pull_and_push_follow_an_upstream_with_a_different_name() {
 
     commit_file(&local, &local_root, "c.txt", "c\n", "local change");
     let local_tip = head_id(&local);
-    push_remote(&mut local, Some("origin"), false, false, |_| {}).unwrap();
+    push_remote(
+        &mut local,
+        Some("origin"),
+        false,
+        false,
+        Some("feature"),
+        |_| {},
+    )
+    .unwrap();
     let pushed = run_git_stdout(origin.workdir(), &["rev-parse", "refs/heads/feat-x"]).unwrap();
     assert_eq!(String::from_utf8_lossy(&pushed).trim(), local_tip);
     assert!(!ref_exists(&origin, "refs/heads/feature"));
 
     let _ = fs::remove_dir_all(&local_root);
     let _ = fs::remove_dir_all(&origin_root);
+}
+
+#[test]
+fn a_delayed_push_rejects_a_changed_branch_without_mutating_either_repository() {
+    let (root, mut repo) = temp_repo();
+    commit_file(&repo, &root, "file.txt", "base\n", "base");
+    let original = symbolic_branch(&repo).unwrap();
+    let temporary = tempfile::tempdir().unwrap();
+    let remote = temporary.path().join("remote.git");
+    run_git_stdout(
+        temporary.path(),
+        &["init", "-q", "--bare", remote.to_str().unwrap()],
+    )
+    .unwrap();
+    run_git_stdout(
+        &root,
+        &["remote", "add", "origin", remote.to_str().unwrap()],
+    )
+    .unwrap();
+    push_remote(
+        &mut repo,
+        Some("origin"),
+        false,
+        true,
+        Some(&original),
+        |_| {},
+    )
+    .unwrap();
+    let remote_refs = run_git_stdout(&remote, &["for-each-ref", "refs/heads"]).unwrap();
+    create_branch(&repo, "another", true, None).unwrap();
+    commit_file(&repo, &root, "file.txt", "another\n", "another branch");
+    fs::write(root.join("file.txt"), "keep local work\n").unwrap();
+    fs::write(root.join("untracked.txt"), "keep untracked\n").unwrap();
+    let local_status = run_git_stdout(&root, &["status", "--porcelain=v2"]).unwrap();
+    let config = fs::read(repo.commondir().join("config")).unwrap();
+    let head = head_id(&repo);
+    let error = push_remote(
+        &mut repo,
+        Some("origin"),
+        false,
+        true,
+        Some(&original),
+        |_| {},
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("branch changed"));
+    assert_eq!(
+        run_git_stdout(&remote, &["for-each-ref", "refs/heads"]).unwrap(),
+        remote_refs
+    );
+    assert_eq!(fs::read(repo.commondir().join("config")).unwrap(), config);
+    assert_eq!(head_id(&repo), head);
+    assert_eq!(
+        run_git_stdout(&root, &["status", "--porcelain=v2"]).unwrap(),
+        local_status
+    );
+    push_remote(
+        &mut repo,
+        Some("origin"),
+        false,
+        true,
+        Some("another"),
+        |_| {},
+    )
+    .unwrap();
+    let pushed = run_git_stdout(&remote, &["rev-parse", "refs/heads/another"]).unwrap();
+    assert_eq!(String::from_utf8_lossy(&pushed).trim(), head);
+    assert_eq!(workdir_text(&root, "file.txt"), "keep local work\n");
+    assert_eq!(workdir_text(&root, "untracked.txt"), "keep untracked\n");
+    let _ = fs::remove_dir_all(&root);
 }
 
 #[test]

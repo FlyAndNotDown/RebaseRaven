@@ -252,6 +252,8 @@
     "resolve_every_conflict_first": "请先解决所有冲突",
     "commit_options": "提交选项",
     "commit_and_push": "提交并推送",
+    "amend_and_push": "修订并推送",
+    "push_branch_changed": "当前分支已更改，请重新检查后再推送。",
     "amend_last_commit": "修订最后一次提交",
     "this_restores_the_selected_files_to_head_and_deletes_untracked_files_this_cannot_be_undone": "将选中的文件恢复到 HEAD，并删除未跟踪的文件。此操作无法撤销。",
     "cancel": "取消",

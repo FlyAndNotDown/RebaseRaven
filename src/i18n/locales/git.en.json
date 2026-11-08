@@ -252,6 +252,8 @@
     "resolve_every_conflict_first": "Resolve every conflict first",
     "commit_options": "Commit options",
     "commit_and_push": "Commit and push",
+    "amend_and_push": "Amend and push",
+    "push_branch_changed": "The checked-out branch changed. Review it before pushing.",
     "amend_last_commit": "Amend last commit",
     "this_restores_the_selected_files_to_head_and_deletes_untracked_files_this_cannot_be_undone": "This restores the selected files to HEAD and deletes untracked files. This cannot be undone.",
     "cancel": "Cancel",

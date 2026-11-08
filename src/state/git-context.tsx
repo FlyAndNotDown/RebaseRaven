@@ -82,6 +82,7 @@ import type {
   LineAction,
   LineRef,
   RecentRepo,
+  PushOptions,
   RebaseStep,
   StashDetails,
   StashInfo,
@@ -215,6 +216,7 @@ interface GitContextValue {
   discard: (paths: string[]) => Promise<void>;
   applyLines: (path: string, staged: boolean, action: LineAction, lines: LineRef[]) => Promise<boolean>;
   commit: (message: string, amend?: boolean) => Promise<boolean>;
+  commitAndPush: (message: string, amend?: boolean) => Promise<boolean>;
   undoLastCommit: (tabId?: string) => Promise<boolean>;
   checkoutDetached: (oid: string) => Promise<boolean>;
   updateSubmodules: (paths: string[], options?: SubmoduleUpdateOptions) => Promise<boolean>;
@@ -223,7 +225,7 @@ interface GitContextValue {
   fetchRemote: (remote?: string) => Promise<void>;
   fetchAllRemotes: () => Promise<void>;
   pullRemote: (remote?: string, rebase?: boolean) => Promise<void>;
-  pushRemote: (options?: { remote?: string; force?: boolean; setUpstream?: boolean }) => Promise<boolean>;
+  pushRemote: (options?: PushOptions, tabId?: string) => Promise<boolean>;
   publishPrompt: PublishPrompt | null;
   dismissPublish: () => void;
   confirmPublish: () => Promise<void>;
@@ -436,6 +438,9 @@ export function GitProvider({ children }: { children: ReactNode }) {
       }
       const replacement = { ...tabFromPath(path, name, tab.vcs), ...(preserveSession ? { branch: tab.branch, isDetached: tab.isDetached } : {}) };
       const duplicate = current.find((item) => item.id === replacement.id && item.id !== id);
+      if (id !== replacement.id) {
+        setPublishPrompt((prompt) => prompt?.tabId === id ? null : prompt);
+      }
       const next = duplicate
         ? current.filter((item) => item.id !== id)
         : current.map((item) => (item.id === id ? replacement : item));
@@ -936,6 +941,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
 
   const closeTab = useCallback(
     (id: string) => {
+      setPublishPrompt((prompt) => prompt?.tabId === id ? null : prompt);
       const current = tabsRef.current.filter((tab) => tab.kind !== "welcome");
       const closing = current.find((tab) => tab.id === id);
       if (!closing || closing.kind !== "repo") return;
@@ -2139,9 +2145,10 @@ export function GitProvider({ children }: { children: ReactNode }) {
   }, [activeRepoPath, ensureBranches, invalidateHistory, markFetched, runMutation]);
 
   const pushRemote = useCallback(
-    async (options?: { remote?: string; force?: boolean; setUpstream?: boolean }) => {
-      const snapshot = sessionsRef.current[activeTabIdRef.current]?.snapshot;
-      if (!snapshot) return false;
+    async (options?: PushOptions, tabId = activeTabIdRef.current) => {
+      const tab = tabsRef.current.find((item) => item.id === tabId);
+      const snapshot = sessionsRef.current[tabId]?.snapshot;
+      if (tab?.kind !== "repo" || tab.vcs !== "git" || !snapshot) return false;
       const remote = options?.remote?.trim() || primaryRemote(snapshot);
       if (!remote) {
         toast.error(t("operations.add_a_remote_before_pushing"));
@@ -2152,8 +2159,12 @@ export function GitProvider({ children }: { children: ReactNode }) {
         toast.error(t("operations.cannot_push_while_head_is_detached"));
         return false;
       }
+      if (options?.expectedBranch !== undefined && options.expectedBranch !== branch) {
+        toast.error(t("git.ui.push_branch_changed"));
+        return false;
+      }
       if (!snapshot.repo.upstream && !options?.setUpstream) {
-        setPublishPrompt({ branch, remote });
+        setPublishPrompt({ tabId, name: snapshot.repo.name, branch, remote });
         return false;
       }
       const publishing = Boolean(options?.setUpstream);
@@ -2167,13 +2178,31 @@ export function GitProvider({ children }: { children: ReactNode }) {
             remote,
             force,
             setUpstream: publishing,
+            expectedBranch: branch,
           }),
         success,
-        { cancellable: true },
+        { cancellable: true, tabId },
       );
     },
     [runMutation],
   );
+
+  const commitAndPush = useCallback(async (message: string, amend = false) => {
+    const tabId = activeTabIdRef.current;
+    const snapshot = sessionsRef.current[tabId]?.snapshot;
+    const branch = snapshot?.repo.currentBranch;
+    const remote = primaryRemote(snapshot);
+    if (!branch) {
+      toast.error(t("operations.cannot_push_while_head_is_detached"));
+      return false;
+    }
+    if (!remote) {
+      toast.error(t("operations.add_a_remote_before_pushing"));
+      return false;
+    }
+    if (!await commit(message, amend)) return false;
+    return pushRemote({ remote, expectedBranch: branch }, tabId);
+  }, [commit, pushRemote]);
 
   const dismissPublish = useCallback(() => setPublishPrompt(null), []);
 
@@ -2186,7 +2215,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
     const prompt = publishPromptRef.current;
     if (!prompt) return;
     setPublishPrompt(null);
-    await pushRemote({ remote: prompt.remote, setUpstream: true });
+    await pushRemote({ remote: prompt.remote, setUpstream: true, expectedBranch: prompt.branch }, prompt.tabId);
   }, [pushRemote]);
 
   const createBranch = useCallback(
@@ -3094,6 +3123,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       discard,
       applyLines,
       commit,
+      commitAndPush,
       undoLastCommit,
       checkoutDetached,
       updateSubmodules,
@@ -3195,6 +3225,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       discard,
       applyLines,
       commit,
+      commitAndPush,
       undoLastCommit,
       checkoutDetached,
       updateSubmodules,

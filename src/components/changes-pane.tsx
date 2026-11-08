@@ -118,7 +118,7 @@ export function ChangesPane() {
     unstage,
     discard,
     commit,
-    pushRemote,
+    commitAndPush,
     operationContinue,
     stashSave,
     ignorePaths,
@@ -146,7 +146,7 @@ export function ChangesPane() {
     "unstage",
     "discard",
     "commit",
-    "pushRemote",
+    "commitAndPush",
     "operationContinue",
     "stashSave",
     "ignorePaths",
@@ -242,12 +242,11 @@ export function ChangesPane() {
   };
 
   const canAmend = Boolean(snapshot?.headCommit) && !operation && !bisecting;
-  const canCommitAndPush =
-    !operation && !bisecting && !committing && message.trim().length > 0 && files.staged.length > 0;
-  const canOpenCommitMenu = canCommitAndPush || canAmend;
   const canCommit = !bisecting && (operation
     ? !committing && !conflicted
     : !committing && message.trim().length > 0 && (amend ? canAmend : files.staged.length > 0));
+  const canCommitAndPush = !operation && canCommit && Boolean(snapshot?.repo.currentBranch && snapshot.remotes.length);
+  const canOpenCommitMenu = canCommitAndPush || canAmend;
   const primaryLabel = operation
     ? t(CONTINUE_LABEL[operation.kind] ?? "git.ui.continue")
     : amend
@@ -365,10 +364,10 @@ export function ChangesPane() {
     }
   }
 
-  async function runCommit(next: string, nextAmend: boolean) {
+  async function runCommit(next: string, nextAmend: boolean, push = false) {
     setCommitting(true);
     try {
-      return await commit(next, nextAmend);
+      return await (push ? commitAndPush(next, nextAmend) : commit(next, nextAmend));
     } finally {
       setCommitting(false);
     }
@@ -392,11 +391,7 @@ export function ChangesPane() {
 
   function submitCommitAndPush() {
     if (!canCommitAndPush) return;
-    void (async () => {
-      if (await runCommit(message, false)) {
-        await pushRemote();
-      }
-    })();
+    void runCommit(message, amend, true);
   }
 
   function toggleAmend(next: boolean) {
@@ -759,7 +754,7 @@ export function ChangesPane() {
                     className="whitespace-nowrap"
                     disabled={!canCommitAndPush}
                     onClick={submitCommitAndPush}
-                  ><ArrowUpFromLineIcon />{t("git.ui.commit_and_push")}</DropdownMenuItem>
+                  ><ArrowUpFromLineIcon />{t(amend ? "git.ui.amend_and_push" : "git.ui.commit_and_push")}</DropdownMenuItem>
                   <DropdownMenuCheckboxItem
                     checked={amend}
                     disabled={!canAmend}

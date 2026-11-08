@@ -26,6 +26,7 @@ import type {
   LineAction,
   LineRef,
   RecentRepo,
+  PushOptions,
   ReflogEntry,
   RemoteProbe,
   RemotePushSettings,
@@ -245,7 +246,7 @@ export const gitApi = {
   pushRemote: (
     repoPath: string,
     activityId?: string,
-    options?: { remote?: string; force?: boolean; setUpstream?: boolean },
+    options?: PushOptions,
   ) =>
     call<WorkspaceSnapshot>("push_remote", {
       repoPath,
@@ -253,6 +254,7 @@ export const gitApi = {
       remote: options?.remote || null,
       force: options?.force ?? false,
       setUpstream: options?.setUpstream ?? false,
+      expectedBranch: options?.expectedBranch ?? null,
     }),
   createTag: (repoPath: string, name: string, message?: string, target?: string) =>
     call<WorkspaceSnapshot>("create_tag", {

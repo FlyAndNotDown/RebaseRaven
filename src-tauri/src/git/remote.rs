@@ -84,12 +84,18 @@ pub fn push_remote(
     remote: Option<&str>,
     force: bool,
     set_upstream: bool,
+    expected_branch: Option<&str>,
     on_progress: impl FnMut(&str) + Send,
 ) -> AppResult<WorkspaceSnapshot> {
     let branch = repo_info(repo)?
         .current_branch
         .filter(|name| !name.is_empty())
         .ok_or_else(|| AppError::msg("Cannot push while HEAD is detached"))?;
+    if expected_branch.is_some_and(|expected| expected != branch) {
+        return Err(AppError::msg(
+            "The checked-out branch changed. Review it before pushing.",
+        ));
+    }
     let mut args = vec!["push".to_string(), "--progress".to_string()];
     if force {
         args.push("--force-with-lease".to_string());

@@ -388,6 +388,13 @@ export interface GitExecutables {
   active: string | null;
 }
 
+export interface PushOptions {
+  remote?: string;
+  force?: boolean;
+  setUpstream?: boolean;
+  expectedBranch?: string;
+}
+
 export interface RemoteInfo {
   name: string;
   url: string | null;

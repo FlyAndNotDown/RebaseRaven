@@ -30,7 +30,7 @@ const placeholders = (value: string) => [...value.matchAll(/\{\{\s*-?\s*([\w.]+)
 function sourceFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => entry.isDirectory()
     ? sourceFiles(path.join(directory, entry.name))
-    : /\.(?:tsx?|mjs)$/.test(entry.name) && !entry.name.endsWith(".test.ts") ? [path.join(directory, entry.name)] : []);
+    : /\.(?:tsx?|mjs)$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [path.join(directory, entry.name)] : []);
 }
 
 const visibleAttributes = new Set(["label", "title", "description", "hint", "detail", "empty", "message", "group", "placeholder", "aria-label", "aria-description", "alt", "fallback", "missing", "emptyLabel", "loadingLabel", "buttonLabel", "action"]);

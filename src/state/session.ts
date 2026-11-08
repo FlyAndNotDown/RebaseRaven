@@ -36,6 +36,8 @@ export function primaryRemote(snapshot: WorkspaceSnapshot | null | undefined) {
 }
 
 export type PublishPrompt = {
+  tabId: string;
+  name: string;
   branch: string;
   remote: string;
 };

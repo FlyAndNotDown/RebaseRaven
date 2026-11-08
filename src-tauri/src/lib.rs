@@ -634,6 +634,7 @@ async fn push_remote(
     remote: Option<String>,
     force: Option<bool>,
     set_upstream: Option<bool>,
+    expected_branch: Option<String>,
     activity_id: Option<String>,
     app: AppHandle,
 ) -> AppResult<WorkspaceSnapshot> {
@@ -646,6 +647,7 @@ async fn push_remote(
                 remote.as_deref(),
                 force,
                 set_upstream,
+                expected_branch.as_deref(),
                 progress_sink(&app, activity_id.as_deref()),
             )
         })
