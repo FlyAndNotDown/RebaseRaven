@@ -287,6 +287,10 @@ pub fn lfs_state(repo: &Repository) -> AppResult<LfsState> {
             .patterns
             .unwrap_or_default();
         for pattern in &mut patterns {
+            // Source files use native separators; glob patterns keep their backslash escapes.
+            if cfg!(windows) {
+                pattern.source = pattern.source.replace('\\', "/");
+            }
             pattern.editable = editable_rule(repo, pattern);
         }
         patterns.sort_by(|a, b| (&a.source, &a.pattern).cmp(&(&b.source, &b.pattern)));
