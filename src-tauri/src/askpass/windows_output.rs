@@ -116,10 +116,13 @@ mod tests {
                 )
             };
         }
-        let name: Vec<u16> = format!(r"\\.\pipe\rebaseraven-credential-{}", uuid::Uuid::new_v4())
-            .encode_utf16()
-            .chain(Some(0))
-            .collect();
+        let name: Vec<u16> = format!(
+            r"\\.\pipe\rebaseraven-credential-{}",
+            super::super::random_token().unwrap()
+        )
+        .encode_utf16()
+        .chain(Some(0))
+        .collect();
         let raw = unsafe {
             CreateNamedPipeW(
                 name.as_ptr(),
