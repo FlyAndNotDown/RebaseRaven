@@ -1,4 +1,6 @@
 import { pathSegments, sameRepoPath } from "@/lib/format";
+import type { CommitDraft, CommitEditorState } from "./commit-editor";
+export type { CommitDraft } from "./commit-editor";
 import type {
   CommitDetails,
   CommitSummary,
@@ -60,12 +62,6 @@ export type StashSelection = {
   path?: string;
 };
 
-/** Text to put in the commit box, e.g. after undoing a commit. */
-export type CommitDraft = {
-  text: string;
-  nonce: number;
-};
-
 /** A request for the Files view to open a file; `nonce` makes repeats count. */
 export type FileFocus = {
   path: string;
@@ -94,6 +90,7 @@ export interface RepoSession {
   stashDiff: FileDiff | null;
   fileFocus: FileFocus | null;
   commitDraft: CommitDraft | null;
+  commitEditor: CommitEditorState | null;
 }
 
 export function asVcs(value: string | null | undefined): VcsKind {
@@ -130,6 +127,7 @@ export function emptySession(
     stashDiff: null,
     fileFocus: null,
     commitDraft: null,
+    commitEditor: null,
   };
 }
 

@@ -21,7 +21,7 @@ verification of every option or platform.
 | Initialize, clone, recent repositories | `git/initialize.rs`, `git/remote.rs` | Bare repository navigation, edge cases and UI need verification |
 | Fetch, pull, push and upstreams | `git/remote.rs`, `git/refs.rs` | Remote rename and explicit push URL lists are implemented and repository-tested; audit remaining fetch/push options and cross-platform UI |
 | Stage, unstage, discard, ignore | `git/changes.rs`, `git/partial.rs` | Audit selective stash, clean preview and ignored files |
-| Commit and amend | `git/changes.rs` | Repository-tab changes remount the commit box; message draft persistence needs repair. Audit signing and message reuse |
+| Commit and amend | `git/changes.rs`, repository commit editor | In-memory drafts and amend choices survive view/tab remounts. Audit signing, message reuse, commit-and-push ownership and restart recovery |
 | Branches and tags | `git/refs.rs` | Audit annotated/signed tags and multiple selection |
 | Merge, revert, reset, cherry-pick | `git/operations.rs` | Audit range/sequenced actions, merge options and operation recovery |
 | Rebase and interactive rebase | `git/operations.rs` | Audit editing, reordering, squashing and recovery end to end |
@@ -289,4 +289,24 @@ area. Do not infer full parity from a passing test suite or this inventory.
   frontend tests passing. Rust formatting, Clippy and tests pass: 347 passed and
   one existing unrelated test ignored. Native visual checks and provider-level
   transitions remain unverified because browser control and reconnect attempts
-  timed out. Windows/Linux runtime checks remain pending for this iteration.
+  timed out. Subsequent v0.1.10 CI passed on all three platforms: 347 tests on
+  Linux/macOS and 343 on Windows, with one existing test ignored on each. Missing
+  Windows worktree paths now match across native and Git separators.
+
+### Repository commit editor
+
+- Each open repository retains its typed message and amend choice across view
+  and tab remounts. Worktree relocation carries the same editor session. Amend
+  remains tied to the reviewed HEAD and is disabled for another HEAD or a native
+  operation. This is in-memory session retention, not restart recovery.
+- Native merge/rebase messages update unedited text while retaining custom input.
+  Undo messages appear on first mount, and explicitly clearing one consumes the
+  request so a remount cannot resurrect it.
+- Successful commits and continuations clear only the owning repository's
+  unchanged submitted editor and consumed Undo request. Fresh input, including
+  the same text re-entered during a pending command, survives. Failed commands
+  retain the editor; banner continuations retain custom text they did not use.
+- Source, website, version, type, lint and frontend build checks pass, with 438
+  frontend tests passing. Twelve isolated DOM scenarios exercise the production
+  provider and Changes pane with controlled Git responses. These verify React
+  ownership and remount behavior, not native rendering or command execution.

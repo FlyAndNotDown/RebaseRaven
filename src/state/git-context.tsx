@@ -20,6 +20,7 @@ import { P4_MISSING, p4Api } from "@/lib/p4";
 import { normalizeRepoPath, sameRepoPath } from "@/lib/format";
 import { DEFAULT_HISTORY_EXPANDED, renamedRemoteViews } from "@/lib/remote-refs";
 import { repositoryUndoAction } from "@/state/repository-actions";
+import { canClearCommitEditor, commitEditorSubmission, editCommitEditor, type CommitEditorState } from "@/state/commit-editor";
 import { defaultPrefs, normalizePrefs, sameLayout } from "@/lib/prefs";
 import {
   COMMIT_PAGE,
@@ -147,6 +148,8 @@ interface GitContextValue {
   stashes: StashInfo[];
   fileFocus: FileFocus | null;
   commitDraft: CommitDraft | null;
+  commitEditor: CommitEditorState | null;
+  setCommitEditor: (tabId: string, edit: CommitEditorState) => void;
   /** An app-wide overlay that any view or the command palette can open. */
   openPanel: Panel | null;
   prefs: AppPrefs;
@@ -467,6 +470,17 @@ export function GitProvider({ children }: { children: ReactNode }) {
     },
     [commitSessions, syncTabMeta],
   );
+
+  const setCommitEditor = useCallback((tabId: string, edit: CommitEditorState) => {
+    const session = sessionsRef.current[tabId];
+    if (session) patchSession(tabId, { commitEditor: editCommitEditor(session, edit) });
+  }, [patchSession]);
+
+  const clearSubmittedEditor = useCallback((tabId: string, submission: ReturnType<typeof commitEditorSubmission>) => {
+    if (canClearCommitEditor(sessionsRef.current[tabId], submission)) {
+      patchSession(tabId, { commitEditor: null, commitDraft: null });
+    }
+  }, [patchSession]);
 
   const activeRepoPath = useCallback(() => {
     const tab = tabsRef.current.find((item) => item.id === activeTabIdRef.current);
@@ -1922,16 +1936,19 @@ export function GitProvider({ children }: { children: ReactNode }) {
   const commit = useCallback(
     async (message: string, amend = false) => {
       const tabId = activeTabIdRef.current;
+      const submission = commitEditorSubmission(sessionsRef.current[tabId], message);
       const ok = await runMutation(amend ? t("operations.amending_commit") : t("operations.creating_commit"), (repoPath) =>
         gitApi.commit(repoPath, message, amend),
+        undefined, { tabId },
       );
       if (ok) {
+        clearSubmittedEditor(tabId, submission);
         if (amend) toast.success(t("operations.amended_commit"));
         else toast.success(t("operations.created_commit"), { action: repositoryUndoAction(tabId, undoLastCommit) });
       }
       return ok;
     },
-    [runMutation, undoLastCommit],
+    [clearSubmittedEditor, runMutation, undoLastCommit],
   );
 
   const updateSubmodules = useCallback(
@@ -2443,15 +2460,17 @@ export function GitProvider({ children }: { children: ReactNode }) {
 
   const rebaseContinue = useCallback(async () => {
     const tabId = activeTabIdRef.current;
+    const submission = commitEditorSubmission(sessionsRef.current[tabId]);
     const ok = await runMutation(
       t("operations.continuing_rebase"),
       (repoPath) => gitApi.rebaseContinue(repoPath),
       t("operations.rebase_finished"),
       { tabId },
     );
-    if (!ok) await refreshAfterReplay(tabId);
+    if (ok) clearSubmittedEditor(tabId, submission);
+    else await refreshAfterReplay(tabId);
     return ok;
-  }, [refreshAfterReplay, runMutation]);
+  }, [clearSubmittedEditor, refreshAfterReplay, runMutation]);
 
   const rebaseSkip = useCallback(async () => {
     const tabId = activeTabIdRef.current;
@@ -2490,6 +2509,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
 
   const operationContinue = useCallback(async (message?: string) => {
     const tabId = activeTabIdRef.current;
+    const submission = commitEditorSubmission(sessionsRef.current[tabId], message);
     const kind = sessionsRef.current[tabId]?.snapshot?.repo.operation?.kind;
     const ok = await runMutation(
       kind ? t("operations.continuing_2", { value: kind }) : t("operations.continuing"),
@@ -2497,9 +2517,10 @@ export function GitProvider({ children }: { children: ReactNode }) {
       (kind && OPERATION_FINISHED[kind]) || t("operations.operation_finished"),
       { tabId },
     );
-    if (!ok) await refreshAfterReplay(tabId);
+    if (ok) clearSubmittedEditor(tabId, submission);
+    else await refreshAfterReplay(tabId);
     return ok;
-  }, [refreshAfterReplay, runMutation]);
+  }, [clearSubmittedEditor, refreshAfterReplay, runMutation]);
 
   const operationAbort = useCallback(async () => {
     return runMutation(
@@ -3005,6 +3026,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       stashes: session?.snapshot?.stashes ?? NO_STASHES,
       fileFocus: session?.fileFocus ?? null,
       commitDraft: session?.commitDraft ?? null,
+      commitEditor: session?.commitEditor ?? null,
       openPanel,
       prefs,
       prefsReady,
@@ -3020,6 +3042,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
   // identity and the context value never changes after mount.
   const actions = useMemo<GitActions>(
     () => ({
+      setCommitEditor,
       setView,
       setOpenPanel,
       showFile,
@@ -3120,6 +3143,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       updatePanelLayout,
     }),
     [
+      setCommitEditor,
       setView,
       setOpenPanel,
       showFile,

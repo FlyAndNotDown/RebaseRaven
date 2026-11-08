@@ -70,6 +70,7 @@ import { fileName, parentPath } from "@/lib/format";
 import { useWindowedRows } from "@/lib/use-windowed-rows";
 import { cn } from "@/lib/utils";
 import { useGitPick } from "@/state/git-context";
+import { resolveCommitEditor } from "@/state/commit-editor";
 import type { FileStatus, WorkspaceSnapshot } from "@/types/git";
 
 const ROW_HEIGHT = 28;
@@ -129,9 +130,15 @@ export function ChangesPane() {
     runMergetool,
     updatePrefs,
     commitDraft,
+    commitEditor,
+    setCommitEditor,
+    activeTabId,
   } = useGitPick([
     "snapshot",
     "commitDraft",
+    "commitEditor",
+    "setCommitEditor",
+    "activeTabId",
     "changeSelection",
     "prefs",
     "selectChange",
@@ -153,19 +160,11 @@ export function ChangesPane() {
   ]);
   const bisecting = snapshot?.repo.operation?.kind === "bisect";
   const operation = bisecting ? null : snapshot?.repo.operation ?? null;
-  const preparedMessage = operation?.message ?? "";
-  const [message, setMessage] = useState(preparedMessage);
-  const [shownPrepared, setShownPrepared] = useState(preparedMessage);
-  if (preparedMessage !== shownPrepared) {
-    setShownPrepared(preparedMessage);
-    if (!message.trim() || message === shownPrepared) setMessage(preparedMessage);
+  const editor = resolveCommitEditor({ snapshot, commitDraft, commitEditor });
+  const { text: message, amend, preparedMessage } = editor;
+  function setMessage(text: string) {
+    setCommitEditor(activeTabId, { ...editor, text });
   }
-  const [shownDraft, setShownDraft] = useState(commitDraft?.nonce ?? 0);
-  if (commitDraft && commitDraft.nonce !== shownDraft) {
-    setShownDraft(commitDraft.nonce);
-    if (!message.trim()) setMessage(commitDraft.text);
-  }
-  const [amend, setAmend] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [discardTarget, setDiscardTarget] = useState<string[] | null>(null);
   const [stashTarget, setStashTarget] = useState<string[] | null>(null);
@@ -369,12 +368,7 @@ export function ChangesPane() {
   async function runCommit(next: string, nextAmend: boolean) {
     setCommitting(true);
     try {
-      const ok = await commit(next, nextAmend);
-      if (ok) {
-        setMessage((current) => (current === next ? "" : current));
-        setAmend(false);
-      }
-      return ok;
+      return await commit(next, nextAmend);
     } finally {
       setCommitting(false);
     }
@@ -384,9 +378,7 @@ export function ChangesPane() {
     setCommitting(true);
     try {
       const edited = next.trim() && next.trim() !== preparedMessage.trim() ? next : undefined;
-      if (await operationContinue(edited)) {
-        setMessage((current) => (current === next ? "" : current));
-      }
+      await operationContinue(edited);
     } finally {
       setCommitting(false);
     }
@@ -408,10 +400,9 @@ export function ChangesPane() {
   }
 
   function toggleAmend(next: boolean) {
-    setAmend(next);
-    if (next && snapshot && !message.trim()) {
-      setMessage(headCommitMessage(snapshot));
-    }
+    setCommitEditor(activeTabId, { ...editor, amend: next,
+      text: next && snapshot && !message.trim() ? headCommitMessage(snapshot) : message,
+    });
   }
 
   function fileMenu(section: ChangeSection, file: FileStatus) {
