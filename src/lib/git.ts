@@ -12,6 +12,8 @@ import type {
   CommitDetails,
   CommitOptions,
   GitSigningMode,
+  GitRepositorySettings,
+  GitRepositoryChange,
   GitSignatureTarget,
   GitSignatureVerification,
   CommitFile,
@@ -112,6 +114,8 @@ export function subscribeGitMissing(listener: () => void) {
 }
 
 export const gitApi = {
+  getRepositorySettings: (repoPath: string) => call<GitRepositorySettings>("get_git_repository_settings", {repoPath}),
+  setRepositorySettings: (repoPath: string, changes: GitRepositoryChange[], fingerprint: string) => call<GitRepositorySettings>("set_git_repository_settings", {repoPath, changes, fingerprint}),
   verifySignature: (repoPath: string, target: GitSignatureTarget, activityId: string) => call<GitSignatureVerification>("verify_git_signature", {repoPath, target, activityId}),
   lfsState: (repoPath: string) => call<LfsState>("git_lfs_state", {repoPath}),
   lfsAction: (repoPath: string, action: LfsAction, fingerprint: string, activityId?: string) => call<LfsOutcome>("git_lfs_action", {repoPath, action, fingerprint, activityId:activityId || null}),

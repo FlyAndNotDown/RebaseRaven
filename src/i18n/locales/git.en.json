@@ -262,6 +262,50 @@
       "changed": "This tag was moved or deleted during verification. Verify again to check its current object."
     }
   },
+  "signingSettings": {
+    "chooseFile": "Choose a file",
+    "chooseField": "Choose {{label}}",
+    "title": "Signing",
+    "identity": "Identity",
+    "description": "Identity and signing settings.",
+    "repository": "This repository",
+    "worktree": "This worktree",
+    "scopeHint": "Only this repository configuration is edited. Other configuration sources stay intact.",
+    "worktreeHint": "Worktree configuration is enabled. These overrides apply only to this worktree; resetting a field restores inherited settings.",
+    "loading": "Loading repository settings",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "openpgp": "OpenPGP",
+    "gitDefault": "Git default",
+    "inherit": "Inherit · {{value}}",
+    "invalid": "Invalid value: {{value}}",
+    "reset": "Inherit this setting",
+    "resetField": "Reset {{label}} to inherit",
+    "reload": "Reload",
+    "readOnly": "This configuration is read-only or linked to another file. Edit its source instead.",
+    "source": "Overridden",
+    "overridden": "Effective: {{value}}\nSource: {{origin}}\nEdit its source configuration to change this value.",
+    "fields": {
+      "user_name": "User name",
+      "user_email": "Email",
+      "gpg_format": "Signature format",
+      "user_signingkey": "Signing key",
+      "commit_gpgsign": "Sign commits by default",
+      "tag_gpgsign": "Sign tags by default",
+      "gpg_ssh_allowedsignersfile": "Allowed signers file",
+      "gpg_ssh_revocationfile": "Revoked keys file"
+    },
+    "hints": {
+      "user_name": "Leave empty to inherit the name from other Git configuration sources.",
+      "user_email": "Leave empty to inherit the email from other Git configuration sources.",
+      "gpg_format": "Choose OpenPGP, SSH, or X.509. Git uses the configured signing program for the selected format.",
+      "user_signingkey": "OpenPGP or X.509: key identifier. SSH: private key path, public key path with ssh-agent, or key:: followed by a public key. Leave empty to inherit.",
+      "commit_gpgsign": "Applies when commit options use Git configuration. An explicit per-commit choice takes precedence.",
+      "tag_gpgsign": "Applies to annotated tags when tag options use Git configuration. Lightweight tags remain unsigned.",
+      "gpg_ssh_allowedsignersfile": "A file of trusted principals and SSH public keys used for local signature verification. Absolute paths and paths relative to the repository are supported. Leave empty to inherit.",
+      "gpg_ssh_revocationfile": "An SSH key revocation list or a file of revoked public keys. Leave empty to inherit."
+    }
+  },
   "signing": {
     "signature": "Signature",
     "modes": { "default": "Use Git configuration", "sign": "Sign", "unsigned": "Do not sign" },

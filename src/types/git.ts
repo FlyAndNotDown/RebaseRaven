@@ -224,6 +224,22 @@ export interface GitIdentity {
 }
 
 export type GitSigningMode = "default" | "sign" | "unsigned";
+export type GitRepositoryKey = "user.name" | "user.email" | "gpg.format" | "user.signingkey" | "commit.gpgsign" | "tag.gpgsign" | "gpg.ssh.allowedsignersfile" | "gpg.ssh.revocationfile";
+export interface GitRepositoryField {
+  key: GitRepositoryKey;
+  value: string | null;
+  inherited: string | null;
+  effective: string | null;
+  origin: string | null;
+  editable: boolean;
+}
+export interface GitRepositorySettings {
+  fields: GitRepositoryField[];
+  worktree: boolean;
+  readOnly: boolean;
+  fingerprint: string;
+}
+export interface GitRepositoryChange {key: GitRepositoryKey; value: string | null}
 export type GitSignatureTarget = {kind: "commit" | "tag"; value: string};
 export type GitSignatureStatus = "verified" | "untrusted" | "expiredSignature" | "expiredKey" | "revoked" | "invalid" | "failed" | "unsigned" | "lightweight" | "changed";
 export interface GitSignatureVerification {

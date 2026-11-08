@@ -3046,6 +3046,80 @@ fn native_commit_signing_signoff_and_amend_keep_configuration_and_trailers() {
 }
 
 #[test]
+fn repository_signing_settings_drive_native_commit_and_tag_defaults() {
+    let Some((root, repo)) = signing_repo() else {
+        return;
+    };
+    let settings = repository_settings(&repo).unwrap();
+    let changes = ["commit.gpgsign", "tag.gpgsign"].map(|key| GitRepositoryChange {
+        key: key.into(),
+        value: Some("true".into()),
+    });
+    set_repository_settings(&repo, &changes, &settings.fingerprint).unwrap();
+    staged_signing_edit(&repo, &root, "signed by default\n");
+    commit_with_options(&repo, "Configured signing", false, CommitOptions::default()).unwrap();
+    assert_eq!(
+        verify_signature(&repo, &GitSignatureTarget::Commit(head_id(&repo)))
+            .unwrap()
+            .status,
+        GitSignatureStatus::Verified
+    );
+    create_tag_with_signing(
+        &repo,
+        "configured",
+        Some("Configured signature"),
+        None,
+        GitSigningMode::Default,
+    )
+    .unwrap();
+    assert_eq!(
+        verify_signature(&repo, &GitSignatureTarget::Tag("configured".into()))
+            .unwrap()
+            .status,
+        GitSignatureStatus::Verified
+    );
+    create_tag_with_signing(
+        &repo,
+        "lightweight-default",
+        None,
+        None,
+        GitSigningMode::Default,
+    )
+    .unwrap();
+    assert_eq!(
+        verify_signature(
+            &repo,
+            &GitSignatureTarget::Tag("lightweight-default".into())
+        )
+        .unwrap()
+        .status,
+        GitSignatureStatus::Lightweight
+    );
+    staged_signing_edit(&repo, &root, "explicit override\n");
+    commit_with_options(
+        &repo,
+        "Unsigned override",
+        false,
+        CommitOptions {
+            signing: GitSigningMode::Unsigned,
+            signoff: false,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        verify_signature(&repo, &GitSignatureTarget::Commit(head_id(&repo)))
+            .unwrap()
+            .status,
+        GitSignatureStatus::Unsigned
+    );
+    assert_eq!(
+        config_get_local(&repo, "commit.gpgsign").as_deref(),
+        Some("true")
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn signing_failure_preserves_the_index_head_and_tag_namespace() {
     let (root, repo) = temp_repo();
     commit_file(&repo, &root, "value.txt", "base\n", "Initial revision");

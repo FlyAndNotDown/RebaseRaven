@@ -285,6 +285,23 @@ async fn verify_git_signature(
 }
 
 #[tauri::command]
+async fn get_git_repository_settings(repo_path: String) -> AppResult<git::GitRepositorySettings> {
+    with_repo_async(repo_path, |repo| git::repository_settings(repo)).await
+}
+
+#[tauri::command]
+async fn set_git_repository_settings(
+    repo_path: String,
+    changes: Vec<git::GitRepositoryChange>,
+    fingerprint: String,
+) -> AppResult<git::GitRepositorySettings> {
+    with_repo_async(repo_path, move |repo| {
+        git::set_repository_settings(repo, &changes, &fingerprint)
+    })
+    .await
+}
+
+#[tauri::command]
 async fn get_commit_diff(
     repo_path: String,
     oid: String,
@@ -2426,6 +2443,8 @@ pub fn run() {
             get_commit_details,
             get_commit_message,
             verify_git_signature,
+            get_git_repository_settings,
+            set_git_repository_settings,
             list_directory,
             search_files,
             read_file,

@@ -262,6 +262,50 @@
       "changed": "验证期间此标签被移动或删除，请重新验证当前对象。"
     }
   },
+  "signingSettings": {
+    "chooseFile": "选择文件",
+    "chooseField": "选择{{label}}",
+    "title": "签名",
+    "identity": "身份",
+    "description": "身份与签名设置。",
+    "repository": "此仓库",
+    "worktree": "当前工作树",
+    "scopeHint": "只修改此仓库的配置，不改动其他来源的设置。",
+    "worktreeHint": "已开启独立工作树配置，覆盖项仅作用于当前工作树；重置字段可恢复继承设置。",
+    "loading": "正在加载仓库设置",
+    "enabled": "开启",
+    "disabled": "关闭",
+    "openpgp": "OpenPGP",
+    "gitDefault": "Git 默认值",
+    "inherit": "继承 · {{value}}",
+    "invalid": "无效值：{{value}}",
+    "reset": "继承此项设置",
+    "resetField": "将{{label}}重置为继承",
+    "reload": "重新加载",
+    "readOnly": "此配置为只读文件，或链接到了其他文件，请修改来源配置。",
+    "source": "已被覆盖",
+    "overridden": "当前生效：{{value}}\n来源：{{origin}}\n请修改来源配置以更改此值。",
+    "fields": {
+      "user_name": "用户名",
+      "user_email": "邮箱",
+      "gpg_format": "签名格式",
+      "user_signingkey": "签名密钥",
+      "commit_gpgsign": "默认签名提交",
+      "tag_gpgsign": "默认签名标签",
+      "gpg_ssh_allowedsignersfile": "受信任签名者文件",
+      "gpg_ssh_revocationfile": "已撤销密钥文件"
+    },
+    "hints": {
+      "user_name": "留空可继承其他 Git 配置来源中的用户名。",
+      "user_email": "留空可继承其他 Git 配置来源中的邮箱。",
+      "gpg_format": "可选择 OpenPGP、SSH 或 X.509，使用 Git 为对应格式配置的签名程序。",
+      "user_signingkey": "OpenPGP、X.509 使用密钥标识；SSH 可使用私钥路径、配合 ssh-agent 的公钥路径，或 key:: 加公钥内容。留空表示继承。",
+      "commit_gpgsign": "提交选项选择“使用 Git 配置”时生效，单次提交明确选择的签名方式优先。",
+      "tag_gpgsign": "创建注解标签且签名选项选择“使用 Git 配置”时生效，轻量标签仍不签名。",
+      "gpg_ssh_allowedsignersfile": "用于本机验证的受信任主体和 SSH 公钥文件，支持绝对路径或仓库内相对路径；留空表示继承。",
+      "gpg_ssh_revocationfile": "SSH 密钥撤销列表，或已撤销公钥文件；留空表示继承。"
+    }
+  },
   "signing": {
     "signature": "签名",
     "modes": { "default": "按 Git 配置", "sign": "签名", "unsigned": "不签名" },
