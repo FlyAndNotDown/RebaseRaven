@@ -14,7 +14,7 @@ import { GitProvider, useGitPick } from "@/state/git-context";
 import { ChangesPane } from "@/components/changes-pane";
 import { AppToolbar } from "@/components/app-toolbar";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { resolveCommitEditor } from "@/state/commit-editor";
+import { resolveCommitEditor, reviewCommitDraft } from "@/state/commit-editor";
 import { gitApi } from "@/lib/git";
 import { defaultPrefs } from "@/lib/prefs";
 import { setLanguagePreference } from "@/i18n";
@@ -94,6 +94,7 @@ function useModel() {
     "setView",
     "setCommitEditor",
     "commit",
+    "reuseCommitMessage",
     "commitAndPush",
     "pushRemote",
     "publishPrompt",
@@ -372,6 +373,23 @@ it("retains signing choices on failure and isolates them by repository until a s
   await open(B);expect(resolveCommitEditor(model)).toMatchObject({signing:"default",signoff:false});
   await switchTo(A);const retry=await start();await finish();expect(await retry.result).toBe(true);
   expect(resolveCommitEditor(model)).toMatchObject({signing:"default",signoff:false,text:""});
+});
+
+it("loads reviewed message text into the owning editor without committing or preserving amend",async()=>{
+  await type("My draft");await amend();
+  await act(async()=>model.setCommitEditor(model.activeTabId,{...resolveCommitEditor(model),signing:"sign",signoff:true}));
+  const review=reviewCommitDraft(model);await act(async()=>model.setView("history"));
+  let applied=false;await act(async()=>{applied=model.reuseCommitMessage(model.activeTabId,A,review,"Historical subject\ncontinued\n\nBody\n","replace");});
+  expect(applied).toBe(true);expect(model.view).toBe("changes");expect(input().value).toContain("Historical subject\ncontinued");expect(resolveCommitEditor(model)).toMatchObject({amend:false,signing:"sign",signoff:true});expect(gitApi.commit).not.toHaveBeenCalled();
+});
+
+it("rejects a stale message review after input, tab switching, or repository relocation",async()=>{
+  await type("Keep A");const owner=model.activeTabId,review=reviewCommitDraft(model);
+  await type("Keep newer A");let applied=false;
+  await act(async()=>{applied=model.reuseCommitMessage(owner,A,review,"Imported","replace");});expect(applied).toBe(false);expect(input().value).toBe("Keep newer A");
+  const fresh=reviewCommitDraft(model);await open(B);await type("Keep B");
+  await act(async()=>{applied=model.reuseCommitMessage(owner,A,fresh,"Imported","replace");});expect(applied).toBe(false);expect(input().value).toBe("Keep B");
+  await switchTo(A);await act(async()=>{applied=model.reuseCommitMessage(owner,B,fresh,"Imported","replace");});expect(applied).toBe(false);expect(input().value).toBe("Keep newer A");
 });
 
 it("passes the reviewed signature and signoff choices through commit and push", async () => {

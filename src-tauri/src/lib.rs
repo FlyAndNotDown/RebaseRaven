@@ -264,6 +264,11 @@ async fn get_commit_details(repo_path: String, oid: String) -> AppResult<CommitD
 }
 
 #[tauri::command]
+async fn get_commit_message(repo_path: String, oid: String) -> AppResult<String> {
+    with_repo_async(repo_path, move |repo| git::commit_message(repo, &oid)).await
+}
+
+#[tauri::command]
 async fn get_commit_diff(
     repo_path: String,
     oid: String,
@@ -2403,6 +2408,7 @@ pub fn run() {
             get_branches,
             get_workdir_diff,
             get_commit_details,
+            get_commit_message,
             list_directory,
             search_files,
             read_file,

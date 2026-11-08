@@ -56,6 +56,46 @@ export function editCommitEditor(session: EditorSession, edit: CommitEditorState
   };
 }
 
+export type CommitMessageMode = "replace" | "append";
+export type CommitDraftReview = {
+  editor: CommitEditorState | null;
+  draft: CommitDraft | null;
+  headId: string | null;
+  branch: string | null;
+  text: string;
+};
+
+export function reviewCommitDraft(session: EditorSession): CommitDraftReview {
+  return {
+    editor: session.commitEditor,
+    draft: session.commitDraft,
+    headId: session.snapshot?.repo.headId ?? null,
+    branch: session.snapshot?.repo.currentBranch ?? null,
+    text: resolveCommitEditor(session).text,
+  };
+}
+
+export function sameReviewedCommitDraft(session: EditorSession, review: CommitDraftReview) {
+  return Boolean(session.snapshot) && !session.snapshot?.repo.operation
+    && session.commitEditor === review.editor && session.commitDraft === review.draft
+    && (session.snapshot?.repo.headId ?? null) === review.headId
+    && (session.snapshot?.repo.currentBranch ?? null) === review.branch;
+}
+
+export function reusedCommitMessage(draft: string, source: string, mode: CommitMessageMode) {
+  return mode === "append" && draft.trim() ? `${draft.trimEnd()}\n\n${source.trimStart()}` : source;
+}
+
+/** Reusing text starts a new commit and consumes any earlier Undo draft. */
+export function reuseCommitEditor(session: EditorSession, review: CommitDraftReview, message: string, mode: CommitMessageMode): CommitEditorState | null {
+  if (!sameReviewedCommitDraft(session, review) || !message.trim()) return null;
+  return editCommitEditor(session, {
+    ...resolveCommitEditor(session),
+    text: reusedCommitMessage(review.text, message, mode),
+    amend: false,
+  });
+}
+
 export function commitEditorSubmission(session: EditorSession | undefined, message?: string) {
   const current = session ? resolveCommitEditor(session) : null;
   const submitted = message ?? preparedCommitMessage(session?.snapshot ?? null);

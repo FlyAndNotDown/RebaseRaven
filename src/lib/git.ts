@@ -157,6 +157,8 @@ export const gitApi = {
     call<CommitSummary[]>("file_commits", { repoPath, path, limit, skip }),
   getCommitDetails: (repoPath: string, oid: string) =>
     call<CommitDetails>("get_commit_details", { repoPath, oid }),
+  getCommitMessage: (repoPath: string, oid: string) =>
+    call<string>("get_commit_message", {repoPath, oid}),
   getCommitDiff: (repoPath: string, oid: string, path: string, ignoreWhitespace = false) =>
     call<FileDiff>("get_commit_diff", { repoPath, oid, path, ignoreWhitespace }),
   getImagePair: (repoPath: string, source: FileSource) =>

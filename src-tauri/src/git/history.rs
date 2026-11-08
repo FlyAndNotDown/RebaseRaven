@@ -1,5 +1,43 @@
 use super::*;
 
+/// Reads the complete message rather than reconstructing it from a folded subject.
+pub fn commit_message(repo: &Repository, oid: &str) -> AppResult<String> {
+    if !matches!(oid.len(), 40 | 64) || !oid.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(AppError::msg("Choose one commit from history."));
+    }
+    let resolved = run_git_stdout(
+        workdir(repo)?,
+        &[
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            &format!("{oid}^{{commit}}"),
+        ],
+    )?;
+    let resolved = String::from_utf8_lossy(&resolved);
+    let text = run_git_stdout(
+        workdir(repo)?,
+        &[
+            "-c",
+            "i18n.logOutputEncoding=utf-8",
+            "-c",
+            "log.showSignature=false",
+            "show",
+            "--no-patch",
+            "--no-notes",
+            "--format=format:%B",
+            resolved.trim(),
+            "--",
+        ],
+    )?;
+    if text.len() as u64 > MAX_TEXT_BYTES {
+        return Err(AppError::msg(
+            "The commit message is too large to load into the editor.",
+        ));
+    }
+    Ok(String::from_utf8_lossy(&text).into_owned())
+}
+
 pub(super) fn summarize_oid(repo: &Repository, oid: &str) -> AppResult<CommitSummary> {
     Ok(summary_from_info(&commit_info(repo, oid)?))
 }

@@ -2626,6 +2626,82 @@ fn tags_go_through_git_and_reject_bad_names() {
     let _ = fs::remove_dir_all(&root);
 }
 
+#[test]
+fn reusable_message_keeps_multiline_subjects_indentation_trailers_and_utf8() {
+    let (root, repo) = temp_repo();
+    commit_file(&repo, &root, "value.txt", "base\n", "Initial revision");
+    let message = "Resume the work\non the next line\n\nRésumé 🚀\n    keep indentation and trailing spaces  \n\nReviewed-by: Reviewer <reviewer@example.com>\nSigned-off-by: Original <original@example.com>\n";
+    run_git_input(
+        &root,
+        &["commit", "--allow-empty", "--cleanup=verbatim", "--file=-"],
+        message.as_bytes(),
+    )
+    .unwrap();
+    let oid = head_id(&repo);
+    let index = run_git_stdout(&root, &["write-tree"]).unwrap();
+    run_git_stdout(
+        &root,
+        &["notes", "add", "-m", "Do not include this note", &oid],
+    )
+    .unwrap();
+    config_set_local(&repo, "log.showSignature", "true").unwrap();
+    assert_eq!(commit_message(&repo, &oid).unwrap(), message);
+    assert_eq!(head_id(&repo), oid);
+    assert_eq!(run_git_stdout(&root, &["write-tree"]).unwrap(), index);
+    assert!(run_git_stdout(&root, &["status", "--porcelain"])
+        .unwrap()
+        .is_empty());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn reusable_message_rejects_options_and_non_commit_objects_and_handles_empty_messages() {
+    let (root, repo) = temp_repo();
+    commit_file(&repo, &root, "value.txt", "base\n", "Initial revision");
+    let blob = run_git_input(&root, &["hash-object", "-w", "--stdin"], b"Not a commit").unwrap();
+    let blob = String::from_utf8_lossy(&blob).trim().to_string();
+    for invalid in [
+        "--all",
+        "HEAD",
+        "",
+        blob.as_str(),
+        "1111111111111111111111111111111111111111",
+    ] {
+        assert!(commit_message(&repo, invalid).is_err(), "{invalid}");
+    }
+    run_git_input(
+        &root,
+        &[
+            "commit",
+            "--allow-empty",
+            "--allow-empty-message",
+            "--file=-",
+        ],
+        b"",
+    )
+    .unwrap();
+    assert_eq!(commit_message(&repo, &head_id(&repo)).unwrap(), "");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn reusable_message_supports_sha256_commit_ids() {
+    let root = tempfile::tempdir().unwrap();
+    run_git_stdout(root.path(), &["init", "--object-format=sha256"]).unwrap();
+    run_git_stdout(root.path(), &["config", "user.name", "Example Author"]).unwrap();
+    run_git_stdout(root.path(), &["config", "user.email", "author@example.com"]).unwrap();
+    run_git_input(
+        root.path(),
+        &["commit", "--allow-empty", "--file=-"],
+        b"SHA-256 message\n",
+    )
+    .unwrap();
+    let repo = open_at(root.path()).unwrap();
+    let oid = head_id(&repo);
+    assert_eq!(oid.len(), 64);
+    assert_eq!(commit_message(&repo, &oid).unwrap(), "SHA-256 message\n");
+}
+
 fn signing_repo() -> Option<(PathBuf, Repository)> {
     let Some(keygen) = crate::locate::which("ssh-keygen") else {
         eprintln!("Skipping native signing test: ssh-keygen is unavailable.");

@@ -22,7 +22,7 @@ import type { LfsAction, LfsOutcome, LfsUpdate } from "@/types/lfs";
 import { normalizeRepoPath, sameRepoPath } from "@/lib/format";
 import { DEFAULT_HISTORY_EXPANDED, renamedRemoteViews } from "@/lib/remote-refs";
 import { repositoryUndoAction } from "@/state/repository-actions";
-import { canClearCommitEditor, commitEditorSubmission, editCommitEditor, resolveCommitEditor, type CommitEditorState } from "@/state/commit-editor";
+import { canClearCommitEditor, commitEditorSubmission, editCommitEditor, resolveCommitEditor, reuseCommitEditor, type CommitDraftReview, type CommitMessageMode, type CommitEditorState } from "@/state/commit-editor";
 import { defaultPrefs, normalizePrefs, sameLayout } from "@/lib/prefs";
 import {
   COMMIT_PAGE,
@@ -218,6 +218,7 @@ interface GitContextValue {
   unstage: (paths: string[]) => Promise<void>;
   discard: (paths: string[]) => Promise<void>;
   applyLines: (path: string, staged: boolean, action: LineAction, lines: LineRef[]) => Promise<boolean>;
+  reuseCommitMessage: (tabId: string, path: string, review: CommitDraftReview, message: string, mode: CommitMessageMode) => boolean;
   commit: (message: string, amend?: boolean) => Promise<boolean>;
   commitAndPush: (message: string, amend?: boolean) => Promise<boolean>;
   undoLastCommit: (tabId?: string) => Promise<boolean>;
@@ -1944,6 +1945,15 @@ export function GitProvider({ children }: { children: ReactNode }) {
     return ok;
   }, [patchSession, runMutation]);
 
+  const reuseCommitMessage = useCallback((tabId: string, path: string, review: CommitDraftReview, message: string, mode: CommitMessageMode) => {
+    const current = sessionsRef.current[tabId];
+    if (!current || activeTabIdRef.current !== tabId || !sameRepoPath(current.path, path)) return false;
+    const editor = reuseCommitEditor(current, review, message, mode);
+    if (!editor) return false;
+    patchSession(tabId, {commitEditor:editor, view:"changes"});
+    return true;
+  }, [patchSession]);
+
   const commit = useCallback(
     async (message: string, amend = false) => {
       const tabId = activeTabIdRef.current;
@@ -3156,6 +3166,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       discard,
       applyLines,
       commit,
+      reuseCommitMessage,
       commitAndPush,
       undoLastCommit,
       checkoutDetached,
@@ -3260,6 +3271,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       discard,
       applyLines,
       commit,
+      reuseCommitMessage,
       commitAndPush,
       undoLastCommit,
       checkoutDetached,
