@@ -74,7 +74,8 @@ pub(super) fn same_folder(left: &str, right: &Path) -> bool {
     let left = strip_verbatim_path(left.canonicalize().unwrap_or_else(|_| left.to_path_buf()));
     let right = strip_verbatim_path(right.canonicalize().unwrap_or_else(|_| right.to_path_buf()));
     if cfg!(windows) {
-        left.to_string_lossy().to_lowercase() == right.to_string_lossy().to_lowercase()
+        left.to_string_lossy().replace('\\', "/").to_lowercase()
+            == right.to_string_lossy().replace('\\', "/").to_lowercase()
     } else {
         left == right
     }
@@ -156,6 +157,19 @@ pub fn prune_worktrees(repo: &Repository) -> AppResult<()> {
 #[cfg(test)]
 mod structure_tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn missing_worktree_paths_keep_windows_separator_and_case_equivalence() {
+        let temp = tempfile::tempdir().unwrap();
+        let missing = temp.path().join("Relocated Worktree");
+        assert!(!missing.exists());
+        let native = missing.to_string_lossy();
+        let git = native.replace('\\', "/").to_uppercase();
+        assert!(same_folder(&git, &missing));
+        assert!(same_folder(&git, &PathBuf::from(format!(r"\\?\{native}"))));
+        assert!(!same_folder(&git, &temp.path().join("Other Worktree")));
+    }
 
     fn repository(path: &Path) -> Repository {
         fs::create_dir_all(path).unwrap();

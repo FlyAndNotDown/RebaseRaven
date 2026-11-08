@@ -45,7 +45,7 @@ fn locking_preserves_reasons_and_keeps_unavailable_worktrees_out_of_prune() {
     let tree = list_worktrees(&repo)
         .unwrap()
         .into_iter()
-        .find(|tree| tree.path == path)
+        .find(|tree| same_folder(&tree.path, Path::new(&path)))
         .unwrap();
     assert!(tree.locked);
     assert_eq!(tree.lock_reason.as_deref(), Some("Removable drive"));
@@ -80,7 +80,10 @@ fn moves_keep_dirty_and_untracked_contents_and_literal_destination_names() {
     )
     .unwrap();
     let result = change_worktree(&mut repo.clone(), &change, &preview.fingerprint).unwrap();
-    assert_eq!(result.previous_path.as_deref(), Some(path.as_str()));
+    assert!(same_folder(
+        result.previous_path.as_deref().unwrap(),
+        Path::new(&path)
+    ));
     assert!(same_folder(result.path.as_deref().unwrap(), &destination));
     assert!(!Path::new(&path).exists());
     assert_eq!(
@@ -360,7 +363,7 @@ fn staging_in_another_worktree_does_not_invalidate_administrative_changes() {
     assert!(list_worktrees(&repo)
         .unwrap()
         .iter()
-        .any(|tree| tree.path == path && tree.locked));
+        .any(|tree| same_folder(&tree.path, Path::new(&path)) && tree.locked));
     assert_eq!(
         fs::read_to_string(Path::new(&other).join("new.txt")).unwrap(),
         "Independent staged work\n"
