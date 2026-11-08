@@ -91,6 +91,7 @@ export function CommandCenter() {
         { id: "team-shelves", label: t("p4.shelves.title"), group: t("desktop.appSidebar.workspace"), run: () => p4.setShelvesOpen(true) },
         ...(p4.connection?.stream ? [{ id: "switch-stream", label:t("p4.switchStream.title"), group:t("desktop.appSidebar.workspace"), run:() => p4.switchStream() }, { id: "stream-integration", label: t("p4.streams.title"), group: t("desktop.appSidebar.workspace"), run: () => p4.setStreamOpen(true) }] : []),
         { id: "reconcile", label: t("desktop.commandPalette.reconcile_offline_work"), group: t("desktop.appSidebar.workspace"), run: () => void p4.reconcile() },
+        { id: "clean-workspace", label: t("p4.clean.title"), group: t("desktop.appSidebar.workspace"), run: () => p4.openClean() },
         { id: "refresh-p4", label: t("desktop.commandPalette.refresh_workspace"), group: t("desktop.appSidebar.workspace"), run: () => void p4.refresh() },
         { id: "editor", label: t("desktop.appHeader.open_in_editor"), group: t("desktop.commandPalette.repository"), shortcut: "openInEditor", run: () => void git.openInEditor() },
         { id: "terminal", label: t("desktop.appHeader.open_terminal"), group: t("desktop.commandPalette.repository"), shortcut: "openTerminal", run: () => void git.openTerminal() },

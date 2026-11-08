@@ -262,3 +262,12 @@ export interface P4FileProperties {
 }
 export interface P4FilePropertiesView { files: P4FileProperties[]; fingerprint: string }
 export interface P4FileTypeRequest { paths: string[]; selected: string[]; fileType: string; changeId: string }
+export interface P4CleanRequest {
+  scope: string;
+  restoreModified: boolean;
+  restoreMissing: boolean;
+  removeUntracked: boolean;
+  includeIgnored: boolean;
+}
+export interface P4CleanFile {path: string; depotPath: string; action: "restoreModified" | "restoreMissing" | "removeUntracked"; revision: string | null}
+export interface P4CleanPreview {files: P4CleanFile[]; fingerprint: string}

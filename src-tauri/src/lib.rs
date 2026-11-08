@@ -1988,6 +1988,24 @@ async fn p4_preview_reconcile(connection: p4::P4Connection) -> AppResult<p4::P4R
 }
 
 #[tauri::command]
+async fn p4_preview_clean(
+    connection: p4::P4Connection,
+    request: p4::P4CleanRequest,
+) -> AppResult<p4::P4CleanPreview> {
+    blocking(move || p4::preview_clean(&connection, &request)).await
+}
+
+#[tauri::command]
+async fn p4_apply_clean(
+    connection: p4::P4Connection,
+    request: p4::P4CleanRequest,
+    paths: Vec<String>,
+    fingerprint: String,
+) -> AppResult<String> {
+    blocking(move || p4::apply_clean(&connection, &request, &paths, &fingerprint)).await
+}
+
+#[tauri::command]
 async fn p4_apply_reconcile(
     connection: p4::P4Connection,
     paths: Vec<String>,
@@ -2617,6 +2635,8 @@ pub fn run() {
             p4_get_revision,
             p4_sync,
             p4_preview_reconcile,
+            p4_preview_clean,
+            p4_apply_clean,
             p4_apply_reconcile,
             p4_file_action,
             p4_preview_integrate,

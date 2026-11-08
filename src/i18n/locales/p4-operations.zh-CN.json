@@ -1,5 +1,10 @@
 {
   "errors": {
+    "cleanAction": "请至少选择一项清理操作。",
+    "cleanPath": "清理路径不能包含通配符或控制字符。",
+    "cleanRegular": "清理仅支持普通工作区文件。",
+    "cleanLimit": "预览超过 2000 个文件，请选择更小的目录或减少清理类型。",
+    "cleanIncomplete": "部分选中文件尚未完成清理，请重新预览剩余更改。",
     "numberedChange": "请选择带编号的变更列表。",
     "unsupportedAction": "不支持此文件操作。",
     "chooseFile": "请选择文件。",

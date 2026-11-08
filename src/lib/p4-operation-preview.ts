@@ -8,6 +8,11 @@ export const P4_STREAM_SPEC_STALE = "The stream definition changed. Reload it be
 export type P4OperationKind = "integrate" | "undo";
 
 const operationErrors: Record<string, string> = {
+  "Choose at least one cleanup action.": "cleanAction",
+  "Cleanup requires file and folder names without wildcards or control characters.": "cleanPath",
+  "Cleanup supports regular workspace files only.": "cleanRegular",
+  "Cleanup preview exceeds 2000 files. Choose a smaller folder or fewer cleanup actions.": "cleanLimit",
+  "Some selected files could not be cleaned. Preview the remaining changes.": "cleanIncomplete",
   "The stream definition was not removed from the shelf.": "streamWorkShelfDelete",
   "The stream, workspace, or changelist changed. Preview the stream operation again.": "streamWorkStale",
   "The server did not return the stream revision.": "streamWorkRevision",

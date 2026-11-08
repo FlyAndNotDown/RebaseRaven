@@ -1,5 +1,10 @@
 {
   "errors": {
+    "cleanAction": "Choose at least one cleanup action.",
+    "cleanPath": "Cleanup requires file and folder names without wildcards or control characters.",
+    "cleanRegular": "Cleanup supports regular workspace files only.",
+    "cleanLimit": "Cleanup preview exceeds 2000 files. Choose a smaller folder or fewer cleanup actions.",
+    "cleanIncomplete": "Some selected files could not be cleaned. Preview the remaining changes.",
     "numberedChange": "Choose a numbered changelist.",
     "unsupportedAction": "Unsupported file action.",
     "chooseFile": "Choose a file.",

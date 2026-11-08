@@ -3,6 +3,8 @@ import { p4ComparisonDiff, type P4Comparison } from "@/lib/p4-comparison";
 import { invoke } from "@tauri-apps/api/core";
 import { t } from "@/i18n";
 import type {
+  P4CleanRequest,
+  P4CleanPreview,
   P4FilePropertiesView,
   P4FileTypeRequest,
   P4UnshelveRequest,
@@ -222,6 +224,8 @@ export const p4Api = {
     call<P4OperationPreview>("p4_preview_undo", { connection, request }),
   applyUndo: (connection: P4Connection, request: P4UndoRequest, fingerprint: string) =>
     call<string>("p4_apply_undo", { connection, request, fingerprint }),
+  previewClean: (connection: P4Connection, request: P4CleanRequest) => call<P4CleanPreview>("p4_preview_clean", {connection,request}),
+  applyClean: (connection: P4Connection, request: P4CleanRequest, paths: string[], fingerprint: string) => call<string>("p4_apply_clean", {connection,request,paths,fingerprint}),
   previewReconcile: (connection: P4Connection) => call<P4ReconcilePreview>("p4_preview_reconcile", { connection }),
   applyReconcile: (connection: P4Connection, paths: string[], changeId: string, fingerprint: string) =>
     call<string>("p4_apply_reconcile", { connection, paths, changeId, fingerprint }),

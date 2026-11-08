@@ -1,4 +1,6 @@
+mod clean;
 mod cli;
+pub use clean::{apply_clean, preview_clean, P4CleanPreview, P4CleanRequest};
 mod client;
 pub use client::{save_workspace, workspace_settings, P4WorkspaceEdit, P4WorkspaceSettings};
 mod history;

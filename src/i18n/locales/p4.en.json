@@ -310,6 +310,40 @@
     "externalWaiting": "Waiting for the merge tool…",
     "externalDefault": "Automatic · P4Merge"
   },
+  "clean": {
+    "review_one": "Review {{count}} file",
+    "review_other": "Review {{count}} files",
+    "apply_one": "Clean {{count}} file",
+    "apply_other": "Clean {{count}} files",
+    "title": "Clean workspace",
+    "confirmTitle": "Confirm workspace cleanup",
+    "preview": "Preview",
+    "scanning": "Comparing workspace files…",
+    "empty": "No files need cleanup.",
+    "scanAgain": "Preview the selected cleanup actions.",
+    "selectAll": "Select all cleanup files",
+    "review": "Review {{count}} files",
+    "apply": "Clean {{count}} files",
+    "cleaning": "Cleaning workspace…",
+    "cleaned": "Workspace cleanup completed",
+    "back": "Back",
+    "summary": "Restore: {{restore}} · Delete local: {{remove}}",
+    "hint": "Opened files are preserved. Restores use the last synced revision.",
+    "haveHint": "Last synced revision, rather than the latest depot revision.",
+    "confirmHint": "Selected local files will be deleted or overwritten. This cannot be undone.",
+    "ignoreHint": "Include untracked files normally excluded by P4IGNORE. Changing this option requires a new preview.",
+    "options": {
+      "restoreModified": "Restore modified files",
+      "restoreMissing": "Restore missing files",
+      "removeUntracked": "Remove untracked files",
+      "includeIgnored": "Include ignored files"
+    },
+    "actions": {
+      "restoreModified": "Restore modified",
+      "restoreMissing": "Restore missing",
+      "removeUntracked": "Delete local"
+    }
+  },
   "reconcileReview": {
     "title": "Reconcile offline changes",
     "selected": "{{count}} / {{total}} selected",

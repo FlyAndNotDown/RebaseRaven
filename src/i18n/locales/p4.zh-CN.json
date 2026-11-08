@@ -310,6 +310,40 @@
     "externalWaiting": "正在等待合并工具…",
     "externalDefault": "自动 · P4Merge"
   },
+  "clean": {
+    "review_one": "确认 {{count}} 个文件",
+    "review_other": "确认 {{count}} 个文件",
+    "apply_one": "清理 {{count}} 个文件",
+    "apply_other": "清理 {{count}} 个文件",
+    "title": "清理工作区",
+    "confirmTitle": "确认清理工作区",
+    "preview": "预览",
+    "scanning": "正在比较工作区文件…",
+    "empty": "没有需要清理的文件。",
+    "scanAgain": "请预览所选清理操作。",
+    "selectAll": "选择全部待清理文件",
+    "review": "确认 {{count}} 个文件",
+    "apply": "清理 {{count}} 个文件",
+    "cleaning": "正在清理工作区…",
+    "cleaned": "工作区清理完成",
+    "back": "返回",
+    "summary": "恢复 {{restore}} 个文件 · 删除 {{remove}} 个本地文件",
+    "hint": "保留已打开的文件；恢复到上次同步的修订。",
+    "haveHint": "上次同步的修订，而非仓库最新修订。",
+    "confirmHint": "选中的本地文件将被删除或覆盖，此操作无法撤销。",
+    "ignoreHint": "包含通常被 P4IGNORE 排除的未纳管文件，修改此项后需要重新预览。",
+    "options": {
+      "restoreModified": "恢复离线修改",
+      "restoreMissing": "补回缺失文件",
+      "removeUntracked": "移除未纳管文件",
+      "includeIgnored": "包含忽略文件"
+    },
+    "actions": {
+      "restoreModified": "恢复修改",
+      "restoreMissing": "补回缺失",
+      "removeUntracked": "删除本地"
+    }
+  },
   "reconcileReview": {
     "title": "整理离线修改",
     "selected": "已选 {{count}} / {{total}}",

@@ -16,6 +16,7 @@ import { P4ConnectionDialog } from "@/components/p4/p4-connection-dialog";
 import { P4ShelvesDialog } from "@/components/p4/p4-shelves-dialog";
 import { P4StreamDialog } from "@/components/p4/p4-stream-dialog";
 import { P4ReconcileDialog } from "@/components/p4/p4-reconcile-dialog";
+import { P4CleanDialog } from "@/components/p4/p4-clean-dialog";
 import { P4LoginDialog } from "@/components/p4/p4-login-dialog";
 import { P4SwitchDialog, P4SwitchResultDialog } from "@/components/p4/p4-switch-dialog";
 import { P4IntegrationDialog } from "@/components/p4/p4-integration-dialog";
@@ -32,6 +33,8 @@ import { acquireP4Mutation, invalidateP4Session } from "@/state/p4-mutations";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import type { FileDiff } from "@/types/git";
 import type {
+  P4CleanRequest,
+  P4CleanPreview,
   P4FilePropertiesView,
   P4FileTypeRequest,
   P4UnshelveRequest,
@@ -154,6 +157,9 @@ interface P4ContextValue {
   getRevision: (request: P4GetRevision) => Promise<string | null>;
   filesEpoch: number;
   reconcile: () => Promise<void>;
+  openClean: (scope?: string) => void;
+  previewClean: (request: P4CleanRequest) => Promise<P4CleanPreview>;
+  applyClean: (request: P4CleanRequest, paths: string[], fingerprint: string) => Promise<void>;
   previewReconcile: () => Promise<P4ReconcilePreview>;
   applyReconcile: (paths: string[], changeId: string, fingerprint: string) => Promise<void>;
   fileAction: (action: "edit" | "add" | "delete", paths: string[]) => Promise<void>;
@@ -239,6 +245,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
   const setStreamOpen = useCallback((open: boolean) => {setStreamInitial(null);updateStreamOpen(open);},[]);
   const openStreamIntegration = useCallback((mode:P4StreamRequest["mode"],source:string) => {setStreamInitial({mode,source});updateStreamOpen(true);},[]);
   const [reconcileOpen, setReconcileOpen] = useState(false);
+  const [cleanTarget, setCleanTarget] = useState<{connection: P4Connection; scope: string} | null>(null);
   const [switchTarget, setSwitchTarget] = useState<string | null>(null);
   const [switchOutcome, setSwitchOutcome] = useState<P4SwitchOutcome | null>(null);
   const switchStream = useCallback((target = "") => setSwitchTarget(target), []);
@@ -1221,6 +1228,29 @@ export function P4Provider({ children }: { children: ReactNode }) {
 
   const reconcile = useCallback(async () => { setReconcileOpen(true); }, []);
 
+  const openClean = useCallback((scope?: string) => {
+    const current=sessionRef.current;
+    if (current) setCleanTarget({connection:current.connection,scope:scope || current.connection.root});
+  },[]);
+  const previewClean = useCallback(async (request: P4CleanRequest) => {
+    const current=sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    return guard(current.connection,()=>p4Api.previewClean(current.connection,request));
+  },[guard]);
+  const applyClean = useCallback(async (request: P4CleanRequest, paths: string[], fingerprint: string) => {
+    const current=sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    const release=lockMutation(current,t("p4.clean.cleaning"));
+    if (!release) throw new Error(t("p4-operations.workspaceBusy"));
+    const activity=beginActivity(t("p4.clean.cleaning"),current.connection.client);
+    try {
+      await guard(current.connection,()=>p4Api.applyClean(current.connection,request,paths,fingerprint));
+      toast.success(t("p4.clean.cleaned"));
+    } finally {
+      await reloadPending(current).catch(report); bumpFiles();endActivity(activity);release();
+    }
+  },[guard,lockMutation,beginActivity,endActivity,reloadPending,bumpFiles,report]);
+
   const previewReconcile = useCallback(async () => {
     const current = sessionRef.current;
     if (!current) throw new Error(t("p4-operations.connectionRequired"));
@@ -1681,6 +1711,9 @@ export function P4Provider({ children }: { children: ReactNode }) {
       getRevision,
       filesEpoch,
       reconcile,
+      openClean,
+      previewClean,
+      applyClean,
       previewReconcile,
       applyReconcile,
       fileAction,
@@ -1767,6 +1800,9 @@ export function P4Provider({ children }: { children: ReactNode }) {
       moveFiles,
       placeFiles,
       reconcile,
+      openClean,
+      previewClean,
+      applyClean,
       previewReconcile,
       applyReconcile,
       reconnect,
@@ -1817,6 +1853,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
         {integrationInitial && connection ? <P4IntegrationDialog key={JSON.stringify([connection,integrationInitial])} initial={integrationInitial} onClose={() => setIntegrationInitial(null)} /> : null}
         {streamOpen && connection ? <P4StreamDialog initial={streamInitial} key={JSON.stringify([connection,streamInitial])} onClose={() => setStreamOpen(false)} /> : null}
         {reconcileOpen && connection ? <P4ReconcileDialog key={JSON.stringify(connection)} onClose={() => setReconcileOpen(false)} /> : null}
+        {cleanTarget && connection && sameP4Connection(cleanTarget.connection,connection) ? <P4CleanDialog key={JSON.stringify(cleanTarget)} scope={cleanTarget.scope} onClose={()=>setCleanTarget(current=>current===cleanTarget ? null : current)} /> : null}
         {switchTarget !== null && connection ? <P4SwitchDialog key={JSON.stringify([connection,switchTarget])} initialTarget={switchTarget} onClose={() => setSwitchTarget(null)} /> : null}
         {switchOutcome ? <P4SwitchResultDialog outcome={switchOutcome} onClose={() => setSwitchOutcome(null)} /> : null}
         <P4LoginDialog
