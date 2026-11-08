@@ -62,6 +62,7 @@ import type {
 } from "@/types/p4";
 
 import type { P4SpecActions } from "@/types/p4-specs";
+import type { P4StreamSpecActions } from "@/types/p4-stream-specs";
 
 export type { P4View };
 
@@ -75,6 +76,7 @@ class LoginCancelled extends Error {
 
 interface P4ContextValue {
   specs: P4SpecActions;
+  streamSpecs: P4StreamSpecActions;
   openIntegration: (initial?: P4IntegrationInitial) => void;
   previewIntegration: (request: P4IntegrationRequest) => Promise<P4IntegrationPreview>;
   applyIntegration: (request: P4IntegrationRequest, preview: P4IntegrationPreview) => Promise<void>;
@@ -1550,22 +1552,29 @@ export function P4Provider({ children }: { children: ReactNode }) {
     [lockMutation, beginActivity, endActivity, reconnect, report, retargetRepoTab, setTabMeta],
   );
 
-  const specs = useMemo<P4SpecActions>(() => {
+  const { specs, streamSpecs } = useMemo<{specs: P4SpecActions; streamSpecs: P4StreamSpecActions}>(() => {
     async function read<T>(action: (connection: P4Connection) => Promise<T>): Promise<T> {
       const owner = sessionRef.current;
       if (!owner) throw new Error(t("p4-operations.connectionRequired"));
       return guard(owner.connection, () => action(owner.connection));
     }
-    async function write<T>(action: (connection: P4Connection) => Promise<T>): Promise<T> {
+    async function write<T>(action: (connection: P4Connection) => Promise<T>, stream = false): Promise<T> {
       const owner = sessionRef.current;
       if (!owner) throw new Error(t("p4-operations.connectionRequired"));
       const release = lockMutation(owner, t("p4.specs.updating"));
       if (!release) throw new Error(t("p4-operations.workspaceBusy"));
       const activity = beginActivity(t("p4.specs.updating"));
-      try { return await guard(owner.connection, () => action(owner.connection)); }
+      try {
+        const result = await guard(owner.connection, () => action(owner.connection));
+        if (stream) {
+          setFilesEpoch(value => value + 1);
+          void reloadPending(owner, undefined, true).catch(report);
+        }
+        return result;
+      }
       finally { endActivity(activity); release(); }
     }
-    return {
+    return { specs: {
       list: (kind, query, owner) => read(c => p4Api.listSpecs(c, kind, query, owner)),
       read: (kind, name) => read(c => p4Api.readSpec(c, kind, name)),
       files: name => read(c => p4Api.labelFiles(c, name)),
@@ -1573,12 +1582,18 @@ export function P4Provider({ children }: { children: ReactNode }) {
       save: (edit, fingerprint) => write(c => p4Api.saveSpec(c, edit, fingerprint)),
       remove: (kind, name, fingerprint) => write(c => p4Api.deleteSpec(c, kind, name, fingerprint)),
       applyTag: (request, fingerprint) => write(c => p4Api.applyLabelTag(c, request, fingerprint)),
-    };
-  }, [guard, lockMutation, beginActivity, endActivity]);
+    }, streamSpecs: {
+      read: path => read(c => p4Api.readStreamSpec(c, path)),
+      template: setup => read(c => p4Api.newStreamSpec(c, setup)),
+      save: (edit, fingerprint) => write(c => p4Api.saveStreamSpec(c, edit, fingerprint), true),
+      remove: (path, fingerprint) => write(c => p4Api.deleteStreamSpec(c, path, fingerprint), true),
+    }};
+  }, [guard, lockMutation, beginActivity, endActivity, reloadPending, report]);
 
   const value = useMemo<P4ContextValue>(
     () => ({
       specs,
+      streamSpecs,
       openIntegration,
       previewIntegration,
       applyIntegration,
@@ -1683,6 +1698,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
     }),
     [
       specs,
+      streamSpecs,
       openIntegration,
       previewIntegration,
       applyIntegration,

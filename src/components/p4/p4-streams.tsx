@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
-import { ArrowDownIcon, ArrowRightLeftIcon, ChevronDownIcon, ChevronRightIcon, GitBranchIcon, GitMergeIcon, LoaderCircleIcon, LocateFixedIcon, RefreshCwIcon } from "lucide-react";
+import { ArrowDownIcon, ArrowRightLeftIcon, ChevronDownIcon, ChevronRightIcon, GitBranchIcon, GitMergeIcon, LoaderCircleIcon, LocateFixedIcon, PencilIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
+import { P4StreamSpecDialog, type StreamSpecTarget } from "@/components/p4/p4-stream-spec-dialog";
+import type { P4StreamSpec } from "@/types/p4-stream-specs";
 import { useTranslation } from "@/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +24,16 @@ export function P4Streams() {
   const [collapsed,setCollapsed]=useState<Set<string>>(()=>new Set());
   const [loading,setLoading]=useState(true);const [error,setError]=useState<string|null>(null);
   const [attempt,setAttempt]=useState(0);
+  const [definition, setDefinition] = useState<StreamSpecTarget | null>(null);
+  function definitionChanged(spec: P4StreamSpec | null) {
+    const removed = definition && definition.mode !== "new" ? definition.path : null;
+    setStreams(current => {
+      const items = (current ?? []).filter(item => item.path !== (spec?.path ?? removed));
+      return spec ? [...items, {path: spec.path, kind: spec.kind, parent: spec.parent}] : items;
+    });
+    setPicked(spec?.path ?? null); setQuery(""); setDefinition(null);
+    setLoading(true); setAttempt(value => value + 1);
+  }
   useEffect(()=>{let active=true;void listStreams().then((value)=>{if(active){setStreams(value);setError(null);}}).catch((caught:unknown)=>{if(active)setError(p4DisplayError(errorMessage(caught)));}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[listStreams,attempt]);
   const rows=useMemo(()=>streamRows(streams??[],query,collapsed),[streams,query,collapsed]);
   const current=streams?.find(stream=>stream.path===p4.connection?.stream);
@@ -56,7 +68,7 @@ export function P4Streams() {
   function locate(){setQuery("");setCollapsed(new Set());setPicked(null);}
   function toggle(path:string){setCollapsed(old=>{const next=new Set(old);if(next.has(path))next.delete(path);else next.add(path);return next;});}
   return <div className="flex min-h-0 flex-1 flex-col">
-    <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3"><span className="text-xs font-medium">{t("p4.streamTree.title")}</span><span className="text-xs text-muted-foreground tabular-nums">{streams?.length??0}</span><Input aria-label={t("p4.filterStreams")} placeholder={t("p4.filterStreams")} value={query} onChange={event=>setQuery(event.target.value)} className="ml-2 h-7 max-w-72 font-mono text-xs"/><div className="ml-auto flex gap-1"><HoverTip label={t("p4.streamTree.locate")}><Button variant="ghost" size="icon-xs" disabled={!current} aria-label={t("p4.streamTree.locate")} onClick={locate}><LocateFixedIcon/></Button></HoverTip><HoverTip label={t("p4.refresh")}><Button variant="ghost" size="icon-xs" disabled={blocked} aria-label={t("p4.refresh")} onClick={()=>{setLoading(true);setError(null);setAttempt(value=>value+1);}}><RefreshCwIcon className={loading?"animate-spin":""}/></Button></HoverTip></div></div>
+    <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3"><span className="text-xs font-medium">{t("p4.streamTree.title")}</span><span className="text-xs text-muted-foreground tabular-nums">{streams?.length??0}</span><Input aria-label={t("p4.filterStreams")} placeholder={t("p4.filterStreams")} value={query} onChange={event=>setQuery(event.target.value)} className="ml-2 h-7 max-w-72 font-mono text-xs"/><div className="ml-auto flex gap-1"><Button variant="outline" size="sm" disabled={blocked} onClick={() => setDefinition({mode:"new", parent:selected?.path ?? ""})}><PlusIcon />{t("p4.streamSpec.create")}</Button><HoverTip label={t("p4.streamTree.locate")}><Button variant="ghost" size="icon-xs" disabled={!current} aria-label={t("p4.streamTree.locate")} onClick={locate}><LocateFixedIcon/></Button></HoverTip><HoverTip label={t("p4.refresh")}><Button variant="ghost" size="icon-xs" disabled={blocked} aria-label={t("p4.refresh")} onClick={()=>{setLoading(true);setError(null);setAttempt(value=>value+1);}}><RefreshCwIcon className={loading?"animate-spin":""}/></Button></HoverTip></div></div>
     {error?<p role="alert" className="shrink-0 border-b p-3 text-xs text-destructive">{error}</p>:null}
     {streams&&streams.length>=2000?<p className="border-b px-3 py-1.5 text-xs text-muted-foreground">{t("p4.streamTree.limit")}</p>:null}
     <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
@@ -69,11 +81,12 @@ export function P4Streams() {
           {parent?<ArrowDownIcon className="ml-4 size-4 text-muted-foreground"/>:null}<StreamNode stream={selected} active onSelect={setPicked}/>
           <LabelText>{t("p4.streamTree.children",{count:children.length})}</LabelText>{children.length?<div className="ml-4 grid gap-1 border-l pl-3">{children.map(child=><StreamNode key={child.path} stream={child} onSelect={setPicked}/>)}</div>:<p className="px-2 py-1 text-xs text-muted-foreground">{t("p4.streamTree.noChildren")}</p>}
         </div>
-        <div className="grid gap-2"><Button variant="outline" className="justify-start" disabled={blocked||!current||relation==="current"} onClick={()=>p4.switchStream(selected.path)}><ArrowRightLeftIcon/>{t("p4.switchStream.title")}</Button>{canMerge?<Button variant="outline" className="justify-start" disabled={blocked} onClick={()=>p4.openStreamIntegration("merge",current!.parent!)}><GitMergeIcon/>{t("p4.streamTree.merge")}</Button>:null}{canCopy?<Button variant="outline" className="justify-start" disabled={blocked} onClick={()=>p4.openStreamIntegration("copy",selected.path)}><GitMergeIcon/>{t("p4.streamTree.copy")}</Button>:null}</div>
+        <div className="grid gap-2"><div className="flex gap-2"><Button variant="outline" size="sm" disabled={blocked} onClick={() => setDefinition({mode:"edit", path:selected.path})}><PencilIcon />{t("p4.streamSpec.edit")}</Button><HoverTip label={t("p4.streamSpec.delete")}><Button variant="ghost" size="icon-sm" disabled={blocked} aria-label={t("p4.streamSpec.delete")} onClick={() => setDefinition({mode:"delete", path:selected.path})}><Trash2Icon /></Button></HoverTip></div><Button variant="outline" className="justify-start" disabled={blocked||!current||relation==="current"} onClick={()=>p4.switchStream(selected.path)}><ArrowRightLeftIcon/>{t("p4.switchStream.title")}</Button>{canMerge?<Button variant="outline" className="justify-start" disabled={blocked} onClick={()=>p4.openStreamIntegration("merge",current!.parent!)}><GitMergeIcon/>{t("p4.streamTree.merge")}</Button>:null}{canCopy?<Button variant="outline" className="justify-start" disabled={blocked} onClick={()=>p4.openStreamIntegration("copy",selected.path)}><GitMergeIcon/>{t("p4.streamTree.copy")}</Button>:null}</div>
       </div>:<p className="p-6 text-xs text-muted-foreground">{t("p4.streamTree.select")}</p>}</div></ResizablePanel>
     </ResizablePanelGroup>
+    {definition ? <P4StreamSpecDialog key={JSON.stringify(definition)} target={definition} onClose={() => setDefinition(null)} onChanged={definitionChanged} /> : null}
   </div>;
 }
-function StreamKind({kind}:{kind:string}){const {t}=useTranslation();const known=["mainline","development","release","virtual","task"].includes(kind);return <span className="shrink-0 rounded bg-foreground/8 px-1.5 py-0.5 text-[10px] text-muted-foreground">{known?t(`p4.streamTree.kinds.${kind}`):kind}</span>;}
+function StreamKind({kind}:{kind:string}){const {t}=useTranslation();const known=["mainline","development","release","virtual","task","sparsedev","sparserel"].includes(kind);return <span className="shrink-0 rounded bg-foreground/8 px-1.5 py-0.5 text-[10px] text-muted-foreground">{known?t(`p4.streamTree.kinds.${kind}`):kind}</span>;}
 function StreamNode({stream,active,onSelect}:{stream:P4StreamOption;active?:boolean;onSelect:(path:string)=>void}){return <button type="button" onClick={()=>onSelect(stream.path)} title={stream.path} className={cn("flex min-h-9 min-w-0 items-center gap-2 rounded-md border px-2 text-left hover:bg-muted",active&&"border-foreground/25 bg-muted/50")}><GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground"/><span className="min-w-0 flex-1 truncate font-mono text-xs">{depotBase(stream.path)}</span><StreamKind kind={stream.kind}/></button>;}
 function LabelText({children}:{children:React.ReactNode}){return <p className="px-2 text-[11px] text-muted-foreground">{children}</p>;}

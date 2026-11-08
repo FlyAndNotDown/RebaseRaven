@@ -449,7 +449,9 @@
       "development": "开发",
       "release": "发布",
       "virtual": "虚拟",
-      "task": "任务"
+      "task": "任务",
+      "sparsedev": "稀疏开发流",
+      "sparserel": "稀疏发布流"
     }
   },
   "specs": {
@@ -572,5 +574,47 @@
       "action": "不支持此操作"
     },
     "placeholder": "text+x"
+  },
+  "streamSpec": {
+    "create": "新建流",
+    "edit": "编辑流",
+    "delete": "删除流",
+    "setupHint": "选择流的位置，再读取服务端默认设置。",
+    "deleteHint": "输入完整流路径以确认删除。",
+    "section": "流设置",
+    "path": "流路径",
+    "pathPlaceholder": "//depot/stream",
+    "type": "流类型",
+    "parentView": "父级视图",
+    "parentViewHint": "创建时设置。转换父级视图需要单独执行 Perforce 转换操作。",
+    "paths": "路径映射",
+    "remapped": "路径重映射",
+    "ignored": "忽略规则",
+    "back": "返回",
+    "continue": "读取设置",
+    "views": {
+      "server": "服务端默认",
+      "inherit": "继承",
+      "noinherit": "不继承"
+    },
+    "options": {
+      "locked": "锁定流定义",
+      "ownerSubmit": "仅所有者可提交",
+      "toParent": "向父级集成",
+      "fromParent": "从父级集成",
+      "mergeAny": "允许双向合并"
+    },
+    "hints": {
+      "locked": "锁定后仅所有者可编辑，删除前需要解锁。",
+      "ownerSubmit": "仅流的所有者或所有者组成员可提交。",
+      "toParent": "允许更改从当前流流向父级。",
+      "fromParent": "允许更改从父级流向当前流。",
+      "mergeAny": "允许逆常规更改流向进行合并。",
+      "paths": "每行一条映射，例如 share ...、exclude build/... 或 import lib/... //library/main/...。",
+      "remapped": "每行一组相对源路径与目标路径，例如 old/... new/...。",
+      "ignored": "禁止提交的文件或文件夹模式，每行一条。"
+    },
+    "reload": "重新读取定义",
+    "discardReload": "丢弃草稿并重新读取"
   }
 }

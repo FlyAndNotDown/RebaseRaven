@@ -1462,6 +1462,40 @@ async fn p4_apply_integration(
 }
 
 #[tauri::command]
+async fn p4_new_stream_spec(
+    connection: p4::P4Connection,
+    setup: p4::P4StreamSetup,
+) -> AppResult<p4::P4StreamSpec> {
+    blocking(move || p4::new_stream_spec(&connection, &setup)).await
+}
+
+#[tauri::command]
+async fn p4_read_stream_spec(
+    connection: p4::P4Connection,
+    path: String,
+) -> AppResult<p4::P4StreamSpec> {
+    blocking(move || p4::read_stream_spec(&connection, &path)).await
+}
+
+#[tauri::command]
+async fn p4_save_stream_spec(
+    connection: p4::P4Connection,
+    edit: p4::P4StreamSpecEdit,
+    fingerprint: Option<String>,
+) -> AppResult<p4::P4StreamSpec> {
+    blocking(move || p4::save_stream_spec(&connection, &edit, fingerprint.as_deref())).await
+}
+
+#[tauri::command]
+async fn p4_delete_stream_spec(
+    connection: p4::P4Connection,
+    path: String,
+    fingerprint: String,
+) -> AppResult<()> {
+    blocking(move || p4::delete_stream_spec(&connection, &path, &fingerprint)).await
+}
+
+#[tauri::command]
 async fn p4_list_specs(
     connection: p4::P4Connection,
     kind: p4::P4SpecKind,
@@ -2324,6 +2358,10 @@ pub fn run() {
             p4_preview_integration,
             p4_apply_integration,
             p4_list_specs,
+            p4_new_stream_spec,
+            p4_read_stream_spec,
+            p4_save_stream_spec,
+            p4_delete_stream_spec,
             p4_read_spec,
             p4_save_spec,
             p4_delete_spec,

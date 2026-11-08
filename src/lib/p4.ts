@@ -46,6 +46,7 @@ import { errorMessage } from "@/lib/git";
 import { pathsIgnoreCase } from "@/lib/format";
 import type { P4IntegrationRequest, P4IntegrationPreview } from "@/types/p4-integration";
 import type { P4SpecKind, P4SpecEdit, P4Spec, P4SpecPage, P4LabelFiles, P4LabelTagRequest, P4LabelTagPreview } from "@/types/p4-specs";
+import type { P4StreamSetup, P4StreamSpec, P4StreamSpecEdit } from "@/types/p4-stream-specs";
 
 /** Matches `P4_MISSING` in the Rust backend. */
 export const P4_MISSING = "p4 executable was not found. Choose one in Settings.";
@@ -82,6 +83,10 @@ function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
 }
 
 export const p4Api = {
+  newStreamSpec: (connection: P4Connection, setup: P4StreamSetup) => call<P4StreamSpec>("p4_new_stream_spec", {connection, setup}),
+  readStreamSpec: (connection: P4Connection, path: string) => call<P4StreamSpec>("p4_read_stream_spec", {connection, path}),
+  saveStreamSpec: (connection: P4Connection, edit: P4StreamSpecEdit, fingerprint: string | null) => call<P4StreamSpec>("p4_save_stream_spec", {connection, edit, fingerprint}),
+  deleteStreamSpec: (connection: P4Connection, path: string, fingerprint: string) => call<void>("p4_delete_stream_spec", {connection, path, fingerprint}),
   previewIntegration: (connection: P4Connection, request: P4IntegrationRequest) => call<P4IntegrationPreview>("p4_preview_integration", {connection, request}),
   applyIntegration: (connection: P4Connection, request: P4IntegrationRequest, fingerprint: string) => call<string>("p4_apply_integration", {connection, request, fingerprint}),
   listSpecs: (connection: P4Connection, kind: P4SpecKind, query: string, owner: string) => call<P4SpecPage>("p4_list_specs", {connection, kind, query, owner}),

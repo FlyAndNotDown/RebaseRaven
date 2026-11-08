@@ -20,7 +20,12 @@ pub use specs::{
     apply_label_tag, delete_spec, label_files, list_specs, preview_label_tag, read_spec, save_spec,
     P4LabelFiles, P4LabelTagPreview, P4LabelTagRequest, P4Spec, P4SpecEdit, P4SpecKind, P4SpecPage,
 };
+mod stream_specs;
 mod streams;
+pub use stream_specs::{
+    delete_stream_spec, new_stream_spec, read_stream_spec, save_stream_spec, P4StreamSetup,
+    P4StreamSpec, P4StreamSpecEdit,
+};
 mod switch;
 pub use review::{apply_reconcile, preview_reconcile, P4ReconcilePreview};
 pub use shelves::{list_shelves, preview_unshelve, restore_shelf, shelf_detail, P4UnshelveRequest};

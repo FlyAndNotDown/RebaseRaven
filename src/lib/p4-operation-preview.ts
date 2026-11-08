@@ -1,9 +1,22 @@
 import type { P4Connection, P4IntegrateRequest, P4UndoRequest } from "@/types/p4";
 import { t } from "@/i18n";
 
+export const P4_STREAM_SPEC_STALE = "The stream definition changed. Reload it before saving or deleting.";
+
 export type P4OperationKind = "integrate" | "undo";
 
 const operationErrors: Record<string, string> = {
+  [P4_STREAM_SPEC_STALE]: "streamSpecStale",
+  "This stream already exists. Choose another path.": "streamSpecExists",
+  "Enter one stream path without wildcards or revision suffixes.": "streamSpecPath",
+  "Choose a supported stream type.": "streamSpecType",
+  "A mainline stream must have no parent.": "streamSpecMainline",
+  "Choose a different parent stream.": "streamSpecParent",
+  "Choose a parent view supported by this stream type.": "streamSpecView",
+  "Convert the parent view before editing this stream definition.": "streamSpecConvert",
+  "Enter a stream name, owner and description smaller than 64 KiB.": "streamSpecFields",
+  "Enter one stream mapping per line, up to 5000 lines.": "streamSpecMapping",
+  "Virtual streams must disable integration to and from their parent.": "streamSpecVirtual",
   "Choose revisions or changelists for the integration range.": "integrationRange",
   "Choose file paths or a named branch mapping.": "integrationMethod",
   "Move integration targets to the selected changelist first.": "integrationChange",

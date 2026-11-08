@@ -449,7 +449,9 @@
       "development": "Development",
       "release": "Release",
       "virtual": "Virtual",
-      "task": "Task"
+      "task": "Task",
+      "sparsedev": "Sparse development",
+      "sparserel": "Sparse release"
     }
   },
   "specs": {
@@ -572,5 +574,47 @@
       "action": "Unsupported action"
     },
     "placeholder": "text+x"
+  },
+  "streamSpec": {
+    "create": "New stream",
+    "edit": "Edit stream",
+    "delete": "Delete stream",
+    "setupHint": "Choose a stream location and load its server defaults.",
+    "deleteHint": "Type the full stream path to confirm deletion.",
+    "section": "Stream settings",
+    "path": "Stream path",
+    "pathPlaceholder": "//depot/stream",
+    "type": "Stream type",
+    "parentView": "Parent view",
+    "parentViewHint": "Set on creation. Converting the parent view is a separate Perforce operation.",
+    "paths": "Paths",
+    "remapped": "Remapped",
+    "ignored": "Ignored",
+    "back": "Back",
+    "continue": "Load settings",
+    "views": {
+      "server": "Server default",
+      "inherit": "Inherit",
+      "noinherit": "Do not inherit"
+    },
+    "options": {
+      "locked": "Lock stream definition",
+      "ownerSubmit": "Restrict submits to owner",
+      "toParent": "Integrate to parent",
+      "fromParent": "Integrate from parent",
+      "mergeAny": "Allow merging in either direction"
+    },
+    "hints": {
+      "locked": "Only the owner can edit a locked stream. Unlock it before deletion.",
+      "ownerSubmit": "Only the stream owner or members of the owner group can submit.",
+      "toParent": "Expect changes to flow from this stream to its parent.",
+      "fromParent": "Expect changes to flow from the parent into this stream.",
+      "mergeAny": "Allow merges against the usual flow of change.",
+      "paths": "One mapping per line, such as share ..., exclude build/... or import lib/... //library/main/....",
+      "remapped": "One relative source and destination pair per line, such as old/... new/....",
+      "ignored": "File or folder patterns that cannot be submitted, one per line."
+    },
+    "reload": "Reload definition",
+    "discardReload": "Discard draft and reload"
   }
 }
