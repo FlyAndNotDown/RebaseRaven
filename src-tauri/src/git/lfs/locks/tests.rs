@@ -84,6 +84,8 @@ fn serve(
     stopped: &AtomicBool,
     requested: &AtomicBool,
 ) {
+    // Accepted sockets can inherit the listener's nonblocking mode.
+    stream.set_nonblocking(false).unwrap();
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
         .unwrap();
@@ -250,6 +252,33 @@ fn fixture() -> Option<(tempfile::TempDir, Repository, Server)> {
     run_git_stdout(dir.path(), &["remote", "add", "origin", &server.url]).unwrap();
     let repo = open_at(dir.path()).unwrap();
     Some((dir, repo, server))
+}
+
+#[test]
+fn lock_fixture_accepts_fragmented_request_headers() {
+    let server = Server::start();
+    let address = server
+        .url
+        .strip_prefix("http://")
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap();
+    let mut client = TcpStream::connect(address).unwrap();
+    client
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+    client
+        .write_all(b"GET /fixture.git/info/lfs/locks HTTP/1.1\r\n")
+        .unwrap();
+    thread::sleep(Duration::from_millis(50));
+    client
+        .write_all(b"Host: fixture\r\nConnection: close\r\n\r\n")
+        .unwrap();
+    let mut response = String::new();
+    client.read_to_string(&mut response).unwrap();
+    assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+    assert!(response.contains("\"locks\":[]"));
 }
 
 fn perform(repo: &Repository, operation: LfsAction) -> AppResult<LfsLocks> {
