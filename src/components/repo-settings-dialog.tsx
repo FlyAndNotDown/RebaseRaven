@@ -1,6 +1,6 @@
 import { t, useTranslation } from "@/i18n";
 import { useEffect, useRef, useState } from "react";
-import { RotateCcwIcon } from "lucide-react";
+import { FolderTreeIcon, RotateCcwIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { HoverTip } from "@/components/ui/tooltip";
@@ -28,7 +28,7 @@ export function RepoSettingsDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   useTranslation();
-  const { snapshot } = useGitPick(["snapshot"]);
+  const { snapshot, setOpenPanel } = useGitPick(["snapshot", "setOpenPanel"]);
   const repoPath = snapshot?.repo.path;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -40,14 +40,14 @@ export function RepoSettingsDialog({
           </DialogDescription>
         </DialogHeader>
         {open && repoPath ? (
-          <RepoSettingsForm key={repoPath} repoPath={repoPath} onClose={() => onOpenChange(false)} />
+          <RepoSettingsForm key={repoPath} repoPath={repoPath} onClose={() => onOpenChange(false)} onSparse={() => {onOpenChange(false); setOpenPanel("sparse-checkout");}} />
         ) : null}
       </DialogContent>
     </Dialog>
   );
 }
 
-function RepoSettingsForm({ repoPath, onClose }: { repoPath: string; onClose: () => void }) {
+function RepoSettingsForm({ repoPath, onClose, onSparse }: { repoPath: string; onClose: () => void; onSparse: () => void }) {
   useTranslation();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -130,6 +130,7 @@ function RepoSettingsForm({ repoPath, onClose }: { repoPath: string; onClose: ()
         </div>
       ) : null}
       <DialogFooter>
+        <Button type="button" variant="ghost" className="sm:mr-auto" disabled={saving} onClick={onSparse}><FolderTreeIcon />{t("git.sparse.title")}</Button>
         <Button type="button" variant="outline" onClick={onClose}>{t("git.ui.cancel")}</Button>
         <Button type="button" onClick={() => void save()} disabled={saving || !globalIdentity}>
           {saving ? t("git.ui.saving") : t("git.ui.save")}

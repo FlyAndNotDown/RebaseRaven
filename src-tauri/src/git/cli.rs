@@ -401,6 +401,24 @@ pub(super) fn run_git_ok_progress(
 pub(super) fn run_git_progress(
     root: Option<&Path>,
     args: &[&str],
+    on_progress: impl FnMut(&str) + Send,
+) -> AppResult<()> {
+    run_git_progress_stdin(root, args, None, on_progress)
+}
+
+pub(super) fn run_git_file_progress(
+    root: &Path,
+    args: &[&str],
+    input: fs::File,
+    on_progress: impl FnMut(&str) + Send,
+) -> AppResult<()> {
+    run_git_progress_stdin(Some(root), args, Some(input), on_progress)
+}
+
+fn run_git_progress_stdin(
+    root: Option<&Path>,
+    args: &[&str],
+    input: Option<fs::File>,
     mut on_progress: impl FnMut(&str) + Send,
 ) -> AppResult<()> {
     let timer = Instant::now();
@@ -420,7 +438,7 @@ pub(super) fn run_git_progress(
     }
     command.env("GIT_TERMINAL_PROMPT", "0");
     command
-        .stdin(Stdio::null())
+        .stdin(input.map_or_else(Stdio::null, Stdio::from))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let scope = current_cancel();

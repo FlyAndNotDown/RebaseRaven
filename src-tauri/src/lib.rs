@@ -875,6 +875,46 @@ async fn operation_abort(repo_path: String) -> AppResult<WorkspaceSnapshot> {
 }
 
 #[tauri::command]
+async fn sparse_checkout_state(repo_path: String) -> AppResult<git::SparseCheckoutState> {
+    with_repo_async(repo_path, move |repo| git::sparse_checkout_state(repo)).await
+}
+
+#[tauri::command]
+async fn preview_sparse_checkout(
+    repo_path: String,
+    request: git::SparseCheckoutRequest,
+    fingerprint: String,
+) -> AppResult<git::SparseCheckoutPreview> {
+    with_repo_async(repo_path, move |repo| {
+        git::preview_sparse_checkout(repo, &request, &fingerprint)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn apply_sparse_checkout(
+    repo_path: String,
+    request: git::SparseCheckoutRequest,
+    fingerprint: String,
+    allow_ignored_removal: bool,
+    activity_id: Option<String>,
+    app: AppHandle,
+) -> AppResult<git::SparseCheckoutOutcome> {
+    with_repo_async(repo_path, move |repo| {
+        git::with_cancel(activity_id.as_deref(), || {
+            git::apply_sparse_checkout(
+                repo,
+                &request,
+                &fingerprint,
+                allow_ignored_removal,
+                progress_sink(&app, activity_id.as_deref()),
+            )
+        })
+    })
+    .await
+}
+
+#[tauri::command]
 async fn bisect_state(repo_path: String) -> AppResult<git::BisectState> {
     with_repo_async(repo_path, move |repo| git::bisect_state(repo)).await
 }
@@ -2292,6 +2332,9 @@ pub fn run() {
             operation_abort,
             bisect_state,
             bisect_action,
+            sparse_checkout_state,
+            preview_sparse_checkout,
+            apply_sparse_checkout,
             resolve_conflict,
             conflict_view,
             save_conflict,

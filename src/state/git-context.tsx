@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { t } from "@/i18n";
 import { emptyBinaryDiff, errorMessage, expandHistoryRevs, GIT_MISSING, gitApi, isCancelled, subscribeGitMissing } from "@/lib/git";
 import { P4_MISSING, p4Api } from "@/lib/p4";
+import type { SparseCheckoutRequest, SparseCheckoutOutcome, SparseCheckoutUpdate } from "@/types/sparse-checkout";
 import { normalizeRepoPath, sameRepoPath } from "@/lib/format";
 import { DEFAULT_HISTORY_EXPANDED, renamedRemoteViews } from "@/lib/remote-refs";
 import { repositoryUndoAction } from "@/state/repository-actions";
@@ -95,7 +96,7 @@ import type {
 } from "@/types/git";
 
 export { COMMIT_PAGE, WELCOME_TAB_ID, defaultFetchRemote, primaryRemote };
-export type Panel = "reflog" | "bisect" | "add-submodule" | "palette" | "settings" | "settings-about" | "new-branch";
+export type Panel = "sparse-checkout" | "reflog" | "bisect" | "add-submodule" | "palette" | "settings" | "settings-about" | "new-branch";
 export type RepoKindPrompt = {
   path: string;
   gitPath: string;
@@ -248,6 +249,7 @@ interface GitContextValue {
   operationContinue: (message?: string) => Promise<boolean>;
   operationAbort: () => Promise<boolean>;
   bisectAction: (action: BisectAction, fingerprint: string) => Promise<BisectUpdate | null>;
+  changeSparseCheckout: (repoPath: string, request: SparseCheckoutRequest, fingerprint: string, allowIgnoredRemoval: boolean) => Promise<SparseCheckoutUpdate | null>;
   resolveConflict: (path: string, side: "ours" | "theirs" | "both") => Promise<boolean>;
   saveConflict: (path: string, text: string) => Promise<boolean>;
   resetCommit: (oid: string, mode: ResetMode) => Promise<boolean>;
@@ -2559,6 +2561,18 @@ export function GitProvider({ children }: { children: ReactNode }) {
     );
   }, [runMutation]);
 
+  const changeSparseCheckout = useCallback(async (expectedPath: string, request: SparseCheckoutRequest, fingerprint: string, allowIgnoredRemoval: boolean): Promise<SparseCheckoutUpdate | null> => {
+    const tabId = activeTabIdRef.current;
+    const received: {value: SparseCheckoutOutcome | null} = {value:null};
+    const ok = await runMutation(t("git.sparse.activity"), async (repoPath, activityId) => {
+      if (!sameRepoPath(expectedPath, repoPath)) throw new Error(t("git.sparse.ownerChanged"));
+      received.value = await gitApi.applySparseCheckout(repoPath, request, fingerprint, allowIgnoredRemoval, activityId);
+      return received.value.snapshot;
+    }, undefined, {tabId, cancellable:true});
+    if (!ok) await refreshAfterReplay(tabId);
+    return ok && received.value ? {state:received.value.state, report:received.value.report} : null;
+  }, [refreshAfterReplay, runMutation]);
+
   const bisectAction = useCallback(async (action: BisectAction, fingerprint: string): Promise<BisectUpdate | null> => {
     const tabId = activeTabIdRef.current;
     const received: { value: BisectOutcome | null } = { value: null };
@@ -3154,6 +3168,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       operationContinue,
       operationAbort,
       bisectAction,
+      changeSparseCheckout,
       resolveConflict,
       saveConflict,
       resetCommit,
@@ -3256,6 +3271,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       operationContinue,
       operationAbort,
       bisectAction,
+      changeSparseCheckout,
       resolveConflict,
       saveConflict,
       resetCommit,
