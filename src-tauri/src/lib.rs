@@ -487,6 +487,36 @@ async fn list_worktrees(repo_path: String) -> AppResult<Vec<git::WorktreeInfo>> 
 }
 
 #[tauri::command]
+async fn preview_worktree_change(
+    repo_path: String,
+    request: git::WorktreeRequest,
+) -> AppResult<git::WorktreePreview> {
+    with_repo_async(repo_path, move |repo| {
+        git::preview_worktree_change(repo, &request)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn change_worktree(
+    app: AppHandle,
+    repo_path: String,
+    request: git::WorktreeRequest,
+    fingerprint: String,
+) -> AppResult<git::WorktreeChange> {
+    let result = with_repo_async(repo_path, move |repo| {
+        git::change_worktree(repo, &request, &fingerprint)
+    })
+    .await?;
+    if let (Some(previous), Some(path)) = (&result.previous_path, &result.path) {
+        if let Err(error) = recents::relocate_repo(&app, previous, path) {
+            log::warn!("Could not update recent repositories after relocating a worktree: {error}");
+        }
+    }
+    Ok(result)
+}
+
+#[tauri::command]
 async fn add_worktree(
     repo_path: String,
     path: String,
@@ -2197,6 +2227,8 @@ pub fn run() {
             remove_submodule,
             update_submodules,
             list_worktrees,
+            preview_worktree_change,
+            change_worktree,
             add_worktree,
             remove_worktree,
             prune_worktrees,

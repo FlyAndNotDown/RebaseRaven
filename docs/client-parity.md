@@ -18,10 +18,10 @@ verification of every option or platform.
 
 | Workflow | Current implementation | Remaining audit or work |
 | --- | --- | --- |
-| Initialize, clone, recent repositories | `git/initialize.rs`, `git/remote.rs` | Verify edge cases and UI |
+| Initialize, clone, recent repositories | `git/initialize.rs`, `git/remote.rs` | Bare repository navigation, edge cases and UI need verification |
 | Fetch, pull, push and upstreams | `git/remote.rs`, `git/refs.rs` | Remote rename and explicit push URL lists are implemented and repository-tested; audit remaining fetch/push options and cross-platform UI |
 | Stage, unstage, discard, ignore | `git/changes.rs`, `git/partial.rs` | Audit selective stash, clean preview and ignored files |
-| Commit and amend | `git/changes.rs` | Audit signing and message reuse |
+| Commit and amend | `git/changes.rs` | Repository-tab changes remount the commit box; message draft persistence needs repair. Audit signing and message reuse |
 | Branches and tags | `git/refs.rs` | Audit annotated/signed tags and multiple selection |
 | Merge, revert, reset, cherry-pick | `git/operations.rs` | Audit range/sequenced actions, merge options and operation recovery |
 | Rebase and interactive rebase | `git/operations.rs` | Audit editing, reordering, squashing and recovery end to end |
@@ -29,7 +29,7 @@ verification of every option or platform.
 | Stashes | `git/stash.rs` | Audit selected paths and branch creation from stash |
 | History, graph, file history and blame | `git/history.rs`, `git/files.rs` | Arbitrary revision tree browsing and branch/range comparison need inspection |
 | Reflog and lost-commit recovery | `git/reflog.rs` | Verify recovery without overwriting local work |
-| Worktrees | `git/structure.rs` | Audit lock/unlock, move and repair |
+| Worktrees | `git/structure.rs`, `git/worktrees.rs`: create/remove/prune, lock/unlock, move and repair | Repository and protocol checks pass; native/provider transitions, copied-store adoption, active-checkout relocation, creation/removal/prune options and large collections remain to audit |
 | Submodules | `git/submodules.rs`, shared sidebar and dialogs: add, edit, sync, update, deinitialize and remove | Repository and component checks pass; native/provider transitions, long-running cancellation and large checkouts remain to audit |
 | Patch import/export | `git/operations.rs` | Audit format-patch/am recovery and selected changes |
 | Bisect | `git/bisect.rs`, shared operation banner and bisect dialog: start, classify, skip, retest, inspect and reset | Repository and component checks pass; native/provider transitions, automation, log import/export and large-session behavior remain to audit |
@@ -252,3 +252,41 @@ area. Do not infer full parity from a passing test suite or this inventory.
   frontend tests passing. Rust formatting, Clippy and tests pass: 328 passed and
   one existing unrelated test ignored. Browser control timed out, so visual UI
   checks and native/provider transitions remain unverified for this dialog.
+
+
+### Git worktree administration
+
+- The sidebar exposes lock/unlock with reasons, linked-worktree movement,
+  reconnection to manually moved or copied folders, and repairing registered
+  connections after the main repository moves. Missing directories and locked
+  entries are visible, and bare repository roots are distinguished from openable
+  checkouts. Editing and commits remain available in a locked worktree.
+- Native Git performs filesystem moves and connection repair. Moves use a new
+  destination, preserve local and untracked files, and require a different
+  command-owner worktree. Main, locked, unavailable and submodule-containing
+  worktrees cannot be moved through this action. Repair validates the retained
+  administrative record and refuses existing foreign stores. A shared-store
+  worktree copy can reconnect from another checkout; adopting an independent
+  copied repository remains to audit.
+- Previews bind the request, repository, registration metadata, connection files
+  and directory identities. Volatile index caches and unrelated sibling files
+  do not invalidate administrative actions. Replaced directories, new destination
+  collisions, changed registrations and lock changes invalidate the request.
+  An advisory lock shared by the common Git directory also serializes existing
+  add/remove/prune actions across application checkouts.
+- Successful relocation retargets open Git tabs and their relative session data.
+  Recent repositories retain their ordering and newest open timestamp; duplicate
+  Git entries merge while Perforce entries at the same path remain distinct.
+  Failed commands refresh actual state without assuming a multi-step native
+  operation was atomic.
+- Fifteen repository tests cover literal paths, local work created after preview,
+  unavailable locks, stale state, foreign stores, shared operation locking,
+  relative connections, submodules, bare repository parents, copied checkouts,
+  and moving the main and linked folders separately or together. Four recent-list
+  tests and a frontend session-retarget test cover UI metadata preservation.
+  Eight real protocol scenarios pass and restore the owned fixture state.
+- Source, website, version, type, lint and frontend build checks pass, with 425
+  frontend tests passing. Rust formatting, Clippy and tests pass: 347 passed and
+  one existing unrelated test ignored. Native visual checks and provider-level
+  transitions remain unverified because browser control and reconnect attempts
+  timed out. Windows/Linux runtime checks remain pending for this iteration.

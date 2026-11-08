@@ -304,11 +304,16 @@ export type SubmoduleChange =
   | { kind: "remove"; path: string; mode: SubmoduleRemovalKind; force: boolean; fingerprint: string };
 
 export interface WorktreeInfo {
+  bare: boolean;
   path: string;
   head: string | null;
   branch: string | null;
   detached: boolean;
   locked: boolean;
+  lockReason: string | null;
+  pruneReason: string | null;
+  missing: boolean;
+  fingerprint: string;
   prunable: boolean;
   current: boolean;
   main: boolean;
@@ -486,3 +491,12 @@ export interface SshKeyPreview {
 export type Selection =
   | { type: "change"; path: string; staged: boolean }
   | { type: "commit"; id: string; path?: string };
+
+export interface WorktreeRequest {
+  kind: "lock" | "unlock" | "move" | "repair" | "repairAll";
+  path: string;
+  destination: string;
+  reason: string;
+}
+export interface WorktreePreview { tree: WorktreeInfo | null; destination: string; fingerprint: string }
+export interface WorktreeChange { previousPath: string | null; path: string | null; snapshot: WorkspaceSnapshot }

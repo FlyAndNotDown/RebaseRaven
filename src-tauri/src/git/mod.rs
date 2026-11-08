@@ -34,6 +34,10 @@ mod repo;
 mod stash;
 mod status;
 mod structure;
+mod worktrees;
+pub use worktrees::{
+    change_worktree, preview_worktree_change, WorktreeChange, WorktreePreview, WorktreeRequest,
+};
 mod submodules;
 #[cfg(test)]
 mod tests;
