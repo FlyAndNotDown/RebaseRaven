@@ -1,7 +1,7 @@
 import { formatNumber, t, useTranslation } from "@/i18n";
 import { useEffect, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
-import { ArrowDownToLineIcon, CheckIcon, RefreshCwIcon, RotateCwIcon, XIcon } from "lucide-react";
+import { ArrowDownToLineIcon, CheckIcon, ExternalLinkIcon, RefreshCwIcon, RotateCwIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -137,6 +137,16 @@ export function UpdatesSettingsView({ state, onCheck, onInstall, onRestart }: {
           </span>
         </HoverTip>
       </div>
+      {checkFailed ? (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-2 text-xs">
+          <HoverTip label={state.error ?? undefined}>
+            <span className="text-destructive">{t("desktop.appUpdates.check_failed")}</span>
+          </HoverTip>
+          <Button size="xs" variant="ghost" onClick={() => openReleaseNoteLink("https://github.com/FlyAndNotDown/RebaseRaven/releases/latest")}>
+            {t("desktop.appUpdates.manual_download")}<ExternalLinkIcon />
+          </Button>
+        </div>
+      ) : null}
       <span role="status" className="sr-only">{checkFeedback}</span>
       {hasUpdateWorkflow ? (
         <div role="status" className="grid gap-2 text-sm text-muted-foreground">

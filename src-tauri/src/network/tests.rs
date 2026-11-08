@@ -53,10 +53,15 @@ pub(crate) struct HttpFixture {
 
 impl HttpFixture {
     pub fn new(body: &str) -> Self {
+        Self::with_status(body, "200 OK")
+    }
+
+    pub fn with_status(body: &str, status: &str) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         listener.set_nonblocking(true).unwrap();
         let body = body.to_owned();
+        let status = status.to_owned();
         let (send, request) = mpsc::channel();
         let stopped = Arc::new(AtomicBool::new(false));
         let stop = stopped.clone();
@@ -76,7 +81,7 @@ impl HttpFixture {
                         let Some(request) = request_line(&mut stream, deadline, &stop) else {
                             continue;
                         };
-                        let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
+                        let response = format!("HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
                         if stream.write_all(response.as_bytes()).is_err() {
                             continue;
                         }
