@@ -70,6 +70,7 @@ type CommitRowAction =
   | { type: "branch"; commit: CommitSummary }
   | { type: "tag"; commit: CommitSummary }
   | { type: "reuse-message"; commit: CommitSummary }
+  | { type: "copy-message"; commit: CommitSummary }
   | { type: "compare"; commits: CommitSummary[] }
   | { type: "revert-many"; commits: CommitSummary[] }
   | { type: "cherry-pick-many"; commits: CommitSummary[] }
@@ -228,6 +229,13 @@ export function HistoryPane() {
           break;
         case "reuse-message":
           if (repoPath) setMessageTarget({tabId:activeTabId, path:repoPath, commit:action.commit});
+          break;
+        case "copy-message":
+          if (repoPath) void gitApi.getCommitMessage(repoPath, action.commit.id).then(async message => {
+            if (!message) {toast.error(t("git.ui.nothing_to_copy")); return;}
+            await navigator.clipboard.writeText(message);
+            toast.success(t("git.ui.copied_message"));
+          }).catch(() => toast.error(t("git.ui.could_not_copy")));
           break;
         case "compare": {
           const [older, newer] = [...action.commits].sort((left, right) => left.timestamp - right.timestamp);
@@ -738,7 +746,6 @@ const CommitRow = memo(function CommitRow({
   getSelectedCommits: () => CommitSummary[];
 }) {
   useTranslation();
-  const message = [commit.summary, commit.body].filter(Boolean).join("\n\n");
   const isHead = (commit.refs ?? []).some((ref) => ref.kind === "head");
 
   async function copyText(value: string, success: string) {
@@ -847,8 +854,8 @@ const CommitRow = memo(function CommitRow({
             ) : null}
             <ContextMenuItem onClick={() => void copyText(commit.id, t("git.ui.copied_commit_hash"))}>
               <HashIcon />{t("git.ui.hash")}</ContextMenuItem>
-            {message ? (
-              <ContextMenuItem onClick={() => void copyText(message, t("git.ui.copied_message"))}>
+            {commit.summary || commit.body ? (
+              <ContextMenuItem onClick={() => onAction({type:"copy-message",commit})}>
                 <MessageSquareTextIcon />{t("git.ui.message")}</ContextMenuItem>
             ) : null}
           </ContextMenuSubContent>
