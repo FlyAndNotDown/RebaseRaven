@@ -807,6 +807,10 @@ mod tests {
             .parse::<u16>()
             .unwrap();
         let mut connection = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        // Darwin can reject timeout changes after the peer has closed the socket.
+        connection
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
         connection.write_all(b"incomplete request").unwrap();
         let started = Instant::now();
         while state.lock().unwrap().connection.is_none() {
@@ -820,9 +824,6 @@ mod tests {
         assert!(state.lock().unwrap().connection.is_none());
         // Check the original connection; a released port can already belong to
         // another concurrently running prompt.
-        connection
-            .set_read_timeout(Some(Duration::from_secs(2)))
-            .unwrap();
         let mut byte = [0];
         match connection.read(&mut byte) {
             Ok(0) => {}
