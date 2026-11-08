@@ -8,6 +8,8 @@ import {
   placeOpenedRepoTab,
   primaryRemote,
   reorderAppTabs,
+  relocatedSession,
+  emptySession,
   tabFromPath,
   type AppTab,
 } from "./session";
@@ -122,4 +124,21 @@ describe("lookupPathList", () => {
     expect(lookupPathList(map, "e:/repo")).toEqual(["main"]);
     expect(lookupPathList(map, "E:\\other")).toBeNull();
   });
+});
+
+it("retargets a worktree session without losing selections, commit drafts or history", () => {
+  const previous = { ...emptySession("/work/old"), commitsLoading: true,
+    historyRevs: ["feature"], view: "history" as const,
+    changeSelection: { type: "change" as const, path: "file.txt", staged: false },
+    commitDraft: { text: "Keep this draft", nonce: 8 },
+    snapshot: { repo: { path: "/work/old", name: "old", currentBranch: "feature" } } as WorkspaceSnapshot,
+  };
+  const next = relocatedSession(previous, "/work/new", "new");
+  expect(next.path).toBe("/work/new");
+  expect(next.snapshot?.repo).toEqual({ path: "/work/new", name: "new", currentBranch: "feature" });
+  expect(next.commitsLoading).toBe(false);
+  expect(next.commitDraft).toEqual(previous.commitDraft);
+  expect(next.changeSelection).toEqual(previous.changeSelection);
+  expect(next.historyRevs).toEqual(["feature"]);
+  expect(previous.path).toBe("/work/old");
 });

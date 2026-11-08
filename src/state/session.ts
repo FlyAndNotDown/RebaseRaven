@@ -133,6 +133,13 @@ export function emptySession(
   };
 }
 
+/** Retarget relative selections and drafts while invalidating in-flight history loads. */
+export function relocatedSession(session: RepoSession, path: string, name: string): RepoSession {
+  return { ...session, path, commitsLoading: false,
+    snapshot: session.snapshot ? { ...session.snapshot, repo: { ...session.snapshot.repo, path, name } } : null,
+  };
+}
+
 export function lookupHistoryRevs(map: Record<string, string[]>, path: string): string[] {
   return lookupPathList(map, path) ?? [];
 }

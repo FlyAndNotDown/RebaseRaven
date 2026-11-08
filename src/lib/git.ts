@@ -38,6 +38,9 @@ import type {
   SubmoduleUpdateOptions,
   UndoneCommit,
   WorktreeInfo,
+  WorktreeRequest,
+  WorktreePreview,
+  WorktreeChange,
   TerminalOption,
   ToolConfig,
   SshKeyInfo,
@@ -182,6 +185,8 @@ export const gitApi = {
       activityId: activityId || null,
       options: options ?? null,
     }),
+  previewWorktreeChange: (repoPath: string, request: WorktreeRequest) => call<WorktreePreview>("preview_worktree_change", { repoPath, request }),
+  changeWorktree: (repoPath: string, request: WorktreeRequest, fingerprint: string) => call<WorktreeChange>("change_worktree", { repoPath, request, fingerprint }),
   listWorktrees: (repoPath: string) => call<WorktreeInfo[]>("list_worktrees", { repoPath }),
   addWorktree: (
     repoPath: string,

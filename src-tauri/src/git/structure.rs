@@ -7,7 +7,12 @@ pub struct WorktreeInfo {
     pub head: Option<String>,
     pub branch: Option<String>,
     pub detached: bool,
+    pub bare: bool,
     pub locked: bool,
+    pub lock_reason: Option<String>,
+    pub prune_reason: Option<String>,
+    pub missing: bool,
+    pub fingerprint: String,
     /// Its folder is gone; `git worktree prune` would remove the entry.
     pub prunable: bool,
     /// The worktree this repository was opened from.
@@ -28,7 +33,12 @@ pub(super) fn parse_worktree_list(text: &str) -> Vec<WorktreeInfo> {
             head: None,
             branch: None,
             detached: false,
+            bare: false,
             locked: false,
+            lock_reason: None,
+            prune_reason: None,
+            missing: false,
+            fingerprint: String::new(),
             prunable: false,
             current: false,
             main: index == 0,
@@ -40,8 +50,15 @@ pub(super) fn parse_worktree_list(text: &str) -> Vec<WorktreeInfo> {
                 "HEAD" => item.head = Some(value.to_string()),
                 "branch" => item.branch = Some(value.trim_start_matches("refs/heads/").to_string()),
                 "detached" => item.detached = true,
-                "locked" => item.locked = true,
-                "prunable" => item.prunable = true,
+                "bare" => item.bare = true,
+                "locked" => {
+                    item.locked = true;
+                    item.lock_reason = (!value.is_empty()).then(|| value.to_string());
+                }
+                "prunable" => {
+                    item.prunable = true;
+                    item.prune_reason = (!value.is_empty()).then(|| value.to_string());
+                }
                 _ => {}
             }
         }
@@ -57,7 +74,8 @@ pub(super) fn same_folder(left: &str, right: &Path) -> bool {
     let left = strip_verbatim_path(left.canonicalize().unwrap_or_else(|_| left.to_path_buf()));
     let right = strip_verbatim_path(right.canonicalize().unwrap_or_else(|_| right.to_path_buf()));
     if cfg!(windows) {
-        left.to_string_lossy().to_lowercase() == right.to_string_lossy().to_lowercase()
+        left.to_string_lossy().replace('\\', "/").to_lowercase()
+            == right.to_string_lossy().replace('\\', "/").to_lowercase()
     } else {
         left == right
     }
@@ -67,7 +85,10 @@ pub fn list_worktrees(repo: &Repository) -> AppResult<Vec<WorktreeInfo>> {
     let root = workdir_owned(repo)?;
     let stdout = run_git_stdout(&root, &["worktree", "list", "--porcelain", "-z"])?;
     let mut items = parse_worktree_list(&String::from_utf8_lossy(&stdout));
+    let fingerprint = super::worktrees::catalog_fingerprint(repo, &stdout, &items)?;
     for item in &mut items {
+        item.missing = !Path::new(&item.path).is_dir();
+        item.fingerprint = fingerprint.clone();
         item.current = same_folder(&item.path, &root);
     }
     Ok(items)
@@ -82,6 +103,7 @@ pub fn add_worktree(
     new_branch: Option<&str>,
     start: Option<&str>,
 ) -> AppResult<String> {
+    let _lock = super::worktrees::WorktreeLock::acquire(repo)?;
     if path.is_empty() {
         return Err(AppError::msg("Choose a folder for the worktree"));
     }
@@ -116,6 +138,7 @@ pub fn add_worktree(
 }
 
 pub fn remove_worktree(repo: &Repository, path: &str, force: bool) -> AppResult<()> {
+    let _lock = super::worktrees::WorktreeLock::acquire(repo)?;
     let mut args = vec!["worktree", "remove"];
     if force {
         args.push("--force");
@@ -126,6 +149,7 @@ pub fn remove_worktree(repo: &Repository, path: &str, force: bool) -> AppResult<
 }
 
 pub fn prune_worktrees(repo: &Repository) -> AppResult<()> {
+    let _lock = super::worktrees::WorktreeLock::acquire(repo)?;
     run_git_stdout(workdir(repo)?, &["worktree", "prune"])?;
     Ok(())
 }
@@ -133,6 +157,19 @@ pub fn prune_worktrees(repo: &Repository) -> AppResult<()> {
 #[cfg(test)]
 mod structure_tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn missing_worktree_paths_keep_windows_separator_and_case_equivalence() {
+        let temp = tempfile::tempdir().unwrap();
+        let missing = temp.path().join("Relocated Worktree");
+        assert!(!missing.exists());
+        let native = missing.to_string_lossy();
+        let git = native.replace('\\', "/").to_uppercase();
+        assert!(same_folder(&git, &missing));
+        assert!(same_folder(&git, &PathBuf::from(format!(r"\\?\{native}"))));
+        assert!(!same_folder(&git, &temp.path().join("Other Worktree")));
+    }
 
     fn repository(path: &Path) -> Repository {
         fs::create_dir_all(path).unwrap();

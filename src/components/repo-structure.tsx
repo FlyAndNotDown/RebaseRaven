@@ -10,6 +10,10 @@ import {
   FolderGit2Icon,
   InfoIcon,
   LinkIcon,
+  LockIcon,
+  UnlockIcon,
+  MoveIcon,
+  WrenchIcon,
   PlusIcon,
   RefreshCwIcon,
   ScissorsIcon,
@@ -43,6 +47,7 @@ import { createExclusiveAction } from "@/lib/async-scope";
 import { pathsIgnoreCase } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useGitPick } from "@/state/git-context";
+import { WorktreeDialog, type WorktreeDialogAction } from "@/components/worktree-dialog";
 import { SubmoduleDialogs, type SubmoduleDialogAction } from "@/components/submodule-dialogs";
 import type { SubmoduleInfo, WorktreeInfo } from "@/types/git";
 
@@ -75,6 +80,7 @@ export function RepoStructure({ onReady }: { onReady?: (repoPath: string) => voi
   const [reload, setReload] = useState(0);
   const [openSections, setOpenSections] = useState({ submodules: true, worktrees: true });
   const [adding, setAdding] = useState(false);
+  const [worktreeDialog, setWorktreeDialog] = useState<WorktreeDialogAction | null>(null);
   const [removing, setRemoving] = useState<WorktreeInfo | null>(null);
   const [loadedFor, setLoadedFor] = useState("");
   const [errors, setErrors] = useState<{ submodules: string | null; worktrees: string | null }>({ submodules: null, worktrees: null });
@@ -299,6 +305,9 @@ export function RepoStructure({ onReady }: { onReady?: (repoPath: string) => voi
                   <PlusIcon />{t("git.ui.new_worktree_menu")}</ContextMenuItem>
               </span>
             </HoverTip>
+            <ContextMenuItem disabled={busy || !worktrees.some(tree => !tree.main)} onClick={() => setWorktreeDialog({ kind: "repairAll" })}><WrenchIcon />{t("git.worktree.repairAllTitle")}</ContextMenuItem>
+            <ContextMenuItem disabled={busy} onClick={() => setReload(value => value + 1)}><RefreshCwIcon />{t("git.worktree.reload")}</ContextMenuItem>
+            <ContextMenuSeparator />
             <ContextMenuItem disabled={busy} onClick={() => void prune()}>
               <ScissorsIcon />{t("git.ui.prune_missing")}</ContextMenuItem>
           </ContextMenuContent>
@@ -307,37 +316,46 @@ export function RepoStructure({ onReady }: { onReady?: (repoPath: string) => voi
         {openSections.worktrees && !errors.worktrees
           ? worktrees.map((tree) => (
               <ContextMenu key={tree.path}>
-                <HoverTip label={tree.path}>
+                <HoverTip label={<div className="space-y-1"><p className="break-all font-mono">{tree.path}</p>{tree.locked ? <p>{t("git.worktree.locked")}{tree.lockReason ? ` · ${tree.lockReason}` : ""}</p> : null}{tree.pruneReason ? <p>{tree.pruneReason}</p> : null}</div>}>
                 <ContextMenuTrigger asChild>
                   <button
                     type="button"
                     className="flex h-7 w-full items-center gap-1.5 pr-2 pl-7 text-left text-xs hover:bg-muted/70"
+                    aria-description={tree.locked ? `${t("git.worktree.locked")}${tree.lockReason ? `: ${tree.lockReason}` : ""}` : undefined}
                     onDoubleClick={() => {
-                      if (!tree.current && !tree.prunable) void openPath(tree.path, "git");
+                      if (!tree.current && !tree.missing && !tree.bare) void openPath(tree.path, "git");
                     }}
                   >
                     <FolderGit2Icon className="size-3.5 shrink-0 text-muted-foreground" />
-                    <span className={cn("min-w-0 flex-1 truncate font-mono", tree.prunable && "line-through opacity-60")}>
+                    <span className={cn("min-w-0 flex-1 truncate font-mono", tree.missing && "line-through opacity-60")}>
                       {tree.branch ?? (tree.head ? t("git.dynamic.detachedHead", { id: tree.head.slice(0, 7) }) : tree.path)}
                     </span>
+                    {tree.locked ? <LockIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" /> : null}
+                    {tree.missing ? <span className="shrink-0 text-[10px] text-muted-foreground">{t("git.worktree.missing")}</span> : null}
                     {tree.current ? <span className="shrink-0 text-[10px] text-muted-foreground">{t("git.ui.current")}</span> : null}
                     {!tree.current && tree.main ? (
-                      <span className="shrink-0 text-[10px] text-muted-foreground">{t("git.ui.main")}</span>
+                      <span className="shrink-0 text-[10px] text-muted-foreground">{t(tree.bare ? "git.worktree.bare" : "git.ui.main")}</span>
                     ) : null}
                   </button>
                 </ContextMenuTrigger>
                 </HoverTip>
                 <ContextMenuContent className="min-w-48">
-                  {!tree.current && !tree.prunable ? (
+                  {!tree.current && !tree.missing && !tree.bare ? (
                     <ContextMenuItem onClick={() => void openPath(tree.path, "git")}>
                       <AppWindowIcon />{t("git.ui.open_in_a_new_tab")}</ContextMenuItem>
                   ) : null}
                   <ContextMenuItem onClick={() => void copy(tree.path)}>
                     <CopyIcon />{t("git.ui.copy_path")}</ContextMenuItem>
+                  {!tree.main ? <>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem disabled={busy} onClick={() => setWorktreeDialog({ kind: tree.locked ? "unlock" : "lock", tree })}>{tree.locked ? <UnlockIcon /> : <LockIcon />}{t(tree.locked ? "git.worktree.unlockTitle" : "git.worktree.lockTitle")}</ContextMenuItem>
+                    <HoverTip label={tree.current || tree.locked || tree.missing ? t("git.worktree.moveUnavailable") : undefined}><span className="block"><ContextMenuItem disabled={busy || tree.current || tree.locked || tree.missing} onClick={() => setWorktreeDialog({ kind: "move", tree })}><MoveIcon />{t("git.worktree.moveTitle")}</ContextMenuItem></span></HoverTip>
+                    <ContextMenuItem disabled={busy} onClick={() => setWorktreeDialog({ kind: "repair", tree })}><WrenchIcon />{t("git.worktree.repairTitle")}</ContextMenuItem>
+                  </> : null}
                   {!tree.main && !tree.current ? (
                     <>
                       <ContextMenuSeparator />
-                      <ContextMenuItem disabled={busy} variant="destructive" onClick={() => setRemoving(tree)}>
+                      <ContextMenuItem disabled={busy || tree.locked} variant="destructive" onClick={() => setRemoving(tree)}>
                         <Trash2Icon />{t("git.ui.remove_menu")}</ContextMenuItem>
                     </>
                   ) : null}
@@ -347,6 +365,7 @@ export function RepoStructure({ onReady }: { onReady?: (repoPath: string) => voi
           : null}
       </section>
       ) : null}
+      {worktreeDialog ? <WorktreeDialog key={JSON.stringify([repoPath, worktreeDialog])} repoPath={repoPath} action={worktreeDialog} onClose={() => setWorktreeDialog(null)} onDone={() => setReload(value => value + 1)} /> : null}
       <AddWorktreeDialog
         open={adding}
         onOpenChange={setAdding}
@@ -428,7 +447,7 @@ function AddWorktreeForm({ mutation, onClose, onCreated }: { mutation: ReturnTyp
   const canSave = Boolean(folder.trim()) && (mode === "existing" ? Boolean(branch) : hasHead && Boolean(newBranch.trim())) && !saving;
 
   async function browse() {
-    const picked = await open({ directory: true, multiple: false, title: t("git.ui.folder_for_the_new_worktree") });
+    const picked = await open({ defaultPath: repoPath, directory: true, multiple: false, title: t("git.ui.folder_for_the_new_worktree") });
     if (typeof picked === "string") setFolder(picked);
   }
 

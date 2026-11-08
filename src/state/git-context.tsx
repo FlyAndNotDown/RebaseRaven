@@ -33,6 +33,8 @@ import {
   placeOpenedRepoTab,
   primaryRemote,
   reorderAppTabs,
+  relocatedSession,
+  repoNameFromPath,
   tabFromPath,
   tabFromSnapshot,
   type AppTab,
@@ -85,6 +87,9 @@ import type {
   SubmoduleChange,
   SubmoduleUpdateOptions,
   WorkspaceSnapshot,
+  WorktreeRequest,
+  WorktreePreview,
+  WorktreeChange,
 } from "@/types/git";
 
 export { COMMIT_PAGE, WELCOME_TAB_ID, defaultFetchRemote, primaryRemote };
@@ -172,7 +177,8 @@ interface GitContextValue {
   chooseRepoKind: (vcs: VcsKind) => void;
   dismissRepoKind: () => void;
   setTabMeta: (id: string, name: string) => void;
-  retargetRepoTab: (id: string, path: string, name: string) => void;
+  retargetRepoTab: (id: string, path: string, name: string, preserveSession?: boolean) => void;
+  changeWorktree: (request: WorktreeRequest, preview: WorktreePreview) => Promise<boolean>;
   cloneRepository: (url: string, destination: string, onActivity?: (id: string) => void) => Promise<boolean>;
   revealRepo: () => Promise<void>;
   openTerminal: () => Promise<void>;
@@ -416,7 +422,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
   );
 
   const retargetRepoTab = useCallback(
-    (id: string, path: string, name: string) => {
+    (id: string, path: string, name: string, preserveSession = false) => {
       const current = tabsRef.current;
       const index = current.findIndex((tab) => tab.id === id);
       const tab = current[index];
@@ -425,14 +431,14 @@ export function GitProvider({ children }: { children: ReactNode }) {
         setTabMeta(id, name);
         return;
       }
-      const replacement = tabFromPath(path, name, tab.vcs);
+      const replacement = { ...tabFromPath(path, name, tab.vcs), ...(preserveSession ? { branch: tab.branch, isDetached: tab.isDetached } : {}) };
       const duplicate = current.find((item) => item.id === replacement.id && item.id !== id);
       const next = duplicate
         ? current.filter((item) => item.id !== id)
         : current.map((item) => (item.id === id ? replacement : item));
       if (id !== replacement.id && sessionsRef.current[id]) {
         const { [id]: _dropped, ...rest } = sessionsRef.current;
-        commitSessions(rest);
+        commitSessions(preserveSession && !duplicate ? { ...rest, [replacement.id]: relocatedSession(sessionsRef.current[id], path, name) } : rest);
       }
       commitTabs(next);
       if (activeTabIdRef.current === id && id !== replacement.id) {
@@ -2352,6 +2358,31 @@ export function GitProvider({ children }: { children: ReactNode }) {
     refreshAfterReplayRef.current = refreshAfterReplay;
   }, [refreshAfterReplay]);
 
+  const changeWorktree = useCallback(async (request: WorktreeRequest, preview: WorktreePreview) => {
+    const tabId = activeTabIdRef.current;
+    const received: { value?: WorktreeChange } = {};
+    const ok = await runMutation(t(`git.worktree.${request.kind}Activity`), async repoPath => {
+      if (preview.tree && preview.destination && !sameRepoPath(preview.tree.path, preview.destination)) {
+        const source = findRepoTab(tabsRef.current, preview.tree.path, "git");
+        const destination = findRepoTab(tabsRef.current, preview.destination, "git");
+        if (source && destination && source.id !== destination.id) throw new Error(t("git.worktree.duplicateTabs"));
+      }
+      received.value = await gitApi.changeWorktree(repoPath, request, preview.fingerprint);
+      return received.value.snapshot;
+    }, undefined, { tabId });
+    const result = received.value;
+    if (result?.previousPath && result.path && !sameRepoPath(result.previousPath, result.path)) {
+      for (const tab of tabsRef.current) {
+        if (tab.kind === "repo" && tab.vcs === "git" && sameRepoPath(tab.path, result.previousPath)) {
+          retargetRepoTab(tab.id, result.path, repoNameFromPath(result.path), true);
+        }
+      }
+      try { setRecents(await gitApi.listRecents()); } catch { /* repository relocation already succeeded */ }
+    }
+    if (!ok) await refreshAfterReplay(tabId);
+    return ok;
+  }, [refreshAfterReplay, retargetRepoTab, runMutation]);
+
   const changeSubmodule = useCallback(async (change: SubmoduleChange) => {
     const tabId = activeTabIdRef.current;
     const ok = await runMutation(t(`git.submodule.${change.kind}Activity`), (repoPath, activityId) => {
@@ -3010,6 +3041,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       dismissRepoKind,
       setTabMeta,
       retargetRepoTab,
+      changeWorktree,
       cloneRepository,
       revealRepo,
       openTerminal,
@@ -3109,6 +3141,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       dismissRepoKind,
       setTabMeta,
       retargetRepoTab,
+      changeWorktree,
       cloneRepository,
       revealRepo,
       openTerminal,
