@@ -20,6 +20,9 @@ use zeroize::Zeroizing;
 
 use crate::error::{AppError, AppResult};
 
+#[cfg(windows)]
+mod windows_output;
+
 const ENV_ENDPOINT: &str = "REBASERAVEN_ASKPASS";
 const ENV_ACTIVITY: &str = "REBASERAVEN_ASKPASS_ACTIVITY";
 const MAX_MESSAGE_BYTES: usize = 64 * 1024;
@@ -491,14 +494,23 @@ pub fn run_client() -> Option<i32> {
         .map(|arg| arg.to_string_lossy().into_owned())
         .unwrap_or_default();
     Some(match ask(port, token, &activity, &prompt) {
-        Some(answer) => {
-            let mut stdout = std::io::stdout();
-            let _ = writeln!(stdout, "{}", answer.as_str());
-            let _ = stdout.flush();
-            0
-        }
-        None => 1,
+        Some(answer) if write_answer(answer.as_str()).is_ok() => 0,
+        _ => 1,
     })
+}
+
+fn write_answer(answer: &str) -> std::io::Result<()> {
+    #[cfg(windows)]
+    if windows_output::write_stdout(answer)? {
+        return Ok(());
+    }
+    write_answer_to(&mut std::io::stdout().lock(), answer)
+}
+
+fn write_answer_to(output: &mut impl Write, answer: &str) -> std::io::Result<()> {
+    let message = Zeroizing::new(format!("{answer}\n"));
+    output.write_all(message.as_bytes())?;
+    output.flush()
 }
 
 fn ask(port: &str, token: &str, activity: &str, prompt: &str) -> Option<Zeroizing<String>> {
@@ -539,6 +551,118 @@ fn ask(port: &str, token: &str, activity: &str, prompt: &str) -> Option<Zeroizin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn credential_output_handles_short_writes_and_preserves_utf8() {
+        #[derive(Default)]
+        struct ShortWriter {
+            bytes: Vec<u8>,
+            flushed: bool,
+        }
+        impl Write for ShortWriter {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                let count = bytes.len().min(3);
+                self.bytes.extend_from_slice(&bytes[..count]);
+                Ok(count)
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                self.flushed = true;
+                Ok(())
+            }
+        }
+        let mut output = ShortWriter::default();
+        write_answer_to(&mut output, "example caf\u{e9}").unwrap();
+        assert_eq!(output.bytes, "example caf\u{e9}\n".as_bytes());
+        assert!(output.flushed);
+    }
+
+    #[test]
+    fn credential_output_reports_write_and_flush_failures() {
+        struct FailingWriter {
+            write_error: bool,
+        }
+        impl Write for FailingWriter {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                if self.write_error {
+                    Err(std::io::ErrorKind::BrokenPipe.into())
+                } else {
+                    Ok(bytes.len())
+                }
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Err(std::io::ErrorKind::Other.into())
+            }
+        }
+        let error = write_answer_to(&mut FailingWriter { write_error: true }, "example response")
+            .unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::BrokenPipe);
+        let error = write_answer_to(
+            &mut FailingWriter { write_error: false },
+            "example response",
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::Other);
+    }
+
+    #[test]
+    fn helper_exits_unsuccessfully_when_its_output_reader_has_closed() {
+        let Some(executable) = test_helper_executable() else {
+            return;
+        };
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let token = "example-token";
+        let endpoint = format!("{}:{token}", listener.local_addr().unwrap().port());
+        let mut child = crate::platform::background_command(executable)
+            .env(ENV_ENDPOINT, endpoint)
+            .env(ENV_ACTIVITY, "ssh-keygen")
+            .arg("Prompt")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        // Close the only reader before releasing a reply to the waiting helper.
+        drop(child.stdout.take());
+        let deadline = Instant::now() + SECRET_PROMPT_TIMEOUT;
+        let mut stream = loop {
+            match listener.accept() {
+                Ok((stream, _)) => break stream,
+                Err(error)
+                    if error.kind() == std::io::ErrorKind::WouldBlock
+                        && Instant::now() < deadline =>
+                {
+                    thread::sleep(Duration::from_millis(5))
+                }
+                error => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    panic!("Helper did not connect: {error:?}");
+                }
+            }
+        };
+        stream.set_nonblocking(false).unwrap();
+        stream.set_read_timeout(Some(SOCKET_POLL_INTERVAL)).unwrap();
+        stream.set_write_timeout(Some(HANDSHAKE_TIMEOUT)).unwrap();
+        assert_eq!(
+            read_socket_message(&mut stream, deadline).unwrap().as_str(),
+            "example-token\nssh-keygen\nPrompt"
+        );
+        stream.write_all(b"1example response").unwrap();
+        drop(stream);
+        let status = loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                break status;
+            }
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("Helper did not finish.");
+            }
+            thread::sleep(Duration::from_millis(5));
+        };
+        assert_eq!(status.code(), Some(1));
+    }
 
     #[test]
     fn credential_messages_reject_oversized_or_invalid_utf8_payloads() {
@@ -693,7 +817,18 @@ mod tests {
         drop(prompt);
         assert!(started.elapsed() < Duration::from_secs(2));
         assert!(state.lock().unwrap().secret.is_none());
-        assert!(TcpStream::connect(("127.0.0.1", port)).is_err());
+        assert!(state.lock().unwrap().connection.is_none());
+        // Check the original connection; a released port can already belong to
+        // another concurrently running prompt.
+        connection
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let mut byte = [0];
+        match connection.read(&mut byte) {
+            Ok(0) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::ConnectionReset => {}
+            result => panic!("The pending credential connection remained open: {result:?}"),
+        }
     }
 
     #[test]
