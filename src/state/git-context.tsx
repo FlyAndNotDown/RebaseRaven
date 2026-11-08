@@ -17,9 +17,12 @@ import { toast } from "sonner";
 import { t } from "@/i18n";
 import { emptyBinaryDiff, errorMessage, expandHistoryRevs, GIT_MISSING, gitApi, isCancelled, subscribeGitMissing } from "@/lib/git";
 import { P4_MISSING, p4Api } from "@/lib/p4";
+import type { SparseCheckoutRequest, SparseCheckoutOutcome, SparseCheckoutUpdate } from "@/types/sparse-checkout";
+import type { LfsAction, LfsOutcome, LfsUpdate } from "@/types/lfs";
 import { normalizeRepoPath, sameRepoPath } from "@/lib/format";
 import { DEFAULT_HISTORY_EXPANDED, renamedRemoteViews } from "@/lib/remote-refs";
 import { repositoryUndoAction } from "@/state/repository-actions";
+import { canClearCommitEditor, commitEditorSubmission, editCommitEditor, resolveCommitEditor, reuseCommitEditor, type CommitDraftReview, type CommitMessageMode, type CommitEditorState } from "@/state/commit-editor";
 import { defaultPrefs, normalizePrefs, sameLayout } from "@/lib/prefs";
 import {
   COMMIT_PAGE,
@@ -73,6 +76,7 @@ import type {
   PanelLayout,
   PanelLayoutId,
   CommitDetails,
+  GitSigningMode,
   CommitSummary,
   CompareRevision,
   RevisionComparison,
@@ -81,6 +85,7 @@ import type {
   LineAction,
   LineRef,
   RecentRepo,
+  PushOptions,
   RebaseStep,
   StashDetails,
   StashInfo,
@@ -93,7 +98,7 @@ import type {
 } from "@/types/git";
 
 export { COMMIT_PAGE, WELCOME_TAB_ID, defaultFetchRemote, primaryRemote };
-export type Panel = "reflog" | "bisect" | "add-submodule" | "palette" | "settings" | "settings-about" | "new-branch";
+export type Panel = "lfs" | "sparse-checkout" | "reflog" | "bisect" | "add-submodule" | "palette" | "settings" | "settings-about" | "new-branch";
 export type RepoKindPrompt = {
   path: string;
   gitPath: string;
@@ -147,6 +152,8 @@ interface GitContextValue {
   stashes: StashInfo[];
   fileFocus: FileFocus | null;
   commitDraft: CommitDraft | null;
+  commitEditor: CommitEditorState | null;
+  setCommitEditor: (tabId: string, edit: CommitEditorState) => void;
   /** An app-wide overlay that any view or the command palette can open. */
   openPanel: Panel | null;
   prefs: AppPrefs;
@@ -211,7 +218,9 @@ interface GitContextValue {
   unstage: (paths: string[]) => Promise<void>;
   discard: (paths: string[]) => Promise<void>;
   applyLines: (path: string, staged: boolean, action: LineAction, lines: LineRef[]) => Promise<boolean>;
+  reuseCommitMessage: (tabId: string, path: string, review: CommitDraftReview, message: string, mode: CommitMessageMode) => boolean;
   commit: (message: string, amend?: boolean) => Promise<boolean>;
+  commitAndPush: (message: string, amend?: boolean) => Promise<boolean>;
   undoLastCommit: (tabId?: string) => Promise<boolean>;
   checkoutDetached: (oid: string) => Promise<boolean>;
   updateSubmodules: (paths: string[], options?: SubmoduleUpdateOptions) => Promise<boolean>;
@@ -220,14 +229,14 @@ interface GitContextValue {
   fetchRemote: (remote?: string) => Promise<void>;
   fetchAllRemotes: () => Promise<void>;
   pullRemote: (remote?: string, rebase?: boolean) => Promise<void>;
-  pushRemote: (options?: { remote?: string; force?: boolean; setUpstream?: boolean }) => Promise<boolean>;
+  pushRemote: (options?: PushOptions, tabId?: string) => Promise<boolean>;
   publishPrompt: PublishPrompt | null;
   dismissPublish: () => void;
   confirmPublish: () => Promise<void>;
   createBranch: (name: string, switchTo: boolean, start?: string) => Promise<boolean>;
   renameBranch: (name: string, newName: string) => Promise<boolean>;
   setBranchUpstream: (name: string, upstream: string | null) => Promise<boolean>;
-  createTag: (name: string, message?: string, target?: string) => Promise<boolean>;
+  createTag: (name: string, message?: string, target?: string, signing?: GitSigningMode) => Promise<boolean>;
   deleteTag: (name: string) => Promise<boolean>;
   pushTag: (remote: string, name: string) => Promise<boolean>;
   deleteRemoteTag: (remote: string, name: string) => Promise<boolean>;
@@ -243,6 +252,8 @@ interface GitContextValue {
   operationContinue: (message?: string) => Promise<boolean>;
   operationAbort: () => Promise<boolean>;
   bisectAction: (action: BisectAction, fingerprint: string) => Promise<BisectUpdate | null>;
+  changeSparseCheckout: (repoPath: string, request: SparseCheckoutRequest, fingerprint: string, allowIgnoredRemoval: boolean) => Promise<SparseCheckoutUpdate | null>;
+  changeLfs: (repoPath: string, action: LfsAction, fingerprint: string) => Promise<LfsUpdate | null>;
   resolveConflict: (path: string, side: "ours" | "theirs" | "both") => Promise<boolean>;
   saveConflict: (path: string, text: string) => Promise<boolean>;
   resetCommit: (oid: string, mode: ResetMode) => Promise<boolean>;
@@ -433,6 +444,9 @@ export function GitProvider({ children }: { children: ReactNode }) {
       }
       const replacement = { ...tabFromPath(path, name, tab.vcs), ...(preserveSession ? { branch: tab.branch, isDetached: tab.isDetached } : {}) };
       const duplicate = current.find((item) => item.id === replacement.id && item.id !== id);
+      if (id !== replacement.id) {
+        setPublishPrompt((prompt) => prompt?.tabId === id ? null : prompt);
+      }
       const next = duplicate
         ? current.filter((item) => item.id !== id)
         : current.map((item) => (item.id === id ? replacement : item));
@@ -467,6 +481,17 @@ export function GitProvider({ children }: { children: ReactNode }) {
     },
     [commitSessions, syncTabMeta],
   );
+
+  const setCommitEditor = useCallback((tabId: string, edit: CommitEditorState) => {
+    const session = sessionsRef.current[tabId];
+    if (session) patchSession(tabId, { commitEditor: editCommitEditor(session, edit) });
+  }, [patchSession]);
+
+  const clearSubmittedEditor = useCallback((tabId: string, submission: ReturnType<typeof commitEditorSubmission>) => {
+    if (canClearCommitEditor(sessionsRef.current[tabId], submission)) {
+      patchSession(tabId, { commitEditor: null, commitDraft: null });
+    }
+  }, [patchSession]);
 
   const activeRepoPath = useCallback(() => {
     const tab = tabsRef.current.find((item) => item.id === activeTabIdRef.current);
@@ -922,6 +947,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
 
   const closeTab = useCallback(
     (id: string) => {
+      setPublishPrompt((prompt) => prompt?.tabId === id ? null : prompt);
       const current = tabsRef.current.filter((tab) => tab.kind !== "welcome");
       const closing = current.find((tab) => tab.id === id);
       if (!closing || closing.kind !== "repo") return;
@@ -1919,19 +1945,35 @@ export function GitProvider({ children }: { children: ReactNode }) {
     return ok;
   }, [patchSession, runMutation]);
 
+  const reuseCommitMessage = useCallback((tabId: string, path: string, review: CommitDraftReview, message: string, mode: CommitMessageMode) => {
+    const current = sessionsRef.current[tabId];
+    if (!current || activeTabIdRef.current !== tabId || !sameRepoPath(current.path, path)) return false;
+    const editor = reuseCommitEditor(current, review, message, mode);
+    if (!editor) return false;
+    patchSession(tabId, {commitEditor:editor, view:"changes"});
+    return true;
+  }, [patchSession]);
+
   const commit = useCallback(
     async (message: string, amend = false) => {
       const tabId = activeTabIdRef.current;
+      const submission = commitEditorSubmission(sessionsRef.current[tabId], message);
+      const session = sessionsRef.current[tabId];
+      if (!session) return false;
+      const editor = resolveCommitEditor(session);
+      const options = {signing: editor.signing, signoff: editor.signoff};
       const ok = await runMutation(amend ? t("operations.amending_commit") : t("operations.creating_commit"), (repoPath) =>
-        gitApi.commit(repoPath, message, amend),
+        gitApi.commit(repoPath, message, amend, options),
+        undefined, { tabId },
       );
       if (ok) {
+        clearSubmittedEditor(tabId, submission);
         if (amend) toast.success(t("operations.amended_commit"));
         else toast.success(t("operations.created_commit"), { action: repositoryUndoAction(tabId, undoLastCommit) });
       }
       return ok;
     },
-    [runMutation, undoLastCommit],
+    [clearSubmittedEditor, runMutation, undoLastCommit],
   );
 
   const updateSubmodules = useCallback(
@@ -2122,9 +2164,10 @@ export function GitProvider({ children }: { children: ReactNode }) {
   }, [activeRepoPath, ensureBranches, invalidateHistory, markFetched, runMutation]);
 
   const pushRemote = useCallback(
-    async (options?: { remote?: string; force?: boolean; setUpstream?: boolean }) => {
-      const snapshot = sessionsRef.current[activeTabIdRef.current]?.snapshot;
-      if (!snapshot) return false;
+    async (options?: PushOptions, tabId = activeTabIdRef.current) => {
+      const tab = tabsRef.current.find((item) => item.id === tabId);
+      const snapshot = sessionsRef.current[tabId]?.snapshot;
+      if (tab?.kind !== "repo" || tab.vcs !== "git" || !snapshot) return false;
       const remote = options?.remote?.trim() || primaryRemote(snapshot);
       if (!remote) {
         toast.error(t("operations.add_a_remote_before_pushing"));
@@ -2135,8 +2178,12 @@ export function GitProvider({ children }: { children: ReactNode }) {
         toast.error(t("operations.cannot_push_while_head_is_detached"));
         return false;
       }
+      if (options?.expectedBranch !== undefined && options.expectedBranch !== branch) {
+        toast.error(t("git.ui.push_branch_changed"));
+        return false;
+      }
       if (!snapshot.repo.upstream && !options?.setUpstream) {
-        setPublishPrompt({ branch, remote });
+        setPublishPrompt({ tabId, name: snapshot.repo.name, branch, remote });
         return false;
       }
       const publishing = Boolean(options?.setUpstream);
@@ -2150,13 +2197,31 @@ export function GitProvider({ children }: { children: ReactNode }) {
             remote,
             force,
             setUpstream: publishing,
+            expectedBranch: branch,
           }),
         success,
-        { cancellable: true },
+        { cancellable: true, tabId },
       );
     },
     [runMutation],
   );
+
+  const commitAndPush = useCallback(async (message: string, amend = false) => {
+    const tabId = activeTabIdRef.current;
+    const snapshot = sessionsRef.current[tabId]?.snapshot;
+    const branch = snapshot?.repo.currentBranch;
+    const remote = primaryRemote(snapshot);
+    if (!branch) {
+      toast.error(t("operations.cannot_push_while_head_is_detached"));
+      return false;
+    }
+    if (!remote) {
+      toast.error(t("operations.add_a_remote_before_pushing"));
+      return false;
+    }
+    if (!await commit(message, amend)) return false;
+    return pushRemote({ remote, expectedBranch: branch }, tabId);
+  }, [commit, pushRemote]);
 
   const dismissPublish = useCallback(() => setPublishPrompt(null), []);
 
@@ -2169,7 +2234,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
     const prompt = publishPromptRef.current;
     if (!prompt) return;
     setPublishPrompt(null);
-    await pushRemote({ remote: prompt.remote, setUpstream: true });
+    await pushRemote({ remote: prompt.remote, setUpstream: true, expectedBranch: prompt.branch }, prompt.tabId);
   }, [pushRemote]);
 
   const createBranch = useCallback(
@@ -2240,10 +2305,10 @@ export function GitProvider({ children }: { children: ReactNode }) {
   );
 
   const createTag = useCallback(
-    async (name: string, message?: string, target?: string) => {
+    async (name: string, message?: string, target?: string, signing?: GitSigningMode) => {
       return runMutation(
         t("operations.creating_tag", { value: name }),
-        (repoPath) => gitApi.createTag(repoPath, name, message, target),
+        (repoPath) => gitApi.createTag(repoPath, name, message, target, signing),
         t("operations.created_tag", { value: name }),
       );
     },
@@ -2443,15 +2508,17 @@ export function GitProvider({ children }: { children: ReactNode }) {
 
   const rebaseContinue = useCallback(async () => {
     const tabId = activeTabIdRef.current;
+    const submission = commitEditorSubmission(sessionsRef.current[tabId]);
     const ok = await runMutation(
       t("operations.continuing_rebase"),
       (repoPath) => gitApi.rebaseContinue(repoPath),
       t("operations.rebase_finished"),
       { tabId },
     );
-    if (!ok) await refreshAfterReplay(tabId);
+    if (ok) clearSubmittedEditor(tabId, submission);
+    else await refreshAfterReplay(tabId);
     return ok;
-  }, [refreshAfterReplay, runMutation]);
+  }, [clearSubmittedEditor, refreshAfterReplay, runMutation]);
 
   const rebaseSkip = useCallback(async () => {
     const tabId = activeTabIdRef.current;
@@ -2490,6 +2557,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
 
   const operationContinue = useCallback(async (message?: string) => {
     const tabId = activeTabIdRef.current;
+    const submission = commitEditorSubmission(sessionsRef.current[tabId], message);
     const kind = sessionsRef.current[tabId]?.snapshot?.repo.operation?.kind;
     const ok = await runMutation(
       kind ? t("operations.continuing_2", { value: kind }) : t("operations.continuing"),
@@ -2497,9 +2565,10 @@ export function GitProvider({ children }: { children: ReactNode }) {
       (kind && OPERATION_FINISHED[kind]) || t("operations.operation_finished"),
       { tabId },
     );
-    if (!ok) await refreshAfterReplay(tabId);
+    if (ok) clearSubmittedEditor(tabId, submission);
+    else await refreshAfterReplay(tabId);
     return ok;
-  }, [refreshAfterReplay, runMutation]);
+  }, [clearSubmittedEditor, refreshAfterReplay, runMutation]);
 
   const operationAbort = useCallback(async () => {
     return runMutation(
@@ -2508,6 +2577,30 @@ export function GitProvider({ children }: { children: ReactNode }) {
       t("operations.aborted"),
     );
   }, [runMutation]);
+
+  const changeSparseCheckout = useCallback(async (expectedPath: string, request: SparseCheckoutRequest, fingerprint: string, allowIgnoredRemoval: boolean): Promise<SparseCheckoutUpdate | null> => {
+    const tabId = activeTabIdRef.current;
+    const received: {value: SparseCheckoutOutcome | null} = {value:null};
+    const ok = await runMutation(t("git.sparse.activity"), async (repoPath, activityId) => {
+      if (!sameRepoPath(expectedPath, repoPath)) throw new Error(t("git.sparse.ownerChanged"));
+      received.value = await gitApi.applySparseCheckout(repoPath, request, fingerprint, allowIgnoredRemoval, activityId);
+      return received.value.snapshot;
+    }, undefined, {tabId, cancellable:true});
+    if (!ok) await refreshAfterReplay(tabId);
+    return ok && received.value ? {state:received.value.state, report:received.value.report} : null;
+  }, [refreshAfterReplay, runMutation]);
+
+  const changeLfs = useCallback(async (expectedPath: string, action: LfsAction, fingerprint: string): Promise<LfsUpdate | null> => {
+    const tabId = activeTabIdRef.current;
+    const received: {value:LfsOutcome | null} = {value:null};
+    const ok = await runMutation(t("git.lfs.activity"), async (repoPath, activityId) => {
+      if (!sameRepoPath(expectedPath, repoPath)) throw new Error(t("git.lfs.ownerChanged"));
+      received.value = await gitApi.lfsAction(repoPath, action, fingerprint, activityId);
+      return received.value.snapshot;
+    }, undefined, {tabId, cancellable:true});
+    if (!ok) await refreshAfterReplay(tabId);
+    return ok && received.value ? {state:received.value.state, report:received.value.report, locks:received.value.locks} : null;
+  }, [refreshAfterReplay, runMutation]);
 
   const bisectAction = useCallback(async (action: BisectAction, fingerprint: string): Promise<BisectUpdate | null> => {
     const tabId = activeTabIdRef.current;
@@ -3005,6 +3098,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       stashes: session?.snapshot?.stashes ?? NO_STASHES,
       fileFocus: session?.fileFocus ?? null,
       commitDraft: session?.commitDraft ?? null,
+      commitEditor: session?.commitEditor ?? null,
       openPanel,
       prefs,
       prefsReady,
@@ -3020,6 +3114,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
   // identity and the context value never changes after mount.
   const actions = useMemo<GitActions>(
     () => ({
+      setCommitEditor,
       setView,
       setOpenPanel,
       showFile,
@@ -3071,6 +3166,8 @@ export function GitProvider({ children }: { children: ReactNode }) {
       discard,
       applyLines,
       commit,
+      reuseCommitMessage,
+      commitAndPush,
       undoLastCommit,
       checkoutDetached,
       updateSubmodules,
@@ -3101,6 +3198,8 @@ export function GitProvider({ children }: { children: ReactNode }) {
       operationContinue,
       operationAbort,
       bisectAction,
+      changeSparseCheckout,
+      changeLfs,
       resolveConflict,
       saveConflict,
       resetCommit,
@@ -3120,6 +3219,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       updatePanelLayout,
     }),
     [
+      setCommitEditor,
       setView,
       setOpenPanel,
       showFile,
@@ -3171,6 +3271,8 @@ export function GitProvider({ children }: { children: ReactNode }) {
       discard,
       applyLines,
       commit,
+      reuseCommitMessage,
+      commitAndPush,
       undoLastCommit,
       checkoutDetached,
       updateSubmodules,
@@ -3201,6 +3303,8 @@ export function GitProvider({ children }: { children: ReactNode }) {
       operationContinue,
       operationAbort,
       bisectAction,
+      changeSparseCheckout,
+      changeLfs,
       resolveConflict,
       saveConflict,
       resetCommit,

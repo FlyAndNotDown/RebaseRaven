@@ -16,6 +16,14 @@ function render(state: UpdateSnapshot) {
 }
 
 describe("update settings", () => {
+  it("keeps a failed startup check visible and offers a manual download", () => {
+    const html = render({ ...available, status: "error", update: null, error: "HTTP 504", lastRequest: "check" });
+    expect(html).toContain('role="alert"');
+    expect(html).toContain("Update check failed");
+    expect(html).toContain("Download manually");
+    expect(html).not.toContain("Update</button>");
+  });
+
   it("shows the available version and expanded release notes beside its update action", () => {
     const html = render(available);
     expect(html).toContain("v0.1.6</h4>");

@@ -1,13 +1,20 @@
+mod clean;
 mod cli;
+pub use clean::{apply_clean, preview_clean, P4CleanPreview, P4CleanRequest};
 mod client;
 pub use client::{save_workspace, workspace_settings, P4WorkspaceEdit, P4WorkspaceSettings};
 mod history;
 mod images;
 mod integration;
+mod jobs;
 pub use history::{annotate, compare_files, P4BlameLine, P4CompareRequest, P4Comparison};
 pub use images::{image_pair, P4ImageSource};
 pub use integration::{
     apply_integration, preview_integration, P4IntegrationPreview, P4IntegrationRequest,
+};
+pub use jobs::{
+    apply_job_fix, delete_job, job_fixes, list_jobs, preview_job_fix, read_job, save_job,
+    P4FixPage, P4FixPreview, P4FixRequest, P4Job, P4JobEdit, P4JobPage,
 };
 mod operations;
 mod parse;
@@ -20,7 +27,17 @@ pub use specs::{
     apply_label_tag, delete_spec, label_files, list_specs, preview_label_tag, read_spec, save_spec,
     P4LabelFiles, P4LabelTagPreview, P4LabelTagRequest, P4Spec, P4SpecEdit, P4SpecKind, P4SpecPage,
 };
+mod stream_work;
+pub use stream_work::{
+    apply_stream_work, preview_stream_work, stream_change_diff, stream_work, P4StreamDiffRequest,
+    P4StreamWork, P4StreamWorkPreview, P4StreamWorkRequest,
+};
+mod stream_specs;
 mod streams;
+pub use stream_specs::{
+    delete_stream_spec, new_stream_spec, read_stream_spec, save_stream_spec, P4StreamSetup,
+    P4StreamSpec, P4StreamSpecEdit,
+};
 mod switch;
 pub use review::{apply_reconcile, preview_reconcile, P4ReconcilePreview};
 pub use shelves::{list_shelves, preview_unshelve, restore_shelf, shelf_detail, P4UnshelveRequest};

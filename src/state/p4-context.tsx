@@ -1,3 +1,4 @@
+import type { P4JobActions } from "@/types/p4-jobs";
 import { t, useTranslation } from "@/i18n";
 import {
   createContext,
@@ -15,6 +16,7 @@ import { P4ConnectionDialog } from "@/components/p4/p4-connection-dialog";
 import { P4ShelvesDialog } from "@/components/p4/p4-shelves-dialog";
 import { P4StreamDialog } from "@/components/p4/p4-stream-dialog";
 import { P4ReconcileDialog } from "@/components/p4/p4-reconcile-dialog";
+import { P4CleanDialog } from "@/components/p4/p4-clean-dialog";
 import { P4LoginDialog } from "@/components/p4/p4-login-dialog";
 import { P4SwitchDialog, P4SwitchResultDialog } from "@/components/p4/p4-switch-dialog";
 import { P4IntegrationDialog } from "@/components/p4/p4-integration-dialog";
@@ -31,6 +33,8 @@ import { acquireP4Mutation, invalidateP4Session } from "@/state/p4-mutations";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import type { FileDiff } from "@/types/git";
 import type {
+  P4CleanRequest,
+  P4CleanPreview,
   P4FilePropertiesView,
   P4FileTypeRequest,
   P4UnshelveRequest,
@@ -62,6 +66,7 @@ import type {
 } from "@/types/p4";
 
 import type { P4SpecActions } from "@/types/p4-specs";
+import type { P4StreamSpecActions } from "@/types/p4-stream-specs";
 
 export type { P4View };
 
@@ -74,7 +79,9 @@ class LoginCancelled extends Error {
 }
 
 interface P4ContextValue {
+  jobs: P4JobActions;
   specs: P4SpecActions;
+  streamSpecs: P4StreamSpecActions;
   openIntegration: (initial?: P4IntegrationInitial) => void;
   previewIntegration: (request: P4IntegrationRequest) => Promise<P4IntegrationPreview>;
   applyIntegration: (request: P4IntegrationRequest, preview: P4IntegrationPreview) => Promise<void>;
@@ -150,6 +157,9 @@ interface P4ContextValue {
   getRevision: (request: P4GetRevision) => Promise<string | null>;
   filesEpoch: number;
   reconcile: () => Promise<void>;
+  openClean: (scope?: string) => void;
+  previewClean: (request: P4CleanRequest) => Promise<P4CleanPreview>;
+  applyClean: (request: P4CleanRequest, paths: string[], fingerprint: string) => Promise<void>;
   previewReconcile: () => Promise<P4ReconcilePreview>;
   applyReconcile: (paths: string[], changeId: string, fingerprint: string) => Promise<void>;
   fileAction: (action: "edit" | "add" | "delete", paths: string[]) => Promise<void>;
@@ -235,6 +245,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
   const setStreamOpen = useCallback((open: boolean) => {setStreamInitial(null);updateStreamOpen(open);},[]);
   const openStreamIntegration = useCallback((mode:P4StreamRequest["mode"],source:string) => {setStreamInitial({mode,source});updateStreamOpen(true);},[]);
   const [reconcileOpen, setReconcileOpen] = useState(false);
+  const [cleanTarget, setCleanTarget] = useState<{connection: P4Connection; scope: string} | null>(null);
   const [switchTarget, setSwitchTarget] = useState<string | null>(null);
   const [switchOutcome, setSwitchOutcome] = useState<P4SwitchOutcome | null>(null);
   const switchStream = useCallback((target = "") => setSwitchTarget(target), []);
@@ -1217,6 +1228,29 @@ export function P4Provider({ children }: { children: ReactNode }) {
 
   const reconcile = useCallback(async () => { setReconcileOpen(true); }, []);
 
+  const openClean = useCallback((scope?: string) => {
+    const current=sessionRef.current;
+    if (current) setCleanTarget({connection:current.connection,scope:scope || current.connection.root});
+  },[]);
+  const previewClean = useCallback(async (request: P4CleanRequest) => {
+    const current=sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    return guard(current.connection,()=>p4Api.previewClean(current.connection,request));
+  },[guard]);
+  const applyClean = useCallback(async (request: P4CleanRequest, paths: string[], fingerprint: string) => {
+    const current=sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    const release=lockMutation(current,t("p4.clean.cleaning"));
+    if (!release) throw new Error(t("p4-operations.workspaceBusy"));
+    const activity=beginActivity(t("p4.clean.cleaning"),current.connection.client);
+    try {
+      await guard(current.connection,()=>p4Api.applyClean(current.connection,request,paths,fingerprint));
+      toast.success(t("p4.clean.cleaned"));
+    } finally {
+      await reloadPending(current).catch(report); bumpFiles();endActivity(activity);release();
+    }
+  },[guard,lockMutation,beginActivity,endActivity,reloadPending,bumpFiles,report]);
+
   const previewReconcile = useCallback(async () => {
     const current = sessionRef.current;
     if (!current) throw new Error(t("p4-operations.connectionRequired"));
@@ -1550,22 +1584,38 @@ export function P4Provider({ children }: { children: ReactNode }) {
     [lockMutation, beginActivity, endActivity, reconnect, report, retargetRepoTab, setTabMeta],
   );
 
-  const specs = useMemo<P4SpecActions>(() => {
+  const { specs, streamSpecs, jobs } = useMemo<{specs: P4SpecActions; streamSpecs: P4StreamSpecActions; jobs: P4JobActions}>(() => {
     async function read<T>(action: (connection: P4Connection) => Promise<T>): Promise<T> {
       const owner = sessionRef.current;
       if (!owner) throw new Error(t("p4-operations.connectionRequired"));
       return guard(owner.connection, () => action(owner.connection));
     }
-    async function write<T>(action: (connection: P4Connection) => Promise<T>): Promise<T> {
+    async function write<T>(action: (connection: P4Connection) => Promise<T>, refreshWorkspace = false, label = t("p4.specs.updating")): Promise<T> {
       const owner = sessionRef.current;
       if (!owner) throw new Error(t("p4-operations.connectionRequired"));
-      const release = lockMutation(owner, t("p4.specs.updating"));
+      const release = lockMutation(owner, label);
       if (!release) throw new Error(t("p4-operations.workspaceBusy"));
-      const activity = beginActivity(t("p4.specs.updating"));
-      try { return await guard(owner.connection, () => action(owner.connection)); }
-      finally { endActivity(activity); release(); }
+      const activity = beginActivity(label);
+      try {
+        return await guard(owner.connection, () => action(owner.connection));
+      }
+      finally {
+        if (refreshWorkspace) {
+          setFilesEpoch(value => value + 1);
+          void reloadPending(owner, undefined, true).catch(report);
+        }
+        endActivity(activity); release();
+      }
     }
-    return {
+    return { jobs: {
+      list: query => read(c => p4Api.listJobs(c, query)),
+      read: job => read(c => p4Api.readJob(c, job)),
+      save: (edit, fingerprint) => write(c => p4Api.saveJob(c, edit, fingerprint), false, t("p4.jobs.updating")),
+      remove: (job, fingerprint) => write(c => p4Api.deleteJob(c, job, fingerprint), false, t("p4.jobs.updating")),
+      fixes: (job, change) => read(c => p4Api.jobFixes(c, job, change)),
+      previewFix: request => read(c => p4Api.previewJobFix(c, request)),
+      applyFix: (request, fingerprint) => write(c => p4Api.applyJobFix(c, request, fingerprint), true, t("p4.jobs.updating")),
+    }, specs: {
       list: (kind, query, owner) => read(c => p4Api.listSpecs(c, kind, query, owner)),
       read: (kind, name) => read(c => p4Api.readSpec(c, kind, name)),
       files: name => read(c => p4Api.labelFiles(c, name)),
@@ -1573,12 +1623,23 @@ export function P4Provider({ children }: { children: ReactNode }) {
       save: (edit, fingerprint) => write(c => p4Api.saveSpec(c, edit, fingerprint)),
       remove: (kind, name, fingerprint) => write(c => p4Api.deleteSpec(c, kind, name, fingerprint)),
       applyTag: (request, fingerprint) => write(c => p4Api.applyLabelTag(c, request, fingerprint)),
-    };
-  }, [guard, lockMutation, beginActivity, endActivity]);
+    }, streamSpecs: {
+      work: () => read(c => p4Api.streamWork(c)),
+      previewWork: request => read(c => p4Api.previewStreamWork(c, request)),
+      applyWork: (request, fingerprint) => write(c => p4Api.applyStreamWork(c, request, fingerprint), true, t("p4.streamWork.updating")),
+      changeDiff: request => read(c => p4Api.streamChangeDiff(c, request)),
+      read: path => read(c => p4Api.readStreamSpec(c, path)),
+      template: setup => read(c => p4Api.newStreamSpec(c, setup)),
+      save: (edit, fingerprint) => write(c => p4Api.saveStreamSpec(c, edit, fingerprint), true),
+      remove: (path, fingerprint) => write(c => p4Api.deleteStreamSpec(c, path, fingerprint), true),
+    }};
+  }, [guard, lockMutation, beginActivity, endActivity, reloadPending, report]);
 
   const value = useMemo<P4ContextValue>(
     () => ({
       specs,
+      streamSpecs,
+      jobs,
       openIntegration,
       previewIntegration,
       applyIntegration,
@@ -1650,6 +1711,9 @@ export function P4Provider({ children }: { children: ReactNode }) {
       getRevision,
       filesEpoch,
       reconcile,
+      openClean,
+      previewClean,
+      applyClean,
       previewReconcile,
       applyReconcile,
       fileAction,
@@ -1683,6 +1747,8 @@ export function P4Provider({ children }: { children: ReactNode }) {
     }),
     [
       specs,
+      streamSpecs,
+      jobs,
       openIntegration,
       previewIntegration,
       applyIntegration,
@@ -1734,6 +1800,9 @@ export function P4Provider({ children }: { children: ReactNode }) {
       moveFiles,
       placeFiles,
       reconcile,
+      openClean,
+      previewClean,
+      applyClean,
       previewReconcile,
       applyReconcile,
       reconnect,
@@ -1784,6 +1853,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
         {integrationInitial && connection ? <P4IntegrationDialog key={JSON.stringify([connection,integrationInitial])} initial={integrationInitial} onClose={() => setIntegrationInitial(null)} /> : null}
         {streamOpen && connection ? <P4StreamDialog initial={streamInitial} key={JSON.stringify([connection,streamInitial])} onClose={() => setStreamOpen(false)} /> : null}
         {reconcileOpen && connection ? <P4ReconcileDialog key={JSON.stringify(connection)} onClose={() => setReconcileOpen(false)} /> : null}
+        {cleanTarget && connection && sameP4Connection(cleanTarget.connection,connection) ? <P4CleanDialog key={JSON.stringify(cleanTarget)} scope={cleanTarget.scope} onClose={()=>setCleanTarget(current=>current===cleanTarget ? null : current)} /> : null}
         {switchTarget !== null && connection ? <P4SwitchDialog key={JSON.stringify([connection,switchTarget])} initialTarget={switchTarget} onClose={() => setSwitchTarget(null)} /> : null}
         {switchOutcome ? <P4SwitchResultDialog outcome={switchOutcome} onClose={() => setSwitchOutcome(null)} /> : null}
         <P4LoginDialog

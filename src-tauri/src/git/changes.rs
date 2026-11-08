@@ -217,6 +217,15 @@ pub fn ignore_patterns(repo: &Repository, patterns: &[String]) -> AppResult<()> 
 /// Commits through `git commit` so hooks, signing, and an in-progress merge or
 /// cherry-pick (its extra parent and original author) are all honoured.
 pub fn commit(repo: &Repository, message: &str, amend: bool) -> AppResult<CommitSummary> {
+    commit_with_options(repo, message, amend, CommitOptions::default())
+}
+
+pub fn commit_with_options(
+    repo: &Repository,
+    message: &str,
+    amend: bool,
+    options: CommitOptions,
+) -> AppResult<CommitSummary> {
     let message = message.trim();
     if message.is_empty() {
         return Err(AppError::msg("Commit message cannot be empty"));
@@ -240,6 +249,12 @@ pub fn commit(repo: &Repository, message: &str, amend: bool) -> AppResult<Commit
     let mut args = vec!["commit", "--file=-"];
     if amend {
         args.push("--amend");
+    }
+    if let Some(flag) = options.signing.commit_flag() {
+        args.push(flag);
+    }
+    if options.signoff {
+        args.push("--signoff");
     }
     run_git_input(workdir(repo)?, &args, message.as_bytes())?;
     let oid = head_oid(repo).ok_or_else(|| AppError::msg("Commit did not move HEAD"))?;

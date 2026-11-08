@@ -9,6 +9,8 @@ use crate::diagnostics::{self, Code, Status};
 use crate::error::{redact_credentials, AppError, AppResult};
 use crate::network::HttpPolicy;
 
+mod release;
+
 const UPDATE_ENDPOINT: &str =
     "https://github.com/FlyAndNotDown/RebaseRaven/releases/latest/download/latest.json";
 const UPDATE_EVENT: &str = "app-update";
@@ -76,6 +78,8 @@ fn configure_routing(builder: UpdaterBuilder, routing: Arc<Mutex<HttpPolicy>>) -
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .apply(builder)
+            .connect_timeout(Duration::from_secs(10))
+            .read_timeout(Duration::from_secs(30))
     })
 }
 
@@ -198,7 +202,7 @@ fn validate_install(snapshot: &UpdateState, version: &str, has_pending: bool) ->
 fn check_error(error: &tauri_plugin_updater::Error) -> String {
     use tauri_plugin_updater::Error;
     match error {
-        Error::ReleaseNotFound => "No public update release is available yet. Retry after a release has been published on GitHub.".to_string(),
+        Error::ReleaseNotFound => "Could not reach the update service. Check your connection or proxy settings and retry.".to_string(),
         Error::TargetNotFound(_) | Error::TargetsNotFound(_) => "The latest release has no update package for this platform. Check the GitHub release for a compatible download.".to_string(),
         Error::Reqwest(error) if error.status().is_some_and(|status| status.as_u16() == 404) => "No public update release is available yet. Retry after a release has been published on GitHub.".to_string(),
         _ => operation_error("Could not check for updates. Check your connection and retry.", error),
@@ -247,7 +251,17 @@ pub async fn check_for_update(app: AppHandle) -> UpdateState {
         let updater = configure_routing(updater, routing.clone())
             .build()
             .map_err(|error| check_error(&error))?;
-        let mut update = updater.check().await.map_err(|error| check_error(&error))?;
+        let mut update = match updater.check().await {
+            Ok(update) => update,
+            Err(error) if release::retryable(&error) => {
+                let policy = routing
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .clone();
+                release::check(&updater, &policy).await?
+            }
+            Err(error) => return Err(check_error(&error)),
+        };
         let info = update
             .as_ref()
             .map(update_info)
@@ -324,23 +338,39 @@ pub async fn install_update(version: String, app: AppHandle) -> AppResult<Update
         }
     }
     // Windows installation closes the app; the explicit Update action starts it.
-    let update = pending.update.restart_after_install(false);
-    let mut last_progress = Instant::now();
-    let download = update
-        .download(
-            |chunk, total| {
-                let mut inner = manager.lock();
-                inner.snapshot.downloaded_bytes =
-                    inner.snapshot.downloaded_bytes.saturating_add(chunk as u64);
-                inner.snapshot.total_bytes = total;
-                if last_progress.elapsed() >= Duration::from_millis(100) {
+    let mut update = pending.update.restart_after_install(false);
+    let mut download = download_update(&update, &manager, &app).await;
+    if download.as_ref().is_err_and(release::retryable) {
+        let policy = pending
+            .routing
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        match release::download_url(&update, &policy).await {
+            Ok(url) => {
+                update.download_url = url;
+                update.headers.insert(
+                    reqwest::header::ACCEPT,
+                    reqwest::header::HeaderValue::from_static("application/octet-stream"),
+                );
+                {
+                    let mut inner = manager.lock();
+                    inner.snapshot.downloaded_bytes = 0;
+                    inner.snapshot.total_bytes = None;
                     UpdateManager::publish(&app, &mut inner);
-                    last_progress = Instant::now();
                 }
-            },
-            || {},
-        )
-        .await;
+                download = download_update(&update, &manager, &app).await;
+            }
+            Err(message) => {
+                diagnostics::record(
+                    Code::UpdateDownload,
+                    Status::Failure,
+                    Some(download_started.elapsed()),
+                );
+                return Ok(manager.fail(&app, &message));
+            }
+        }
+    }
     let bytes = match download {
         Ok(bytes) => bytes,
         Err(error) => {
@@ -396,6 +426,29 @@ pub async fn install_update(version: String, app: AppHandle) -> AppResult<Update
             )))
         }
     }
+}
+
+async fn download_update(
+    update: &Update,
+    manager: &UpdateManager,
+    app: &AppHandle,
+) -> tauri_plugin_updater::Result<Vec<u8>> {
+    let mut last_progress = Instant::now();
+    update
+        .download(
+            |chunk, total| {
+                let mut inner = manager.lock();
+                inner.snapshot.downloaded_bytes =
+                    inner.snapshot.downloaded_bytes.saturating_add(chunk as u64);
+                inner.snapshot.total_bytes = total;
+                if last_progress.elapsed() >= Duration::from_millis(100) {
+                    UpdateManager::publish(app, &mut inner);
+                    last_progress = Instant::now();
+                }
+            },
+            || {},
+        )
+        .await
 }
 
 #[tauri::command]

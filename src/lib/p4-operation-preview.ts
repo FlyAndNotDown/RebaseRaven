@@ -1,9 +1,67 @@
 import type { P4Connection, P4IntegrateRequest, P4UndoRequest } from "@/types/p4";
 import { t } from "@/i18n";
 
+export const P4_JOB_STALE = "The job or its field definition changed. Reload it before saving or deleting.";
+
+export const P4_STREAM_SPEC_STALE = "The stream definition changed. Reload it before saving or deleting.";
+
 export type P4OperationKind = "integrate" | "undo";
 
 const operationErrors: Record<string, string> = {
+  "Choose at least one cleanup action.": "cleanAction",
+  "Cleanup requires file and folder names without wildcards or control characters.": "cleanPath",
+  "Cleanup supports regular workspace files only.": "cleanRegular",
+  "Cleanup preview exceeds 2000 files. Choose a smaller folder or fewer cleanup actions.": "cleanLimit",
+  "Some selected files could not be cleaned. Preview the remaining changes.": "cleanIncomplete",
+  "The stream definition was not removed from the shelf.": "streamWorkShelfDelete",
+  "The stream, workspace, or changelist changed. Preview the stream operation again.": "streamWorkStale",
+  "The server did not return the stream revision.": "streamWorkRevision",
+  "Submit or revert the already opened stream definition first.": "streamWorkOpened",
+  "Choose a different parent view supported by this stream type.": "streamWorkView",
+  "The stream definition is no longer opened in this workspace.": "streamWorkMissing",
+  "Choose a different changelist.": "streamWorkChange",
+  "Choose a resolve method for the pending stream conflicts.": "streamWorkResolve",
+  "Choose a supported stream operation.": "streamWorkAction",
+  "The stream's parent chain is invalid or too deep.": "streamWorkAncestors",
+  "The stream operation did not complete. Refresh the pending changes.": "streamWorkIncomplete",
+  "Choose a shelved or submitted stream definition.": "streamWorkSource",
+  "The stream revision is unavailable.": "streamWorkSourceMissing",
+  "Revert or submit the private stream definition before deleting the stream.": "streamWorkDelete",
+  "This field is not isolated by the server's stream definition. Submit or revert the private edit first.": "streamWorkField",
+  "Submit or revert the opened stream definition first.": "streamWorkChangeDelete",
+  "Move the opened stream definition to the selected changelist first.": "streamWorkRestoreChange",
+  "This shelf has no definition for the workspace's stream.": "streamWorkShelf",
+
+  "The job association was not updated.": "fixNotUpdated",
+  "The job was not deleted.": "jobNotDeleted",
+  "Remove the job's changelist links before deleting it.": "jobLinked",
+  "This job is no longer linked to the changelist.": "fixMissing",
+  "Choose a pending or submitted changelist.": "fixChange",
+  "Choose a fix status from the server's job definition.": "fixStatus",
+  "Choose one job or changelist.": "jobOrChange",
+  "The server did not return the created job name.": "jobCreateResult",
+  "This job already exists. Choose another name.": "jobExists",
+  "A read-only job field cannot be changed.": "jobReadOnly",
+  "The job form contains an unknown field. Reload it.": "jobUnknownField",
+  "Enter a single-line job search expression.": "jobFilter",
+  "The selected job no longer exists.": "jobMissing",
+  "The server's job definition has no Job field.": "jobMissingField",
+  "Invalid job field code.": "jobCode",
+  "The server returned an invalid job field definition.": "jobSchema",
+  "Enter one job name without wildcards or search operators.": "jobName",
+  "The job, changelist, or fix changed. Preview the association again.": "fixStale",
+  "The job or its field definition changed. Reload it before saving or deleting.": "jobStale",
+  [P4_STREAM_SPEC_STALE]: "streamSpecStale",
+  "This stream already exists. Choose another path.": "streamSpecExists",
+  "Enter one stream path without wildcards or revision suffixes.": "streamSpecPath",
+  "Choose a supported stream type.": "streamSpecType",
+  "A mainline stream must have no parent.": "streamSpecMainline",
+  "Choose a different parent stream.": "streamSpecParent",
+  "Choose a parent view supported by this stream type.": "streamSpecView",
+  "Convert the parent view before editing this stream definition.": "streamSpecConvert",
+  "Enter a stream name, owner and description smaller than 64 KiB.": "streamSpecFields",
+  "Enter one stream mapping per line, up to 5000 lines.": "streamSpecMapping",
+  "Virtual streams must disable integration to and from their parent.": "streamSpecVirtual",
   "Choose revisions or changelists for the integration range.": "integrationRange",
   "Choose file paths or a named branch mapping.": "integrationMethod",
   "Move integration targets to the selected changelist first.": "integrationChange",
@@ -100,6 +158,8 @@ export function p4OperationErrorKey(message: string): string | null {
 
 /** Localize only exact application messages; native command diagnostics stay intact. */
 export function p4DisplayError(message: string, language?: string): string {
+  const field = /^Enter a valid value for (.+)\.$/.exec(message)?.[1];
+  if (field) return t("p4-operations.errors.jobFieldValue", {field, lng: language});
   const key = p4OperationErrorKey(message);
   return key ? t(key, { lng: language }) : message;
 }

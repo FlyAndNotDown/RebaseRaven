@@ -168,6 +168,7 @@ export function AppToolbar() {
           <DialogHeader>
             <DialogTitle>{t("desktop.appToolbar.publish_branch")}</DialogTitle>
             <DialogDescription>
+              <span className="font-medium text-foreground">{publishPrompt?.name}</span>{" / "}
               <span className="font-mono">{publishPrompt?.branch}</span> {t("desktop.appToolbar.does_not_track_a_remote_branch_publish_it")}<span className="font-mono">{publishPrompt?.remote}</span> {t("desktop.appToolbar.and_set_that_as_the_upstream")}</DialogDescription>
           </DialogHeader>
           <DialogFooter>

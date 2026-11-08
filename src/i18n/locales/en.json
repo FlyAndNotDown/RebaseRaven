@@ -391,6 +391,8 @@
       "could_not_save_the_avatar_provider_try_again": "Could not save the avatar provider. Try again."
     },
     "appUpdates": {
+      "check_failed": "Update check failed",
+      "manual_download": "Download manually",
       "update": "Update",
       "later": "Later",
       "update_installed": "Update installed",

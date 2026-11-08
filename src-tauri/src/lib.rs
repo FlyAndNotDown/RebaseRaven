@@ -264,6 +264,44 @@ async fn get_commit_details(repo_path: String, oid: String) -> AppResult<CommitD
 }
 
 #[tauri::command]
+async fn get_commit_message(repo_path: String, oid: String) -> AppResult<String> {
+    with_repo_async(repo_path, move |repo| git::commit_message(repo, &oid)).await
+}
+
+#[tauri::command]
+async fn verify_git_signature(
+    repo_path: String,
+    target: git::GitSignatureTarget,
+    activity_id: String,
+) -> AppResult<git::GitSignatureVerification> {
+    blocking(move || {
+        git::with_cancel(Some(&activity_id), || {
+            git::with_background(true, || {
+                with_repo(&repo_path, |repo| git::verify_signature(repo, &target))
+            })
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+async fn get_git_repository_settings(repo_path: String) -> AppResult<git::GitRepositorySettings> {
+    with_repo_async(repo_path, |repo| git::repository_settings(repo)).await
+}
+
+#[tauri::command]
+async fn set_git_repository_settings(
+    repo_path: String,
+    changes: Vec<git::GitRepositoryChange>,
+    fingerprint: String,
+) -> AppResult<git::GitRepositorySettings> {
+    with_repo_async(repo_path, move |repo| {
+        git::set_repository_settings(repo, &changes, &fingerprint)
+    })
+    .await
+}
+
+#[tauri::command]
 async fn get_commit_diff(
     repo_path: String,
     oid: String,
@@ -355,9 +393,15 @@ async fn commit_changes(
     repo_path: String,
     message: String,
     amend: Option<bool>,
+    options: Option<git::CommitOptions>,
 ) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, move |repo| {
-        git::commit(repo, &message, amend.unwrap_or(false))?;
+        git::commit_with_options(
+            repo,
+            &message,
+            amend.unwrap_or(false),
+            options.unwrap_or_default(),
+        )?;
         git::snapshot(repo)
     })
     .await
@@ -634,6 +678,7 @@ async fn push_remote(
     remote: Option<String>,
     force: Option<bool>,
     set_upstream: Option<bool>,
+    expected_branch: Option<String>,
     activity_id: Option<String>,
     app: AppHandle,
 ) -> AppResult<WorkspaceSnapshot> {
@@ -646,6 +691,7 @@ async fn push_remote(
                 remote.as_deref(),
                 force,
                 set_upstream,
+                expected_branch.as_deref(),
                 progress_sink(&app, activity_id.as_deref()),
             )
         })
@@ -682,9 +728,21 @@ async fn create_tag(
     name: String,
     message: Option<String>,
     target: Option<String>,
+    signing: Option<git::GitSigningMode>,
 ) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, move |repo| {
-        git::create_tag(repo, &name, message.as_deref(), target.as_deref())?;
+        match signing.unwrap_or_default() {
+            git::GitSigningMode::Default => {
+                git::create_tag(repo, &name, message.as_deref(), target.as_deref())?
+            }
+            mode => git::create_tag_with_signing(
+                repo,
+                &name,
+                message.as_deref(),
+                target.as_deref(),
+                mode,
+            )?,
+        }
         git::snapshot(repo)
     })
     .await
@@ -870,6 +928,72 @@ async fn operation_continue(
 #[tauri::command]
 async fn operation_abort(repo_path: String) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, git::operation_abort).await
+}
+
+#[tauri::command]
+async fn sparse_checkout_state(repo_path: String) -> AppResult<git::SparseCheckoutState> {
+    with_repo_async(repo_path, move |repo| git::sparse_checkout_state(repo)).await
+}
+
+#[tauri::command]
+async fn git_lfs_state(repo_path: String) -> AppResult<git::LfsState> {
+    with_repo_async(repo_path, move |repo| git::lfs_state(repo)).await
+}
+
+#[tauri::command]
+async fn git_lfs_action(
+    repo_path: String,
+    action: git::LfsAction,
+    fingerprint: String,
+    activity_id: Option<String>,
+    app: AppHandle,
+) -> AppResult<git::LfsOutcome> {
+    with_repo_async(repo_path, move |repo| {
+        git::with_cancel(activity_id.as_deref(), || {
+            git::lfs_action(
+                repo,
+                &action,
+                &fingerprint,
+                progress_sink(&app, activity_id.as_deref()),
+            )
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+async fn preview_sparse_checkout(
+    repo_path: String,
+    request: git::SparseCheckoutRequest,
+    fingerprint: String,
+) -> AppResult<git::SparseCheckoutPreview> {
+    with_repo_async(repo_path, move |repo| {
+        git::preview_sparse_checkout(repo, &request, &fingerprint)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn apply_sparse_checkout(
+    repo_path: String,
+    request: git::SparseCheckoutRequest,
+    fingerprint: String,
+    allow_ignored_removal: bool,
+    activity_id: Option<String>,
+    app: AppHandle,
+) -> AppResult<git::SparseCheckoutOutcome> {
+    with_repo_async(repo_path, move |repo| {
+        git::with_cancel(activity_id.as_deref(), || {
+            git::apply_sparse_checkout(
+                repo,
+                &request,
+                &fingerprint,
+                allow_ignored_removal,
+                progress_sink(&app, activity_id.as_deref()),
+            )
+        })
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1460,6 +1584,124 @@ async fn p4_apply_integration(
 }
 
 #[tauri::command]
+async fn p4_new_stream_spec(
+    connection: p4::P4Connection,
+    setup: p4::P4StreamSetup,
+) -> AppResult<p4::P4StreamSpec> {
+    blocking(move || p4::new_stream_spec(&connection, &setup)).await
+}
+
+#[tauri::command]
+async fn p4_read_stream_spec(
+    connection: p4::P4Connection,
+    path: String,
+) -> AppResult<p4::P4StreamSpec> {
+    blocking(move || p4::read_stream_spec(&connection, &path)).await
+}
+
+#[tauri::command]
+async fn p4_save_stream_spec(
+    connection: p4::P4Connection,
+    edit: p4::P4StreamSpecEdit,
+    fingerprint: Option<String>,
+) -> AppResult<p4::P4StreamSpec> {
+    blocking(move || p4::save_stream_spec(&connection, &edit, fingerprint.as_deref())).await
+}
+
+#[tauri::command]
+async fn p4_delete_stream_spec(
+    connection: p4::P4Connection,
+    path: String,
+    fingerprint: String,
+) -> AppResult<()> {
+    blocking(move || p4::delete_stream_spec(&connection, &path, &fingerprint)).await
+}
+
+#[tauri::command]
+async fn p4_stream_work(connection: p4::P4Connection) -> AppResult<p4::P4StreamWork> {
+    blocking(move || p4::stream_work(&connection)).await
+}
+
+#[tauri::command]
+async fn p4_preview_stream_work(
+    connection: p4::P4Connection,
+    request: p4::P4StreamWorkRequest,
+) -> AppResult<p4::P4StreamWorkPreview> {
+    blocking(move || p4::preview_stream_work(&connection, &request)).await
+}
+
+#[tauri::command]
+async fn p4_apply_stream_work(
+    connection: p4::P4Connection,
+    request: p4::P4StreamWorkRequest,
+    fingerprint: String,
+) -> AppResult<p4::P4StreamWork> {
+    blocking(move || p4::apply_stream_work(&connection, &request, &fingerprint)).await
+}
+
+#[tauri::command]
+async fn p4_stream_change_diff(
+    connection: p4::P4Connection,
+    request: p4::P4StreamDiffRequest,
+) -> AppResult<git::FileDiff> {
+    blocking(move || p4::stream_change_diff(&connection, &request)).await
+}
+
+#[tauri::command]
+async fn p4_list_jobs(connection: p4::P4Connection, query: String) -> AppResult<p4::P4JobPage> {
+    blocking(move || p4::list_jobs(&connection, &query)).await
+}
+
+#[tauri::command]
+async fn p4_read_job(connection: p4::P4Connection, job: Option<String>) -> AppResult<p4::P4Job> {
+    blocking(move || p4::read_job(&connection, job.as_deref())).await
+}
+
+#[tauri::command]
+async fn p4_save_job(
+    connection: p4::P4Connection,
+    edit: p4::P4JobEdit,
+    fingerprint: Option<String>,
+) -> AppResult<p4::P4Job> {
+    blocking(move || p4::save_job(&connection, &edit, fingerprint.as_deref())).await
+}
+
+#[tauri::command]
+async fn p4_delete_job(
+    connection: p4::P4Connection,
+    job: String,
+    fingerprint: String,
+) -> AppResult<()> {
+    blocking(move || p4::delete_job(&connection, &job, &fingerprint)).await
+}
+
+#[tauri::command]
+async fn p4_job_fixes(
+    connection: p4::P4Connection,
+    job: String,
+    change: String,
+) -> AppResult<p4::P4FixPage> {
+    blocking(move || p4::job_fixes(&connection, &job, &change)).await
+}
+
+#[tauri::command]
+async fn p4_preview_job_fix(
+    connection: p4::P4Connection,
+    request: p4::P4FixRequest,
+) -> AppResult<p4::P4FixPreview> {
+    blocking(move || p4::preview_job_fix(&connection, &request)).await
+}
+
+#[tauri::command]
+async fn p4_apply_job_fix(
+    connection: p4::P4Connection,
+    request: p4::P4FixRequest,
+    fingerprint: String,
+) -> AppResult<()> {
+    blocking(move || p4::apply_job_fix(&connection, &request, &fingerprint)).await
+}
+
+#[tauri::command]
 async fn p4_list_specs(
     connection: p4::P4Connection,
     kind: p4::P4SpecKind,
@@ -1743,6 +1985,24 @@ async fn p4_sync(
 #[tauri::command]
 async fn p4_preview_reconcile(connection: p4::P4Connection) -> AppResult<p4::P4ReconcilePreview> {
     blocking(move || p4::preview_reconcile(&connection)).await
+}
+
+#[tauri::command]
+async fn p4_preview_clean(
+    connection: p4::P4Connection,
+    request: p4::P4CleanRequest,
+) -> AppResult<p4::P4CleanPreview> {
+    blocking(move || p4::preview_clean(&connection, &request)).await
+}
+
+#[tauri::command]
+async fn p4_apply_clean(
+    connection: p4::P4Connection,
+    request: p4::P4CleanRequest,
+    paths: Vec<String>,
+    fingerprint: String,
+) -> AppResult<String> {
+    blocking(move || p4::apply_clean(&connection, &request, &paths, &fingerprint)).await
 }
 
 #[tauri::command]
@@ -2199,6 +2459,10 @@ pub fn run() {
             get_branches,
             get_workdir_diff,
             get_commit_details,
+            get_commit_message,
+            verify_git_signature,
+            get_git_repository_settings,
+            set_git_repository_settings,
             list_directory,
             search_files,
             read_file,
@@ -2256,6 +2520,11 @@ pub fn run() {
             operation_abort,
             bisect_state,
             bisect_action,
+            sparse_checkout_state,
+            git_lfs_state,
+            git_lfs_action,
+            preview_sparse_checkout,
+            apply_sparse_checkout,
             resolve_conflict,
             conflict_view,
             save_conflict,
@@ -2321,7 +2590,22 @@ pub fn run() {
             p4_workspace_settings,
             p4_preview_integration,
             p4_apply_integration,
+            p4_stream_work,
+            p4_preview_stream_work,
+            p4_apply_stream_work,
+            p4_stream_change_diff,
+            p4_list_jobs,
+            p4_read_job,
+            p4_save_job,
+            p4_delete_job,
+            p4_job_fixes,
+            p4_preview_job_fix,
+            p4_apply_job_fix,
             p4_list_specs,
+            p4_new_stream_spec,
+            p4_read_stream_spec,
+            p4_save_stream_spec,
+            p4_delete_stream_spec,
             p4_read_spec,
             p4_save_spec,
             p4_delete_spec,
@@ -2351,6 +2635,8 @@ pub fn run() {
             p4_get_revision,
             p4_sync,
             p4_preview_reconcile,
+            p4_preview_clean,
+            p4_apply_clean,
             p4_apply_reconcile,
             p4_file_action,
             p4_preview_integrate,

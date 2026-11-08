@@ -21,6 +21,8 @@ export interface P4File {
   detail: string;
 }
 
+export interface P4StreamChange { path: string; baseChange: string }
+
 export interface P4Changelist {
   id: string;
   user: string;
@@ -30,6 +32,8 @@ export interface P4Changelist {
   time: number;
   shelved: boolean;
   files: P4File[];
+  stream?: P4StreamChange | null;
+  shelvedStream?: P4StreamChange | null;
 }
 
 export interface P4ChangePage {
@@ -258,3 +262,12 @@ export interface P4FileProperties {
 }
 export interface P4FilePropertiesView { files: P4FileProperties[]; fingerprint: string }
 export interface P4FileTypeRequest { paths: string[]; selected: string[]; fileType: string; changeId: string }
+export interface P4CleanRequest {
+  scope: string;
+  restoreModified: boolean;
+  restoreMissing: boolean;
+  removeUntracked: boolean;
+  includeIgnored: boolean;
+}
+export interface P4CleanFile {path: string; depotPath: string; action: "restoreModified" | "restoreMissing" | "removeUntracked"; revision: string | null}
+export interface P4CleanPreview {files: P4CleanFile[]; fingerprint: string}

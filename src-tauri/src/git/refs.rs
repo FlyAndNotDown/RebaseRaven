@@ -205,6 +205,16 @@ pub fn create_tag(
     message: Option<&str>,
     target: Option<&str>,
 ) -> AppResult<()> {
+    create_tag_with_signing(repo, name, message, target, GitSigningMode::Default)
+}
+
+pub fn create_tag_with_signing(
+    repo: &Repository,
+    name: &str,
+    message: Option<&str>,
+    target: Option<&str>,
+    signing: GitSigningMode,
+) -> AppResult<()> {
     let name = name.trim();
     if name.is_empty() {
         return Err(AppError::msg("Tag name cannot be empty"));
@@ -216,7 +226,7 @@ pub fn create_tag(
             .ok_or_else(|| AppError::msg("Cannot create a tag before the first commit"))?
     };
     let root = workdir(repo)?;
-    // `git tag` validates the name and honours tag.gpgSign for annotated tags.
+    // Git handles the configured signing backend and validates the tag name.
     match message.map(str::trim).filter(|value| !value.is_empty()) {
         Some(message) => {
             if !identity_configured(repo) {
@@ -224,14 +234,20 @@ pub fn create_tag(
                     "Set user.name and user.email in Git config before tagging",
                 ));
             }
-            run_git_input(
-                root,
-                &["tag", "--annotate", "--file=-", "--", name, &target],
-                message.as_bytes(),
-            )?;
+            let mut args = vec!["tag", "--annotate", "--file=-"];
+            if let Some(flag) = signing.tag_flag() {
+                args.push(flag);
+            }
+            args.extend(["--", name, &target]);
+            run_git_input(root, &args, message.as_bytes())?;
         }
         None => {
-            run_git_stdout(root, &["tag", "--", name, &target])?;
+            if matches!(signing, GitSigningMode::Sign) {
+                return Err(AppError::msg("Enter an annotation to create a signed tag."));
+            }
+            // An empty annotation explicitly requests a lightweight tag, even
+            // when tag.gpgSign would otherwise invoke an editor for a signed tag.
+            run_git_stdout(root, &["tag", "--no-sign", "--", name, &target])?;
         }
     }
     Ok(())

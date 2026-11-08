@@ -1175,7 +1175,7 @@ mod tests {
         let source = temporary.path().join("source");
         fs::create_dir(&destination).unwrap();
         fs::create_dir(&source).unwrap();
-        let passphrase = "example protected passphrase";
+        let passphrase = "example caf\u{e9} protected passphrase";
         let generated = generate_at(
             &destination,
             "id_protected",
@@ -1188,6 +1188,15 @@ mod tests {
         assert_eq!(generated.algorithm, "ed25519");
         assert_eq!(generated.comment, "alice@example.com");
         let private = destination.join("id_protected");
+        for round in 0..8 {
+            assert!(
+                matches!(
+                    reveal_public(&find_ssh_keygen().unwrap(), &private, passphrase),
+                    Revealed::Open(_)
+                ),
+                "Protected-key prompt failed on round {round}"
+            );
+        }
         let imported_source = source.join("id_imported");
         fs::copy(&private, &imported_source).unwrap();
         let imported = import_at(&destination, &imported_source, passphrase).unwrap();

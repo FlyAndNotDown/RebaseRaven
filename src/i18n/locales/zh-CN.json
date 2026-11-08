@@ -391,6 +391,8 @@
       "could_not_save_the_avatar_provider_try_again": "无法保存头像来源，请重试。"
     },
     "appUpdates": {
+      "check_failed": "检查更新失败",
+      "manual_download": "手动下载",
       "update": "更新",
       "later": "稍后",
       "update_installed": "更新已安装",

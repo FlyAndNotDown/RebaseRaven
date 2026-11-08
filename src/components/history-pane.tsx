@@ -23,6 +23,7 @@ import {
   MessageSquareTextIcon,
   RotateCcwIcon,
   SearchIcon,
+  ShieldCheckIcon,
   BinaryIcon,
   Undo2Icon,
   UndoDotIcon,
@@ -30,6 +31,8 @@ import {
 } from "lucide-react";
 import { AuthorName, ExactTime } from "@/components/revision-meta";
 import { CommitLine, CreateBranchDialog, CreateTagDialog } from "@/components/create-ref-dialogs";
+import { ReuseCommitMessageDialog, type CommitMessageTarget } from "@/components/reuse-commit-message-dialog";
+import { SignatureVerificationDialog, type SignatureDialogTarget } from "@/components/signature-verification-dialog";
 import { Button } from "@/components/ui/button";
 import { HoverTip } from "@/components/ui/tooltip";
 import {
@@ -68,6 +71,9 @@ type CommitRowAction =
   | { type: "select"; id: string }
   | { type: "branch"; commit: CommitSummary }
   | { type: "tag"; commit: CommitSummary }
+  | { type: "reuse-message"; commit: CommitSummary }
+  | { type: "verify-signature"; commit: CommitSummary }
+  | { type: "copy-message"; commit: CommitSummary }
   | { type: "compare"; commits: CommitSummary[] }
   | { type: "revert-many"; commits: CommitSummary[] }
   | { type: "cherry-pick-many"; commits: CommitSummary[] }
@@ -167,6 +173,8 @@ export function HistoryPane() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [branchCommit, setBranchCommit] = useState<CommitSummary | null>(null);
   const [tagCommit, setTagCommit] = useState<CommitSummary | null>(null);
+  const [messageTarget, setMessageTarget] = useState<CommitMessageTarget | null>(null);
+  const [signatureTarget, setSignatureTarget] = useState<SignatureDialogTarget | null>(null);
   const [confirm, setConfirm] = useState<{ kind: "revert" | "cherry-pick"; commits: CommitSummary[] } | null>(
     null,
   );
@@ -223,6 +231,19 @@ export function HistoryPane() {
         case "tag":
           setTagCommit(action.commit);
           break;
+        case "reuse-message":
+          if (repoPath) setMessageTarget({tabId:activeTabId, path:repoPath, commit:action.commit});
+          break;
+        case "verify-signature":
+          if (repoPath) setSignatureTarget({tabId:activeTabId, path:repoPath, object:{kind:"commit",value:action.commit.id}});
+          break;
+        case "copy-message":
+          if (repoPath) void gitApi.getCommitMessage(repoPath, action.commit.id).then(async message => {
+            if (!message) {toast.error(t("git.ui.nothing_to_copy")); return;}
+            await navigator.clipboard.writeText(message);
+            toast.success(t("git.ui.copied_message"));
+          }).catch(() => toast.error(t("git.ui.could_not_copy")));
+          break;
         case "compare": {
           const [older, newer] = [...action.commits].sort((left, right) => left.timestamp - right.timestamp);
           if (!older || !newer) break;
@@ -278,7 +299,7 @@ export function HistoryPane() {
           break;
       }
     },
-    [createPatch, headPushed, openComparison, selectCommit, undoLastCommit],
+    [activeTabId, repoPath, createPatch, headPushed, openComparison, selectCommit, undoLastCommit],
   );
 
   const selectRows = useCallback(
@@ -472,6 +493,8 @@ export function HistoryPane() {
           if (!open) setBranchCommit(null);
         }}
       />
+      {messageTarget && messageTarget.tabId === activeTabId && messageTarget.path === repoPath ? <ReuseCommitMessageDialog key={`${messageTarget.tabId}:${messageTarget.commit.id}`} target={messageTarget} onClose={() => setMessageTarget(null)} /> : null}
+      {signatureTarget && signatureTarget.tabId === activeTabId && signatureTarget.path === repoPath ? <SignatureVerificationDialog key={`${signatureTarget.tabId}:${signatureTarget.object.value}`} target={signatureTarget} onClose={() => setSignatureTarget(null)} /> : null}
       <Dialog open={confirmUndo} onOpenChange={setConfirmUndo}>
         <DialogContent>
           <DialogHeader>
@@ -731,7 +754,6 @@ const CommitRow = memo(function CommitRow({
   getSelectedCommits: () => CommitSummary[];
 }) {
   useTranslation();
-  const message = [commit.summary, commit.body].filter(Boolean).join("\n\n");
   const isHead = (commit.refs ?? []).some((ref) => ref.kind === "head");
 
   async function copyText(value: string, success: string) {
@@ -825,6 +847,10 @@ const CommitRow = memo(function CommitRow({
           <TagIcon />{t("git.ui.create_tag")}</ContextMenuItem>
         <ContextMenuItem onClick={() => onAction({ type: "patch", commit })}>
           <FileDiffIcon />{t("git.ui.create_patch")}</ContextMenuItem>
+        <ContextMenuItem onClick={() => onAction({ type: "reuse-message", commit })}>
+          <MessageSquareTextIcon />{t("git.reuseMessage.title")}</ContextMenuItem>
+        <ContextMenuItem onClick={() => onAction({ type: "verify-signature", commit })}>
+          <ShieldCheckIcon />{t("git.signature.action")}</ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuSub>
           <ContextMenuSubTrigger>
@@ -838,8 +864,8 @@ const CommitRow = memo(function CommitRow({
             ) : null}
             <ContextMenuItem onClick={() => void copyText(commit.id, t("git.ui.copied_commit_hash"))}>
               <HashIcon />{t("git.ui.hash")}</ContextMenuItem>
-            {message ? (
-              <ContextMenuItem onClick={() => void copyText(message, t("git.ui.copied_message"))}>
+            {commit.summary || commit.body ? (
+              <ContextMenuItem onClick={() => onAction({type:"copy-message",commit})}>
                 <MessageSquareTextIcon />{t("git.ui.message")}</ContextMenuItem>
             ) : null}
           </ContextMenuSubContent>

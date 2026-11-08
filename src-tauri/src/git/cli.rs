@@ -401,6 +401,43 @@ pub(super) fn run_git_ok_progress(
 pub(super) fn run_git_progress(
     root: Option<&Path>,
     args: &[&str],
+    on_progress: impl FnMut(&str) + Send,
+) -> AppResult<()> {
+    run_git_progress_stdin(root, args, None, on_progress)
+}
+
+pub(super) fn run_git_file_progress(
+    root: &Path,
+    args: &[&str],
+    input: fs::File,
+    on_progress: impl FnMut(&str) + Send,
+) -> AppResult<()> {
+    run_git_progress_stdin(Some(root), args, Some(input), on_progress)
+}
+
+fn run_git_progress_stdin(
+    root: Option<&Path>,
+    args: &[&str],
+    input: Option<fs::File>,
+    on_progress: impl FnMut(&str) + Send,
+) -> AppResult<()> {
+    run_git_progress_io(root, args, input, None, on_progress)
+}
+
+pub(super) fn run_git_progress_output(
+    root: &Path,
+    args: &[&str],
+    output: fs::File,
+    on_progress: impl FnMut(&str) + Send,
+) -> AppResult<()> {
+    run_git_progress_io(Some(root), args, None, Some(output), on_progress)
+}
+
+fn run_git_progress_io(
+    root: Option<&Path>,
+    args: &[&str],
+    input: Option<fs::File>,
+    output: Option<fs::File>,
     mut on_progress: impl FnMut(&str) + Send,
 ) -> AppResult<()> {
     let timer = Instant::now();
@@ -420,8 +457,8 @@ pub(super) fn run_git_progress(
     }
     command.env("GIT_TERMINAL_PROMPT", "0");
     command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
+        .stdin(input.map_or_else(Stdio::null, Stdio::from))
+        .stdout(output.map_or_else(Stdio::piped, Stdio::from))
         .stderr(Stdio::piped());
     let scope = current_cancel();
     if BACKGROUND.with(|flag| flag.get()) {
@@ -1043,10 +1080,19 @@ pub(super) fn which(name: &str) -> Option<PathBuf> {
 }
 
 pub(super) fn spawn_git_stdout(root: &Path, args: &[&str]) -> AppResult<std::process::Child> {
+    spawn_git_stdout_env(root, args, &[])
+}
+
+pub(super) fn spawn_git_stdout_env(
+    root: &Path,
+    args: &[&str],
+    env: &[(&str, &str)],
+) -> AppResult<std::process::Child> {
     let git = require_git()?;
     let mut command = git_command(git);
     command.arg("-C").arg(root).args(args);
     command.env("GIT_TERMINAL_PROMPT", "0");
+    command.envs(env.iter().copied());
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

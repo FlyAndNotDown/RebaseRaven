@@ -92,6 +92,13 @@ pub struct P4File {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct P4StreamChange {
+    pub path: String,
+    pub base_change: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct P4Changelist {
     pub id: String,
     pub user: String,
@@ -101,6 +108,8 @@ pub struct P4Changelist {
     pub time: i64,
     pub shelved: bool,
     pub files: Vec<P4File>,
+    pub stream: Option<P4StreamChange>,
+    pub shelved_stream: Option<P4StreamChange>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1724,8 +1733,14 @@ fn push_line(lines: &mut Vec<String>, line: String) {
 pub fn submit(connection: &P4Connection, change_id: &str, description: &str) -> AppResult<()> {
     require_description(description)?;
     let env = env_for(connection);
-    let spec = set_description(&change_spec(&env, change_id)?, description);
-    run_ok(&env, &["submit", "-i"], Some(&spec))?;
+    let (spec, fix_statuses) = change_spec(&env, change_id)?;
+    let spec = set_description(&spec, description);
+    let args: &[&str] = if fix_statuses {
+        &["submit", "-s", "-i"]
+    } else {
+        &["submit", "-i"]
+    };
+    run_ok(&env, args, Some(&spec))?;
     Ok(())
 }
 
@@ -1736,8 +1751,14 @@ pub fn save_change(
 ) -> AppResult<String> {
     require_description(description)?;
     let env = env_for(connection);
-    let spec = set_description(&change_spec(&env, change_id)?, description);
-    let output = run_ok(&env, &["change", "-i"], Some(&spec))?;
+    let (spec, fix_statuses) = change_spec(&env, change_id)?;
+    let spec = set_description(&spec, description);
+    let args: &[&str] = if fix_statuses {
+        &["change", "-s", "-i"]
+    } else {
+        &["change", "-i"]
+    };
+    let output = run_ok(&env, args, Some(&spec))?;
     Ok(created_change_id(&output).unwrap_or_else(|| change_id.to_string()))
 }
 
@@ -1770,6 +1791,11 @@ fn delete_change_with(
     {
         return Err(AppError::msg(
             "Choose your own pending changelist in this workspace.",
+        ));
+    }
+    if !spec_field(&spec, "Stream").is_empty() {
+        return Err(AppError::msg(
+            "Submit or revert the opened stream definition first.",
         ));
     }
     // The server atomically refuses a changelist with opened files or a shelf.
@@ -3331,8 +3357,25 @@ fn load_pending(connection: &P4Connection) -> AppResult<Vec<P4Changelist>> {
         .filter_map(|record| record.get("depotFile").cloned())
         .collect();
     let locals = where_paths(&env, &depot_files);
+    let open_stream = opened.iter().find_map(|record| {
+        stream_from_record(record).map(|stream| {
+            let change = field(record, "change");
+            (
+                if change.is_empty() {
+                    "default".to_string()
+                } else {
+                    change
+                },
+                stream,
+            )
+        })
+    });
+    let mut shelved_streams = BTreeMap::new();
     let mut by_change: BTreeMap<String, Vec<P4File>> = BTreeMap::new();
     for record in &opened {
+        if !record.contains_key("depotFile") {
+            continue;
+        }
         let change = {
             let value = field(record, "change");
             if value.is_empty() {
@@ -3351,6 +3394,9 @@ fn load_pending(connection: &P4Connection) -> AppResult<Vec<P4Changelist>> {
             continue;
         };
         let record = parse_ztag(&text).into_iter().next().unwrap_or_default();
+        if let Some(stream) = stream_from_record(&record) {
+            shelved_streams.insert(id.clone(), stream);
+        }
         let extra = files_from_groups(connection, &indexed_groups(&record), true);
         by_change.entry(id.clone()).or_default().extend(extra);
     }
@@ -3366,6 +3412,8 @@ fn load_pending(connection: &P4Connection) -> AppResult<Vec<P4Changelist>> {
         time: 0,
         shelved: false,
         files: by_change.remove("default").unwrap_or_default(),
+        stream: None,
+        shelved_stream: None,
     }];
     let mut numbered = Vec::new();
     for record in parse_ztag(&pending_text) {
@@ -3390,10 +3438,19 @@ fn load_pending(connection: &P4Connection) -> AppResult<Vec<P4Changelist>> {
             time: 0,
             shelved: shelved_ids.contains(&id),
             files,
+            stream: None,
+            shelved_stream: None,
         });
     }
     numbered.sort_by_key(|change| std::cmp::Reverse(change_number(&change.id)));
     changes.extend(numbered);
+    for change in &mut changes {
+        change.stream = open_stream
+            .as_ref()
+            .filter(|(id, _)| id == &change.id)
+            .map(|(_, stream)| stream.clone());
+        change.shelved_stream = shelved_streams.remove(&change.id);
+    }
     annotate_pending(connection, &mut changes);
     Ok(changes)
 }
@@ -3454,6 +3511,21 @@ pub(super) fn files_from_groups(
         .collect()
 }
 
+pub(super) fn stream_from_record(record: &ZtagRecord) -> Option<P4StreamChange> {
+    let path = record
+        .get("stream")
+        .filter(|path| path.starts_with("//"))?
+        .clone();
+    Some(P4StreamChange {
+        path,
+        base_change: record
+            .get("streamHaveChange")
+            .or_else(|| record.get("haveChange"))
+            .cloned()
+            .unwrap_or_default(),
+    })
+}
+
 pub(super) fn change_from_record(
     record: &ZtagRecord,
     files: Vec<P4File>,
@@ -3475,6 +3547,16 @@ pub(super) fn change_from_record(
         time: field_i64(record, "time"),
         shelved,
         files,
+        stream: if shelved {
+            None
+        } else {
+            stream_from_record(record)
+        },
+        shelved_stream: if shelved {
+            stream_from_record(record)
+        } else {
+            None
+        },
     }
 }
 
@@ -3858,11 +3940,13 @@ pub(super) fn update_config_file(root: &Path, env: &P4Env) -> AppResult<()> {
     Ok(())
 }
 
-fn change_spec(env: &P4Env, change_id: &str) -> AppResult<String> {
+fn change_spec(env: &P4Env, change_id: &str) -> AppResult<(String, bool)> {
     if change_id.is_empty() || change_id == "default" || change_id == "new" {
-        run_ok(env, &["change", "-o"], None)
+        // A new -s form marks JobView suggestions as ignore. Keep the native
+        // default form until a numbered changelist has explicit fix records.
+        Ok((run_ok(env, &["change", "-o"], None)?, false))
     } else {
-        run_ok(env, &["change", "-o", change_id], None)
+        Ok((run_ok(env, &["change", "-s", "-o", change_id], None)?, true))
     }
 }
 
@@ -4990,6 +5074,8 @@ Description:
             time: 0,
             shelved: false,
             files: Vec::new(),
+            stream: None,
+            shelved_stream: None,
         };
         assert!(change_matches(&change, "stream"));
         assert!(change_matches(&change, "900"));
@@ -5088,5 +5174,48 @@ Description:
         assert_eq!(facts.action, "delete");
         assert!(!resolve_can_merge(&facts.action, &facts.kind));
         assert_eq!(resolve_summary(&facts), "Deleting //depot/dev/Old.ini#1,#2");
+    }
+}
+
+#[cfg(test)]
+mod stream_record_tests {
+    use super::*;
+    #[test]
+    fn stream_records_are_kept_separate_from_file_records() {
+        let row = parse_ztag(
+            "... stream //project/dev\n... haveChange 40\n... action edit\n... change default\n",
+        )
+        .remove(0);
+        let stream = stream_from_record(&row).unwrap();
+        assert_eq!(stream.path, "//project/dev");
+        assert_eq!(stream.base_change, "40");
+        assert!(files_from_groups(
+            &P4Connection {
+                root: String::new(),
+                port: String::new(),
+                user: String::new(),
+                client: String::new(),
+                charset: String::new(),
+                stream: None,
+                server: String::new()
+            },
+            &indexed_groups(&row),
+            false
+        )
+        .is_empty());
+        let file = parse_ztag("... depotFile //project/dev/readme.md\n... rev 3\n").remove(0);
+        assert!(stream_from_record(&file).is_none());
+    }
+    #[test]
+    fn shelf_and_submitted_metadata_expose_streams_without_inventing_files() {
+        let row = parse_ztag("... change 42\n... stream //project/dev\n... streamHaveChange 40\n... status submitted\n").remove(0);
+        let shelf = change_from_record(&row, Vec::new(), true);
+        assert!(shelf.stream.is_none());
+        assert_eq!(shelf.shelved_stream.unwrap().base_change, "40");
+        assert!(shelf.files.is_empty());
+        let submitted = change_from_record(&row, Vec::new(), false);
+        assert!(submitted.shelved_stream.is_none());
+        assert_eq!(submitted.stream.unwrap().path, "//project/dev");
+        assert!(submitted.files.is_empty());
     }
 }
