@@ -704,5 +704,18 @@
     "shelfComparison": "版本对比 · 工作区 → Shelf #{{change}}",
     "confirmDeleteShelf": "输入完整的 Stream 路径以移除搁置的定义。"
   },
-  "workspaceActions": "工作区操作"
+  "workspaceActions": "工作区操作",
+  "revisionTargets": "文件和目录",
+  "addRevisionTarget": "添加文件或目录",
+  "targetPath": "文件或目录路径",
+  "targetFolder": "目录",
+  "targetFile": "文件",
+  "atChangelist": "此变更时",
+  "beforeChangelist": "此变更之前",
+  "selectRevisionValue": "选择{{kind}}",
+  "revisionBrowseSearch": "按名称、编号或描述筛选",
+  "loadMoreRevisions": "加载更多",
+  "emptyRevisionTargets": "添加要获取的文件或目录。",
+  "revisionTargetsLoading": "正在加载变更文件…",
+  "noRevisionMatches": "没有匹配项"
 }

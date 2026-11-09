@@ -704,5 +704,18 @@
     "shelfComparison": "Version comparison · workspace → shelf #{{change}}",
     "confirmDeleteShelf": "Type the full stream path to remove its shelved definition."
   },
-  "workspaceActions": "Workspace actions"
+  "workspaceActions": "Workspace actions",
+  "revisionTargets": "Files and folders",
+  "addRevisionTarget": "Add file or folder",
+  "targetPath": "File or folder path",
+  "targetFolder": "Folder",
+  "targetFile": "File",
+  "atChangelist": "At changelist",
+  "beforeChangelist": "Before changelist",
+  "selectRevisionValue": "Select {{kind}}",
+  "revisionBrowseSearch": "Filter by name, number or description",
+  "loadMoreRevisions": "Load more",
+  "emptyRevisionTargets": "Add a file or folder to get.",
+  "revisionTargetsLoading": "Loading changelist files…",
+  "noRevisionMatches": "No matches"
 }

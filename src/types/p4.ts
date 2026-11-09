@@ -92,12 +92,15 @@ export interface P4FileSearch {
   scope: string;
 }
 
-export type P4RevisionMode = "latest" | "revision" | "changelist" | "datetime" | "label" | "workspace";
+export type P4RevisionMode = "latest" | "revision" | "changelist" | "beforeChangelist" | "datetime" | "label" | "workspace";
+
+export interface P4RevisionPath { path: string; recursive: boolean }
 
 export interface P4GetRevision {
   paths: string[];
   changeId?: string;
   recursive?: boolean;
+  targets?: P4RevisionPath[];
   mode: P4RevisionMode;
   value: string;
   force: boolean;

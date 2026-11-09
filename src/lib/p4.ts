@@ -139,6 +139,7 @@ export const p4Api = {
     call<P4Describe>("p4_describe", { connection, changeId }),
   openedDiff: (connection: P4Connection, path: string) =>
     call<FileDiff>("p4_opened_diff", { connection, path }),
+  revisionTargets: (connection: P4Connection, changeId: string) => call<string[]>("p4_revision_targets", { connection, changeId }),
   shelfDiff: (connection: P4Connection, depotPath: string, changeId: string) =>
     call<FileDiff>("p4_shelf_diff", { connection, depotPath, changeId }),
   imagePair: (connection: P4Connection, source: P4FileSource) => call<ImagePair>("p4_image_pair", {connection, source}),

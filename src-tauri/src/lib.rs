@@ -1947,6 +1947,14 @@ async fn p4_manual_resolve_apply(
 }
 
 #[tauri::command]
+async fn p4_revision_targets(
+    connection: p4::P4Connection,
+    change_id: String,
+) -> AppResult<Vec<String>> {
+    blocking(move || p4::revision_targets(&connection, &change_id)).await
+}
+
+#[tauri::command]
 async fn p4_get_revision(
     connection: p4::P4Connection,
     request: p4::P4GetRevision,
@@ -2628,6 +2636,7 @@ pub fn run() {
             p4_manual_resolve_external,
             p4_resolve_accept,
             p4_get_revision,
+            p4_revision_targets,
             p4_sync,
             p4_preview_reconcile,
             p4_preview_clean,

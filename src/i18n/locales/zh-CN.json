@@ -43,7 +43,9 @@
     "createdNamed": "已创建 {{name}}",
     "addedNamed": "已添加 {{name}}",
     "removedNamed": "已移除 {{name}}",
-    "createdPublicKey": "已为 {{name}} 创建公钥"
+    "createdPublicKey": "已为 {{name}} 创建公钥",
+    "add": "添加",
+    "remove": "移除"
   },
   "language": {
     "label": "语言",

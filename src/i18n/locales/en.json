@@ -43,7 +43,9 @@
     "createdNamed": "Created {{name}}",
     "addedNamed": "Added {{name}}",
     "removedNamed": "Removed {{name}}",
-    "createdPublicKey": "Created the public key for {{name}}"
+    "createdPublicKey": "Created the public key for {{name}}",
+    "add": "Add",
+    "remove": "Remove"
   },
   "language": {
     "label": "Language",

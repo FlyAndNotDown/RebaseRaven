@@ -2431,11 +2431,20 @@ fn empty_diff(path: &str) -> FileDiff {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct P4RevisionPath {
+    pub path: String,
+    pub recursive: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct P4GetRevision {
     pub paths: Vec<String>,
     pub change_id: Option<String>,
     #[serde(default)]
     pub recursive: bool,
+    #[serde(default)]
+    pub targets: Vec<P4RevisionPath>,
     pub mode: String,
     pub value: String,
     pub force: bool,
@@ -2475,16 +2484,32 @@ pub fn get_revision(
         ));
     }
     let env = env_for(connection);
-    let changed_files;
     let targets = if let Some(id) = &request.change_id {
-        if !request.paths.is_empty() || request.recursive {
+        if !request.paths.is_empty() || request.recursive || !request.targets.is_empty() {
             return Err(AppError::msg("Choose paths or a changelist."));
         }
         let id = require_revision_number(id, "Choose a numbered changelist.")?.to_string();
-        changed_files = mapped_change_files(&env, &id)?;
-        &changed_files
+        mapped_change_files(&env, &id)?
+            .into_iter()
+            .map(|path| P4RevisionPath {
+                path,
+                recursive: false,
+            })
+            .collect()
+    } else if !request.targets.is_empty() {
+        if !request.paths.is_empty() || request.recursive {
+            return Err(AppError::msg("Choose one set of files or folders."));
+        }
+        request.targets.clone()
     } else {
-        &request.paths
+        request
+            .paths
+            .iter()
+            .map(|path| P4RevisionPath {
+                path: path.clone(),
+                recursive: request.recursive,
+            })
+            .collect::<Vec<_>>()
     };
     if targets.is_empty() {
         return Err(AppError::msg("Choose a file."));
@@ -2497,7 +2522,7 @@ pub fn get_revision(
     let suffix = revision_suffix(&request.mode, &request.value, exact)?;
     let paths = targets
         .iter()
-        .map(|path| revision_file_spec(&connection.root, path, request.recursive, &suffix))
+        .map(|target| revision_file_spec(&connection.root, &target.path, target.recursive, &suffix))
         .collect::<AppResult<Vec<_>>>()?;
     let flags = SyncFlags {
         force: request.force,
@@ -2539,6 +2564,11 @@ pub fn get_revision(
         output = "Up to date.".to_string();
     }
     Ok(output)
+}
+
+pub fn revision_targets(connection: &P4Connection, id: &str) -> AppResult<Vec<String>> {
+    let id = require_revision_number(id, "Choose a numbered changelist.")?;
+    mapped_change_files(&env_for(connection), &id.to_string())
 }
 
 fn mapped_change_files(env: &P4Env, id: &str) -> AppResult<Vec<String>> {
@@ -2586,6 +2616,10 @@ fn revision_suffix(mode: &str, value: &str, exact: bool) -> AppResult<String> {
             } else {
                 Ok(format!("@{change}"))
             }
+        }
+        "beforeChangelist" => {
+            let change = require_revision_number(value, "Enter a changelist number.")?;
+            Ok(format!("@{}", change - 1))
         }
         "datetime" => Ok(format!("@{}", require_p4_datetime(value)?)),
         "label" => {
@@ -4943,6 +4977,15 @@ Description:
     fn revision_specifiers_match_the_get_revision_dialog() {
         assert_eq!(revision_suffix("latest", "", false).unwrap(), "");
         assert_eq!(revision_suffix("revision", "12", false).unwrap(), "#12");
+        assert_eq!(
+            revision_suffix("beforeChangelist", "1200", false).unwrap(),
+            "@1199"
+        );
+        assert_eq!(
+            revision_suffix("beforeChangelist", "1", false).unwrap(),
+            "@0"
+        );
+        assert!(revision_suffix("beforeChangelist", "0", false).is_err());
         assert_eq!(
             revision_suffix("changelist", "1200", false).unwrap(),
             "@1200"

@@ -23,9 +23,6 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
-  ContextMenuSub,
-  ContextMenuSubContent,
-  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Input } from "@/components/ui/input";
@@ -363,20 +360,7 @@ export function P4Submitted() {
                         }}>
                           <DownloadIcon />{t("p4.getLatest")}
                         </ContextMenuItem>
-                        <ContextMenuSub>
-                          <ContextMenuSubTrigger disabled={p4.busy}><HistoryIcon />{t("p4.getRevision")}</ContextMenuSubTrigger>
-                          <ContextMenuSubContent>
-                            <ContextMenuItem onSelect={() => setRevisionTarget({ changeId: change.id, revision: change.id })}>
-                              {t("p4.revisionAtChange")}
-                            </ContextMenuItem>
-                            <ContextMenuItem disabled={Number(change.id) <= 1} onSelect={() => setRevisionTarget({ changeId: change.id, revision: String(Number(change.id) - 1) })}>
-                              {t("p4.revisionBeforeChange")}
-                            </ContextMenuItem>
-                            <ContextMenuItem onSelect={() => setRevisionTarget({ changeId: change.id })}>
-                              {t("p4.chooseRevision")}
-                            </ContextMenuItem>
-                          </ContextMenuSubContent>
-                        </ContextMenuSub>
+                        <ContextMenuItem disabled={p4.busy} onSelect={() => setRevisionTarget({changeId:change.id,revision:change.id})}><HistoryIcon />{t("p4.getRevision")}</ContextMenuItem>
                       </ContextMenuContent>
                     </ContextMenu>
                   );

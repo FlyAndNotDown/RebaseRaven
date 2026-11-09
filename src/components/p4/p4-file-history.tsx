@@ -6,6 +6,7 @@ import { ChangeBadge } from "@/components/p4/change-badge";
 import { P4Blame } from "@/components/p4/p4-blame";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { P4Diff } from "@/components/p4/p4-diff";
+import { P4GetRevisionDialog, type P4RevisionTarget } from "@/components/p4/p4-get-revision-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -41,6 +42,7 @@ export function P4FileHistory({ path }: { path: string }) {
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
   const [diffError, setDiffError] = useState<string | null>(null);
+  const [revisionTarget, setRevisionTarget] = useState<P4RevisionTarget | null>(null);
   const mounted = useRef(false);
   const loadingRef = useRef(false);
   const diffToken = useRef(0);
@@ -98,7 +100,7 @@ export function P4FileHistory({ path }: { path: string }) {
     return value.kind === "workspace" ? t("p4.workspaceFile") : `#${value.revision}${applied?.base.kind === "revision" && applied.head.kind === "revision" && applied.base.depotPath !== applied.head.depotPath ? ` · ${depotBase(value.depotPath)}` : ""}`;
   }
 
-  return <ResizablePanelGroup orientation="vertical" className="min-h-0 min-w-0 flex-1">
+  return <><ResizablePanelGroup orientation="vertical" className="min-h-0 min-w-0 flex-1">
     <ResizablePanel id="p4-file-history" defaultSize="34%" minSize="16%">
       <div className="absolute inset-0 flex min-h-0 flex-col">
         <div className="flex h-8 shrink-0 items-center gap-2 border-b px-3 text-xs text-muted-foreground"><span>{t("p4.history.revisions")}</span><span className="tabular-nums">{revisions?.length ?? 0}</span><span className="ml-auto truncate">{t("p4.history.selectionHint")}</span></div>
@@ -111,6 +113,7 @@ export function P4FileHistory({ path }: { path: string }) {
               </button></ContextMenuTrigger><ContextMenuContent>
                 <ContextMenuItem onClick={() => edit("base", revisionVersion(revision))}>{t("p4.history.setBase")}</ContextMenuItem>
                 <ContextMenuItem onClick={() => edit("head", revisionVersion(revision))}>{t("p4.history.setHead")}</ContextMenuItem>
+                <ContextMenuSeparator /><ContextMenuItem onClick={() => setRevisionTarget({path:revision.depotPath,recursive:false,revision:revision.rev})}>{t("p4.getRevision")}</ContextMenuItem>
                 <ContextMenuSeparator /><ContextMenuItem onClick={() => openChange(revision.change)}><ExternalLinkIcon />{t("p4.history.openChange")}</ContextMenuItem>
               </ContextMenuContent></ContextMenu>)}
             <div aria-hidden style={{ height: after }} />
@@ -136,7 +139,7 @@ export function P4FileHistory({ path }: { path: string }) {
         </div>
       </div>
     </ResizablePanel>
-  </ResizablePanelGroup>;
+  </ResizablePanelGroup>{revisionTarget ? <P4GetRevisionDialog target={revisionTarget} onClose={() => setRevisionTarget(null)} /> : null}</>;
 }
 
 function VersionPicker({ label, value, fallback, disabled, onChange }: { label: string; value: P4FileVersion; fallback: P4FileVersion; disabled: boolean; onChange: (value: P4FileVersion) => void }) {
