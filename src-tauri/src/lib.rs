@@ -1857,8 +1857,21 @@ async fn p4_revert(
 }
 
 #[tauri::command]
-async fn p4_revert_unchanged(connection: p4::P4Connection) -> AppResult<()> {
-    blocking(move || p4::revert_unchanged(&connection)).await
+async fn p4_revert_unchanged(
+    connection: p4::P4Connection,
+    change_id: Option<String>,
+    paths: Vec<String>,
+) -> AppResult<()> {
+    blocking(move || p4::revert_unchanged(&connection, change_id.as_deref(), &paths)).await
+}
+
+#[tauri::command]
+async fn p4_submit_shelf(
+    connection: p4::P4Connection,
+    change_id: String,
+    description: String,
+) -> AppResult<()> {
+    blocking(move || p4::submit_shelf(&connection, &change_id, &description)).await
 }
 
 #[tauri::command]
@@ -2619,6 +2632,7 @@ pub fn run() {
             p4_reopen,
             p4_revert,
             p4_revert_unchanged,
+            p4_submit_shelf,
             p4_shelve,
             p4_unshelve,
             p4_delete_shelf,

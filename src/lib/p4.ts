@@ -179,7 +179,8 @@ export const p4Api = {
     call<void>("p4_reopen", { connection, changeId, files }),
   revert: (connection: P4Connection, files: string[], wipe?: string[]) =>
     call<void>("p4_revert", { connection, files, wipe: wipe ?? null }),
-  revertUnchanged: (connection: P4Connection) => call<void>("p4_revert_unchanged", { connection }),
+  revertUnchanged: (connection: P4Connection, scope: {changeId?:string; paths?:string[]} = {}) => call<void>("p4_revert_unchanged", { connection, changeId:scope.changeId ?? null, paths:scope.paths ?? [] }),
+  submitShelf: (connection: P4Connection, changeId: string, description: string) => call<void>("p4_submit_shelf", {connection, changeId, description}),
   shelve: (connection: P4Connection, changeId: string, files?: string[]) =>
     call<void>("p4_shelve", { connection, changeId, files: files ?? null }),
   unshelve: (connection: P4Connection, changeId: string, target?: string, files?: string[]) =>

@@ -108,6 +108,7 @@ interface P4ContextValue {
   submitSelected: () => Promise<void>;
   saveSelected: () => Promise<void>;
   submitChange: (changeId: string, description: string) => Promise<boolean>;
+  submitShelf: (changeId: string, description: string) => Promise<boolean>;
   saveChange: (changeId: string, description: string) => Promise<boolean>;
   createChange: (description: string) => Promise<boolean>;
   deleteChange: (changeId: string) => Promise<boolean>;
@@ -144,7 +145,7 @@ interface P4ContextValue {
   manualResolveApply: (path: string, text: string, fingerprint: string) => Promise<void>;
   resolveView: (path: string) => Promise<P4ResolveView | null>;
   resolveAccept: (path: string, mode: "yours" | "theirs" | "merge") => Promise<boolean>;
-  revertUnchanged: () => Promise<void>;
+  revertUnchanged: (scope?: {changeId?:string; paths?:string[]}) => Promise<void>;
   sync: (paths?: string[]) => Promise<void>;
   getRevision: (request: P4GetRevision) => Promise<string | null>;
   filesEpoch: number;
@@ -589,6 +590,21 @@ export function P4Provider({ children }: { children: ReactNode }) {
       endActivity(id);
       release();
     }
+  }, [lockMutation, beginActivity, endActivity, guard, reloadPending, report]);
+
+  const submitShelf = useCallback(async (changeId:string, description:string) => {
+    const current = sessionRef.current;
+    if (!current || !description.trim()) return false;
+    const release = lockMutation(current, t("p4.submittingChangelist"), "submit");
+    if (!release) return false;
+    const id = beginActivity(t("p4.submitting"), changeId);
+    try {
+      await guard(current.connection, () => p4Api.submitShelf(current.connection, changeId, description));
+      toast.success(t("p4.submitted"));
+      await reloadPending(current, current.selectedChange === changeId ? "default" : undefined).catch(report);
+      return true;
+    } catch (caught) { await reloadPending(current).catch(() => {}); report(caught); return false; }
+    finally {endActivity(id);release();}
   }, [lockMutation, beginActivity, endActivity, guard, reloadPending, report]);
 
   const saveChange = useCallback(async (changeId: string, description: string) => {
@@ -1124,14 +1140,14 @@ export function P4Provider({ children }: { children: ReactNode }) {
     }
   }, [guard, lockMutation, beginActivity, endActivity, reloadPending, bumpFiles, report]);
 
-  const revertUnchanged = useCallback(async () => {
+  const revertUnchanged = useCallback(async (scope: {changeId?:string;paths?:string[]} = {}) => {
     const current = sessionRef.current;
     if (!current) return;
     const release = lockMutation(current, t("p4.revertingUnchanged"));
     if (!release) return;
     const id = beginActivity(t("p4.revertingUnchanged"));
     try {
-      await guard(current.connection, () => p4Api.revertUnchanged(current.connection));
+      await guard(current.connection, () => p4Api.revertUnchanged(current.connection, scope));
       await reloadPending(current);
     } catch (caught) {
       report(caught);
@@ -1631,6 +1647,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
       submitSelected,
       saveSelected,
       submitChange,
+      submitShelf,
       saveChange,
       createChange,
       deleteChange,
@@ -1790,6 +1807,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
       shelveSelected,
       submitSelected,
       submitChange,
+      submitShelf,
       submittedLoading,
       sync,
       unshelveSelected,

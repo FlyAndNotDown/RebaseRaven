@@ -288,7 +288,9 @@
     "revertTitle": "Revert changelist {{id}}?",
     "revertDescription_one": "Discard the opened changes in {{count}} file. Added files stay on disk. Shelved files stay on the server.",
     "revertDescription_other": "Discard the opened changes in {{count}} files. Added files stay on disk. Shelved files stay on the server.",
-    "revertFailed": "The files could not be reverted. Check the operation error and try again."
+    "revertFailed": "The files could not be reverted. Check the operation error and try again.",
+    "submitShelfDescription": "Submit the shelved content directly from the server.",
+    "submitShelfOpened": "Move or revert opened changes in this changelist before submitting its shelf."
   },
   "manual": {
     "open": "Manual merge",
@@ -674,5 +676,7 @@
   "loadMoreRevisions": "Load more",
   "emptyRevisionTargets": "Add a file or folder to get.",
   "revisionTargetsLoading": "Loading changelist files…",
-  "noRevisionMatches": "No matches"
+  "noRevisionMatches": "No matches",
+  "revertUnchanged": "Revert if unchanged",
+  "submitShelf": "Submit shelved"
 }

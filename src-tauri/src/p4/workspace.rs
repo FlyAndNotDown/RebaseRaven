@@ -1852,9 +1852,84 @@ fn revert_with(env: &P4Env, files: &[String], wipe: bool) -> AppResult<()> {
     Ok(())
 }
 
-pub fn revert_unchanged(connection: &P4Connection) -> AppResult<()> {
+pub fn revert_unchanged(
+    connection: &P4Connection,
+    change_id: Option<&str>,
+    paths: &[String],
+) -> AppResult<()> {
     let env = env_for(connection);
-    run_ok(&env, &["revert", "-a"], None)?;
+    let args = revert_unchanged_args(connection, change_id, paths)?;
+    run_owned(&env, &args, None)?;
+    Ok(())
+}
+
+fn revert_unchanged_args(
+    connection: &P4Connection,
+    change_id: Option<&str>,
+    paths: &[String],
+) -> AppResult<Vec<String>> {
+    let mut args = vec!["revert".into(), "-a".into()];
+    if let Some(change) = change_id {
+        let id = if change == "default" {
+            change.to_string()
+        } else {
+            require_numbered(change)?
+        };
+        args.extend(["-c".into(), id]);
+    }
+    if paths.is_empty() {
+        if !valid_client_name(&connection.client) {
+            return Err(AppError::msg("Choose a workspace."));
+        }
+        args.push(format!("//{}/...", connection.client));
+    } else {
+        if paths.iter().any(|path| path.trim().is_empty()) {
+            return Err(AppError::msg("Choose files to revert."));
+        }
+        args.extend(
+            paths
+                .iter()
+                .map(|path| workspace_file_spec(&connection.root, path)),
+        );
+    }
+    Ok(args)
+}
+
+pub fn submit_shelf(
+    connection: &P4Connection,
+    change_id: &str,
+    description: &str,
+) -> AppResult<()> {
+    require_description(description)?;
+    let id = require_numbered(change_id)?;
+    let pending = refresh_pending(connection)?;
+    let change = pending
+        .iter()
+        .find(|change| change.id == id)
+        .ok_or_else(|| {
+            AppError::msg("Choose your own pending shelved changelist in this workspace.")
+        })?;
+    validate_shelf_submission(connection, change)?;
+    save_change(connection, &id, description)?;
+    run_ok(&env_for(connection), &["submit", "-e", &id], None)?;
+    Ok(())
+}
+
+fn validate_shelf_submission(connection: &P4Connection, change: &P4Changelist) -> AppResult<()> {
+    if change.user != connection.user
+        || change.client != connection.client
+        || change.status != "pending"
+        || !change.shelved
+    {
+        return Err(AppError::msg(
+            "Choose your own pending shelved changelist in this workspace.",
+        ));
+    }
+    if change.files.iter().any(|file| !file.shelved) || change.stream.is_some() {
+        return Err(AppError::msg(
+            "Move or revert the opened changes in this changelist before submitting its shelf.",
+        ));
+    }
     Ok(())
 }
 
@@ -5309,5 +5384,86 @@ mod stream_record_tests {
         assert!(submitted.shelved_stream.is_none());
         assert_eq!(submitted.stream.unwrap().path, "//project/dev");
         assert!(submitted.files.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod pending_action_tests {
+    use super::*;
+    fn connection() -> P4Connection {
+        P4Connection {
+            root: String::new(),
+            port: String::new(),
+            user: "alice".into(),
+            client: "alice-main".into(),
+            charset: String::new(),
+            stream: None,
+            server: String::new(),
+        }
+    }
+    #[test]
+    fn unchanged_revert_keeps_the_requested_scope() {
+        let connection = connection();
+        assert_eq!(
+            revert_unchanged_args(&connection, Some("42"), &[]).unwrap(),
+            ["revert", "-a", "-c", "42", "//alice-main/..."]
+        );
+        assert_eq!(
+            revert_unchanged_args(
+                &connection,
+                Some("default"),
+                &["//depot/main/app.ts".into()]
+            )
+            .unwrap(),
+            ["revert", "-a", "-c", "default", "//depot/main/app.ts"]
+        );
+        assert_eq!(
+            revert_unchanged_args(&connection, None, &["//depot/main/app.ts".into()]).unwrap(),
+            ["revert", "-a", "//depot/main/app.ts"]
+        );
+        assert!(revert_unchanged_args(&connection, Some("-a"), &[]).is_err());
+        assert!(revert_unchanged_args(&connection, None, &[String::new()]).is_err());
+    }
+    #[test]
+    fn shelf_submission_rejects_opened_or_foreign_changes() {
+        let connection = connection();
+        let mut change = P4Changelist {
+            id: "42".into(),
+            user: "alice".into(),
+            client: "alice-main".into(),
+            status: "pending".into(),
+            description: "Update navigation".into(),
+            time: 0,
+            shelved: true,
+            files: Vec::new(),
+            stream: None,
+            shelved_stream: None,
+        };
+        assert!(validate_shelf_submission(&connection, &change).is_ok());
+        change.stream = Some(P4StreamChange {
+            path: "//project/main".into(),
+            base_change: "40".into(),
+        });
+        assert!(validate_shelf_submission(&connection, &change).is_err());
+        change.stream = None;
+        change.files.push(P4File {
+            depot_path: "//project/main/app.ts".into(),
+            local_path: String::new(),
+            action: "edit".into(),
+            rev: "1".into(),
+            shelved: true,
+            binary: false,
+            status: String::new(),
+            detail: String::new(),
+        });
+        assert!(validate_shelf_submission(&connection, &change).is_ok());
+        change.files[0].shelved = false;
+        assert!(validate_shelf_submission(&connection, &change).is_err());
+        change.files.clear();
+        change.user = "bob".into();
+        assert!(validate_shelf_submission(&connection, &change).is_err());
+        change.user = "alice".into();
+        change.shelved = false;
+        assert!(validate_shelf_submission(&connection, &change).is_err());
     }
 }

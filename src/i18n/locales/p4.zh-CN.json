@@ -288,7 +288,9 @@
     "revertTitle": "还原变更列表 {{id}}？",
     "revertDescription_one": "放弃 {{count}} 个文件中已签出的修改。新增文件保留在磁盘上，搁置内容保留在服务器上。",
     "revertDescription_other": "放弃 {{count}} 个文件中已签出的修改。新增文件保留在磁盘上，搁置内容保留在服务器上。",
-    "revertFailed": "无法还原文件。请查看操作错误后重试。"
+    "revertFailed": "无法还原文件。请查看操作错误后重试。",
+    "submitShelfDescription": "直接提交服务器上的搁置内容。",
+    "submitShelfOpened": "提交搁置内容前，请移走或还原此变更列表中仍打开的修改。"
   },
   "manual": {
     "open": "手工合并",
@@ -674,5 +676,7 @@
   "loadMoreRevisions": "加载更多",
   "emptyRevisionTargets": "添加要获取的文件或目录。",
   "revisionTargetsLoading": "正在加载变更文件…",
-  "noRevisionMatches": "没有匹配项"
+  "noRevisionMatches": "没有匹配项",
+  "revertUnchanged": "还原未修改的文件",
+  "submitShelf": "提交搁置内容"
 }

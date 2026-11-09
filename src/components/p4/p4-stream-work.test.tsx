@@ -118,3 +118,19 @@ it.each([false,true])("explains the shelf submit restriction with openedStream=%
   expect(button("Submit changelist").disabled).toBe(true);expect(document.querySelector('[role="alert"]')?.textContent).toContain("shelved content");
   await click("Delete shelf");expect(manage).toHaveBeenCalledOnce();expect(submit).not.toHaveBeenCalled();
 });
+
+it("submits a shelf directly once its changelist has no opened changes", async () => {
+  const submit = vi.fn(async () => true);
+  await render(<P4ChangeDialog request={{id:"42",description:"Update mappings",mode:"submitShelf"}} openedCount={0} shelved available busy={false} onConfirm={submit} onClose={closed} />);
+  expect(button("Submit shelved").disabled).toBe(false);
+  await click("Submit shelved");
+  expect(submit).toHaveBeenCalledWith("Update mappings");
+});
+
+it.each([{openedCount:1,openedStream:false},{openedCount:0,openedStream:true}])("blocks shelf submission while changes are still opened: %j", async (opened) => {
+  const submit = vi.fn(async () => true);
+  await render(<P4ChangeDialog request={{id:"42",description:"Update mappings",mode:"submitShelf"}} {...opened} shelved available busy={false} onConfirm={submit} onClose={closed} />);
+  expect(button("Submit shelved").disabled).toBe(true);
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain("opened changes");
+  expect(submit).not.toHaveBeenCalled();
+});

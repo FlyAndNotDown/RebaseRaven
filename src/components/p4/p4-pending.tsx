@@ -1,9 +1,9 @@
 import { P4StreamWorkDialog, P4StreamDiffDialog } from "@/components/p4/p4-stream-work";
 import type { P4StreamDiffRequest } from "@/types/p4-stream-specs";
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { GitBranchIcon, ArchiveIcon, ArchiveRestoreIcon, ChevronDownIcon, CopyIcon, GitMergeIcon, Loader2Icon, PencilIcon, PlusIcon, SendIcon, Trash2Icon, Undo2Icon } from "lucide-react";
+import { GitBranchIcon, ArchiveIcon, ArchiveRestoreIcon, ChevronDownIcon, CopyIcon, GitMergeIcon, Loader2Icon, PencilIcon, PlusIcon, SendIcon, Trash2Icon, Undo2Icon, UndoDotIcon } from "lucide-react";
 import { toast } from "sonner";
-import { ChangeBadge } from "@/components/p4/change-badge";
+import { ChangeBadge, ChangelistMarker } from "@/components/p4/change-badge";
 import { P4ChangeDialog, type ChangeDialogRequest } from "@/components/p4/p4-change-dialog";
 import { FileStatusIcon } from "@/components/p4/file-status-icon";
 import { FileStatusTip, fileStatusText } from "@/components/p4/file-status-tip";
@@ -240,6 +240,9 @@ export function P4Pending() {
             <ContextMenuSeparator />
           </>
         ) : null}
+        <ContextMenuItem disabled={p4.busy} onSelect={() => void p4.revertUnchanged({ paths: targets.map((item) => item.path) })}>
+          <UndoDotIcon />{t("p4.revertUnchanged")}
+        </ContextMenuItem>
         <ContextMenuItem
           variant="destructive"
           disabled={p4.busy}
@@ -342,6 +345,7 @@ export function P4Pending() {
                               focusChange(change.id);
                             }}
                           >
+                            <ChangelistMarker opened={changeOpened.length > 0 || !!change.stream} />
                             <ChangeBadge id={change.id} />
                             <span className="min-w-0 flex-1 truncate text-xs">{summary || t("p4.noDescription")}</span>
                           </button>
@@ -354,6 +358,37 @@ export function P4Pending() {
                         >
                           <SendIcon />{t("p4.submitChangelist")}
                         </ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem
+                          disabled={p4.busy || change.id === "default" || changeOpened.length === 0 && !change.stream}
+                          onClick={() => {
+                            p4.selectChange(change.id);
+                            void p4.shelveSelected();
+                          }}
+                        >
+                          <ArchiveIcon />{t("p4.shelve")}</ContextMenuItem>
+                        <ContextMenuItem disabled={p4.busy || !change.shelved} onSelect={() => openChangeDialog(change, "submitShelf")}>
+                          <SendIcon />{t("p4.submitShelf")}
+                        </ContextMenuItem>
+                        <ContextMenuItem disabled={p4.busy || !change.shelved} onSelect={() => { p4.selectChange(change.id); setDeletingShelf(true); }}>
+                          <Trash2Icon />{t("p4.deleteShelf")}
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem disabled={p4.busy || changeOpened.length === 0} onSelect={() => void p4.revertUnchanged({changeId: change.id})}>
+                          <UndoDotIcon />{t("p4.revertUnchanged")}
+                        </ContextMenuItem>
+                        <ContextMenuItem
+                          variant="destructive"
+                          disabled={p4.busy || changeOpened.length === 0}
+                          onClick={() => setRevertRequest({
+                            changeId: change.id,
+                            paths: changeOpened.map((file) => file.depotPath),
+                            wipe: [],
+                          })}
+                        >
+                          <Undo2Icon />{t("p4.revert")}
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
                         <ContextMenuItem disabled={p4.busy} onClick={() => openChangeDialog(change, "edit")}>
                           <PencilIcon />{t("p4.editChangelist")}
                         </ContextMenuItem>
@@ -370,27 +405,6 @@ export function P4Pending() {
                             <CopyIcon />{t("p4.copyChangelist")}
                           </ContextMenuItem>
                         ) : null}
-                        <ContextMenuSeparator />
-                        <ContextMenuItem
-                          disabled={p4.busy || change.id === "default" || changeOpened.length === 0 && !change.stream}
-                          onClick={() => {
-                            p4.selectChange(change.id);
-                            void p4.shelveSelected();
-                          }}
-                        >
-                          <ArchiveIcon />{t("p4.shelve")}</ContextMenuItem>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem
-                          variant="destructive"
-                          disabled={p4.busy || changeOpened.length === 0}
-                          onClick={() => setRevertRequest({
-                            changeId: change.id,
-                            paths: changeOpened.map((file) => file.depotPath),
-                            wipe: [],
-                          })}
-                        >
-                          <Undo2Icon />{t("p4.revert")}
-                        </ContextMenuItem>
                         {change.id !== "default" ? (
                           <ContextMenuItem variant="destructive" disabled={p4.busy} onClick={() => { setDeletingChange(change.id); setDeleteFailed(false); }}>
                             <Trash2Icon />{t("p4.deleteChange.action")}
@@ -514,6 +528,7 @@ export function P4Pending() {
           busy={p4.busy}
           onConfirm={(description) => changeDialog.mode === "submit"
             ? p4.submitChange(changeDialog.id, description)
+            : changeDialog.mode === "submitShelf" ? p4.submitShelf(changeDialog.id, description)
             : p4.saveChange(changeDialog.id, description)}
           onClose={() => setChangeDialog(null)}
         />
