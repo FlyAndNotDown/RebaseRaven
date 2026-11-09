@@ -488,7 +488,10 @@
       "task": "任务",
       "sparsedev": "稀疏开发流",
       "sparserel": "稀疏发布流"
-    }
+    },
+    "mergeShort": "从父级合并",
+    "copyShort": "复制到工作区",
+    "actions": "Stream 操作"
   },
   "specs": {
     "title": "标签与分支映射",

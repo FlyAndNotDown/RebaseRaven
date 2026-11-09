@@ -488,7 +488,10 @@
       "task": "Task",
       "sparsedev": "Sparse development",
       "sparserel": "Sparse release"
-    }
+    },
+    "mergeShort": "Merge from parent",
+    "copyShort": "Copy into workspace",
+    "actions": "Stream actions"
   },
   "specs": {
     "title": "Labels & branch mappings",
