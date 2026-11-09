@@ -376,6 +376,8 @@ export const gitApi = {
   listEditors: () => call<TerminalOption[]>("list_editors"),
   openInEditor: (path: string, line?: number | null) =>
     call<void>("open_in_editor", { path, line: line ?? null }),
+  openFileInEditor: (repoPath: string, source: FileSource, line?: number | null) =>
+    call<void>("open_git_file_in_editor", { repoPath, source, line: line ?? null }),
   getToolConfig: (repoPath?: string) => call<ToolConfig>("get_tool_config", { repoPath: repoPath ?? null }),
   setToolConfig: (config: ToolConfig) => call<ToolConfig>("set_tool_config", { config }),
   listGuiTools: () => call<{ id: string; name: string; installed: boolean }[]>("list_gui_tools"),

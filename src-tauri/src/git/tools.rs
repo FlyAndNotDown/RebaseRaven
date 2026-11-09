@@ -495,6 +495,32 @@ pub fn launch_difftool(
     source: &FileSource,
     on_error: impl FnOnce(String) + Send + 'static,
 ) -> AppResult<()> {
+    if let FileSource::Workdir {
+        path,
+        staged: false,
+    } = source
+    {
+        let rel = safe_repo_path(path)?;
+        if !object_exists(repo, &format!(":0:{rel}")) {
+            let file = ensure_inside_workdir(repo, &rel)?;
+            if file.is_file() {
+                if fs::metadata(&file)?.len() > crate::file_tools::FILE_LIMIT as u64 {
+                    return Err(AppError::msg(
+                        "External file previews are limited to 64 MiB.",
+                    ));
+                }
+                return crate::file_tools::external_diff(
+                    crate::file_tools::FilePair {
+                        path: rel,
+                        before: None,
+                        after: Some(fs::read(file)?),
+                        working_path: None,
+                    },
+                    on_error,
+                );
+            }
+        }
+    }
     // Without one, git falls back to a terminal tool such as vimdiff, which
     // would wait forever on a console nobody can see.
     if read_tool_config(Some(repo)).diff_tool.is_empty() {
@@ -514,6 +540,42 @@ pub fn launch_difftool(
                 on_error(git_output_error(output).to_string())
             }
             Err(err) => on_error(err.to_string()),
+            Ok(_) => {}
+        }
+    });
+    Ok(())
+}
+
+/// Reuses Git's configured GUI tool and custom commands for arbitrary file pairs.
+pub fn launch_file_difftool(
+    directory: tempfile::TempDir,
+    before: &Path,
+    after: &Path,
+    on_error: impl FnOnce(String) + Send + 'static,
+) -> AppResult<()> {
+    if read_tool_config(None).diff_tool.is_empty() {
+        return Err(AppError::msg("Choose a diff tool in Settings first."));
+    }
+    let mut args = vec![
+        "difftool".to_string(),
+        "--no-prompt".to_string(),
+        "--no-index".to_string(),
+    ];
+    if config_value(None, "diff.guitool").is_some() {
+        args.insert(1, "--gui".into());
+    }
+    args.extend([
+        "--".into(),
+        strip_verbatim_prefix(&before.to_string_lossy()),
+        strip_verbatim_prefix(&after.to_string_lossy()),
+    ]);
+    thread::spawn(move || {
+        let argv: Vec<_> = args.iter().map(String::as_str).collect();
+        match run_git(directory.path(), &argv) {
+            Ok(output) if !output.status.success() && output.status.code() != Some(1) => {
+                on_error(git_output_error(output).to_string())
+            }
+            Err(error) => on_error(error.to_string()),
             Ok(_) => {}
         }
     });

@@ -1935,6 +1935,53 @@ pub fn resolve_view(connection: &P4Connection, path: &str) -> AppResult<P4Resolv
     })
 }
 
+pub(super) fn resolve_file_versions(
+    connection: &P4Connection,
+    path: &str,
+) -> AppResult<(super::history::Version, super::history::Version)> {
+    use super::history::{version, P4FileVersion, Version};
+    let env = env_for(connection);
+    let spec = workspace_file_spec(&connection.root, path);
+    let preview = run_ok(&env, &["-ztag", "resolve", "-n", "-o", &spec], None)?;
+    let (facts, _) = pending_resolve_facts(&preview, &spec)
+        .ok_or_else(|| AppError::msg("This file does not need resolve."))?;
+    let end = if facts.end_rev.is_empty() {
+        &facts.start_rev
+    } else {
+        &facts.end_rev
+    };
+    let incoming = Version {
+        depot: facts.from_file.clone(),
+        spec: Some(format!("{}#{end}", facts.from_file)),
+        local: None,
+        absent: false,
+        binary: false,
+        size: None,
+    };
+    let view = resolve_view(connection, path)?;
+    if !view.comparable {
+        return Err(AppError::msg("The two sides cannot be compared."));
+    }
+    if view.working_copy {
+        Ok((
+            incoming,
+            version(connection, path, &P4FileVersion::Workspace)?,
+        ))
+    } else {
+        Ok((
+            Version {
+                depot: facts.depot.clone(),
+                spec: Some(format!("{}#have", facts.depot)),
+                local: None,
+                absent: false,
+                binary: false,
+                size: None,
+            },
+            incoming,
+        ))
+    }
+}
+
 pub fn resolve_accept(connection: &P4Connection, path: &str, mode: &str) -> AppResult<()> {
     let flag = match mode {
         "yours" => "-ay",

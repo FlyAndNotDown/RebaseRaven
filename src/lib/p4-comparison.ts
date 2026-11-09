@@ -4,9 +4,12 @@ import type { FileDiff } from "@/types/git";
 export type P4Comparison = { kind: "diff"; diff: FileDiff } | { kind: "text"; path: string; before: string; after: string };
 
 /** Workspace comparisons also work when the base revision used an older depot name. */
-export function p4ComparisonDiff(result: P4Comparison): FileDiff {
+export function p4ComparisonDiff(result: P4Comparison, ignoreWhitespace = false): FileDiff {
   if (result.kind === "diff") return result.diff;
-  const patch = structuredPatch("before", "after", result.before, result.after, "", "", { context: 3, timeout: 500 });
+  const options = { context: 3, timeout: 500,
+    comparator: ignoreWhitespace ? (a: string, b: string) => a.replace(/[\t\v\f\r ]/g, "") === b.replace(/[\t\v\f\r ]/g, "") : undefined,
+  };
+  const patch = structuredPatch("before", "after", result.before, result.after, "", "", options);
   if (!patch) throw new Error("The text comparison is too complex to preview.");
   const lines: FileDiff["lines"] = [];
   let truncated = false;

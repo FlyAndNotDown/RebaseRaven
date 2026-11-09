@@ -3,6 +3,7 @@ mod avatars;
 mod diagnostics;
 mod editor;
 mod error;
+mod file_tools;
 mod fsutil;
 mod git;
 mod locate;
@@ -1286,6 +1287,57 @@ async fn open_in_editor(path: String, line: Option<u32>, app: AppHandle) -> AppR
 }
 
 #[tauri::command]
+async fn open_git_file_in_editor(
+    repo_path: String,
+    source: git::FileSource,
+    line: Option<u32>,
+    app: AppHandle,
+    files: State<'_, file_tools::ExternalFiles>,
+) -> AppResult<()> {
+    let files = files.inner().clone();
+    with_repo_async(repo_path, move |repo| {
+        let path = git::editor_file(repo, &source, &files)?;
+        let prefs = prefs::load_prefs(&app)?;
+        file_tools::open_editor(&path, line, &prefs.editor_id)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn diff_document_text(source: file_tools::DocumentSource) -> AppResult<file_tools::TextPair> {
+    blocking(move || source.text()).await
+}
+
+#[tauri::command]
+async fn open_diff_document(
+    source: file_tools::DocumentSource,
+    line: Option<u32>,
+    external_diff: bool,
+    app: AppHandle,
+    files: State<'_, file_tools::ExternalFiles>,
+) -> AppResult<()> {
+    let files = files.inner().clone();
+    blocking(move || {
+        let pair = source.files(file_tools::FILE_LIMIT)?;
+        if external_diff {
+            file_tools::external_diff(pair, move |message| {
+                let _ = app.emit(
+                    "tool-error",
+                    ToolError {
+                        message: error::redact_credentials(&message),
+                    },
+                );
+            })
+        } else {
+            let path = files.editor(&pair)?;
+            let prefs = prefs::load_prefs(&app)?;
+            file_tools::open_editor(&path, line, &prefs.editor_id)
+        }
+    })
+    .await
+}
+
+#[tauri::command]
 async fn get_tool_config(repo_path: Option<String>) -> AppResult<git::ToolConfig> {
     blocking(move || match repo_path {
         Some(path) => with_repo(&path, |repo| Ok(git::read_tool_config(Some(repo)))),
@@ -1456,7 +1508,7 @@ async fn p4_revision_diff(
 #[tauri::command]
 async fn p4_image_pair(
     connection: p4::P4Connection,
-    source: p4::P4ImageSource,
+    source: p4::P4FileSource,
 ) -> AppResult<git::ImagePair> {
     blocking(move || p4::image_pair(&connection, &source)).await
 }
@@ -2327,6 +2379,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(WatchState::default())
+        .manage(file_tools::ExternalFiles::default())
         .manage(updater::UpdateManager::default());
     #[cfg(target_os = "macos")]
     let builder = builder.menu(macos_menu);
@@ -2502,6 +2555,9 @@ pub fn run() {
             list_terminals,
             list_editors,
             open_in_editor,
+            open_git_file_in_editor,
+            open_diff_document,
+            diff_document_text,
             get_tool_config,
             set_tool_config,
             list_gui_tools,
@@ -2607,6 +2663,11 @@ pub fn run() {
             sync_watches,
             sync_window_chrome
         ])
-        .run(context)
-        .expect("error while running RebaseRaven");
+        .build(context)
+        .expect("error while building RebaseRaven")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                app.state::<file_tools::ExternalFiles>().clear();
+            }
+        });
 }

@@ -77,10 +77,10 @@ export function P4Resolve({ path, onClose }: { path: string; onClose: () => void
             </div>
           ) : (
             <P4Diff
+              fileSource={{kind:"resolve", path}}
               diff={view?.comparable ? view.diff : null}
               loading={loading}
               empty={view?.comparable ? t("p4.noTextDifferences") : t("p4.theTwoSidesCantBeComparedHere")}
-              split
               captions={view?.workingCopy
                 ? [t("p4.incomingRevision"), t("p4.workspaceFile")]
                 : [t("p4.syncedRevision"), t("p4.incomingRevision")]}

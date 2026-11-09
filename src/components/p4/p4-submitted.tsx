@@ -463,7 +463,7 @@ export function P4Submitted() {
           <ResizableHandle withHandle />
           <ResizablePanel id="p4-submitted-diff" defaultSize="68%" minSize="24%">
             <P4Diff
-              imageSource={file && detail?.files.find((entry) => entry.depotPath === file) ? {kind:"revision",path:file,revision:detail.files.find((entry) => entry.depotPath === file)!.rev} : undefined}
+              fileSource={file && detail?.files.find((entry) => entry.depotPath === file) ? {kind:"revision",path:file,revision:detail.files.find((entry) => entry.depotPath === file)!.rev} : undefined}
               diff={diff}
               loading={diffLoading || (Boolean(p4.selectedSubmitted) && !detail)}
               empty={

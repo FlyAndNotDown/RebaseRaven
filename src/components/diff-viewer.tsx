@@ -1,7 +1,7 @@
 import { formatNumber, t, useTranslation } from "@/i18n";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import { Columns2Icon, ExternalLinkIcon, PilcrowIcon, SquarePenIcon, XIcon } from "lucide-react";
-import { DiffSearchBar, DiffSearchButton, DiffSearchScope, useDiffSearch } from "@/components/diff-search";
+import { XIcon } from "lucide-react";
+import { DiffSearchBar, DiffSearchScope, useDiffSearch } from "@/components/diff-search";
 import { searchSpans, type TextMatch } from "@/lib/text-search";
 import { ConflictEditor } from "@/components/conflict-editor";
 import { ImageDiff, isImagePath } from "@/components/image-diff";
@@ -30,6 +30,7 @@ import {
 } from "@/lib/diff-text";
 import { useWindowedRows } from "@/lib/use-windowed-rows";
 import { cn } from "@/lib/utils";
+import { DiffToolbar } from "@/components/diff-toolbar";
 import { useGitPick, useGitSelect } from "@/state/git-context";
 import type { DiffLine, FileDiff, FileSource, LineAction, LineRef } from "@/types/git";
 
@@ -92,9 +93,6 @@ export function DiffViewer({ source }: { source: DiffSource }) {
     comparison,
     prefs,
     applyLines,
-    setDiffOptions,
-    openDifftool,
-    openInEditor,
     closeFile,
   } = useGitPick([
     "changeSelection",
@@ -109,9 +107,6 @@ export function DiffViewer({ source }: { source: DiffSource }) {
     "comparison",
     "prefs",
     "applyLines",
-    "setDiffOptions",
-    "openDifftool",
-    "openInEditor",
     "closeFile",
   ]);
   const ignoreWhitespace = prefs.diffIgnoreWhitespace;
@@ -229,70 +224,7 @@ export function DiffViewer({ source }: { source: DiffSource }) {
               {selection.staged ? t("git-files.staged") : t("git-files.unstaged")}
             </span>
           ) : null}
-          {textual ? (
-            <>
-              <DiffSearchButton />
-              <HoverTip label={t("git-files.sideBySide")}>
-                <Button
-                  type="button"
-                  size="icon-xs"
-                  variant={prefs.diffSplit ? "secondary" : "ghost"}
-                  aria-pressed={prefs.diffSplit}
-                  aria-label={t("git-files.sideBySide")}
-                  onClick={() => void setDiffOptions({ split: !prefs.diffSplit })}
-                >
-                  <Columns2Icon />
-                </Button>
-              </HoverTip>
-              <HoverTip
-                label={
-                  ignoreWhitespace
-                    ? t("git-files.whitespaceHint")
-                    : t("git-files.hideWhitespace")
-                }
-              >
-                <Button
-                  type="button"
-                  size="icon-xs"
-                  variant={ignoreWhitespace ? "secondary" : "ghost"}
-                  aria-pressed={ignoreWhitespace}
-                  aria-label={t("git-files.hideWhitespace")}
-                  onClick={() => void setDiffOptions({ ignoreWhitespace: !ignoreWhitespace })}
-                >
-                  <PilcrowIcon />
-                </Button>
-              </HoverTip>
-            </>
-          ) : null}
-          {fileSource && !conflicted && changeKind !== "untracked" ? (
-            <HoverTip label={t("git-files.openDiffTool")}>
-              <Button
-                type="button"
-                size="icon-xs"
-                variant="ghost"
-                aria-label={t("git-files.openDiffTool")}
-                onClick={() => fileSource && void openDifftool(fileSource)}
-              >
-                <ExternalLinkIcon />
-              </Button>
-            </HoverTip>
-          ) : null}
-          {selection.path ? (
-            <HoverTip label={t("git-files.openEditor")}>
-              <Button
-                type="button"
-                size="icon-xs"
-                variant="ghost"
-                aria-label={t("git-files.openEditor")}
-                onClick={() => {
-                  const line = diff?.lines.find((item) => item.newLineno)?.newLineno ?? null;
-                  void openInEditor(selection.path, line);
-                }}
-              >
-                <SquarePenIcon />
-              </Button>
-            </HoverTip>
-          ) : null}
+          <DiffToolbar textual={textual} source={fileSource && snapshot?.repo.path ? {kind: "git", repoPath: snapshot.repo.path, source: fileSource} : null} line={diff?.lines.find(item => item.newLineno)?.newLineno ?? null} allowExternalDiff={!conflicted} />
           <HoverTip label={t("git-files.close")}>
             <Button
               type="button"

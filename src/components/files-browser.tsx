@@ -1,4 +1,5 @@
-import { DiffSearchBar, DiffSearchButton, DiffSearchScope } from "@/components/diff-search";
+import { DiffToolbar } from "@/components/diff-toolbar";
+import { DiffSearchBar, DiffSearchScope } from "@/components/diff-search";
 import { t, useTranslation } from "@/i18n";
 import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FolderOpenIcon, SquarePenIcon, XIcon } from "lucide-react";
@@ -938,20 +939,14 @@ function FileCommitDiff({
       </div>
     );
   }
-  if (diff.binary && commitId && isImagePath(diff.path)) {
-    return (
-      <div className="absolute inset-0 flex min-h-0 flex-col">
-        <ImageDiff repoPath={repoPath} source={{ kind: "commit", oid: commitId, path: diff.path, oldPath: diff.oldPath }} refreshIdentity={diff} />
-      </div>
-    );
-  }
-  if (diff.binary) return <p className="p-4 text-sm text-muted-foreground">{t("git-files.binaryFile")}</p>;
-  if (diff.lines.length === 0) return <p className="p-4 text-sm text-muted-foreground">{t("git-files.noTextDiff")}</p>;
+  const source = commitId ? { kind: "commit" as const, oid: commitId, path: diff.path, oldPath: diff.oldPath } : null;
+  const image = source && diff.binary && isImagePath(diff.path);
+  const textual = !diff.binary && !image;
   return (
-    <DiffSearchScope lines={diff.lines.map(line => line.kind === "hunk" ? "" : line.content.replace(/\r/g, ""))} className="absolute inset-0">
-      <div className="flex h-8 shrink-0 items-center justify-end border-b px-2"><DiffSearchButton /></div>
+    <DiffSearchScope lines={diff.lines.map(line => line.kind === "hunk" ? "" : line.content.replace(/\r/g, ""))} enabled={textual} className="absolute inset-0">
+      <div className="flex h-10 shrink-0 items-center justify-end border-b px-2"><DiffToolbar textual={Boolean(textual)} source={source ? {kind:"git", repoPath, source} : null} line={diff.lines.find(line => line.newLineno)?.newLineno ?? null} /></div>
       <DiffSearchBar />
-      <DiffLines diff={diff} />
+      {image ? <ImageDiff repoPath={repoPath} source={source} refreshIdentity={diff} /> : diff.binary ? <p className="p-4 text-sm text-muted-foreground">{t("git-files.binaryFile")}</p> : diff.lines.length === 0 ? <p className="p-4 text-sm text-muted-foreground">{t("git-files.noTextDiff")}</p> : <DiffLines diff={diff} />}
     </DiffSearchScope>
   );
 }

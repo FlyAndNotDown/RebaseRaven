@@ -703,6 +703,67 @@ fn commit_file(_repo: &Repository, root: &Path, name: &str, body: &str, message:
     run_git_input(root, &["commit", "--file=-"], message.as_bytes()).unwrap();
 }
 
+#[test]
+fn history_editor_uses_revision_content_after_renames_and_deletions() {
+    let (root, repo) = temp_repo();
+    let copies = crate::file_tools::ExternalFiles::default();
+    commit_file(&repo, &root, "old name.txt", "original\n", "Add file");
+    let first = head_id(&repo);
+    run_git_stdout(&root, &["mv", "old name.txt", "new name.txt"]).unwrap();
+    run_git_stdout(&root, &["commit", "-m", "Rename file"]).unwrap();
+    let renamed = head_id(&repo);
+    run_git_stdout(&root, &["rm", "new name.txt"]).unwrap();
+    run_git_stdout(&root, &["commit", "-m", "Delete file"]).unwrap();
+    let deleted = head_id(&repo);
+    for source in [
+        FileSource::Commit {
+            oid: first.clone(),
+            path: "old name.txt".into(),
+            old_path: None,
+        },
+        FileSource::Commit {
+            oid: renamed,
+            path: "new name.txt".into(),
+            old_path: Some("old name.txt".into()),
+        },
+        FileSource::Commit {
+            oid: deleted.clone(),
+            path: "new name.txt".into(),
+            old_path: None,
+        },
+        FileSource::Compare {
+            base: first,
+            head: deleted,
+            path: "new name.txt".into(),
+            old_path: Some("old name.txt".into()),
+        },
+    ] {
+        let file = editor_file(&repo, &source, &copies).unwrap();
+        assert_eq!(fs::read(file).unwrap(), b"original\n");
+    }
+    fs::write(root.join("working.txt"), "unsaved work\n").unwrap();
+    let actual = editor_file(
+        &repo,
+        &FileSource::Workdir {
+            path: "working.txt".into(),
+            staged: false,
+        },
+        &copies,
+    )
+    .unwrap();
+    assert_eq!(actual, root.join("working.txt").canonicalize().unwrap());
+    assert!(editor_file(
+        &repo,
+        &FileSource::Workdir {
+            path: "../escape".into(),
+            staged: false
+        },
+        &copies
+    )
+    .is_err());
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn head_summary(repo: &Repository) -> String {
     commit_info(repo, "HEAD").unwrap().summary
 }

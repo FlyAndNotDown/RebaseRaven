@@ -497,7 +497,7 @@ export function P4Pending() {
         <ResizableHandle />
         <ResizablePanel id="p4-diff" defaultSize="58%" minSize="30%">
           <P4Diff
-            imageSource={p4.selectedFile ? p4.selectedShelved ? {kind:"shelf",path:p4.selectedFile,changeId:p4.selectedChange} : {kind:"opened",path:p4.selectedFile} : undefined}
+            fileSource={p4.selectedFile ? p4.selectedShelved ? {kind:"shelf",path:p4.selectedFile,changeId:p4.selectedChange} : {kind:"opened",path:p4.selectedFile} : undefined}
             diff={p4.diff}
             loading={p4.diffLoading}
             empty={p4.selectedFile ? t("p4.noDifferencesInThisFile") : t("p4.selectAFileToSeeItsDiff")}

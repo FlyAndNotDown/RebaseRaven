@@ -3,11 +3,13 @@ mod cli;
 pub use clean::{apply_clean, preview_clean, P4CleanPreview, P4CleanRequest};
 mod client;
 pub use client::{save_workspace, workspace_settings, P4WorkspaceEdit, P4WorkspaceSettings};
+mod external;
 mod history;
 mod images;
+pub use external::external_file_pair;
 mod integration;
 pub use history::{annotate, compare_files, P4BlameLine, P4CompareRequest, P4Comparison};
-pub use images::{image_pair, P4ImageSource};
+pub use images::{image_pair, P4FileSource};
 pub use integration::{
     apply_integration, preview_integration, P4IntegrationPreview, P4IntegrationRequest,
 };

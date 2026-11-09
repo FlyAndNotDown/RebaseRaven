@@ -226,11 +226,13 @@ export interface P4CompareRequest { path: string; base: P4FileVersion; head: P4F
 
 export interface P4BlameLine { line: number; change: string; user: string; time: string; content: string }
 
-export type P4ImageSource =
+export type P4FileSource =
   | { kind: "opened"; path: string }
   | { kind: "shelf"; path: string; changeId: string }
   | { kind: "revision"; path: string; revision: string }
-  | { kind: "compare"; request: P4CompareRequest };
+  | { kind: "compare"; request: P4CompareRequest }
+  | { kind: "resolve"; path: string }
+  | { kind: "stream"; request: import("./p4-stream-specs").P4StreamDiffRequest };
 
 export interface P4WorkspaceOptions { allwrite: boolean; clobber: boolean; compress: boolean; modtime: boolean; rmdir: boolean }
 export interface P4WorkspaceEdit { root: string; view: string[]; lineEnd: "local" | "unix" | "mac" | "win" | "share"; options: P4WorkspaceOptions }

@@ -14,7 +14,7 @@ vi.mock("@/components/p4/p4-diff", () => ({P4Diff:({diff}: {diff?: {lines:{conte
 let root: Root, container: HTMLDivElement;
 const closed = vi.fn();
 function work(opened = false): P4StreamWork {
-  return {spec:{path:"//project/dev",name:"Development",owner:"alice",kind:"development",parent:"//project/main",parentView:"inherit",description:"Development",options:{locked:false,ownerSubmit:false,toParent:true,fromParent:true,mergeAny:false},paths:["share ..."],remapped:[],ignored:[],fingerprint:"form",opened,editableFields:["Paths"]},opened:opened?{change:"42",baseChange:"40"}:null,headChange:"40",currentText:"Stream: //project/dev\nParentView: inherit\n",headText:"",diff:{path:"//project/dev",oldPath:null,binary:false,truncated:false,lines:[]},unresolved:false,resolveOutput:"",fingerprint:"workspace"};
+  return {spec:{path:"//project/dev",name:"Development",owner:"alice",kind:"development",parent:"//project/main",parentView:"inherit",description:"Development",options:{locked:false,ownerSubmit:false,toParent:true,fromParent:true,mergeAny:false},paths:["share ..."],remapped:[],ignored:[],fingerprint:"form",opened,editableFields:["Paths"]},opened:opened?{change:"42",baseChange:"40"}:null,headChange:"40",baseText:"",currentText:"Stream: //project/dev\nParentView: inherit\n",headText:"",diff:{path:"//project/dev",oldPath:null,binary:false,truncated:false,lines:[]},unresolved:false,resolveOutput:"",fingerprint:"workspace"};
 }
 beforeEach(() => {
   Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});setLanguagePreference("en");vi.resetAllMocks();
