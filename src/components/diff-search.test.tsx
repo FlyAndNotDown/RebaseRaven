@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DiffSearchBar, DiffSearchButton, DiffSearchScope } from "@/components/diff-search";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { setLanguagePreference } from "@/i18n";
 
@@ -11,10 +12,11 @@ let container: HTMLDivElement;
 beforeEach(() => {
   Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
   setLanguagePreference("en");
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   vi.spyOn(HTMLElement.prototype,"getClientRects").mockReturnValue([{}] as unknown as DOMRectList);
   container=document.createElement("div");document.body.append(container);root=createRoot(container);
 });
-afterEach(async () => {await act(async () => root.unmount());container.remove();vi.restoreAllMocks();});
+afterEach(async () => {await act(async () => root.unmount());container.remove();vi.restoreAllMocks();vi.unstubAllGlobals();});
 function scope() {return <DiffSearchScope lines={["alpha Alpha", "omega"]}><DiffSearchButton /><DiffSearchBar /></DiffSearchScope>;}
 async function key(target: EventTarget, key: string, options: KeyboardEventInit = {}) {
   const event=new KeyboardEvent("keydown",{key,bubbles:true,cancelable:true,...options});
@@ -56,4 +58,14 @@ it("ignores retained inactive workspaces even when they still have layout rectan
   await key(document.body,"f",{ctrlKey:true});
   expect(document.querySelector('[data-active] input')).not.toBeNull();
   expect(document.querySelector('[inert] input')).toBeNull();
+});
+
+it("closes search before Radix dismisses the containing dialog", async () => {
+  const change=vi.fn();
+  await act(async () => root.render(<TooltipProvider><Dialog open onOpenChange={change}><DialogContent><DialogTitle>Compare revisions</DialogTitle>{scope()}</DialogContent></Dialog></TooltipProvider>));
+  await key(document.body,"f",{ctrlKey:true}); const input=await query("alpha");
+  expect((await key(input,"Escape")).defaultPrevented).toBe(true);
+  expect(document.querySelector('[role="search"]')).toBeNull();
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull(); expect(change).not.toHaveBeenCalled();
+  await key(document.querySelector('[role="dialog"]')!,"Escape"); expect(change).toHaveBeenCalledWith(false);
 });

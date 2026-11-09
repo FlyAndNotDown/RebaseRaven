@@ -70,7 +70,8 @@ export function DiffSearchScope({ lines, children, enabled = true, className, on
       if (event.defaultPrevented || isComposingKey(event) || event.altKey) return;
       const find = (event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "f";
       const next = open && event.key === "F3" && !event.ctrlKey && !event.metaKey;
-      if (!find && !next) return;
+      const dismiss = open && event.key === "Escape" && !event.ctrlKey && !event.metaKey;
+      if (!find && !next && !dismiss) return;
       const node = root.current;
       if (!node || !visibleSearchTarget(node)) return;
       const dialog = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).filter(visibleSearchTarget).at(-1);
@@ -80,7 +81,8 @@ export function DiffSearchScope({ lines, children, enabled = true, className, on
       if ((focused ?? scopes.at(-1)) !== node) return;
       event.preventDefault();
       event.stopPropagation();
-      if (find) show();
+      if (dismiss) close();
+      else if (find) show();
       else step(event.shiftKey ? -1 : 1);
     };
     window.addEventListener("keydown", keydown, true);
