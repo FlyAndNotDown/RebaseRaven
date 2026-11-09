@@ -3,6 +3,7 @@ mod avatars;
 mod diagnostics;
 mod editor;
 mod error;
+mod file_tools;
 mod fsutil;
 mod git;
 mod locate;
@@ -68,6 +69,22 @@ where
     result
 }
 
+async fn with_repo_diagnostic<T, F>(path: String, code: diagnostics::Code, f: F) -> AppResult<T>
+where
+    T: Send + 'static,
+    F: FnOnce(&mut git::Repository) -> AppResult<T> + Send + 'static,
+{
+    let started = std::time::Instant::now();
+    diagnostics::record(code, diagnostics::Status::Started, None);
+    let result = blocking(move || with_repo(&path, f)).await;
+    diagnostics::record(
+        code,
+        diagnostics::Status::of(&result),
+        Some(started.elapsed()),
+    );
+    result
+}
+
 #[tauri::command]
 async fn initialize_repository(path: String, branch: String) -> AppResult<String> {
     blocking(move || git::initialize_repository(&path, &branch)).await
@@ -120,13 +137,24 @@ async fn open_diagnostic_issues() -> AppResult<()> {
 async fn get_author_avatar(
     email: String,
     provider: prefs::AvatarProvider,
+    repo_path: String,
     app: AppHandle,
 ) -> AppResult<Option<String>> {
-    let prefs = blocking(move || prefs::load_prefs(&app)).await?;
-    if prefs.avatar_provider != provider {
+    let (prefs, selected) = blocking(move || {
+        let prefs = prefs::load_prefs(&app)?;
+        let remotes = if prefs.git_avatar_provider == prefs::GitAvatarProvider::Auto {
+            with_repo(&repo_path, |repo| git::list_remotes(repo))?
+        } else {
+            Vec::new()
+        };
+        let provider = avatars::provider_for_remotes(prefs.git_avatar_provider, &remotes);
+        Ok((prefs, provider))
+    })
+    .await?;
+    if selected != provider {
         return Ok(None);
     }
-    Ok(avatars::lookup(prefs, email).await)
+    Ok(avatars::lookup(prefs, selected, email).await)
 }
 
 // Kept synchronous so rapid saves land in the order they were sent.
@@ -172,18 +200,30 @@ pub fn askpass_client() -> Option<i32> {
 
 #[tauri::command]
 async fn open_repository(path: String, app: AppHandle) -> AppResult<WorkspaceSnapshot> {
-    blocking(move || {
+    let started = std::time::Instant::now();
+    diagnostics::record(
+        diagnostics::Code::GitOpen,
+        diagnostics::Status::Started,
+        None,
+    );
+    let result = blocking(move || {
         let mut repo = git::discover(&path)?;
         let snapshot = git::snapshot(&mut repo)?;
         recents::remember_repo(&app, &snapshot.repo.path, &snapshot.repo.name, "git")?;
         Ok(snapshot)
     })
-    .await
+    .await;
+    diagnostics::record(
+        diagnostics::Code::GitOpen,
+        diagnostics::Status::of(&result),
+        Some(started.elapsed()),
+    );
+    result
 }
 
 #[tauri::command]
 async fn refresh_workspace(repo_path: String) -> AppResult<WorkspaceSnapshot> {
-    with_repo_async(repo_path, git::snapshot).await
+    with_repo_diagnostic(repo_path, diagnostics::Code::GitSnapshot, git::snapshot).await
 }
 
 #[tauri::command]
@@ -194,7 +234,7 @@ async fn get_commits(
     query: Option<String>,
     rev: Option<Vec<String>>,
 ) -> AppResult<Vec<CommitSummary>> {
-    with_repo_async(repo_path, move |repo| {
+    with_repo_diagnostic(repo_path, diagnostics::Code::GitHistory, move |repo| {
         git::commits(
             repo,
             limit.unwrap_or(80),
@@ -208,7 +248,10 @@ async fn get_commits(
 
 #[tauri::command]
 async fn get_branches(repo_path: String) -> AppResult<BranchList> {
-    with_repo_async(repo_path, move |repo| git::branches(repo, true)).await
+    with_repo_diagnostic(repo_path, diagnostics::Code::GitMetadata, move |repo| {
+        git::branches(repo, true)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1286,6 +1329,57 @@ async fn open_in_editor(path: String, line: Option<u32>, app: AppHandle) -> AppR
 }
 
 #[tauri::command]
+async fn open_git_file_in_editor(
+    repo_path: String,
+    source: git::FileSource,
+    line: Option<u32>,
+    app: AppHandle,
+    files: State<'_, file_tools::ExternalFiles>,
+) -> AppResult<()> {
+    let files = files.inner().clone();
+    with_repo_async(repo_path, move |repo| {
+        let path = git::editor_file(repo, &source, &files)?;
+        let prefs = prefs::load_prefs(&app)?;
+        file_tools::open_editor(&path, line, &prefs.editor_id)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn diff_document_text(source: file_tools::DocumentSource) -> AppResult<file_tools::TextPair> {
+    blocking(move || source.text()).await
+}
+
+#[tauri::command]
+async fn open_diff_document(
+    source: file_tools::DocumentSource,
+    line: Option<u32>,
+    external_diff: bool,
+    app: AppHandle,
+    files: State<'_, file_tools::ExternalFiles>,
+) -> AppResult<()> {
+    let files = files.inner().clone();
+    blocking(move || {
+        let pair = source.files(file_tools::FILE_LIMIT)?;
+        let prefs = prefs::load_prefs(&app)?;
+        if external_diff {
+            file_tools::external_diff(pair, Some(&prefs.p4_diff_tool), move |message| {
+                let _ = app.emit(
+                    "tool-error",
+                    ToolError {
+                        message: error::redact_credentials(&message),
+                    },
+                );
+            })
+        } else {
+            let path = files.editor(&pair)?;
+            file_tools::open_editor(&path, line, &prefs.editor_id)
+        }
+    })
+    .await
+}
+
+#[tauri::command]
 async fn get_tool_config(repo_path: Option<String>) -> AppResult<git::ToolConfig> {
     blocking(move || match repo_path {
         Some(path) => with_repo(&path, |repo| Ok(git::read_tool_config(Some(repo)))),
@@ -1456,7 +1550,7 @@ async fn p4_revision_diff(
 #[tauri::command]
 async fn p4_image_pair(
     connection: p4::P4Connection,
-    source: p4::P4ImageSource,
+    source: p4::P4FileSource,
 ) -> AppResult<git::ImagePair> {
     blocking(move || p4::image_pair(&connection, &source)).await
 }
@@ -1648,60 +1742,6 @@ async fn p4_stream_change_diff(
 }
 
 #[tauri::command]
-async fn p4_list_jobs(connection: p4::P4Connection, query: String) -> AppResult<p4::P4JobPage> {
-    blocking(move || p4::list_jobs(&connection, &query)).await
-}
-
-#[tauri::command]
-async fn p4_read_job(connection: p4::P4Connection, job: Option<String>) -> AppResult<p4::P4Job> {
-    blocking(move || p4::read_job(&connection, job.as_deref())).await
-}
-
-#[tauri::command]
-async fn p4_save_job(
-    connection: p4::P4Connection,
-    edit: p4::P4JobEdit,
-    fingerprint: Option<String>,
-) -> AppResult<p4::P4Job> {
-    blocking(move || p4::save_job(&connection, &edit, fingerprint.as_deref())).await
-}
-
-#[tauri::command]
-async fn p4_delete_job(
-    connection: p4::P4Connection,
-    job: String,
-    fingerprint: String,
-) -> AppResult<()> {
-    blocking(move || p4::delete_job(&connection, &job, &fingerprint)).await
-}
-
-#[tauri::command]
-async fn p4_job_fixes(
-    connection: p4::P4Connection,
-    job: String,
-    change: String,
-) -> AppResult<p4::P4FixPage> {
-    blocking(move || p4::job_fixes(&connection, &job, &change)).await
-}
-
-#[tauri::command]
-async fn p4_preview_job_fix(
-    connection: p4::P4Connection,
-    request: p4::P4FixRequest,
-) -> AppResult<p4::P4FixPreview> {
-    blocking(move || p4::preview_job_fix(&connection, &request)).await
-}
-
-#[tauri::command]
-async fn p4_apply_job_fix(
-    connection: p4::P4Connection,
-    request: p4::P4FixRequest,
-    fingerprint: String,
-) -> AppResult<()> {
-    blocking(move || p4::apply_job_fix(&connection, &request, &fingerprint)).await
-}
-
-#[tauri::command]
 async fn p4_list_specs(
     connection: p4::P4Connection,
     kind: p4::P4SpecKind,
@@ -1821,23 +1861,6 @@ async fn p4_delete_change(connection: p4::P4Connection, change_id: String) -> Ap
 }
 
 #[tauri::command]
-async fn p4_file_properties(
-    connection: p4::P4Connection,
-    paths: Vec<String>,
-) -> AppResult<p4::P4FilePropertiesView> {
-    blocking(move || p4::file_properties(&connection, &paths)).await
-}
-
-#[tauri::command]
-async fn p4_change_file_types(
-    connection: p4::P4Connection,
-    request: p4::P4FileTypeRequest,
-    fingerprint: String,
-) -> AppResult<()> {
-    blocking(move || p4::change_file_types(&connection, &request, &fingerprint)).await
-}
-
-#[tauri::command]
 async fn p4_move_file(
     connection: p4::P4Connection,
     source: String,
@@ -1865,8 +1888,21 @@ async fn p4_revert(
 }
 
 #[tauri::command]
-async fn p4_revert_unchanged(connection: p4::P4Connection) -> AppResult<()> {
-    blocking(move || p4::revert_unchanged(&connection)).await
+async fn p4_revert_unchanged(
+    connection: p4::P4Connection,
+    change_id: Option<String>,
+    paths: Vec<String>,
+) -> AppResult<()> {
+    blocking(move || p4::revert_unchanged(&connection, change_id.as_deref(), &paths)).await
+}
+
+#[tauri::command]
+async fn p4_submit_shelf(
+    connection: p4::P4Connection,
+    change_id: String,
+    description: String,
+) -> AppResult<()> {
+    blocking(move || p4::submit_shelf(&connection, &change_id, &description)).await
 }
 
 #[tauri::command]
@@ -1949,6 +1985,14 @@ async fn p4_manual_resolve_apply(
 }
 
 #[tauri::command]
+async fn p4_revision_targets(
+    connection: p4::P4Connection,
+    change_id: String,
+) -> AppResult<Vec<String>> {
+    blocking(move || p4::revision_targets(&connection, &change_id)).await
+}
+
+#[tauri::command]
 async fn p4_get_revision(
     connection: p4::P4Connection,
     request: p4::P4GetRevision,
@@ -1970,12 +2014,14 @@ async fn p4_sync(
     connection: p4::P4Connection,
     paths: Vec<String>,
     activity_id: Option<String>,
+    auto_resolve: bool,
     app: AppHandle,
-) -> AppResult<String> {
+) -> AppResult<p4::P4SyncResult> {
     blocking(move || {
         p4::sync(
             &connection,
             &paths,
+            auto_resolve,
             progress_sink(&app, activity_id.as_deref()),
         )
     })
@@ -2381,6 +2427,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(WatchState::default())
+        .manage(file_tools::ExternalFiles::default())
         .manage(updater::UpdateManager::default());
     #[cfg(target_os = "macos")]
     let builder = builder.menu(macos_menu);
@@ -2556,6 +2603,9 @@ pub fn run() {
             list_terminals,
             list_editors,
             open_in_editor,
+            open_git_file_in_editor,
+            open_diff_document,
+            diff_document_text,
             get_tool_config,
             set_tool_config,
             list_gui_tools,
@@ -2594,13 +2644,6 @@ pub fn run() {
             p4_preview_stream_work,
             p4_apply_stream_work,
             p4_stream_change_diff,
-            p4_list_jobs,
-            p4_read_job,
-            p4_save_job,
-            p4_delete_job,
-            p4_job_fixes,
-            p4_preview_job_fix,
-            p4_apply_job_fix,
             p4_list_specs,
             p4_new_stream_spec,
             p4_read_stream_spec,
@@ -2619,11 +2662,10 @@ pub fn run() {
             p4_new_change,
             p4_delete_change,
             p4_move_file,
-            p4_file_properties,
-            p4_change_file_types,
             p4_reopen,
             p4_revert,
             p4_revert_unchanged,
+            p4_submit_shelf,
             p4_shelve,
             p4_unshelve,
             p4_delete_shelf,
@@ -2633,6 +2675,7 @@ pub fn run() {
             p4_manual_resolve_external,
             p4_resolve_accept,
             p4_get_revision,
+            p4_revision_targets,
             p4_sync,
             p4_preview_reconcile,
             p4_preview_clean,
@@ -2668,6 +2711,11 @@ pub fn run() {
             sync_watches,
             sync_window_chrome
         ])
-        .run(context)
-        .expect("error while running RebaseRaven");
+        .build(context)
+        .expect("error while building RebaseRaven")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                app.state::<file_tools::ExternalFiles>().clear();
+            }
+        });
 }

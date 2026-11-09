@@ -145,7 +145,10 @@ pub fn list_specs(
         return Err(AppError::msg("Enter a single-line search filter."));
     }
     let filter = search_filter(query);
-    let mut args = vec!["-ztag", kind.list(), "-m", "201", "-E", &filter];
+    let mut args = vec!["-ztag", kind.list(), "-m", "201"];
+    if !query.trim().is_empty() {
+        args.extend(["-E", &filter]);
+    }
     if !owner.trim().is_empty() {
         args.extend(["-u", owner.trim()]);
     }

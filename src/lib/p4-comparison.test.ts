@@ -16,4 +16,12 @@ describe("P4 workspace comparison", () => {
     const result = p4ComparisonDiff({ kind: "text", path: "file", before: "", after: "added\n".repeat(6000) });
     expect(result.truncated).toBe(true); expect(result.lines.length).toBeLessThanOrEqual(4000);
   });
+  it("ignores whitespace edits without hiding content edits or changing line numbers", () => {
+    const result = {kind:"text" as const, path:"file", before:"const x = 1;\r\nold\r\n", after:"  const x=1;\nnew\n"};
+    const filtered = p4ComparisonDiff(result, true);
+    expect(filtered.lines.filter(line => line.kind === "delete").map(line => line.content)).toEqual(["old\r"]);
+    expect(filtered.lines).toContainEqual({kind:"add",content:"new",oldLineno:null,newLineno:2});
+    expect(p4ComparisonDiff({...result, after:"const x=1;\nold\n"}, true).lines).toEqual([]);
+    expect(p4ComparisonDiff({kind:"text",path:"file",before:"x\n",after:"x\n\n"}, true).lines.some(line => line.kind === "add")).toBe(true);
+  });
 });

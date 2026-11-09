@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::diagnostics::{self, Code, CommandOutput, Status};
+use crate::diagnostics::{self, Capture, Code, CommandOutput, CommandTrace, LoggedChild, Status};
 use crate::error::GIT_BACKGROUND_TIMEOUT as BACKGROUND_TIMEOUT;
 
 use std::cell::RefCell;
@@ -132,11 +132,13 @@ fn configure_git_args(command: &mut Command, root: Option<&Path>, args: &[&str])
             if let Some(root) = root {
                 probe.current_dir(root);
             }
+            probe.arg("--list-cmds=builtins").stdin(Stdio::null());
+            let mut trace = CommandTrace::new(Code::GitMetadata, &probe);
             let output = probe
-                .arg("--list-cmds=builtins")
-                .stdin(Stdio::null())
                 .output()
-                .map_err(|error| git_start_error(probe.get_program(), error))?;
+                .map_err(|error| git_start_error(probe.get_program(), error));
+            trace.output(&output);
+            let output = output?;
             if !output.status.success() {
                 return Err(git_output_error(output));
             }
@@ -243,6 +245,7 @@ fn diagnostic_command<'a, 'b>(
     mut args: &'a [&'b str],
     background: bool,
 ) -> Option<(Code, &'a [&'b str])> {
+    let original = args;
     while let Some((arg, rest)) = args.split_first() {
         match *arg {
             "-c" | "-C" => args = rest.get(1..)?,
@@ -274,9 +277,9 @@ fn diagnostic_command<'a, 'b>(
                         Code::GitWorkspace
                     }
                     "stash" if !matches!(rest.first(), Some(&"list" | &"show")) => Code::GitStash,
-                    _ => return None,
+                    _ => Code::GitMetadata,
                 };
-                return Some((code, args));
+                return Some((code, original));
             }
         }
     }
@@ -305,19 +308,18 @@ pub(super) fn run_git_env(
     args: &[&str],
     env: &[(&str, &str)],
 ) -> AppResult<std::process::Output> {
-    let started = Instant::now();
-    let output = require_git().and_then(|git| {
-        let mut command = git_command(git);
-        configure_git_args(&mut command, Some(root), args)?;
-        command.env("GIT_TERMINAL_PROMPT", "0");
-        for (key, value) in env {
-            command.env(key, value);
-        }
-        command
-            .output()
-            .map_err(|err| git_start_error(command.get_program(), err))
-    });
-    record_output(args, started, &output);
+    let git = require_git()?;
+    let mut command = git_command(git);
+    configure_git_args(&mut command, Some(root), args)?;
+    command.env("GIT_TERMINAL_PROMPT", "0");
+    command.envs(env.iter().copied());
+    let code = diagnostic_command(args, BACKGROUND.with(|flag| flag.get()))
+        .map_or(Code::GitMetadata, |(code, _)| code);
+    let mut trace = CommandTrace::new(code, &command);
+    let output = command
+        .output()
+        .map_err(|err| git_start_error(command.get_program(), err));
+    trace.output(&output);
     output
 }
 
@@ -328,10 +330,7 @@ pub(super) fn run_git_input_output(
     args: &[&str],
     input: &[u8],
 ) -> AppResult<std::process::Output> {
-    let started = Instant::now();
-    let output = git_input_output(root, args, input);
-    record_output(args, started, &output);
-    output
+    git_input_output(root, args, input)
 }
 
 fn git_input_output(root: &Path, args: &[&str], input: &[u8]) -> AppResult<std::process::Output> {
@@ -343,9 +342,16 @@ fn git_input_output(root: &Path, args: &[&str], input: &[u8]) -> AppResult<std::
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = command
-        .spawn()
-        .map_err(|err| git_start_error(command.get_program(), err))?;
+    let code = diagnostic_command(args, false).map_or(Code::GitMetadata, |(code, _)| code);
+    let mut trace = CommandTrace::new(code, &command);
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            let error = git_start_error(command.get_program(), err);
+            trace.finish(Status::Failure, CommandOutput::default(), Some(&error));
+            return Err(error);
+        }
+    };
     let mut stdin = child.stdin.take();
     let input = input.to_vec();
     let writer = thread::spawn(move || {
@@ -359,6 +365,7 @@ fn git_input_output(root: &Path, args: &[&str], input: &[u8]) -> AppResult<std::
     if output.is_ok() {
         let _ = writer.join();
     }
+    trace.output(&output);
     output
 }
 
@@ -474,30 +481,27 @@ fn run_git_progress_io(
     let started = SystemTime::now();
     let background = BACKGROUND.with(|flag| flag.get());
     let diagnostic = diagnostic_command(args, background);
+    let mut trace = CommandTrace::new(
+        diagnostic.map_or(Code::GitMetadata, |(code, _)| code),
+        &command,
+    );
     let mut capture = ProgressCapture::default();
     let result = run_progress_command(
         &mut command,
         scope.map(|(_, token)| token),
         background.then_some(ProgressLimits::BACKGROUND),
         &mut on_progress,
-        diagnostic.map(|_| &mut capture),
+        Some(&mut capture),
     );
-    if let Some((code, args)) = diagnostic {
-        diagnostics::record_cli(
-            code,
-            args,
-            timer,
-            Status::of(&result),
-            CommandOutput {
-                status: capture.status,
-                stdout: &capture.stdout,
-                stderr: capture.stderr.as_bytes(),
-            },
-            result.as_ref().err().filter(|_| {
-                capture.status.is_none_or(|status| status.success()) || capture.stopped
-            }),
-        );
-    }
+    trace.finish(
+        Status::of(&result),
+        CommandOutput {
+            status: capture.status,
+            stdout: &capture.stdout,
+            stderr: capture.stderr.as_bytes(),
+        },
+        result.as_ref().err(),
+    );
     if !background && result.as_ref().is_err_and(|error| error.is_cancelled()) {
         if let Some(root) = root {
             remove_stale_locks(root, started);
@@ -656,6 +660,7 @@ fn run_progress_command(
 
     let mut logs = VecDeque::new();
     let mut stdout_bytes = Vec::new();
+    let mut diagnostic_stderr = Capture::default();
     let mut seen_activity = 0;
     let mut last_activity = started;
     let mut stopped = None;
@@ -709,6 +714,8 @@ fn run_progress_command(
         }
         match rx.recv_timeout(PROGRESS_POLL) {
             Ok(ProgressEvent::Line(line)) => {
+                diagnostic_stderr.append(line.as_bytes());
+                diagnostic_stderr.append(b"\n");
                 remember_progress(&mut logs, &line);
                 on_progress(&crate::error::redact_credentials(line.trim()));
             }
@@ -738,24 +745,7 @@ fn run_progress_command(
         capture.status = status;
         capture.stopped = stopped.is_some();
         capture.stdout.clone_from(&stdout_bytes);
-        let mut bytes = 0;
-        let count = logs
-            .iter()
-            .rev()
-            .take_while(|line| {
-                bytes += line.len() + 1;
-                bytes <= 2048
-            })
-            .count();
-        if count == 0 && !logs.is_empty() {
-            capture
-                .stderr
-                .push_str("[output omitted: progress line exceeds 2048 bytes]");
-        }
-        for line in logs.iter().skip(logs.len() - count) {
-            capture.stderr.push_str(line);
-            capture.stderr.push('\n');
-        }
+        capture.stderr = String::from_utf8_lossy(&diagnostic_stderr.take()).into_owned();
     }
     if let Some(reason) = stopped {
         if limits.is_some() && !process.reaped {
@@ -800,18 +790,15 @@ fn remember_progress(logs: &mut VecDeque<String>, line: &str) {
 }
 
 fn diagnostic_tail(reader: &mut impl Read) -> std::io::Result<Vec<u8>> {
-    let mut tail = VecDeque::with_capacity(MAX_DIAGNOSTIC_BYTES);
-    let mut chunk = [0_u8; 8192];
+    let mut capture = Capture::default();
+    let mut chunk = [0; 8192];
     loop {
-        let read = match reader.read(&mut chunk) {
-            Ok(0) => return Ok(tail.into_iter().collect()),
-            Ok(read) => read,
+        match reader.read(&mut chunk) {
+            Ok(0) => return Ok(capture.take()),
+            Ok(count) => capture.append(&chunk[..count]),
             Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
             Err(error) => return Err(error),
-        };
-        let excess = (tail.len() + read).saturating_sub(MAX_DIAGNOSTIC_BYTES);
-        tail.drain(..excess);
-        tail.extend(&chunk[..read]);
+        }
     }
 }
 
@@ -1054,21 +1041,24 @@ fn git_version_output(path: &str) -> AppResult<std::process::Output> {
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    let mut trace = CommandTrace::new(Code::GitMetadata, &command);
     let child = command
         .spawn()
-        .map_err(|_| AppError::msg("That file is not a Git executable."))?;
+        .map_err(|_| trace.failed(AppError::msg("That file is not a Git executable.")))?;
     let pid = child.id();
     let (sender, receiver) = mpsc::channel();
     thread::spawn(move || {
         let _ = sender.send(child.wait_with_output());
     });
-    match receiver.recv_timeout(Duration::from_secs(5)) {
+    let result = match receiver.recv_timeout(Duration::from_secs(5)) {
         Ok(Ok(output)) => Ok(output),
         _ => {
             kill_pid(pid);
             Err(AppError::msg("That file is not a Git executable."))
         }
-    }
+    };
+    trace.output(&result);
+    result
 }
 
 fn kill_pid(pid: u32) {
@@ -1079,7 +1069,7 @@ pub(super) fn which(name: &str) -> Option<PathBuf> {
     crate::locate::which(name)
 }
 
-pub(super) fn spawn_git_stdout(root: &Path, args: &[&str]) -> AppResult<std::process::Child> {
+pub(super) fn spawn_git_stdout(root: &Path, args: &[&str]) -> AppResult<LoggedChild> {
     spawn_git_stdout_env(root, args, &[])
 }
 
@@ -1087,7 +1077,7 @@ pub(super) fn spawn_git_stdout_env(
     root: &Path,
     args: &[&str],
     env: &[(&str, &str)],
-) -> AppResult<std::process::Child> {
+) -> AppResult<LoggedChild> {
     let git = require_git()?;
     let mut command = git_command(git);
     command.arg("-C").arg(root).args(args);
@@ -1096,10 +1086,13 @@ pub(super) fn spawn_git_stdout_env(
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null());
-    command
-        .spawn()
-        .map_err(|err| git_start_error(command.get_program(), err))
+        .stderr(Stdio::piped());
+    let code = diagnostic_command(args, false).map_or(Code::GitMetadata, |(code, _)| code);
+    let program = command.get_program().to_owned();
+    CommandTrace::spawn(command, code).map_err(|error| match error {
+        AppError::Io(error) => git_start_error(&program, error),
+        other => other,
+    })
 }
 
 fn git_start_error(program: &std::ffi::OsStr, error: std::io::Error) -> AppError {
@@ -1316,10 +1309,11 @@ mod stream_tests {
         }
         assert_eq!(logs.len(), MAX_PROGRESS_LINES);
         assert_eq!(logs.front().map(String::as_str), Some("92"));
-        let mut output = vec![b'x'; MAX_DIAGNOSTIC_BYTES * 3];
+        let mut output = vec![b'x'; 256 * 1024 * 3];
         output.extend_from_slice(b"last error");
         let tail = diagnostic_tail(&mut Cursor::new(output)).unwrap();
-        assert_eq!(tail.len(), MAX_DIAGNOSTIC_BYTES);
+        assert!(tail.len() <= 256 * 1024);
+        assert!(String::from_utf8_lossy(&tail).contains("output bytes omitted"));
         assert!(tail.ends_with(b"last error"));
     }
 

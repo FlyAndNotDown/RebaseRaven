@@ -43,7 +43,9 @@
     "createdNamed": "已创建 {{name}}",
     "addedNamed": "已添加 {{name}}",
     "removedNamed": "已移除 {{name}}",
-    "createdPublicKey": "已为 {{name}} 创建公钥"
+    "createdPublicKey": "已为 {{name}} 创建公钥",
+    "add": "添加",
+    "remove": "移除"
   },
   "language": {
     "label": "语言",
@@ -357,7 +359,7 @@
       "could_not_read_local_diagnostics_try_again": "无法读取本地诊断信息，请重试。",
       "export_local_diagnostics": "导出本地诊断信息",
       "local_diagnostics": "本地诊断",
-      "local_log_contents": "本地日志包含命令、退出状态和输出摘录。分享前请检查导出文件中的项目详情。",
+      "local_log_contents": "本地日志记录 Git 和 Perforce 命令、工作目录、耗时、退出状态及输出。过长输出会截断，导出前需要确认。",
       "retention": "最多保留 {{days}} 天，总容量不超过 {{maximum}}。",
       "about_local_diagnostics": "关于本地诊断",
       "refresh_diagnostic_storage_usage": "刷新存储用量",
@@ -381,14 +383,19 @@
       "could_not_open_issues_try_again": "无法打开问题反馈，请重试。",
       "zipArchive": "ZIP 压缩文件",
       "storageUsage_one": "{{used}} / {{maximum}} · {{count}} 个日志文件",
-      "storageUsage_other": "{{used}} / {{maximum}} · {{count}} 个日志文件"
+      "storageUsage_other": "{{used}} / {{maximum}} · {{count}} 个日志文件",
+      "exportConfirmationTitle": "导出命令日志？",
+      "exportConfirmationDescription": "日志可能包含本地路径、仓库与服务器地址、命令参数、文件内容及其它项目信息。ZIP 不加密。继续导出即表示你知晓，文件的接收者（包括开发者）可以查看这些记录。",
+      "exportConfirm": "继续导出"
     },
     "avatarSettings": {
       "built_in": "内置",
       "author_avatars": "作者头像",
-      "built_in_stays_offline_choosing_github_or_gitlab": "选择 GitHub 或 GitLab 会向对应服务发送提交者邮箱，以匹配公开资料。",
       "about_author_avatar_providers": "关于作者头像来源",
-      "could_not_save_the_avatar_provider_try_again": "无法保存头像来源，请重试。"
+      "could_not_save_the_avatar_provider_try_again": "无法保存头像来源，请重试。",
+      "auto": "自动",
+      "git_hint": "自动根据 origin URL 选择来源；没有 origin 时使用第一个远端。GitHub 和 GitLab 会接收提交邮箱以匹配公开资料，其它托管服务使用内置头像。",
+      "p4_hint": "Perforce 使用离线生成的内置作者头像。"
     },
     "appUpdates": {
       "check_failed": "检查更新失败",

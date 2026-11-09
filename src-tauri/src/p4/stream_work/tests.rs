@@ -16,7 +16,7 @@ fn work(opened: bool) -> P4StreamWork {
     P4StreamWork {
         spec:super::super::stream_specs::parsed(&connection, "Stream: //project/dev\nName: Development\nOwner: alice\nParent: //project/main\nType: development\nParentView: inherit\nPaths:\n\tshare ...\n"),
         opened:opened.then(|| P4StreamOpen {change:"default".into(), base_change:"40".into()}),
-        head_change:"42".into(), current_text:String::new(), head_text:String::new(), diff:parse_single_diff("", "//project/dev"), unresolved:false, resolve_output:String::new(), fingerprint:"snapshot".into(),
+        head_change:"42".into(), current_text:String::new(), base_text:String::new(), head_text:String::new(), diff:parse_single_diff("", "//project/dev"), unresolved:false, resolve_output:String::new(), fingerprint:"snapshot".into(),
     }
 }
 fn request(action: &str, mode: &str) -> P4StreamWorkRequest {

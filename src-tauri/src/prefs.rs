@@ -37,7 +37,9 @@ pub struct AppPrefs {
     #[serde(default)]
     pub http_proxy: crate::network::HttpProxy,
     #[serde(default)]
-    pub avatar_provider: AvatarProvider,
+    pub git_avatar_provider: GitAvatarProvider,
+    #[serde(default)]
+    pub p4_avatar_provider: P4AvatarProvider,
     #[serde(default = "default_terminal_id")]
     pub terminal_id: String,
     #[serde(default = "default_editor_id")]
@@ -71,6 +73,10 @@ pub struct AppPrefs {
     /// External P4 merge tool id or executable path; empty discovers P4Merge.
     #[serde(default)]
     pub p4_merge_tool: String,
+    #[serde(default)]
+    pub p4_diff_tool: String,
+    #[serde(default)]
+    pub p4_auto_resolve_after_sync: bool,
     /// User-added p4 executables. The PATH entry is not stored here.
     #[serde(default)]
     pub extra_p4_paths: Vec<String>,
@@ -95,6 +101,23 @@ pub enum AvatarProvider {
     Builtin,
     Github,
     Gitlab,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum GitAvatarProvider {
+    #[default]
+    Auto,
+    Builtin,
+    Github,
+    Gitlab,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum P4AvatarProvider {
+    #[default]
+    Builtin,
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -139,7 +162,8 @@ impl Default for AppPrefs {
             language: LanguagePreference::default(),
             analytics_enabled: default_analytics_enabled(),
             http_proxy: crate::network::HttpProxy::default(),
-            avatar_provider: AvatarProvider::default(),
+            git_avatar_provider: GitAvatarProvider::default(),
+            p4_avatar_provider: P4AvatarProvider::default(),
             terminal_id: default_terminal_id(),
             editor_id: default_editor_id(),
             sidebar_order: default_sidebar_order(),
@@ -154,6 +178,8 @@ impl Default for AppPrefs {
             extra_git_paths: Vec::new(),
             p4_path: String::new(),
             p4_merge_tool: String::new(),
+            p4_diff_tool: String::new(),
+            p4_auto_resolve_after_sync: false,
             extra_p4_paths: Vec::new(),
             p4_port: String::new(),
             p4_user: String::new(),
@@ -210,6 +236,19 @@ pub fn save_prefs(app: &AppHandle, mut prefs: AppPrefs) -> AppResult<AppPrefs> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn avatar_preferences_are_separate_and_default_to_auto_git_and_builtin_perforce() {
+        let prefs: AppPrefs = serde_json::from_str("{}").unwrap();
+        assert_eq!(prefs.git_avatar_provider, GitAvatarProvider::Auto);
+        assert_eq!(prefs.p4_avatar_provider, P4AvatarProvider::Builtin);
+        let prefs: AppPrefs =
+            serde_json::from_str(r#"{"gitAvatarProvider":"gitlab","p4AvatarProvider":"builtin"}"#)
+                .unwrap();
+        assert_eq!(prefs.git_avatar_provider, GitAvatarProvider::Gitlab);
+        assert_eq!(prefs.p4_avatar_provider, P4AvatarProvider::Builtin);
+        assert!(serde_json::from_str::<AppPrefs>(r#"{"p4AvatarProvider":"github"}"#).is_err());
+    }
 
     #[test]
     fn analytics_defaults_on_and_preserves_an_explicit_opt_out() {

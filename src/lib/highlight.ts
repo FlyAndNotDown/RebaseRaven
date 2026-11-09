@@ -31,10 +31,26 @@ import "prismjs/components/prism-graphql";
 import "prismjs/components/prism-cmake";
 import "prismjs/components/prism-makefile";
 import "prismjs/components/prism-docker";
+import "prismjs/components/prism-markup-templating";
+import "prismjs/components/prism-php";
+import "prismjs/components/prism-dart";
+import "prismjs/components/prism-scala";
+import "prismjs/components/prism-objectivec";
+import "prismjs/components/prism-r";
+import "prismjs/components/prism-perl";
+import "prismjs/components/prism-diff";
+import "prismjs/components/prism-git";
+import "prismjs/components/prism-ignore";
+import "prismjs/components/prism-nginx";
 import type { TokenRange } from "@/lib/diff-text";
 
 /** Prism token types folded into the handful of colors the theme defines. */
 const TOKEN_CLASS: Record<string, string> = {
+  inserted: "inserted",
+  deleted: "deleted",
+  coord: "comment",
+  bold: "keyword",
+  italic: "string",
   comment: "comment",
   prolog: "comment",
   doctype: "comment",
@@ -78,6 +94,7 @@ const MAX_TOTAL = 400_000;
 type Flat = { text: string; cls: string | null };
 
 function tokenClass(token: Prism.Token): string | null {
+  if (token.type === "title") return TOKEN_CLASS["class-name"];
   const direct = TOKEN_CLASS[token.type];
   if (direct) return direct;
   const aliases = Array.isArray(token.alias) ? token.alias : token.alias ? [token.alias] : [];

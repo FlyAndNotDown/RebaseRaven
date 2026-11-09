@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { avatarColor, avatarHue, avatarInitial, avatarSeed, createAvatarLoader } from "./avatar";
+import { avatarColor, avatarHue, avatarInitial, avatarSeed, createAvatarLoader, resolveGitAvatarProvider } from "./avatar";
 
 describe("avatar", () => {
   it("falls back from name to email to a placeholder", () => {
@@ -61,7 +61,7 @@ describe("optional author avatars", () => {
     expect(await unsafe.get("gitlab", "alice@example.com")).toBeNull();
   });
 
-  it("limits concurrency and invalidates queued and in-flight work after switching providers", async () => {
+  it("limits concurrency and invalidates queued and in-flight work after changing policy", async () => {
     const results = [deferred<string | null>(), deferred<string | null>(), deferred<string | null>()];
     const fetch = vi.fn((_provider: string, email: string) => results[email === "a@example.com" ? 0 : email === "b@example.com" ? 1 : 2].promise);
     const loader = createAvatarLoader(fetch);
@@ -71,6 +71,7 @@ describe("optional author avatars", () => {
     await Promise.resolve();
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(await loader.get("builtin", "a@example.com")).toBeNull();
+    loader.configure("gitlab");
     expect(await queued).toBeNull();
     results[0].resolve(IMAGE);
     results[1].resolve(IMAGE);
@@ -82,7 +83,23 @@ describe("optional author avatars", () => {
     await Promise.resolve();
     results[2].resolve(IMAGE);
     expect(await fresh).toBe(IMAGE);
-    expect(fetch).toHaveBeenLastCalledWith("gitlab", "c@example.com");
+    expect(fetch).toHaveBeenLastCalledWith("gitlab", "c@example.com", "");
+  });
+
+  it("keeps GitHub and GitLab lookups separate while builtin rows do not cancel them", async () => {
+    const first = deferred<string | null>(), second = deferred<string | null>();
+    const github = IMAGE, gitlab = "data:image/png;base64,Qg==";
+    const fetch = vi.fn((provider: string) => provider === "github" ? first.promise : second.promise);
+    const loader = createAvatarLoader(fetch);
+    loader.configure("auto");
+    const a = loader.get("github", "alice@example.com", "github-project");
+    const b = loader.get("gitlab", "alice@example.com", "gitlab-project");
+    expect(await loader.get("builtin", "alice@example.com")).toBeNull();
+    first.resolve(github);second.resolve(gitlab);
+    expect(await a).toBe(github);expect(await b).toBe(gitlab);
+    expect(await loader.get("github", "alice@example.com")).toBe(github);
+    expect(await loader.get("gitlab", "alice@example.com")).toBe(gitlab);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it("negative-caches failures for a finite duration", async () => {
@@ -104,5 +121,36 @@ describe("optional author avatars", () => {
     expect(fetch).toHaveBeenCalledTimes(60);
     await loader.get("github", "author0@example.com");
     expect(fetch).toHaveBeenCalledTimes(61);
+  });
+});
+
+describe("automatic Git avatar providers", () => {
+  it.each([
+    ["https://github.com/owner/project.git", "github"],
+    ["git@github.com:owner/project.git", "github"],
+    ["ssh://git@GITHUB.COM:22/owner/project.git", "github"],
+    ["git://gitlab.com/group/project.git", "gitlab"],
+    ["git@gitlab.com:group/project.git", "gitlab"],
+    ["https://gitlab.com/group/subgroup/project.git", "gitlab"],
+    ["https://github.com.evil.example/owner/project.git", "builtin"],
+    ["https://github.com@evil.example/owner/project.git", "builtin"],
+    ["https://example.com/github.com/project.git", "builtin"],
+    ["https://gitlab.example.com/group/project.git", "builtin"],
+    ["file:///projects/github.com/project.git", "builtin"],
+    ["/projects/project.git", "builtin"],
+    ["C:\\projects\\project.git", "builtin"],
+    ["https://github.com", "builtin"],
+  ])("resolves %s to %s", (url, provider) => {
+    expect(resolveGitAvatarProvider("auto", [{name:"origin", url}])).toBe(provider);
+  });
+
+  it("prefers the fetch URL of origin and honors explicit choices", () => {
+    const remotes = [{name:"upstream",url:"https://gitlab.com/group/project"},{name:"origin",url:"git@github.com:owner/project",pushUrl:"git@gitlab.com:group/project"}];
+    expect(resolveGitAvatarProvider("auto", remotes)).toBe("github");
+    expect(resolveGitAvatarProvider("auto", [remotes[0]])).toBe("gitlab");
+    expect(resolveGitAvatarProvider("auto", [])).toBe("builtin");
+    expect(resolveGitAvatarProvider("auto", [{name:"origin",url:"/projects/project"}, remotes[0]])).toBe("builtin");
+    expect(resolveGitAvatarProvider("builtin", remotes)).toBe("builtin");
+    expect(resolveGitAvatarProvider("gitlab", remotes)).toBe("gitlab");
   });
 });

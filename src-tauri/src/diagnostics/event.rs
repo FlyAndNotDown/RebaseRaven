@@ -42,6 +42,10 @@ pub enum Code {
     UpdateDownload,
     UpdateInstall,
     UpdateRestart,
+    GitOpen,
+    GitSnapshot,
+    GitSnapshotWait,
+    GitMetadata,
     GitOperation,
     GitStatus,
     GitDiff,
@@ -70,10 +74,14 @@ pub enum Code {
     PerforceRevert,
     PerforceOpen,
     DiagnosticsExport,
+    DiagnosticsDropped,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Status {
+    Started,
+    Running,
+    Output,
     Success,
     Failure,
     Cancelled,
@@ -89,7 +97,7 @@ impl Status {
     }
     pub(super) fn level(self) -> log::Level {
         match self {
-            Self::Success => log::Level::Info,
+            Self::Started | Self::Running | Self::Output | Self::Success => log::Level::Info,
             Self::Failure => log::Level::Error,
             Self::Cancelled => log::Level::Warn,
         }
@@ -97,6 +105,9 @@ impl Status {
 
     fn message(self) -> &'static str {
         match self {
+            Self::Started => "Started",
+            Self::Running => "Streaming",
+            Self::Output => "Output",
             Self::Success => "Completed",
             Self::Failure => "Failed",
             Self::Cancelled => "Cancelled",
@@ -121,7 +132,11 @@ impl Code {
             | Self::UpdateDownload
             | Self::UpdateInstall
             | Self::UpdateRestart => Category::Update,
-            Self::GitOperation
+            Self::GitOpen
+            | Self::GitSnapshot
+            | Self::GitSnapshotWait
+            | Self::GitMetadata
+            | Self::GitOperation
             | Self::GitStatus
             | Self::GitDiff
             | Self::GitHistory
@@ -134,25 +149,9 @@ impl Code {
             | Self::GitStage
             | Self::GitWorkspace
             | Self::GitStash => Category::Git,
-            Self::DiagnosticsExport => Category::Diagnostics,
+            Self::DiagnosticsExport | Self::DiagnosticsDropped => Category::Diagnostics,
             _ => Category::P4,
         }
-    }
-
-    pub(super) fn passive(self) -> bool {
-        matches!(
-            self,
-            Self::GitOperation
-                | Self::GitStatus
-                | Self::GitDiff
-                | Self::GitHistory
-                | Self::GitBackgroundFetch
-                | Self::PerforceOperation
-                | Self::PerforceInfo
-                | Self::PerforceStatus
-                | Self::PerforceHistory
-                | Self::PerforceDiff
-        )
     }
 
     fn label(self) -> &'static str {
@@ -163,9 +162,15 @@ impl Code {
             Self::UpdateDownload => "Download update",
             Self::UpdateInstall => "Install update",
             Self::UpdateRestart => "Restart after update",
+            Self::GitOpen => "Open repository",
+            Self::GitSnapshot => "Refresh workspace",
+            Self::GitSnapshotWait => "Wait for workspace refresh",
+            Self::GitHistory => "Load commit history",
+            Self::GitMetadata => "Read repository metadata",
             Self::GitOperation => "Repository operation",
             Self::PerforceResolve => "Verify conflict resolution",
             Self::DiagnosticsExport => "Export diagnostics",
+            Self::DiagnosticsDropped => "Diagnostic queue overflow",
             _ => "Repository command",
         }
     }
@@ -197,6 +202,9 @@ impl Event {
         } else {
             if let Some(command) = &self.command {
                 line.push_str(&command.invocation);
+                command
+                    .write_context(&mut line)
+                    .expect("writing to a string");
                 if self.code == Code::GitBackgroundFetch {
                     line.push_str(" (background)");
                 }

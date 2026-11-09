@@ -1,12 +1,10 @@
+use super::event::Category;
+use regex::Regex;
 use std::fmt::{self, Write};
-use std::process::{ExitStatus, Output};
+use std::process::{Command, ExitStatus, Output};
 use std::sync::OnceLock;
 
-use regex::Regex;
-
-use super::event::Category;
-
-const OUTPUT_BYTES: usize = 1024;
+pub(super) const OUTPUT_BYTES: usize = 256 * 1024;
 
 #[derive(Clone, Copy, Default)]
 pub struct CommandOutput<'a> {
@@ -14,7 +12,6 @@ pub struct CommandOutput<'a> {
     pub stdout: &'a [u8],
     pub stderr: &'a [u8],
 }
-
 impl<'a> From<&'a Output> for CommandOutput<'a> {
     fn from(output: &'a Output) -> Self {
         Self {
@@ -25,133 +22,76 @@ impl<'a> From<&'a Output> for CommandOutput<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(super) struct CommandReport {
     pub invocation: String,
-    status: Option<ExitStatus>,
-    stdout: Option<String>,
-    stderr: Option<String>,
+    pub(super) status: Option<ExitStatus>,
+    pub(super) stdout: Option<String>,
+    pub(super) stderr: Option<String>,
+    credentials: bool,
+    pub(super) id: Option<String>,
+    pub(super) cwd: Option<String>,
 }
-
 impl CommandReport {
     pub(super) fn new(category: Category, args: &[&str], output: CommandOutput<'_>) -> Self {
-        let (program, prefix, args) = match category {
-            Category::Git => ("git", "", args),
-            Category::P4 if args.first() == Some(&"-ztag") => ("p4", " -ztag", &args[1..]),
-            Category::P4 => ("p4", "", args),
-            _ => unreachable!("only VCS commands carry CLI output"),
+        let program = match category {
+            Category::Git => "git",
+            Category::P4 => "p4",
+            _ => unreachable!("VCS command category"),
         };
-        let (verb, args) = args.split_first().unwrap_or((&"", &[]));
-        // The adapters supply known verbs. Refuse arbitrary command names too.
-        let verb = if verb.len() <= 32
-            && !verb.is_empty()
-            && verb
-                .bytes()
-                .all(|byte| byte.is_ascii_lowercase() || byte == b'-')
-        {
-            *verb
-        } else {
-            "<command>"
-        };
-        let mut invocation = format!("{program}{prefix} {verb}");
-        let args = match (
-            verb,
-            args.split_first().map(|(&action, rest)| (action, rest)),
-        ) {
-            (
-                "remote" | "worktree",
-                Some((action @ ("add" | "remove" | "set-url" | "prune"), rest)),
-            ) => {
-                write!(invocation, " {action}").expect("writing to a string");
-                rest
-            }
-            _ => args,
-        };
-        let mut omitted = false;
-        for arg in args.iter().take(32).take_while(|arg| **arg != "--") {
-            if matches!(
-                *arg,
-                "--abort"
-                    | "--all"
-                    | "--amend"
-                    | "--atomic"
-                    | "--cached"
-                    | "--check"
-                    | "--continue"
-                    | "--exit-code"
-                    | "--ff-only"
-                    | "--force"
-                    | "--force-with-lease"
-                    | "--hard"
-                    | "--no-edit"
-                    | "--no-index"
-                    | "--no-tags"
-                    | "--pathspec-file-nul"
-                    | "--pathspec-from-file=-"
-                    | "--porcelain"
-                    | "--progress"
-                    | "--prune"
-                    | "--quiet"
-                    | "--rebase"
-                    | "--soft"
-                    | "--tags"
-                    | "-am"
-                    | "-as"
-                    | "-at"
-                    | "-ay"
-                    | "-d"
-                    | "-f"
-                    | "-i"
-                    | "-n"
-                    | "-N"
-                    | "-q"
-                    | "-s"
-            ) {
-                write!(invocation, " {arg}").expect("writing to a string");
-            } else {
-                omitted = true;
-            }
-        }
-        if omitted || args.len() > 32 || args.contains(&"--") {
-            invocation.push_str(" <args omitted>");
-        }
-
-        // Some commands expose secret configuration or return file content, history,
-        // or descriptions. Keep their invocation and exit status without that data.
-        let sensitive = matches!(
-            verb,
-            "login" | "logout" | "passwd" | "tickets" | "set" | "config"
-        );
-        let stdout_useful = match category {
-            Category::Git => matches!(verb, "fetch" | "pull" | "push" | "clone"),
-            Category::P4 => matches!(
-                verb,
-                "sync"
-                    | "submit"
-                    | "resolve"
-                    | "shelve"
-                    | "unshelve"
-                    | "revert"
-                    | "edit"
-                    | "add"
-                    | "delete"
-                    | "reopen"
-                    | "move"
-                    | "reconcile"
-                    | "integrate"
-                    | "undo"
-            ),
-            _ => false,
-        };
-
-        Self {
-            invocation,
+        let credentials = args
+            .iter()
+            .any(|arg| matches!(*arg, "login" | "passwd" | "tickets" | "credential"));
+        let mut report = Self {
+            invocation: invocation(program, args),
             status: output.status,
-            stdout: stdout_useful.then(|| excerpt(output.stdout)).flatten(),
-            stderr: (!sensitive).then(|| excerpt(output.stderr)).flatten(),
+            stdout: None,
+            stderr: None,
+            credentials,
+            id: None,
+            cwd: None,
+        };
+        report.set_output(output);
+        report
+    }
+    pub(super) fn for_command(category: Category, command: &Command, id: String) -> Self {
+        let arguments: Vec<_> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy())
+            .collect();
+        let args: Vec<_> = arguments.iter().map(|arg| arg.as_ref()).collect();
+        let mut report = Self::new(category, &args, CommandOutput::default());
+        report.invocation = invocation(&command.get_program().to_string_lossy(), &args);
+        report.id = Some(id);
+        report.cwd = command
+            .get_current_dir()
+            .map(|dir| dir.to_string_lossy().into_owned())
+            .or_else(|| {
+                std::env::current_dir()
+                    .ok()
+                    .map(|dir| dir.to_string_lossy().into_owned())
+            });
+        report
+    }
+    pub(super) fn set_output(&mut self, output: CommandOutput<'_>) {
+        self.status = output.status;
+        if self.credentials {
+            self.stdout = (!output.stdout.is_empty()).then(|| "[credential output omitted]".into());
+            self.stderr = (!output.stderr.is_empty()).then(|| "[credential output omitted]".into());
+        } else {
+            self.stdout = excerpt(output.stdout);
+            self.stderr = excerpt(output.stderr);
         }
     }
-
+    pub(super) fn write_context(&self, line: &mut String) -> fmt::Result {
+        if let Some(id) = &self.id {
+            write!(line, " [command={id}]")?;
+        }
+        if let Some(cwd) = &self.cwd {
+            write!(line, " cwd={:?}", redact(cwd))?;
+        }
+        Ok(())
+    }
     pub(super) fn write_exit(&self, line: &mut String) -> fmt::Result {
         if let Some(status) = self.status {
             if let Some(code) = status.code() {
@@ -162,72 +102,111 @@ impl CommandReport {
         }
         Ok(())
     }
-
     pub(super) fn write_output(&self, time: &str, log: &mut String) -> fmt::Result {
         for (stream, output) in [("stderr", &self.stderr), ("stdout", &self.stdout)] {
             if let Some(output) = output {
-                write_output_lines(log, time, stream, output)?;
+                let stream = self.id.as_ref().map_or_else(
+                    || stream.to_owned(),
+                    |id| format!("{stream} [command={id}]"),
+                );
+                write_output_lines(log, time, &stream, output)?;
             }
         }
         Ok(())
     }
 }
-
+fn invocation(program: &str, args: &[&str]) -> String {
+    let mut out = format!("{program:?}");
+    let mut secret = false;
+    for arg in args {
+        let value = if secret {
+            "[redacted]".to_owned()
+        } else {
+            redact(arg)
+        };
+        write!(out, " {value:?}").expect("writing to a string");
+        secret = matches!(*arg, "-P" | "--password" | "--token" | "--access-token");
+        if out.len() > 8 * 1024 {
+            out.truncate(out.floor_char_boundary(8 * 1024));
+            out.push_str(" [remaining arguments exceed log limit]");
+            break;
+        }
+    }
+    out
+}
 pub(super) fn write_output_lines(
     log: &mut String,
     time: &str,
     stream: &str,
     output: &str,
 ) -> fmt::Result {
-    for line in output.lines() {
-        writeln!(log, "[{time}][VERBOSE][Commands] {stream}: {line}")?;
+    const MAX_LINES: usize = 4000;
+    let count = output.lines().count();
+    for (index, line) in output.lines().enumerate() {
+        if count > MAX_LINES && index == MAX_LINES / 2 {
+            writeln!(
+                log,
+                "[{time}][VERBOSE][Commands] {stream}: [{} output lines omitted]",
+                count - MAX_LINES
+            )?;
+        }
+        if count > MAX_LINES && index >= MAX_LINES / 2 && index < count - MAX_LINES / 2 {
+            continue;
+        }
+        let mut rest = line;
+        loop {
+            let stop = rest
+                .char_indices()
+                .nth(2000)
+                .map_or(rest.len(), |(index, _)| index);
+            writeln!(
+                log,
+                "[{time}][VERBOSE][Commands] {stream}: {}",
+                &rest[..stop]
+            )?;
+            if stop == rest.len() {
+                break;
+            }
+            rest = &rest[stop..];
+        }
     }
     Ok(())
 }
-
-// Keep only complete lines from a bounded tail. Starting mid-line can leave
-// part of a credential without the prefix the redactor needs to recognize it.
 pub(super) fn excerpt(bytes: &[u8]) -> Option<String> {
-    let inspected = bytes.len().saturating_sub(OUTPUT_BYTES * 2);
-    let end = bytes[inspected..]
-        .iter()
-        .rposition(|byte| !matches!(byte, b'\n' | b'\r'))
-        .map(|index| inspected + index + 1)?;
-    let start = end.saturating_sub(OUTPUT_BYTES);
-    let tail = &bytes[start..end];
-    let tail = if start > 0 && !matches!(bytes[start - 1], b'\n' | b'\r') {
-        match tail.iter().position(|byte| matches!(byte, b'\n' | b'\r')) {
-            Some(index) => &tail[index + 1..],
-            None => return Some("[output omitted: line exceeds 1024 bytes]".to_owned()),
-        }
-    } else {
-        tail
-    };
-    let value = String::from_utf8_lossy(tail);
-    if value.trim().is_empty() {
+    if bytes.is_empty() {
         return None;
     }
-    if bytes[inspected..]
-        .windows(b"PRIVATE KEY-----".len())
-        .any(|part| part == b"PRIVATE KEY-----")
-    {
-        return Some("[private key output omitted]".to_owned());
+    if bytes.contains(&0) && std::str::from_utf8(bytes).is_err() {
+        return Some(format!(
+            "[binary output: {} bytes; prefix {:02x?}]",
+            bytes.len(),
+            &bytes[..bytes.len().min(32)]
+        ));
     }
-    let cleaned = redact(&value.replace("\r\n", "\n").replace('\r', "\n"));
-    Some(if start > 0 {
-        format!("[tail] {cleaned}")
+    let text = if bytes.len() > OUTPUT_BYTES {
+        let half = OUTPUT_BYTES / 2;
+        format!(
+            "{}\n[{} output bytes omitted]\n{}",
+            String::from_utf8_lossy(&bytes[..half]),
+            bytes.len() - OUTPUT_BYTES,
+            String::from_utf8_lossy(&bytes[bytes.len() - half..])
+        )
     } else {
-        cleaned
-    })
+        String::from_utf8_lossy(bytes).into_owned()
+    };
+    Some(redact(
+        &text
+            .replace('\0', "\\0")
+            .replace("\r\n", "\n")
+            .replace('\r', "\n"),
+    ))
 }
 
 pub(super) fn redact(value: &str) -> String {
     static ESCAPE: OnceLock<Regex> = OnceLock::new();
-    static URL: OnceLock<Regex> = OnceLock::new();
     static AUTH: OnceLock<Regex> = OnceLock::new();
     static ASSIGNMENT: OnceLock<Regex> = OnceLock::new();
     static TOKEN: OnceLock<Regex> = OnceLock::new();
-    static KEY_MATERIAL: OnceLock<Regex> = OnceLock::new();
 
     if value.contains("PRIVATE KEY-----") {
         return "[private key output omitted]".to_owned();
@@ -235,31 +214,15 @@ pub(super) fn redact(value: &str) -> String {
     let escape = ESCAPE.get_or_init(|| {
         Regex::new(r"\x1b\[[0-?]*[ -/]*[@-~]").expect("valid terminal escape pattern")
     });
-    let cleaned: String = escape
-        .replace_all(value, "")
-        .chars()
-        .filter(|c| !c.is_control() || matches!(c, '\n' | '\r' | '\t'))
-        .collect();
-    let cleaned = crate::error::redact_credentials(&cleaned);
-    let url = URL.get_or_init(|| {
-        Regex::new(r#"(?i)\b([a-z][a-z0-9+.-]*://[^\s"'<>()?#]+)(?:[?#][^\s"'<>()]*)?"#)
-            .expect("valid URL pattern")
-    });
-    let cleaned = url.replace_all(&cleaned, |captures: &regex::Captures<'_>| {
-        let address = &captures[1];
-        let (scheme, rest) = address.split_once("://").expect("matched URL scheme");
-        let authority_end = rest.find('/').unwrap_or(rest.len());
-        let address = if let Some(index) = rest[..authority_end].rfind('@') {
-            format!("{scheme}://[redacted]@{}", &rest[index + 1..])
+    let mut cleaned = String::with_capacity(value.len());
+    for character in escape.replace_all(value, "").chars() {
+        if character.is_control() && !matches!(character, '\n' | '\r' | '\t') {
+            write!(cleaned, "\\x{:02x}", character as u32).expect("writing to a string");
         } else {
-            address.to_owned()
-        };
-        if captures[0].len() > captures[1].len() {
-            format!("{address}?[redacted]")
-        } else {
-            address
+            cleaned.push(character);
         }
-    });
+    }
+    let cleaned = crate::error::redact_credentials(&cleaned);
     let auth = AUTH.get_or_init(|| {
         Regex::new(r#"(?i)\b((?:proxy-)?authorization["']?\s*[:=]\s*|bearer[ \t]+)[^\r\n]+"#)
             .expect("valid authorization pattern")
@@ -274,62 +237,100 @@ pub(super) fn redact(value: &str) -> String {
         Regex::new(r"\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+|glpat-[A-Za-z0-9_-]+)\b")
             .expect("valid token pattern")
     });
-    let cleaned = token.replace_all(&cleaned, "[redacted]");
-    let key_material = KEY_MATERIAL.get_or_init(|| {
-        Regex::new(r"(?m)^[ \t]*[A-Za-z0-9+/]{48,}={0,2}[ \t]*\r?$")
-            .expect("valid key material pattern")
-    });
-    key_material
-        .replace_all(&cleaned, "[redacted]")
-        .into_owned()
+    token.replace_all(&cleaned, "[redacted]").into_owned()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
-    fn command_reports_keep_useful_output_and_hide_credential_material() {
+    fn reports_paths_arguments_and_text_output_without_hiding_normal_project_details() {
         let report = CommandReport::new(
             Category::Git,
-            &["fetch", "--progress", "--", "https://user:arg-secret@example.test/"],
+            &["diff", "--", "src/main.rs"],
             CommandOutput {
+                stdout: b"+ println!(\"hello\");\n",
+                stderr: b"warning: example\n",
                 status: None,
-                stderr: b"fatal: unable to access 'https://user:url-secret@example.test/repo?unknown=query-secret': 403\n\
-                    Authorization: Basic header-secret\nP4PASSWD=env-secret\n\
-                    \x1b[31merror:\x1b[0m the remote rejected the request\n",
-                stdout: b"remote response\n",
             },
         );
-        assert_eq!(report.invocation, "git fetch --progress <args omitted>");
-        let mut text = String::new();
-        report
-            .write_output("2026-01-01 12:00:00.000 +08:00", &mut text)
-            .unwrap();
-        assert!(text.contains("403"));
-        assert!(text.contains("the remote rejected the request"));
-        assert!(text.contains("remote response"));
-        assert!(!text.contains("-secret"));
-        assert!(!text.contains("[31m"));
-
-        let sensitive = CommandOutput {
-            stdout: b"secret config\n",
-            stderr: b"secret ticket\n",
-            status: None,
-        };
-        let login = CommandReport::new(Category::P4, &["login"], sensitive);
-        assert!(login.stdout.is_none() && login.stderr.is_none());
-        let diff = CommandReport::new(Category::Git, &["diff"], sensitive);
-        assert!(diff.stdout.is_none());
-    }
-
-    #[test]
-    fn excerpts_skip_partial_lines_and_preserve_the_final_error() {
-        let mut output = vec![b'x'; OUTPUT_BYTES * 4];
-        output.extend_from_slice(b"\nerror: repository is unavailable\n");
+        assert!(report.invocation.contains("src/main.rs"));
+        assert!(report.stdout.as_deref().unwrap().contains("println!"));
+        let mut command = Command::new("git");
+        command
+            .current_dir("/work/project")
+            .args(["remote", "get-url", "origin"]);
+        let report = CommandReport::for_command(Category::Git, &command, "1-2".into());
+        assert_eq!(report.cwd.as_deref(), Some("/work/project"));
+        assert!(report.invocation.contains("get-url"));
         assert_eq!(
-            excerpt(&output).as_deref(),
-            Some("[tail] error: repository is unavailable")
+            redact("https://example.test/repo?ref=main"),
+            "https://example.test/repo?ref=main"
         );
+        assert_eq!(redact(&"a".repeat(64)), "a".repeat(64));
+        assert_eq!(
+            redact("commit\u{1f}author\u{1e}body"),
+            r"commit\x1fauthor\x1ebody"
+        );
+    }
+    #[test]
+    fn only_credentials_are_masked_in_commands_and_output() {
+        let report = CommandReport::new(
+            Category::P4,
+            &[
+                "-p",
+                "ssl:example.test:1666",
+                "-P",
+                "sample-password",
+                "info",
+            ],
+            CommandOutput::default(),
+        );
+        assert!(report.invocation.contains("ssl:example.test:1666"));
+        assert!(!report.invocation.contains("sample-password"));
+        let text=redact("https://user:sample-password@example.test/repo?token=sample-token\nAuthorization: Bearer sample-header\nP4PASSWD=sample-secret");
+        for secret in [
+            "sample-password",
+            "sample-token",
+            "sample-header",
+            "sample-secret",
+        ] {
+            assert!(!text.contains(secret));
+        }
+        let report = CommandReport::new(
+            Category::P4,
+            &["login", "-p"],
+            CommandOutput {
+                stdout: b"sample-ticket",
+                ..Default::default()
+            },
+        );
+        assert!(!report.stdout.unwrap().contains("sample-ticket"));
+    }
+    #[test]
+    fn long_lines_and_oversized_output_remain_explicit_and_exportable() {
+        let text = excerpt(&vec![b'x'; OUTPUT_BYTES * 2]).unwrap();
+        assert!(text.contains("output bytes omitted"));
+        let mut lines = String::new();
+        write_output_lines(
+            &mut lines,
+            "2026-01-01 00:00:00.000 +00:00",
+            "stdout",
+            &"x".repeat(50_000),
+        )
+        .unwrap();
+        assert!(lines.lines().all(|line| line.len() < 16 * 1024));
+        let output = "x\n".repeat(OUTPUT_BYTES / 2) + "final error\n";
+        let mut lines = String::new();
+        write_output_lines(
+            &mut lines,
+            "2026-01-01 00:00:00.000 +00:00",
+            "stdout",
+            &output,
+        )
+        .unwrap();
+        assert!(lines.len() < 1024 * 1024);
+        assert!(lines.contains("output lines omitted"));
+        assert!(lines.ends_with("final error\n"));
     }
 }

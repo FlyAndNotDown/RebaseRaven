@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::diagnostics::{self, Code, CommandOutput, Status};
+use crate::diagnostics::{Code, CommandOutput, CommandTrace, Status};
 use crate::error::{AppError, AppResult, P4_LOGIN, P4_MISSING, P4_PROBE_TIMEOUT as PROBE_TIMEOUT};
 
 struct P4Bin {
@@ -194,21 +194,24 @@ fn p4_version_output(path: &str) -> AppResult<std::process::Output> {
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    let mut trace = CommandTrace::new(Code::PerforceInfo, &command);
     let child = command
         .spawn()
-        .map_err(|_| AppError::msg("That file is not a p4 executable."))?;
+        .map_err(|_| trace.failed(AppError::msg("That file is not a p4 executable.")))?;
     let pid = child.id();
     let (sender, receiver) = mpsc::channel();
     thread::spawn(move || {
         let _ = sender.send(child.wait_with_output());
     });
-    match receiver.recv_timeout(Duration::from_secs(5)) {
+    let result = match receiver.recv_timeout(Duration::from_secs(5)) {
         Ok(Ok(output)) => Ok(output),
         _ => {
             kill_pid(pid);
             Err(AppError::msg("That file is not a p4 executable."))
         }
-    }
+    };
+    trace.output(&result);
+    result
 }
 
 pub(crate) fn kill_pid(pid: u32) {
@@ -295,9 +298,10 @@ impl P4Job {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        let mut trace = CommandTrace::new(diagnostic_code(args), &command);
         let mut child = command
             .spawn()
-            .map_err(|err| p4_start_error(command.get_program(), err))?;
+            .map_err(|err| trace.failed(p4_start_error(command.get_program(), err)))?;
         let pid = child.id();
         let mut current = self.pid.lock().unwrap_or_else(|err| err.into_inner());
         if self.current() != generation {
@@ -310,6 +314,17 @@ impl P4Job {
         drop(current);
         match child.wait_with_output() {
             Ok(output) => {
+                trace.finish(
+                    if self.current() != generation {
+                        Status::Cancelled
+                    } else if output.status.success() {
+                        Status::Success
+                    } else {
+                        Status::Failure
+                    },
+                    (&output).into(),
+                    None,
+                );
                 self.clear_pid(pid);
                 if self.current() != generation {
                     Ok(None)
@@ -386,13 +401,7 @@ pub struct P4Env {
 }
 
 pub fn run_p4(env: &P4Env, args: &[&str], input: Option<&str>) -> AppResult<std::process::Output> {
-    let started = Instant::now();
-    let output = run_once(env, args, input);
-    let code = diagnostic_code(args);
-    diagnostics::record_cli_output(code, args, started, &output, |output| {
-        output.status.success()
-    });
-    output
+    run_once(env, args, input)
 }
 
 fn diagnostic_code(args: &[&str]) -> Code {
@@ -429,12 +438,10 @@ pub(super) fn run_p4_probe(env: &P4Env, args: &[&str], deadline: Instant) -> App
     if !matches!(args, ["set"] | ["-ztag", "info"]) {
         return Err(AppError::msg("That command is not a repository probe."));
     }
-    let started = Instant::now();
-    let output =
-        require_p4().and_then(|program| probe_output(&mut prepared(program, env, args), deadline));
-    diagnostics::record_cli_output(Code::PerforceInfo, args, started, &output, |output| {
-        output.status.success()
-    });
+    let mut command = prepared(require_p4()?, env, args);
+    let mut trace = CommandTrace::new(Code::PerforceInfo, &command);
+    let output = probe_output(&mut command, deadline);
+    trace.output(&output);
     output.and_then(finish)
 }
 
@@ -571,6 +578,7 @@ pub(super) fn run_label_preview(env: &P4Env, args: &[&str]) -> AppResult<String>
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    let mut trace = CommandTrace::new(Code::PerforceOperation, &command);
     let result = crate::platform::spawn_probe_command(&mut command)
         .map_err(|err| p4_start_error(command.get_program(), err))
         .and_then(|(child, tree)| {
@@ -585,32 +593,18 @@ pub(super) fn run_label_preview(env: &P4Env, args: &[&str]) -> AppResult<String>
                 },
             )
         });
-    diagnostics::record_cli_output(Code::PerforceOperation, args, started, &result, |output| {
-        output.status.success()
-    });
+    trace.output(&result);
     result.and_then(finish)
 }
 
 /// `p4 diff` can exit non-zero when the files differ. A diff body is still a result.
 pub fn run_p4_diff(env: &P4Env, args: &[&str]) -> AppResult<String> {
-    let started = Instant::now();
-    let output = run_once(env, args, None);
-    let Ok(output) = output else {
-        diagnostics::record_cli_output(Code::PerforceDiff, args, started, &output, |_| false);
-        return output.and_then(finish);
-    };
-    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-    let result = finish_diff(output.status.success(), stdout, stderr);
-    diagnostics::record_cli(
-        Code::PerforceDiff,
-        args,
-        started,
-        Status::of(&result),
-        (&output).into(),
-        None,
-    );
-    result
+    let output = run_once(env, args, None)?;
+    finish_diff(
+        output.status.success(),
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+    )
 }
 
 /// File previews are bounded independently of normal command and progress output.
@@ -620,9 +614,10 @@ pub fn read_file_prefix(env: &P4Env, spec: &str, limit: usize) -> AppResult<(Vec
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    let mut trace = CommandTrace::new(Code::PerforceOperation, &command);
     let mut child = command
         .spawn()
-        .map_err(|err| p4_start_error(command.get_program(), err))?;
+        .map_err(|err| trace.failed(p4_start_error(command.get_program(), err)))?;
     let stderr = child.stderr.take();
     let errors = thread::spawn(move || {
         let mut bytes = Vec::new();
@@ -645,8 +640,23 @@ pub fn read_file_prefix(env: &P4Env, spec: &str, limit: usize) -> AppResult<(Vec
     }
     let status = child.wait();
     let stderr = errors.join().unwrap_or_default();
-    read?;
-    let status = status?;
+    let native_status = status.as_ref().ok().copied();
+    let result = read.map(|_| ()).and_then(|_| status.map(|_| ()));
+    trace.finish(
+        if truncated || native_status.is_some_and(|status| status.success()) && result.is_ok() {
+            Status::Success
+        } else {
+            Status::Failure
+        },
+        CommandOutput {
+            status: native_status,
+            stdout: &bytes,
+            stderr: &stderr,
+        },
+        None,
+    );
+    result?;
+    let status = native_status.expect("successful wait");
     if !truncated {
         finish_parts(
             status.success(),
@@ -670,16 +680,16 @@ pub fn run_p4_stream(
     args: &[&str],
     mut on_line: impl FnMut(String),
 ) -> AppResult<String> {
-    let started = Instant::now();
-    let code = diagnostic_code(args);
+    let command = prepared(require_p4()?, env, args);
+    let mut trace = CommandTrace::new(diagnostic_code(args), &command);
     match stream_once(env, args, &mut on_line) {
         Ok((status, stdout, stderr)) => {
-            let ok = status.success();
-            diagnostics::record_cli(
-                code,
-                args,
-                started,
-                if ok { Status::Success } else { Status::Failure },
+            trace.finish(
+                if status.success() {
+                    Status::Success
+                } else {
+                    Status::Failure
+                },
                 CommandOutput {
                     status: Some(status),
                     stdout: stdout.as_bytes(),
@@ -687,17 +697,10 @@ pub fn run_p4_stream(
                 },
                 None,
             );
-            finish_parts(ok, stdout, stderr)
+            finish_parts(status.success(), stdout, stderr)
         }
         Err(error) => {
-            diagnostics::record_cli(
-                code,
-                args,
-                started,
-                Status::Failure,
-                CommandOutput::default(),
-                Some(&error),
-            );
+            trace.finish(Status::Failure, CommandOutput::default(), Some(&error));
             Err(error)
         }
     }
@@ -736,21 +739,25 @@ fn run_once(env: &P4Env, args: &[&str], input: Option<&str>) -> AppResult<std::p
         Stdio::null()
     });
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = command
-        .spawn()
-        .map_err(|err| p4_start_error(command.get_program(), err))?;
-    if let Some(text) = input {
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin
-                .write_all(text.as_bytes())
-                .map_err(|err| AppError::msg(err.to_string()))?;
+    let mut trace = CommandTrace::new(diagnostic_code(args), &command);
+    let result = (|| {
+        let mut child = command
+            .spawn()
+            .map_err(|err| p4_start_error(command.get_program(), err))?;
+        if let Some(text) = input {
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin
+                    .write_all(text.as_bytes())
+                    .map_err(|err| AppError::msg(err.to_string()))?;
+            }
         }
-    }
-    child
-        .wait_with_output()
-        .map_err(|err| AppError::msg(err.to_string()))
+        child
+            .wait_with_output()
+            .map_err(|err| AppError::msg(err.to_string()))
+    })();
+    trace.output(&result);
+    result
 }
-
 fn stream_once(
     env: &P4Env,
     args: &[&str],
@@ -803,6 +810,32 @@ fn stream_once(
     Ok((status, stdout_text, stderr_text))
 }
 
+// Windows CLI runtimes can expand bare wildcards before p4 parses its options.
+// Keep server-side patterns quoted using the C runtime's argument encoding.
+#[cfg(any(windows, test))]
+fn quoted_windows_pattern(value: &str) -> String {
+    let mut quoted = String::from("\"");
+    let mut slashes = 0;
+    for ch in value.chars() {
+        if ch == '\\' {
+            slashes += 1;
+            continue;
+        }
+        quoted.extend(std::iter::repeat_n(
+            '\\',
+            slashes * if ch == '"' { 2 } else { 1 },
+        ));
+        if ch == '"' {
+            quoted.push('\\');
+        }
+        quoted.push(ch);
+        slashes = 0;
+    }
+    quoted.extend(std::iter::repeat_n('\\', slashes * 2));
+    quoted.push('"');
+    quoted
+}
+
 fn prepared(program: PathBuf, env: &P4Env, args: &[&str]) -> Command {
     let mut command = p4_command(program);
     if env.cwd.as_os_str().is_empty() {
@@ -824,7 +857,15 @@ fn prepared(program: PathBuf, env: &P4Env, args: &[&str]) -> Command {
     if !env.charset.is_empty() {
         command.arg("-C").arg(&env.charset);
     }
-    command.args(args);
+    for arg in args {
+        #[cfg(windows)]
+        if arg.contains(['*', '?']) {
+            use std::os::windows::process::CommandExt;
+            command.raw_arg(quoted_windows_pattern(arg));
+            continue;
+        }
+        command.arg(arg);
+    }
     command.env_remove("P4CONFIG");
     command.env_remove("P4PASSWD");
     command
@@ -918,6 +959,64 @@ mod tests {
     };
     use std::path::Path;
     use std::sync::Arc;
+
+    #[test]
+    fn windows_patterns_stay_one_quoted_argument() {
+        use super::quoted_windows_pattern;
+
+        assert_eq!(quoted_windows_pattern("*"), r#""*""#);
+        assert_eq!(quoted_windows_pattern("*release*"), r#""*release*""#);
+        assert_eq!(quoted_windows_pattern("owner?*"), r#""owner?*""#);
+        assert_eq!(
+            quoted_windows_pattern("*release notes*"),
+            r#""*release notes*""#
+        );
+        assert_eq!(quoted_windows_pattern(r#"*a"b*"#), r#""*a\"b*""#);
+        assert_eq!(quoted_windows_pattern(r#"*a\"b*"#), r#""*a\\\"b*""#);
+        assert_eq!(
+            quoted_windows_pattern(r"C:\folder\*\"),
+            r#""C:\folder\*\\""#
+        );
+    }
+
+    #[test]
+    fn prepared_preserves_server_patterns_without_local_expansion() {
+        let env = P4Env {
+            cwd: Default::default(),
+            port: String::new(),
+            user: String::new(),
+            client: String::new(),
+            charset: String::new(),
+        };
+        let command = prepared(
+            "p4.exe".into(),
+            &env,
+            &["-ztag", "branches", "-E", "*", "-u", "owner?*", "-m", "201"],
+        );
+        let args: Vec<_> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy())
+            .collect();
+        #[cfg(windows)]
+        assert_eq!(
+            args,
+            [
+                "-ztag",
+                "branches",
+                "-E",
+                r#""*""#,
+                "-u",
+                r#""owner?*""#,
+                "-m",
+                "201"
+            ]
+        );
+        #[cfg(not(windows))]
+        assert_eq!(
+            args,
+            ["-ztag", "branches", "-E", "*", "-u", "owner?*", "-m", "201"]
+        );
+    }
 
     #[cfg(unix)]
     #[test]

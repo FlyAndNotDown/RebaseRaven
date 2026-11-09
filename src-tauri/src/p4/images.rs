@@ -17,11 +17,27 @@ const IMAGE_LIMIT: usize = 20 * 1024 * 1024;
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
-pub enum P4ImageSource {
-    Opened { path: String },
-    Shelf { path: String, change_id: String },
-    Revision { path: String, revision: String },
-    Compare { request: P4CompareRequest },
+pub enum P4FileSource {
+    Opened {
+        path: String,
+    },
+    Shelf {
+        path: String,
+        change_id: String,
+    },
+    Revision {
+        path: String,
+        revision: String,
+    },
+    Compare {
+        request: P4CompareRequest,
+    },
+    Resolve {
+        path: String,
+    },
+    Stream {
+        request: super::stream_work::P4StreamDiffRequest,
+    },
 }
 
 fn revision(connection: &P4Connection, path: &str, rev: &str) -> AppResult<Version> {
@@ -76,13 +92,20 @@ fn image(connection: &P4Connection, source: &Version) -> AppResult<Option<ImageS
     image_preview(&source.depot, &bytes, size, truncated).map(Some)
 }
 
-pub fn image_pair(connection: &P4Connection, source: &P4ImageSource) -> AppResult<ImagePair> {
-    let (base, head) = match source {
-        P4ImageSource::Compare { request } => (
+pub(super) fn file_versions(
+    connection: &P4Connection,
+    source: &P4FileSource,
+) -> AppResult<(Version, Version)> {
+    let pair = match source {
+        P4FileSource::Resolve { path } => {
+            super::workspace::resolve_file_versions(connection, path)?
+        }
+        P4FileSource::Stream { .. } => return Err(AppError::msg("Choose an image file.")),
+        P4FileSource::Compare { request } => (
             version(connection, &request.path, &request.base)?,
             version(connection, &request.path, &request.head)?,
         ),
-        P4ImageSource::Revision {
+        P4FileSource::Revision {
             path,
             revision: rev,
         } => {
@@ -97,7 +120,7 @@ pub fn image_pair(connection: &P4Connection, source: &P4ImageSource) -> AppResul
                 revision(connection, path, rev)?,
             )
         }
-        P4ImageSource::Opened { path } => {
+        P4FileSource::Opened { path } => {
             let output = run(
                 connection,
                 &[
@@ -129,7 +152,7 @@ pub fn image_pair(connection: &P4Connection, source: &P4ImageSource) -> AppResul
             };
             (base, head)
         }
-        P4ImageSource::Shelf { path, change_id } => {
+        P4FileSource::Shelf { path, change_id } => {
             exact_depot(path)?;
             let detail = super::shelves::shelf_detail(connection, change_id)?;
             let file = detail
@@ -154,6 +177,11 @@ pub fn image_pair(connection: &P4Connection, source: &P4ImageSource) -> AppResul
             (base, head)
         }
     };
+    Ok(pair)
+}
+
+pub fn image_pair(connection: &P4Connection, source: &P4FileSource) -> AppResult<ImagePair> {
+    let (base, head) = file_versions(connection, source)?;
     Ok(ImagePair {
         before: image(connection, &base)?,
         after: image(connection, &head)?,

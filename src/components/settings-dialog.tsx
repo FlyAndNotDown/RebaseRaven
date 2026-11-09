@@ -111,9 +111,9 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
   const [toolConfigReady, setToolConfigReady] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [terminalId, setTerminalId] = useState("auto");
+  const [terminalId, setTerminalId] = useState(prefs.terminalId);
   const [terminals, setTerminals] = useState<TerminalOption[]>([]);
-  const [editorId, setEditorId] = useState("system");
+  const [editorId, setEditorId] = useState(prefs.editorId);
   const [editors, setEditors] = useState<TerminalOption[]>([]);
   const [tools, setTools] = useState<ToolConfig>({ diffTool: "", mergeTool: "" });
   const [guiTools, setGuiTools] = useState<GuiTool[]>([]);
@@ -158,8 +158,6 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
         const options = data.terminals ?? [];
         const editorOptions = data.editors ?? [];
         const prefs = normalizePrefs(data.prefs ?? prefsWriter.current.value);
-        const visibleEditors = editorOptions.filter((editor) => editor.available);
-        const visibleTerminals = options.filter((terminal) => terminal.available);
         const applyPrefs = data.prefs !== null && revision === prefsWriter.current.revision;
         if (identity && nameRef.current === identityAtStart.name && emailRef.current === identityAtStart.email) {
           setName(identity.name);
@@ -168,15 +166,9 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
         }
         identityReadyRef.current = identity !== null;
         setIdentityReady(identity !== null);
-        if (applyPrefs) setTerminalId(
-          visibleTerminals.some((terminal) => terminal.id === prefs.terminalId) ? prefs.terminalId : "auto",
-        );
+        if (applyPrefs) setTerminalId(prefs.terminalId);
         setTerminals(options);
-        if (applyPrefs) setEditorId(
-          prefs.editorId === "system" || visibleEditors.some((editor) => editor.id === prefs.editorId)
-            ? prefs.editorId
-            : "system",
-        );
+        if (applyPrefs) setEditorId(prefs.editorId);
         setEditors(editorOptions);
         if (toolConfig && toolsRef.current === toolsAtStart) {
           toolsRef.current = toolConfig;
@@ -426,6 +418,9 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
                   onRemove={removeGitExecutable}
                   onAdd={() => void addGitExecutable()}
                 />
+                <AvatarSettings ready={loaded} vcs="git" provider={prefs.gitAvatarProvider} onSave={async gitAvatarProvider => {
+                  if (!await persistPrefs({gitAvatarProvider})) throw new Error("Could not save the avatar provider.");
+                }} />
                 <FieldGroup title={t("desktop.settingsDialog.identity")} hint={t("desktop.settingsDialog.saved_to_your_global_git_configuration_repository_settings")}>
                   {identityReady ? (
                     <>
@@ -469,6 +464,7 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
                 <FieldGroup title={t("desktop.settingsDialog.fetching")}>
                   <SelectField
                     id="auto-fetch"
+                    ready={loaded}
                     label={t("desktop.settingsDialog.fetch_in_the_background")}
                     value={autoFetch}
                     options={AUTO_FETCH_CHOICES.map((minutes) => ({
@@ -482,7 +478,7 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
                   />
                   <label className="flex items-start gap-2 text-sm">
                     <HoverTip label={t("desktop.settingsDialog.remove_tracking_references_for_branches_deleted_on_the")}>
-                    <Checkbox
+                    {loaded ? <Checkbox
                       className="mt-0.5"
                       checked={prune}
                       onCheckedChange={(checked) => {
@@ -490,7 +486,7 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
                         setPrune(fetchPrune);
                         void persistPrefs({ fetchPrune });
                       }}
-                    />
+                    /> : <Skeleton className="mt-0.5 size-4" />}
                     </HoverTip>
                     <span>{t("desktop.settingsDialog.prune_when_fetching")}</span>
                   </label>
@@ -535,12 +531,17 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
                   onRemove={removeP4Executable}
                   onAdd={() => void addP4Executable()}
                 />
+                <AvatarSettings ready={loaded} vcs="perforce" provider={prefs.p4AvatarProvider} onSave={async p4AvatarProvider => {
+                  if (!await persistPrefs({p4AvatarProvider})) throw new Error("Could not save the avatar provider.");
+                }} />
                 <FieldGroup title={t("p4.manual.externalSetting")} hint={t("p4.manual.externalHint")}>
+                  <ToolPicker emptyLabel={t("p4.manual.externalDefault")} id="p4-diff-tool" label={t("desktop.settingsDialog.diff_tool")} value={prefs.p4DiffTool} tools={guiTools} ready={guiToolsReady} onChange={(p4DiffTool) => { void persistPrefs({ p4DiffTool }); }} />
                   <ToolPicker emptyLabel={t("p4.manual.externalDefault")} id="p4-merge-tool" label={t("desktop.settingsDialog.merge_tool")} value={prefs.p4MergeTool} tools={guiTools} ready={guiToolsReady} onChange={(p4MergeTool) => { void persistPrefs({ p4MergeTool }); }} />
                 </FieldGroup>
                 <FieldGroup title={t("common.refresh")}>
                   <SelectField
                     id="p4-refresh"
+                    ready={loaded}
                     label={t("desktop.settingsDialog.refresh_in_the_background")}
                     value={p4Refresh}
                     options={AUTO_FETCH_CHOICES.map((minutes) => ({
@@ -560,7 +561,7 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
           ) : section === "network" ? (
             <>
               <DialogHeader><DialogTitle>{t("desktop.settingsDialog.network")}</DialogTitle></DialogHeader>
-              <div className="mt-6"><NetworkSettings value={prefs.httpProxy} onSave={(httpProxy) => persistPrefs({ httpProxy })} /></div>
+              <div className="mt-6">{loaded ? <NetworkSettings value={prefs.httpProxy} onSave={(httpProxy) => persistPrefs({ httpProxy })} /> : <div role="status" aria-label={t("common.loadingNamed", {name:t("desktop.settingsDialog.network")})} className="grid gap-4"><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /></div>}</div>
             </>
           ) : section === "diagnostics" ? (
             <>
@@ -570,12 +571,12 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
                 <FieldGroup title={t("analytics.title")}>
                   <div className="flex items-center gap-2">
                     <label className="flex flex-1 items-center gap-2 text-sm">
-                      <Checkbox
+                      {loaded ? <Checkbox
                         checked={prefs.analyticsEnabled && analyticsAllowed}
                         disabled={analyticsSaving}
                         aria-describedby="analytics-disclosure"
                         onCheckedChange={(checked) => { void changeAnalytics(checked === true); }}
-                      />
+                      /> : <Skeleton className="size-4" />}
                       <span>{t("analytics.enabled")}</span>
                     </label>
                     <HoverTip label={analyticsFeedback ?? undefined}>
@@ -610,6 +611,7 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
                 <FieldGroup title={t("language.label")} hint={t("language.hint")}>
                   <SelectField<LanguagePreference>
                     id="language-choice"
+                    ready={loaded}
                     label={t("language.label")}
                     value={prefs.language}
                     options={[
@@ -623,6 +625,7 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
                 <FieldGroup title={t("desktop.settingsDialog.appearance")}>
                   <SelectField
                     id="theme-choice"
+                    ready={loaded}
                     label={t("desktop.settingsDialog.theme")}
                     value={themeChoice}
                     options={themeOptions}
@@ -631,16 +634,11 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
                       setTheme(value);
                     }}
                   />
-                  <AvatarSettings
-                    provider={prefs.avatarProvider}
-                    onSave={async (avatarProvider) => {
-                      if (!await persistPrefs({ avatarProvider })) throw new Error("Could not save the avatar provider.");
-                    }}
-                  />
                 </FieldGroup>
                 <FieldGroup title={t("desktop.settingsDialog.external_editor")}>
                   <AppPicker
                     id="editor-app"
+                    ready={loaded}
                     options={editors.filter((editor) => editor.available)}
                     catalog={editors.filter((editor) => editor.id !== "system")}
                     value={editorId}
@@ -654,6 +652,7 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
                 <FieldGroup title={t("desktop.settingsDialog.terminal")}>
                   <AppPicker
                     id="terminal-app"
+                    ready={loaded}
                     options={terminals.filter((terminal) => terminal.available)}
                     catalog={terminals.filter((terminal) => terminal.id !== "auto")}
                     value={terminalId}
@@ -681,6 +680,7 @@ function AppPicker({
   value,
   fallback,
   onChange,
+  ready,
 }: {
   id: string;
   options: TerminalOption[];
@@ -688,8 +688,10 @@ function AppPicker({
   value: string;
   fallback: string;
   onChange: (value: string) => void;
+  ready: boolean;
 }) {
   useTranslation();
+  if (!ready) return <PickerSkeleton id={id} label={t("desktop.settingsDialog.application")} accessory />;
   return (
     <div className="grid gap-2">
       <Label htmlFor={id}>{t("desktop.settingsDialog.application")}</Label>
@@ -697,7 +699,7 @@ function AppPicker({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button id={id} type="button" variant="outline" className="min-w-0 flex-1 justify-between font-normal">
-              <span className="truncate">{value === "system" ? t("desktop.settingsDialog.system_default_app") : value === "auto" ? t("desktop.settingsDialog.system_default") : options.find((item) => item.id === value)?.name ?? fallback}</span>
+              <span className="truncate">{value === "system" ? t("desktop.settingsDialog.system_default_app") : value === "auto" ? t("desktop.settingsDialog.system_default") : options.find((item) => item.id === value)?.name ?? catalog.find((item) => item.id === value)?.name ?? (value || fallback)}</span>
               <ChevronDownIcon />
             </Button>
           </DropdownMenuTrigger>
@@ -1049,15 +1051,7 @@ function ToolPicker({
     : (tools.find((tool) => tool.id === value)?.name ?? (value ? value : (emptyLabel ?? t("desktop.settingsDialog.none"))));
 
   if (!ready) {
-    return (
-      <div className="grid gap-2" role="status" aria-label={t("common.loadingNamed", { name: label })}>
-        <Label htmlFor={id}>{label}</Label>
-        <div className="flex items-center gap-2">
-          <Skeleton className="h-8 min-w-0 flex-1" />
-          <Skeleton className="size-8 shrink-0" />
-        </div>
-      </div>
-    );
+    return <PickerSkeleton id={id} label={label} accessory />;
   }
 
   return (
@@ -1133,14 +1127,16 @@ function SelectField<T extends string>({
   value,
   options,
   onChange,
+  ready = true,
 }: {
   id: string;
   label: string;
   value: T;
   options: { id: T; label: string }[];
   onChange: (value: T) => void;
+  ready?: boolean;
 }) {
-
+  if (!ready) return <PickerSkeleton id={id} label={label} />;
   return (
     <div className="grid gap-2">
       <Label htmlFor={id}>{label}</Label>
@@ -1169,6 +1165,13 @@ function SelectField<T extends string>({
       </DropdownMenu>
     </div>
   );
+}
+
+function PickerSkeleton({id, label, accessory = false}: {id:string; label:string; accessory?:boolean}) {
+  return <div className="grid gap-2" role="status" aria-label={t("common.loadingNamed", {name:label})}>
+    <Label htmlFor={id}>{label}</Label>
+    <div className="flex items-center gap-2"><Skeleton className="h-8 min-w-0 flex-1" />{accessory ? <Skeleton className="size-8 shrink-0" /> : null}</div>
+  </div>;
 }
 
 function NavButton({

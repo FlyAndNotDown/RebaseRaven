@@ -1,11 +1,9 @@
 import { P4StreamWorkDialog, P4StreamDiffDialog } from "@/components/p4/p4-stream-work";
 import type { P4StreamDiffRequest } from "@/types/p4-stream-specs";
-import { P4ChangeJobsDialog } from "@/components/p4/p4-job-fixes";
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { GitBranchIcon, ClipboardListIcon, ArchiveIcon, ArchiveRestoreIcon, ChevronDownIcon, CopyIcon, GitMergeIcon, InfoIcon, Settings2Icon, Loader2Icon, PencilIcon, PlusIcon, SendIcon, Trash2Icon, Undo2Icon } from "lucide-react";
+import { GitBranchIcon, ArchiveIcon, ArchiveRestoreIcon, ChevronDownIcon, CopyIcon, GitMergeIcon, Loader2Icon, PencilIcon, PlusIcon, SendIcon, Trash2Icon, Undo2Icon, UndoDotIcon } from "lucide-react";
 import { toast } from "sonner";
-import { ChangeBadge } from "@/components/p4/change-badge";
-import { P4FilePropertiesDialog } from "@/components/p4/p4-file-properties";
+import { ChangeBadge, ChangelistMarker } from "@/components/p4/change-badge";
 import { P4ChangeDialog, type ChangeDialogRequest } from "@/components/p4/p4-change-dialog";
 import { FileStatusIcon } from "@/components/p4/file-status-icon";
 import { FileStatusTip, fileStatusText } from "@/components/p4/file-status-tip";
@@ -33,6 +31,7 @@ import { changeSummary, depotBase, p4ActionStatus } from "@/lib/p4";
 import { HoverTip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useP4 } from "@/state/p4-context";
+import { useP4PendingExpansion } from "@/state/use-p4-pending-expansion";
 import { pendingChangeDescription } from "@/state/p4-session";
 import type { P4Changelist } from "@/types/p4";
 import { t, useTranslation } from "@/i18n";
@@ -42,14 +41,11 @@ export function P4Pending() {
   const p4 = useP4();
   const [streamWorkOpen, setStreamWorkOpen] = useState(false);
   const [streamDiff, setStreamDiff] = useState<P4StreamDiffRequest | null>(null);
-  const [jobsChange, setJobsChange] = useState<string | null>(null);
-  const [properties, setProperties] = useState<{ paths: string[]; edit: boolean } | null>(null);
   const [creating, setCreating] = useState(false);
   const [changeDialog, setChangeDialog] = useState<ChangeDialogRequest | null>(null);
   const [deletingChange, setDeletingChange] = useState<string | null>(null);
   const [deleteFailed, setDeleteFailed] = useState(false);
-  const [expanded, setExpanded] = useState<Set<string> | null>(null);
-  const [shelvedOpen, setShelvedOpen] = useState<Set<string>>(() => new Set());
+  const {openChanges, shelvedOpen, setExpanded, setShelvedOpen} = useP4PendingExpansion(p4.connection?.root ?? "", p4.selectedChange);
   const [revertRequest, setRevertRequest] = useState<RevertRequest | null>(null);
   const [deletingShelf, setDeletingShelf] = useState(false);
   const [resolving, setResolving] = useState<{ change: string; path: string } | null>(null);
@@ -62,7 +58,6 @@ export function P4Pending() {
   const pointerDrag = useRef<(() => void) | null>(null);
   const currentResolve = resolving ?? p4.resolveRequest;
   const resolvingPath = currentResolve?.change === p4.selectedChange ? currentResolve.path : null;
-  const openChanges = expanded ?? new Set(p4.selectedChange ? [p4.selectedChange] : []);
   const changeToDelete = p4.pending.find((change) => change.id === deletingChange);
   const canDeleteChange = changeToDelete != null && !changeToDelete.shelved && !changeToDelete.stream && !changeToDelete.shelvedStream && changeToDelete.files.length === 0;
   const dialogChange = changeDialog ? p4.pending.find((change) => change.id === changeDialog.id) : null;
@@ -232,9 +227,6 @@ export function P4Pending() {
     const canShelve = targets.some((item) => item.change !== "default");
     return (
       <ContextMenuContent className="min-w-44">
-        <ContextMenuItem onSelect={() => setProperties({ paths: [file.path], edit: false })}><InfoIcon />{t("p4.properties.title")}</ContextMenuItem>
-        <ContextMenuItem disabled={p4.busy} onSelect={() => setProperties({ paths: targets.map(item => item.path), edit: true })}><Settings2Icon />{t("p4.properties.editTitle")}</ContextMenuItem>
-        <ContextMenuSeparator />
         {entry.status === "conflict" ? (
           <>
             <ContextMenuItem
@@ -248,6 +240,9 @@ export function P4Pending() {
             <ContextMenuSeparator />
           </>
         ) : null}
+        <ContextMenuItem disabled={p4.busy} onSelect={() => void p4.revertUnchanged({ paths: targets.map((item) => item.path) })}>
+          <UndoDotIcon />{t("p4.revertUnchanged")}
+        </ContextMenuItem>
         <ContextMenuItem
           variant="destructive"
           disabled={p4.busy}
@@ -350,6 +345,7 @@ export function P4Pending() {
                               focusChange(change.id);
                             }}
                           >
+                            <ChangelistMarker opened={changeOpened.length > 0 || !!change.stream} />
                             <ChangeBadge id={change.id} />
                             <span className="min-w-0 flex-1 truncate text-xs">{summary || t("p4.noDescription")}</span>
                           </button>
@@ -362,10 +358,41 @@ export function P4Pending() {
                         >
                           <SendIcon />{t("p4.submitChangelist")}
                         </ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem
+                          disabled={p4.busy || change.id === "default" || changeOpened.length === 0 && !change.stream}
+                          onClick={() => {
+                            p4.selectChange(change.id);
+                            void p4.shelveSelected();
+                          }}
+                        >
+                          <ArchiveIcon />{t("p4.shelve")}</ContextMenuItem>
+                        <ContextMenuItem disabled={p4.busy || !change.shelved} onSelect={() => openChangeDialog(change, "submitShelf")}>
+                          <SendIcon />{t("p4.submitShelf")}
+                        </ContextMenuItem>
+                        <ContextMenuItem disabled={p4.busy || !change.shelved} onSelect={() => { p4.selectChange(change.id); setDeletingShelf(true); }}>
+                          <Trash2Icon />{t("p4.deleteShelf")}
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem disabled={p4.busy || changeOpened.length === 0} onSelect={() => void p4.revertUnchanged({changeId: change.id})}>
+                          <UndoDotIcon />{t("p4.revertUnchanged")}
+                        </ContextMenuItem>
+                        <ContextMenuItem
+                          variant="destructive"
+                          disabled={p4.busy || changeOpened.length === 0}
+                          onClick={() => setRevertRequest({
+                            changeId: change.id,
+                            paths: changeOpened.map((file) => file.depotPath),
+                            wipe: [],
+                          })}
+                        >
+                          <Undo2Icon />{t("p4.revert")}
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
                         <ContextMenuItem disabled={p4.busy} onClick={() => openChangeDialog(change, "edit")}>
                           <PencilIcon />{t("p4.editChangelist")}
                         </ContextMenuItem>
-                        <ContextMenuItem disabled={p4.busy || change.id === "default"} onClick={() => setJobsChange(change.id)}><ClipboardListIcon />{t("p4.jobs.linkedJobs")}</ContextMenuItem>
+
                         {change.id !== "default" ? (
                           <ContextMenuItem onSelect={async () => {
                             try {
@@ -378,27 +405,6 @@ export function P4Pending() {
                             <CopyIcon />{t("p4.copyChangelist")}
                           </ContextMenuItem>
                         ) : null}
-                        <ContextMenuSeparator />
-                        <ContextMenuItem
-                          disabled={p4.busy || change.id === "default" || changeOpened.length === 0 && !change.stream}
-                          onClick={() => {
-                            p4.selectChange(change.id);
-                            void p4.shelveSelected();
-                          }}
-                        >
-                          <ArchiveIcon />{t("p4.shelve")}</ContextMenuItem>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem
-                          variant="destructive"
-                          disabled={p4.busy || changeOpened.length === 0}
-                          onClick={() => setRevertRequest({
-                            changeId: change.id,
-                            paths: changeOpened.map((file) => file.depotPath),
-                            wipe: [],
-                          })}
-                        >
-                          <Undo2Icon />{t("p4.revert")}
-                        </ContextMenuItem>
                         {change.id !== "default" ? (
                           <ContextMenuItem variant="destructive" disabled={p4.busy} onClick={() => { setDeletingChange(change.id); setDeleteFailed(false); }}>
                             <Trash2Icon />{t("p4.deleteChange.action")}
@@ -499,7 +505,7 @@ export function P4Pending() {
         <ResizableHandle />
         <ResizablePanel id="p4-diff" defaultSize="58%" minSize="30%">
           <P4Diff
-            imageSource={p4.selectedFile ? p4.selectedShelved ? {kind:"shelf",path:p4.selectedFile,changeId:p4.selectedChange} : {kind:"opened",path:p4.selectedFile} : undefined}
+            fileSource={p4.selectedFile ? p4.selectedShelved ? {kind:"shelf",path:p4.selectedFile,changeId:p4.selectedChange} : {kind:"opened",path:p4.selectedFile} : undefined}
             diff={p4.diff}
             loading={p4.diffLoading}
             empty={p4.selectedFile ? t("p4.noDifferencesInThisFile") : t("p4.selectAFileToSeeItsDiff")}
@@ -507,10 +513,9 @@ export function P4Pending() {
         </ResizablePanel>
       </ResizablePanelGroup>
       {resolvingPath ? <P4Resolve key={resolvingPath} path={resolvingPath} onClose={closeResolution} /> : null}
-      {properties ? <P4FilePropertiesDialog key={JSON.stringify(properties)} {...properties} onClose={() => setProperties(null)} /> : null}
       {streamWorkOpen ? <P4StreamWorkDialog onClose={() => setStreamWorkOpen(false)} /> : null}
       {streamDiff ? <P4StreamDiffDialog target={streamDiff} onClose={() => setStreamDiff(null)} /> : null}
-      {jobsChange ? <P4ChangeJobsDialog change={jobsChange} onClose={() => setJobsChange(null)} /> : null}
+
       {changeDialog ? (
         <P4ChangeDialog
           key={`${changeDialog.mode}:${changeDialog.id}`}
@@ -523,6 +528,7 @@ export function P4Pending() {
           busy={p4.busy}
           onConfirm={(description) => changeDialog.mode === "submit"
             ? p4.submitChange(changeDialog.id, description)
+            : changeDialog.mode === "submitShelf" ? p4.submitShelf(changeDialog.id, description)
             : p4.saveChange(changeDialog.id, description)}
           onClose={() => setChangeDialog(null)}
         />

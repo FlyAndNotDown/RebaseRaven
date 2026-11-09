@@ -302,6 +302,12 @@
 }
 
 /* Syntax colors from lib/highlight.ts; operators and punctuation keep the text color. */
+.tok-inserted {
+  color: var(--diff-add);
+}
+.tok-deleted {
+  color: var(--diff-del);
+}
 .tok-comment {
   color: var(--syntax-comment);
 }

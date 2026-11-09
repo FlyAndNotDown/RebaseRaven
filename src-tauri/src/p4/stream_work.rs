@@ -29,6 +29,7 @@ pub struct P4StreamWork {
     pub opened: Option<P4StreamOpen>,
     pub head_change: String,
     pub current_text: String,
+    pub base_text: String,
     pub head_text: String,
     pub diff: FileDiff,
     pub unresolved: bool,
@@ -100,6 +101,12 @@ pub fn stream_work(connection: &P4Connection) -> AppResult<P4StreamWork> {
     } else {
         (parse_single_diff("", &path), String::new())
     };
+    let base_text = if let Some(open) = &opened {
+        let base = number(&open.base_change)?;
+        run(connection, &["stream", "-o", &format!("{path}@{base}")])?
+    } else {
+        current_text.clone()
+    };
     let unresolved = !resolve_output.trim().is_empty()
         && !resolve_output.contains("No stream fields to resolve.");
     let fingerprint = fingerprint(
@@ -114,6 +121,7 @@ pub fn stream_work(connection: &P4Connection) -> AppResult<P4StreamWork> {
         opened,
         head_change,
         current_text: review_text(&current_text),
+        base_text: review_text(&base_text),
         head_text: review_text(&head_text),
         diff,
         unresolved,
@@ -409,10 +417,10 @@ pub struct P4StreamDiffRequest {
     pub change: String,
 }
 
-pub fn stream_change_diff(
+fn stream_change_range(
     connection: &P4Connection,
     request: &P4StreamDiffRequest,
-) -> AppResult<FileDiff> {
+) -> AppResult<(String, String, bool)> {
     stream_path(&request.path)?;
     let id = number(&request.change)?;
     if !matches!(request.kind.as_str(), "shelf" | "submitted") {
@@ -446,15 +454,41 @@ pub fn stream_change_diff(
         (id.parse::<u64>().unwrap() - 1).to_string()
     };
     let before = format!("{}@{base}", request.path);
-    if row.contains_key("streamDeleted") {
-        let text = run(connection, &["stream", "-o", &before])?;
-        return Ok(definition_diff(&request.path, &text, true));
-    }
     let after = format!(
         "{}@{}{id}",
         request.path,
         if request.kind == "shelf" { "=" } else { "" }
     );
+    Ok((before, after, row.contains_key("streamDeleted")))
+}
+
+pub(super) fn stream_change_text(
+    connection: &P4Connection,
+    request: &P4StreamDiffRequest,
+) -> AppResult<(String, String)> {
+    let (before, after, deleted) = stream_change_range(connection, request)?;
+    let before = match run(connection, &["stream", "-o", &before]) {
+        Ok(text) => review_text(&text),
+        Err(error) if missing_revision(&error.to_string()) => String::new(),
+        Err(error) => return Err(error),
+    };
+    let after = if deleted {
+        String::new()
+    } else {
+        review_text(&run(connection, &["stream", "-o", &after])?)
+    };
+    Ok((before, after))
+}
+
+pub fn stream_change_diff(
+    connection: &P4Connection,
+    request: &P4StreamDiffRequest,
+) -> AppResult<FileDiff> {
+    let (before, after, deleted) = stream_change_range(connection, request)?;
+    if deleted {
+        let text = run(connection, &["stream", "-o", &before])?;
+        return Ok(definition_diff(&request.path, &text, true));
+    }
     let text = cli::run_p4_diff(
         &env_for(connection),
         &["diff2", "-As", "-du", &before, &after],

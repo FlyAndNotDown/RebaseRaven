@@ -40,6 +40,7 @@ export interface P4StreamWork {
   opened: P4StreamOpen | null;
   headChange: string;
   currentText: string;
+  baseText: string;
   headText: string;
   diff: FileDiff;
   unresolved: boolean;

@@ -9,7 +9,7 @@ import { P4Diff } from "@/components/p4/p4-diff";
 import { FileStatusIcon } from "@/components/p4/file-status-icon";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { HoverTip } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { errorMessage } from "@/lib/git";
@@ -20,9 +20,9 @@ import { useP4 } from "@/state/p4-context";
 import type { FileDiff } from "@/types/git";
 import type { P4ChangePage, P4Changelist, P4OperationPreview, P4UnshelveRequest } from "@/types/p4";
 
-export function P4ShelvesDialog({ onClose }: { onClose: () => void }) {
+export function P4Shelves() {
   const { t } = useTranslation();
-  const { connection, listShelves, shelfDetail, shelfDiff, previewUnshelve, restoreShelf, busy: workspaceBusy, selectedChange } = useP4();
+  const { connection, listShelves, shelfDetail, shelfDiff, previewUnshelve, restoreShelf, busy: workspaceBusy, selectedChange, setView } = useP4();
   const [streamDiff, setStreamDiff] = useState<P4StreamDiffRequest | null>(null);
   const [user, setUser] = useState("");
   const [number, setNumber] = useState("");
@@ -103,20 +103,19 @@ export function P4ShelvesDialog({ onClose }: { onClose: () => void }) {
   async function restore() {
     if (!preview || preview.key !== key || blocked || running.current) return;
     running.current = true; setBusy("restore"); setError(null);
-    try { await restoreShelf(request, preview.value); onClose(); }
+    try { await restoreShelf(request, preview.value); if (mounted.current) setView("pending"); }
     catch (caught) { if (mounted.current) { setError(p4DisplayError(errorMessage(caught))); setPreview(null); } }
     finally { running.current = false; if (mounted.current) setBusy(null); }
   }
 
-  return <Dialog open onOpenChange={(open) => { if (!open && busy !== "restore") onClose(); }}>
-    <DialogContent className="flex h-[min(52rem,90vh)] flex-col sm:max-w-[min(74rem,95vw)]" showCloseButton={busy !== "restore"}>
-      <DialogHeader><DialogTitle>{t("p4.shelves.title")}</DialogTitle><DialogDescription>{t("p4.shelves.description")}</DialogDescription></DialogHeader>
-      <form className="flex shrink-0 gap-2" onSubmit={(event) => { event.preventDefault(); if (number.trim()) { ++generation.current; setLoading(false); void select(number.trim(), true); } else void load(user.trim(), null); }}>
-        <Input aria-label={t("p4.shelves.user")} placeholder={t("p4.shelves.user")} value={user} onChange={(event) => setUser(event.target.value)} disabled={blocked} className="h-8 flex-1" />
-        <Input aria-label={t("p4.shelves.number")} placeholder={t("p4.shelves.number")} inputMode="numeric" value={number} onChange={(event) => setNumber(event.target.value)} disabled={blocked} className="h-8 w-44" />
+  return <div className="flex min-h-0 flex-1 flex-col">
+      <form className="flex h-10 shrink-0 items-center gap-2 border-b px-3" onSubmit={(event) => { event.preventDefault(); if (number.trim()) { ++generation.current; setLoading(false); void select(number.trim(), true); } else void load(user.trim(), null); }}>
+        <h1 className="mr-2 shrink-0 text-xs font-medium">{t("p4.shelves.title")}</h1>
+        <Input aria-label={t("p4.shelves.user")} placeholder={t("p4.shelves.user")} value={user} onChange={(event) => setUser(event.target.value)} disabled={blocked} className="h-7 max-w-48 flex-1 text-xs" />
+        <Input aria-label={t("p4.shelves.number")} placeholder={t("p4.shelves.number")} inputMode="numeric" value={number} onChange={(event) => setNumber(event.target.value)} disabled={blocked} className="h-7 w-36 text-xs" />
         <Button type="submit" size="sm" variant="outline" disabled={blocked || detailLoading || (number.trim() !== "" && !/^[1-9]\d*$/.test(number.trim()))}><SearchIcon />{t("p4.shelves.search")}</Button>
       </form>
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(12rem,28%)_minmax(0,1fr)] overflow-hidden rounded-md border">
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(12rem,28%)_minmax(0,1fr)] overflow-hidden">
         <div className="min-h-0 overflow-auto border-r p-1">
           {page?.changes.map((entry) => <button key={entry.id} type="button" disabled={blocked || detailLoading} onClick={() => void select(entry.id)} className={cn("grid w-full gap-1 rounded-md px-2 py-2 text-left hover:bg-muted/70 disabled:opacity-50", detail?.id === entry.id && "bg-muted")}>
             <div className="flex items-center gap-2"><ChangeBadge id={entry.id} /><span className="truncate text-xs text-muted-foreground">{entry.user}</span></div>
@@ -136,19 +135,17 @@ export function P4ShelvesDialog({ onClose }: { onClose: () => void }) {
                 <FileStatusIcon status={p4ActionStatus(entry.action)} /><button type="button" className="min-w-0 flex-1 truncate text-left font-mono text-[11px]" title={entry.depotPath} onClick={() => setFile(entry.depotPath)}>{entry.depotPath}</button>
               </div>)}
             </div>
-            <div className="relative flex min-h-0 flex-1 flex-col"><P4Diff imageSource={file && detail ? {kind:"shelf",path:file,changeId:detail.id} : undefined} diff={diff} loading={diffLoading} empty={t("p4.noTextDifferences")} /></div>
+            <div className="relative flex min-h-0 flex-1 flex-col"><P4Diff fileSource={file && detail ? {kind:"shelf",path:file,changeId:detail.id} : undefined} diff={diff} loading={diffLoading} empty={t("p4.noTextDifferences")} /></div>
           </> : <p className="p-8 text-center text-sm text-muted-foreground">{t("p4.shelves.select")}</p>}
         </div>
       </div>
-      <div className="grid shrink-0 grid-cols-[1fr_1fr] gap-3">
+      <div className="grid shrink-0 grid-cols-[1fr_1fr] gap-3 border-t px-3 py-2">
         <div className="grid gap-1.5"><Label className="text-xs">{t("p4-operations.pendingChange")}</Label><P4ChangeSelect value={target} onChange={(value) => edit(() => setTarget(value))} disabled={blocked} /></div>
-        <div className="grid gap-1.5"><Label htmlFor="shelf-stream-mapping" className="text-xs">{t("p4.shelves.mapping")}</Label><Input id="shelf-stream-mapping" placeholder="//depot/child" value={stream} disabled={blocked || !detail} onChange={(event) => edit(() => { setStream(event.target.value); if (event.target.value.trim() && detail) setPicked(new Set(detail.files.map((entry) => entry.depotPath))); })} className="h-8 font-mono text-xs" /></div>
+        <div className="grid gap-1.5"><HoverTip label={t("p4.shelves.mappingHint")}><Label htmlFor="shelf-stream-mapping" className="w-fit text-xs">{t("p4.shelves.mapping")}</Label></HoverTip><Input id="shelf-stream-mapping" placeholder="//depot/child" value={stream} disabled={blocked || !detail} onChange={(event) => edit(() => { setStream(event.target.value); if (event.target.value.trim() && detail) setPicked(new Set(detail.files.map((entry) => entry.depotPath))); })} className="h-8 font-mono text-xs" /></div>
       </div>
       {preview ? <pre className="max-h-[13vh] shrink-0 overflow-auto whitespace-pre-wrap break-all rounded-md border bg-muted/20 p-2 font-mono text-[11px]">{preview.value.output}</pre> : null}
-      <p className="shrink-0 text-xs text-muted-foreground">{t(stream.trim() ? "p4.shelves.mappingHint" : "p4.shelves.hint")}</p>
       {error ? <p role="alert" className="max-h-20 shrink-0 overflow-auto whitespace-pre-wrap text-xs text-destructive">{error}</p> : null}
-      <DialogFooter className="shrink-0"><Button variant="outline" disabled={busy === "restore"} onClick={onClose}>{t("common.cancel")}</Button><Button variant="outline" disabled={blocked || !detail || !picked.size} onClick={() => void inspect()}>{busy === "preview" ? <LoaderCircleIcon className="animate-spin" /> : null}{t("p4-operations.preview")}</Button><Button disabled={blocked || !preview || preview.key !== key} onClick={() => void restore()}>{busy === "restore" ? <LoaderCircleIcon className="animate-spin" /> : <ArchiveRestoreIcon />}{t("p4.shelves.restore", { count: picked.size })}</Button></DialogFooter>
+      <div className="flex shrink-0 justify-end gap-2 border-t px-3 py-2"><Button variant="outline" disabled={blocked || !detail || !picked.size} onClick={() => void inspect()}>{busy === "preview" ? <LoaderCircleIcon className="animate-spin" /> : null}{t("p4-operations.preview")}</Button><Button disabled={blocked || !preview || preview.key !== key} onClick={() => void restore()}>{busy === "restore" ? <LoaderCircleIcon className="animate-spin" /> : <ArchiveRestoreIcon />}{t("p4.shelves.restore", { count: picked.size })}</Button></div>
     {streamDiff ? <P4StreamDiffDialog target={streamDiff} onClose={() => setStreamDiff(null)} /> : null}
-    </DialogContent>
-  </Dialog>;
+  </div>;
 }

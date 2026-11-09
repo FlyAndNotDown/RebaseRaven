@@ -51,6 +51,7 @@ export interface P4ResolveView {
   path: string;
   summary: string;
   content: boolean;
+  autoMergeable: boolean;
   comparable: boolean;
   workingCopy: boolean;
   pendingResolves: number;
@@ -92,12 +93,15 @@ export interface P4FileSearch {
   scope: string;
 }
 
-export type P4RevisionMode = "latest" | "revision" | "changelist" | "datetime" | "label" | "workspace";
+export type P4RevisionMode = "latest" | "revision" | "changelist" | "beforeChangelist" | "datetime" | "label" | "workspace";
+
+export interface P4RevisionPath { path: string; recursive: boolean }
 
 export interface P4GetRevision {
   paths: string[];
   changeId?: string;
   recursive?: boolean;
+  targets?: P4RevisionPath[];
   mode: P4RevisionMode;
   value: string;
   force: boolean;
@@ -226,11 +230,13 @@ export interface P4CompareRequest { path: string; base: P4FileVersion; head: P4F
 
 export interface P4BlameLine { line: number; change: string; user: string; time: string; content: string }
 
-export type P4ImageSource =
+export type P4FileSource =
   | { kind: "opened"; path: string }
   | { kind: "shelf"; path: string; changeId: string }
   | { kind: "revision"; path: string; revision: string }
-  | { kind: "compare"; request: P4CompareRequest };
+  | { kind: "compare"; request: P4CompareRequest }
+  | { kind: "resolve"; path: string }
+  | { kind: "stream"; request: import("./p4-stream-specs").P4StreamDiffRequest };
 
 export interface P4WorkspaceOptions { allwrite: boolean; clobber: boolean; compress: boolean; modtime: boolean; rmdir: boolean }
 export interface P4WorkspaceEdit { root: string; view: string[]; lineEnd: "local" | "unix" | "mac" | "win" | "share"; options: P4WorkspaceOptions }
@@ -241,27 +247,6 @@ export interface P4SwitchFile { path: string; depotPath: string; action: string;
 export interface P4SwitchPreview { current: string; target: string; view: string[]; limitView: string[]; changes: P4SwitchFile[]; unresolved: boolean; fingerprint: string }
 export interface P4SwitchOutcome { connection: P4Connection; source: string; target: string; stage: "shelve" | "switch" | "sync" | "done"; backupShelf: string | null; output: string }
 
-export interface P4FileProperties {
-  depotPath: string;
-  localPath: string;
-  headType: string;
-  openType: string;
-  haveRev: string;
-  headRev: string;
-  headChange: string;
-  headTime: number;
-  headModTime: number;
-  size: number | null;
-  digest: string;
-  action: string;
-  changeId: string;
-  owner: string;
-  locked: boolean;
-  otherOpen: { owner: string; action: string; change: string; locked: boolean }[];
-  blocked: string;
-}
-export interface P4FilePropertiesView { files: P4FileProperties[]; fingerprint: string }
-export interface P4FileTypeRequest { paths: string[]; selected: string[]; fileType: string; changeId: string }
 export interface P4CleanRequest {
   scope: string;
   restoreModified: boolean;
@@ -271,3 +256,6 @@ export interface P4CleanRequest {
 }
 export interface P4CleanFile {path: string; depotPath: string; action: "restoreModified" | "restoreMissing" | "removeUntracked"; revision: string | null}
 export interface P4CleanPreview {files: P4CleanFile[]; fingerprint: string}
+
+export interface P4AutoResolveSummary { resolved: number; remaining: number; failed: boolean }
+export interface P4SyncResult { output: string; autoResolve: P4AutoResolveSummary | null }

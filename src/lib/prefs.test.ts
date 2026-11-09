@@ -82,9 +82,9 @@ describe("layouts", () => {
 });
 
 describe("normalizePrefs", () => {
-  it("keeps network and avatar choices compatible with older preferences", () => {
-    expect(normalizePrefs({})).toMatchObject({ httpProxy: { mode: "system", url: "" }, avatarProvider: "builtin" });
-    expect(normalizePrefs({ httpProxy: { mode: "manual", url: "http://proxy.example.com:8080" }, avatarProvider: "gitlab" })).toMatchObject({ httpProxy: { mode: "manual", url: "http://proxy.example.com:8080" }, avatarProvider: "gitlab" });
+  it("defaults to automatic Git avatars and offline Perforce avatars", () => {
+    expect(normalizePrefs({})).toMatchObject({ httpProxy: { mode: "system", url: "" }, gitAvatarProvider: "auto", p4AvatarProvider:"builtin" });
+    expect(normalizePrefs({ httpProxy: { mode: "manual", url: "http://proxy.example.com:8080" }, gitAvatarProvider: "gitlab" })).toMatchObject({ httpProxy: { mode: "manual", url: "http://proxy.example.com:8080" }, gitAvatarProvider: "gitlab" });
   });
   it("fills defaults and only accepts real booleans", () => {
     expect(normalizePrefs(null)).toEqual(defaultPrefs);
@@ -163,5 +163,14 @@ describe("normalizePrefs", () => {
     expect(normalizePrefs(null).p4RefreshMinutes).toBe(60);
     expect(normalizePrefs({ p4RefreshMinutes: 0 }).p4RefreshMinutes).toBe(0);
     expect(normalizePrefs({ p4RefreshMinutes: -5 }).p4RefreshMinutes).toBe(60);
+  });
+});
+
+describe("automatic Perforce resolve preference", () => {
+  it("defaults off and preserves an explicit saved selection", () => {
+    expect(defaultPrefs.p4AutoResolveAfterSync).toBe(false);
+    expect(normalizePrefs({}).p4AutoResolveAfterSync).toBe(false);
+    expect(normalizePrefs({ p4AutoResolveAfterSync: true }).p4AutoResolveAfterSync).toBe(true);
+    expect(normalizePrefs({ p4AutoResolveAfterSync: false }).p4AutoResolveAfterSync).toBe(false);
   });
 });

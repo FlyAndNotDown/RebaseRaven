@@ -8,3 +8,7 @@ export function ChangeBadge({ id }: { id: string }) {
     </span>
   );
 }
+
+export function ChangelistMarker({ opened }: { opened: boolean }) {
+  return <svg aria-hidden viewBox="0 0 16 16" className="size-3.5 shrink-0" style={{color: opened ? "var(--graph-9)" : "var(--graph-1)"}}><path d="M8 2 15 14H1Z" fill="currentColor" /></svg>;
+}

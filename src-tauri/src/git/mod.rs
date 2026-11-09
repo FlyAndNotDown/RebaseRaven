@@ -18,6 +18,7 @@ mod changes;
 mod cli;
 mod conflicts;
 mod diff;
+mod external;
 mod files;
 mod history;
 mod identity;
@@ -57,6 +58,7 @@ pub use cli::{
 };
 pub use conflicts::*;
 pub use diff::*;
+pub use external::editor_file;
 pub use files::*;
 pub use history::*;
 pub use identity::*;
@@ -218,6 +220,7 @@ pub struct CommitFile {
 #[serde(rename_all = "camelCase")]
 pub struct CommitDetails {
     pub commit: CommitSummary,
+    pub message: String,
     pub files: Vec<CommitFile>,
 }
 

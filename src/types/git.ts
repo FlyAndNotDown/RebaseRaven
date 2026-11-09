@@ -144,6 +144,7 @@ export interface CommitFile {
 
 export interface CommitDetails {
   commit: CommitSummary;
+  message: string;
   files: CommitFile[];
 }
 
@@ -375,7 +376,8 @@ export interface AppPrefs {
   language: "system" | "en" | "zh-CN";
   analyticsEnabled: boolean;
   httpProxy: { mode: "none" | "system" | "manual"; url: string };
-  avatarProvider: "builtin" | "github" | "gitlab";
+  gitAvatarProvider: import("@/lib/avatar").GitAvatarProvider;
+  p4AvatarProvider: "builtin";
   terminalId: string;
   /** "system", or an id from `list_editors`. */
   editorId: string;
@@ -399,6 +401,8 @@ export interface AppPrefs {
   /** Empty uses the p4 executable on PATH. Otherwise an absolute path. */
   p4Path: string;
   p4MergeTool: string;
+  p4DiffTool: string;
+  p4AutoResolveAfterSync: boolean;
   /** User-added p4 executables. The PATH entry is not included. */
   extraP4Paths: string[];
   /** Default P4PORT for a new workspace. */
@@ -493,6 +497,7 @@ export interface AppSession {
   active: string;
   historyRevs?: Record<string, string[]>;
   historyExpanded?: Record<string, string[]>;
+  p4PendingExpanded?: Record<string, string[]>;
 }
 
 export interface SshKeyInfo {

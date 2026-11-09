@@ -525,7 +525,9 @@ pub fn opened_diff(connection: &P4Connection, path: &str) -> AppResult<FileDiff>
         );
     }
     let text = cli::run_p4_diff(&env, &["diff", "-du", &spec])?;
-    Ok(parse_single_diff(&text, path))
+    let mut diff = parse_single_diff(&text, path);
+    diff.binary |= file_type_is_binary(&field(&record, "type"));
+    Ok(diff)
 }
 
 pub fn shelf_diff(
@@ -1850,9 +1852,84 @@ fn revert_with(env: &P4Env, files: &[String], wipe: bool) -> AppResult<()> {
     Ok(())
 }
 
-pub fn revert_unchanged(connection: &P4Connection) -> AppResult<()> {
+pub fn revert_unchanged(
+    connection: &P4Connection,
+    change_id: Option<&str>,
+    paths: &[String],
+) -> AppResult<()> {
     let env = env_for(connection);
-    run_ok(&env, &["revert", "-a"], None)?;
+    let args = revert_unchanged_args(connection, change_id, paths)?;
+    run_owned(&env, &args, None)?;
+    Ok(())
+}
+
+fn revert_unchanged_args(
+    connection: &P4Connection,
+    change_id: Option<&str>,
+    paths: &[String],
+) -> AppResult<Vec<String>> {
+    let mut args = vec!["revert".into(), "-a".into()];
+    if let Some(change) = change_id {
+        let id = if change == "default" {
+            change.to_string()
+        } else {
+            require_numbered(change)?
+        };
+        args.extend(["-c".into(), id]);
+    }
+    if paths.is_empty() {
+        if !valid_client_name(&connection.client) {
+            return Err(AppError::msg("Choose a workspace."));
+        }
+        args.push(format!("//{}/...", connection.client));
+    } else {
+        if paths.iter().any(|path| path.trim().is_empty()) {
+            return Err(AppError::msg("Choose files to revert."));
+        }
+        args.extend(
+            paths
+                .iter()
+                .map(|path| workspace_file_spec(&connection.root, path)),
+        );
+    }
+    Ok(args)
+}
+
+pub fn submit_shelf(
+    connection: &P4Connection,
+    change_id: &str,
+    description: &str,
+) -> AppResult<()> {
+    require_description(description)?;
+    let id = require_numbered(change_id)?;
+    let pending = refresh_pending(connection)?;
+    let change = pending
+        .iter()
+        .find(|change| change.id == id)
+        .ok_or_else(|| {
+            AppError::msg("Choose your own pending shelved changelist in this workspace.")
+        })?;
+    validate_shelf_submission(connection, change)?;
+    save_change(connection, &id, description)?;
+    run_ok(&env_for(connection), &["submit", "-e", &id], None)?;
+    Ok(())
+}
+
+fn validate_shelf_submission(connection: &P4Connection, change: &P4Changelist) -> AppResult<()> {
+    if change.user != connection.user
+        || change.client != connection.client
+        || change.status != "pending"
+        || !change.shelved
+    {
+        return Err(AppError::msg(
+            "Choose your own pending shelved changelist in this workspace.",
+        ));
+    }
+    if change.files.iter().any(|file| !file.shelved) || change.stream.is_some() {
+        return Err(AppError::msg(
+            "Move or revert the opened changes in this changelist before submitting its shelf.",
+        ));
+    }
     Ok(())
 }
 
@@ -1905,6 +1982,7 @@ pub struct P4ResolveView {
     pub summary: String,
     /// A text merge can accept the merged result. Branch and delete resolves cannot.
     pub content: bool,
+    pub auto_mergeable: bool,
     /// False when the two sides could not be diffed. The choices still work.
     pub comparable: bool,
     pub working_copy: bool,
@@ -1928,11 +2006,56 @@ pub fn resolve_view(connection: &P4Connection, path: &str) -> AppResult<P4Resolv
         path: facts.depot.clone(),
         summary: resolve_summary(&facts),
         content: resolve_can_merge(&facts.action, &facts.kind),
+        auto_mergeable: pending_resolves == 1
+            && resolve_can_merge(&facts.action, &facts.kind)
+            && auto_merge_available(&env, &spec),
         comparable,
         working_copy,
         pending_resolves,
         diff,
     })
+}
+
+pub(super) fn resolve_file_versions(
+    connection: &P4Connection,
+    path: &str,
+) -> AppResult<(super::history::Version, super::history::Version)> {
+    use super::history::{version, P4FileVersion, Version};
+    let env = env_for(connection);
+    let spec = workspace_file_spec(&connection.root, path);
+    let preview = run_ok(&env, &["-ztag", "resolve", "-n", "-o", &spec], None)?;
+    let (facts, _) = pending_resolve_facts(&preview, &spec)
+        .ok_or_else(|| AppError::msg("This file does not need resolve."))?;
+    let incoming = Version {
+        depot: facts.from_file.clone(),
+        spec: Some(incoming_resolve_spec(&facts)),
+        local: None,
+        absent: false,
+        binary: false,
+        size: None,
+    };
+    let view = resolve_view(connection, path)?;
+    if !view.comparable {
+        return Err(AppError::msg("The two sides cannot be compared."));
+    }
+    if view.working_copy {
+        Ok((
+            incoming,
+            version(connection, path, &P4FileVersion::Workspace)?,
+        ))
+    } else {
+        Ok((
+            Version {
+                depot: facts.depot.clone(),
+                spec: Some(format!("{}#have", facts.depot)),
+                local: None,
+                absent: false,
+                binary: false,
+                size: None,
+            },
+            incoming,
+        ))
+    }
 }
 
 pub fn resolve_accept(connection: &P4Connection, path: &str, mode: &str) -> AppResult<()> {
@@ -2040,7 +2163,9 @@ fn manual_resolve_snapshot(
         merge_text(bytes, truncated)
     };
     let base = read_revision(&facts.base_file, &facts.base_rev)?;
-    let theirs = read_revision(&facts.from_file, &facts.end_rev)?;
+    let (bytes, truncated) =
+        cli::read_file_prefix(&env, &incoming_resolve_spec(&facts), MANUAL_MERGE_LIMIT)?;
+    let theirs = merge_text(bytes, truncated)?;
     let mut hash = std::collections::hash_map::DefaultHasher::new();
     (
         &connection.port,
@@ -2163,6 +2288,7 @@ struct ResolveFacts {
     end_rev: String,
     base_file: String,
     base_rev: String,
+    shelved_change: String,
 }
 
 fn pending_resolve_facts(text: &str, depot: &str) -> Option<(ResolveFacts, usize)> {
@@ -2186,6 +2312,7 @@ fn pending_resolve_facts(text: &str, depot: &str) -> Option<(ResolveFacts, usize
             end_rev: field(&record, "endFromRev"),
             base_file: field(&record, "baseFile"),
             base_rev: field(&record, "baseRev"),
+            shelved_change: field(&record, "shelvedChange"),
         };
         return Some((facts, 1 + records.count()));
     }
@@ -2239,6 +2366,7 @@ fn parse_resolve_preview(text: &str) -> Option<ResolveFacts> {
         end_rev,
         base_file,
         base_rev,
+        shelved_change: String::new(),
     })
 }
 
@@ -2283,7 +2411,11 @@ fn depot_revs(text: &str) -> Vec<(String, String, String)> {
 }
 
 fn resolve_summary(facts: &ResolveFacts) -> String {
-    let source = revision_span(&facts.from_file, &facts.start_rev, &facts.end_rev);
+    let source = if facts.shelved_change.parse::<u64>().unwrap_or(0) > 0 {
+        incoming_resolve_spec(facts)
+    } else {
+        revision_span(&facts.from_file, &facts.start_rev, &facts.end_rev)
+    };
     if source.is_empty() {
         return "Needs resolve".to_string();
     }
@@ -2335,6 +2467,43 @@ fn resolve_can_merge(action: &str, kind: &str) -> bool {
     kind.contains("content") || action == "content" || action == "merge" || action == "edit"
 }
 
+fn incoming_resolve_spec(facts: &ResolveFacts) -> String {
+    if facts.shelved_change.parse::<u64>().unwrap_or(0) > 0 {
+        format!("{}@={}", facts.from_file, facts.shelved_change)
+    } else {
+        let revision = if facts.end_rev.is_empty() {
+            &facts.start_rev
+        } else {
+            &facts.end_rev
+        };
+        format!("{}#{revision}", facts.from_file)
+    }
+}
+
+fn merge_preview_is_clean(text: &str) -> bool {
+    let mut found = false;
+    for line in text.lines().filter(|line| line.contains("Diff chunks:")) {
+        let Some((_, conflicts)) = line.rsplit_once(" + ") else {
+            return false;
+        };
+        let Some(count) = conflicts.trim().strip_suffix(" conflicting") else {
+            return false;
+        };
+        if count.parse::<usize>() != Ok(0) {
+            return false;
+        }
+        found = true;
+    }
+    found
+}
+
+fn auto_merge_available(env: &P4Env, spec: &str) -> bool {
+    // Build the native merge preview, then skip without accepting or changing the file.
+    cli::run_p4(env, &["resolve", "-o", spec], Some("s\n"))
+        .map(|output| merge_preview_is_clean(&String::from_utf8_lossy(&output.stdout)))
+        .unwrap_or(false)
+}
+
 fn resolve_diff(env: &P4Env, facts: &ResolveFacts) -> (FileDiff, bool, bool) {
     let depot = facts.depot.clone();
     let end = if facts.end_rev.is_empty() {
@@ -2345,7 +2514,7 @@ fn resolve_diff(env: &P4Env, facts: &ResolveFacts) -> (FileDiff, bool, bool) {
     if !depot.starts_with("//") || facts.from_file.is_empty() || end.is_empty() {
         return (empty_diff(&depot), false, false);
     }
-    let incoming = format!("{}#{end}", facts.from_file);
+    let incoming = incoming_resolve_spec(facts);
     if depot == facts.from_file {
         if let Ok(text) = cli::run_p4_diff(env, &["diff", "-du", "-f", &incoming]) {
             return (parse_single_diff(&text, &depot), true, true);
@@ -2384,11 +2553,20 @@ fn empty_diff(path: &str) -> FileDiff {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct P4RevisionPath {
+    pub path: String,
+    pub recursive: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct P4GetRevision {
     pub paths: Vec<String>,
     pub change_id: Option<String>,
     #[serde(default)]
     pub recursive: bool,
+    #[serde(default)]
+    pub targets: Vec<P4RevisionPath>,
     pub mode: String,
     pub value: String,
     pub force: bool,
@@ -2405,16 +2583,83 @@ struct SyncFlags {
     preview: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct P4AutoResolveSummary {
+    pub resolved: usize,
+    pub remaining: usize,
+    pub failed: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct P4SyncResult {
+    pub output: String,
+    pub auto_resolve: Option<P4AutoResolveSummary>,
+}
+
+fn unresolved_files(env: &P4Env, scope: &str) -> AppResult<BTreeSet<String>> {
+    match run_ok(env, &["-ztag", "resolve", "-n", "-o", scope], None) {
+        Ok(text) => Ok(parse_ztag(&text)
+            .iter()
+            .filter_map(|record| record.get("clientFile").cloned())
+            .collect()),
+        Err(error)
+            if error
+                .to_string()
+                .to_lowercase()
+                .contains("no file(s) to resolve") =>
+        {
+            Ok(BTreeSet::new())
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn auto_resolve_files(env: &P4Env, client: &str) -> AppResult<P4AutoResolveSummary> {
+    if !valid_client_name(client) {
+        return Err(AppError::msg("Choose a valid workspace."));
+    }
+    // Client scope includes the default and every numbered opened changelist.
+    let scope = format!("//{client}/...");
+    let before = unresolved_files(env, &scope)?;
+    if before.is_empty() {
+        return Ok(P4AutoResolveSummary {
+            resolved: 0,
+            remaining: 0,
+            failed: false,
+        });
+    }
+    let result = cli::run_p4(env, &["resolve", "-am", &scope], None)?;
+    let after = unresolved_files(env, &scope)?;
+    Ok(P4AutoResolveSummary {
+        resolved: before.difference(&after).count(),
+        remaining: after.len(),
+        failed: !result.status.success(),
+    })
+}
+
 pub fn sync(
     connection: &P4Connection,
     paths: &[String],
+    auto_resolve: bool,
     progress: impl FnMut(&str),
-) -> AppResult<String> {
+) -> AppResult<P4SyncResult> {
     let paths: Vec<_> = paths
         .iter()
         .map(|path| workspace_file_spec(&connection.root, path))
         .collect();
-    sync_paths(&env_for(connection), &paths, SyncFlags::default(), progress)
+    let env = env_for(connection);
+    let output = sync_paths(&env, &paths, SyncFlags::default(), progress)?;
+    let auto_resolve = if auto_resolve {
+        Some(auto_resolve_files(&env, &connection.client)?)
+    } else {
+        None
+    };
+    Ok(P4SyncResult {
+        output,
+        auto_resolve,
+    })
 }
 
 pub fn get_revision(
@@ -2428,16 +2673,32 @@ pub fn get_revision(
         ));
     }
     let env = env_for(connection);
-    let changed_files;
     let targets = if let Some(id) = &request.change_id {
-        if !request.paths.is_empty() || request.recursive {
+        if !request.paths.is_empty() || request.recursive || !request.targets.is_empty() {
             return Err(AppError::msg("Choose paths or a changelist."));
         }
         let id = require_revision_number(id, "Choose a numbered changelist.")?.to_string();
-        changed_files = mapped_change_files(&env, &id)?;
-        &changed_files
+        mapped_change_files(&env, &id)?
+            .into_iter()
+            .map(|path| P4RevisionPath {
+                path,
+                recursive: false,
+            })
+            .collect()
+    } else if !request.targets.is_empty() {
+        if !request.paths.is_empty() || request.recursive {
+            return Err(AppError::msg("Choose one set of files or folders."));
+        }
+        request.targets.clone()
     } else {
-        &request.paths
+        request
+            .paths
+            .iter()
+            .map(|path| P4RevisionPath {
+                path: path.clone(),
+                recursive: request.recursive,
+            })
+            .collect::<Vec<_>>()
     };
     if targets.is_empty() {
         return Err(AppError::msg("Choose a file."));
@@ -2450,7 +2711,7 @@ pub fn get_revision(
     let suffix = revision_suffix(&request.mode, &request.value, exact)?;
     let paths = targets
         .iter()
-        .map(|path| revision_file_spec(&connection.root, path, request.recursive, &suffix))
+        .map(|target| revision_file_spec(&connection.root, &target.path, target.recursive, &suffix))
         .collect::<AppResult<Vec<_>>>()?;
     let flags = SyncFlags {
         force: request.force,
@@ -2492,6 +2753,11 @@ pub fn get_revision(
         output = "Up to date.".to_string();
     }
     Ok(output)
+}
+
+pub fn revision_targets(connection: &P4Connection, id: &str) -> AppResult<Vec<String>> {
+    let id = require_revision_number(id, "Choose a numbered changelist.")?;
+    mapped_change_files(&env_for(connection), &id.to_string())
 }
 
 fn mapped_change_files(env: &P4Env, id: &str) -> AppResult<Vec<String>> {
@@ -2539,6 +2805,10 @@ fn revision_suffix(mode: &str, value: &str, exact: bool) -> AppResult<String> {
             } else {
                 Ok(format!("@{change}"))
             }
+        }
+        "beforeChangelist" => {
+            let change = require_revision_number(value, "Enter a changelist number.")?;
+            Ok(format!("@{}", change - 1))
         }
         "datetime" => Ok(format!("@{}", require_p4_datetime(value)?)),
         "label" => {
@@ -3081,7 +3351,7 @@ pub fn create_workspace(
     run_ok(&env, &["client", "-i"], Some(&spec))?;
     write_config(&root, &env)?;
     let connection = connection_after_create(&env, &root, &stream)?;
-    if let Err(err) = sync(&connection, &[], &mut progress) {
+    if let Err(err) = sync(&connection, &[], false, &mut progress) {
         return Err(AppError::msg(format!(
             "Workspace '{client}' was created, but sync failed: {err}"
         )));
@@ -4897,6 +5167,15 @@ Description:
         assert_eq!(revision_suffix("latest", "", false).unwrap(), "");
         assert_eq!(revision_suffix("revision", "12", false).unwrap(), "#12");
         assert_eq!(
+            revision_suffix("beforeChangelist", "1200", false).unwrap(),
+            "@1199"
+        );
+        assert_eq!(
+            revision_suffix("beforeChangelist", "1", false).unwrap(),
+            "@0"
+        );
+        assert!(revision_suffix("beforeChangelist", "0", false).is_err());
+        assert_eq!(
             revision_suffix("changelist", "1200", false).unwrap(),
             "@1200"
         );
@@ -5167,6 +5446,35 @@ Description:
     }
 
     #[test]
+    fn auto_merge_requires_native_conflict_statistics() {
+        assert!(merge_preview_is_clean(
+            "Diff chunks: 1 yours + 2 theirs + 0 both + 0 conflicting\nresolve skipped.\n"
+        ));
+        assert!(!merge_preview_is_clean(
+            "Diff chunks: 0 yours + 0 theirs + 0 both + 1 conflicting\n"
+        ));
+        assert!(!merge_preview_is_clean(
+            "Diff chunks: 1 yours + invalid conflicting\n"
+        ));
+        assert!(!merge_preview_is_clean("No file(s) to resolve.\n"));
+        assert!(!merge_preview_is_clean("Diff chunks: 1 yours + 0 theirs + 0 both + 0 conflicting\nDiff chunks: 0 yours + 0 theirs + 0 both + 2 conflicting"));
+    }
+
+    #[test]
+    fn shelf_resolves_read_the_incoming_shelf_instead_of_the_depot_base() {
+        let tagged = "... clientFile /fixture/main/app.ini\n... fromFile //depot/main/app.ini\n... startFromRev none\n... endFromRev 4\n... shelvedChange 123\n... baseFile //depot/main/app.ini\n... baseRev 4\n... resolveType content\n... contentResolveType 3waytext\n";
+        let (mut facts, count) = pending_resolve_facts(tagged, "//depot/main/app.ini").unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(incoming_resolve_spec(&facts), "//depot/main/app.ini@=123");
+        assert_eq!(
+            resolve_summary(&facts),
+            "Merging //depot/main/app.ini@=123 using base //depot/main/app.ini#4"
+        );
+        facts.shelved_change = String::new();
+        assert_eq!(incoming_resolve_spec(&facts), "//depot/main/app.ini#4");
+    }
+
+    #[test]
     fn a_delete_resolve_cannot_merge() {
         let facts =
             parse_resolve_preview("//depot/main/Old.ini - delete from //depot/dev/Old.ini#1,#2")
@@ -5217,5 +5525,86 @@ mod stream_record_tests {
         assert!(submitted.shelved_stream.is_none());
         assert_eq!(submitted.stream.unwrap().path, "//project/dev");
         assert!(submitted.files.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod pending_action_tests {
+    use super::*;
+    fn connection() -> P4Connection {
+        P4Connection {
+            root: String::new(),
+            port: String::new(),
+            user: "alice".into(),
+            client: "alice-main".into(),
+            charset: String::new(),
+            stream: None,
+            server: String::new(),
+        }
+    }
+    #[test]
+    fn unchanged_revert_keeps_the_requested_scope() {
+        let connection = connection();
+        assert_eq!(
+            revert_unchanged_args(&connection, Some("42"), &[]).unwrap(),
+            ["revert", "-a", "-c", "42", "//alice-main/..."]
+        );
+        assert_eq!(
+            revert_unchanged_args(
+                &connection,
+                Some("default"),
+                &["//depot/main/app.ts".into()]
+            )
+            .unwrap(),
+            ["revert", "-a", "-c", "default", "//depot/main/app.ts"]
+        );
+        assert_eq!(
+            revert_unchanged_args(&connection, None, &["//depot/main/app.ts".into()]).unwrap(),
+            ["revert", "-a", "//depot/main/app.ts"]
+        );
+        assert!(revert_unchanged_args(&connection, Some("-a"), &[]).is_err());
+        assert!(revert_unchanged_args(&connection, None, &[String::new()]).is_err());
+    }
+    #[test]
+    fn shelf_submission_rejects_opened_or_foreign_changes() {
+        let connection = connection();
+        let mut change = P4Changelist {
+            id: "42".into(),
+            user: "alice".into(),
+            client: "alice-main".into(),
+            status: "pending".into(),
+            description: "Update navigation".into(),
+            time: 0,
+            shelved: true,
+            files: Vec::new(),
+            stream: None,
+            shelved_stream: None,
+        };
+        assert!(validate_shelf_submission(&connection, &change).is_ok());
+        change.stream = Some(P4StreamChange {
+            path: "//project/main".into(),
+            base_change: "40".into(),
+        });
+        assert!(validate_shelf_submission(&connection, &change).is_err());
+        change.stream = None;
+        change.files.push(P4File {
+            depot_path: "//project/main/app.ts".into(),
+            local_path: String::new(),
+            action: "edit".into(),
+            rev: "1".into(),
+            shelved: true,
+            binary: false,
+            status: String::new(),
+            detail: String::new(),
+        });
+        assert!(validate_shelf_submission(&connection, &change).is_ok());
+        change.files[0].shelved = false;
+        assert!(validate_shelf_submission(&connection, &change).is_err());
+        change.files.clear();
+        change.user = "bob".into();
+        assert!(validate_shelf_submission(&connection, &change).is_err());
+        change.user = "alice".into();
+        change.shelved = false;
+        assert!(validate_shelf_submission(&connection, &change).is_err());
     }
 }

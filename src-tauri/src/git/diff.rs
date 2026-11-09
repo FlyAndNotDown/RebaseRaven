@@ -124,6 +124,7 @@ pub fn commit_details(repo: &Repository, oid: &str) -> AppResult<CommitDetails> 
     let files = commit_files_from_git(workdir(repo)?, &info.id)?;
     Ok(CommitDetails {
         commit: summary_from_info(&info),
+        message: info.message,
         files,
     })
 }

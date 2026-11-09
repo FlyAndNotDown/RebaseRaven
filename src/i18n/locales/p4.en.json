@@ -288,7 +288,9 @@
     "revertTitle": "Revert changelist {{id}}?",
     "revertDescription_one": "Discard the opened changes in {{count}} file. Added files stay on disk. Shelved files stay on the server.",
     "revertDescription_other": "Discard the opened changes in {{count}} files. Added files stay on disk. Shelved files stay on the server.",
-    "revertFailed": "The files could not be reverted. Check the operation error and try again."
+    "revertFailed": "The files could not be reverted. Check the operation error and try again.",
+    "submitShelfDescription": "Submit the shelved content directly from the server.",
+    "submitShelfOpened": "Move or revert opened changes in this changelist before submitting its shelf."
   },
   "manual": {
     "open": "Manual merge",
@@ -305,10 +307,12 @@
     "discardTitle": "Discard merge edits?",
     "discardHint": "The edits in this dialog have not been written to your workspace.",
     "discard": "Discard edits",
-    "externalSetting": "External merge tool",
-    "externalHint": "Empty uses P4Merge when installed. Custom executables receive four file paths: base, yours, theirs, result. Review the returned result before saving.",
+    "externalSetting": "External tools",
+    "externalHint": "Empty uses P4Merge. Custom diff tools receive two file paths; merge tools receive base, yours, theirs, and result.",
     "externalWaiting": "Waiting for the merge tool…",
-    "externalDefault": "Automatic · P4Merge"
+    "externalDefault": "Automatic · P4Merge",
+    "confirmExternal": "Mark merge complete",
+    "externalConfirmHint": "Review the result, then mark the merge complete. Closing the external tool does not resolve the file."
   },
   "clean": {
     "review_one": "Review {{count}} file",
@@ -430,7 +434,8 @@
       "compress": "Compress data transferred between this workspace and the server.",
       "modtime": "Use the depot file timestamp when syncing.",
       "rmdir": "Delete folders left empty by a sync operation."
-    }
+    },
+    "saveBeforeSwitch": "Save or discard workspace edits before switching streams."
   },
   "switchStream": {
     "title": "Switch stream",
@@ -487,7 +492,10 @@
       "task": "Task",
       "sparsedev": "Sparse development",
       "sparserel": "Sparse release"
-    }
+    },
+    "mergeShort": "Merge from parent",
+    "copyShort": "Copy into workspace",
+    "actions": "Stream actions"
   },
   "specs": {
     "title": "Labels & branch mappings",
@@ -567,49 +575,6 @@
     },
     "apply": "Integrate"
   },
-  "properties": {
-    "title": "File properties",
-    "editTitle": "Change file type",
-    "count": "{{count}} files",
-    "loading": "Loading properties…",
-    "fileType": "File type",
-    "typeHelp": "Use a full type (text+x, binary+l) to replace the type, or a modifier (+x) to extend it. A full type removes omitted modifiers.",
-    "checkoutChange": "Check out {{count}} unopened files in",
-    "selected": "{{count}} selected",
-    "pendingHelp": "Changes remain pending until you submit. Opened files keep their current changelists; unopened files are checked out in the chosen changelist.",
-    "retention": "The +S modifier can purge older depot revisions on a future submit.",
-    "checkout": "Check out",
-    "changing": "Changing file types",
-    "changed": "File types changed",
-    "copyFailed": "Could not copy to clipboard",
-    "copied": "Path copied",
-    "copy": "Copy path",
-    "locked": "Locked",
-    "reload": "Reload properties",
-    "depotPath": "Depot path",
-    "localPath": "Local path",
-    "have": "Have revision",
-    "head": "Head revision",
-    "depotType": "Depot type",
-    "openType": "Pending type",
-    "change": "Changelist",
-    "headChange": "Head changelist",
-    "size": "Depot size",
-    "submitted": "Submitted",
-    "modified": "File modified",
-    "digest": "Depot MD5",
-    "otherOpen": "Opened elsewhere ({{count}})",
-    "blocked": {
-      "unmapped": "Not mapped",
-      "missing": "Not on disk",
-      "owner": "Different owner",
-      "unresolved": "Resolve first",
-      "deleted": "Deleted",
-      "unsynced": "Sync first",
-      "action": "Unsupported action"
-    },
-    "placeholder": "text+x"
-  },
   "streamSpec": {
     "create": "New stream",
     "edit": "Edit stream",
@@ -651,44 +616,6 @@
     },
     "reload": "Reload definition",
     "discardReload": "Discard draft and reload"
-  },
-  "jobs": {
-    "title": "Jobs",
-    "create": "New job",
-    "edit": "Edit job",
-    "delete": "Delete job",
-    "filter": "Filter jobs…",
-    "filterHint": "Use a Perforce job expression, for example Status=open or User=alice. Leave empty to show all jobs.",
-    "listLimit": "Showing 200 jobs. Narrow the filter to find more.",
-    "noMatches": "No matching jobs.",
-    "select": "Select a job.",
-    "updating": "Updating jobs",
-    "deleteHint": "Type the job name to delete it. Remove its changelist links first.",
-    "formHint": "Fields and defaults come from the server’s job definition.",
-    "readOnly": "Read only",
-    "discardReload": "Discard draft and reload",
-    "changelists": "Linked changelists",
-    "linkedJobs": "Linked jobs",
-    "link": "Link job",
-    "editFix": "Change fix status",
-    "unlink": "Remove link",
-    "noFixes": "No links.",
-    "fixLimit": "Showing 200 links. Open a specific job or changelist to narrow the list.",
-    "job": "Job",
-    "changelist": "Changelist",
-    "fixStatus": "Fix status",
-    "defaultStatus": "Server default",
-    "keepStatus": "Keep job status",
-    "currentStatus": "Current job status",
-    "previousFixStatus": "Previous fix status",
-    "fixHint": "Choose a numbered changelist and the status to apply to the job.",
-    "unlinkHint": "Only the link is removed. The job’s current status is preserved.",
-    "applyNow": "This changelist is already submitted. Linking it updates the job status immediately.",
-    "applyOnSubmit": "The job status changes when this pending changelist is submitted.",
-    "confirmLink": "Confirm link",
-    "previewFix": "Preview association",
-    "applyKeepStatus": "The association is updated. The job’s current status is preserved.",
-    "linkChange": "Link changelist"
   },
   "streamWork": {
     "title": "Stream definition",
@@ -737,5 +664,25 @@
     "resolveComparison": "Version comparison · private → public @{{change}}",
     "shelfComparison": "Version comparison · workspace → shelf #{{change}}",
     "confirmDeleteShelf": "Type the full stream path to remove its shelved definition."
-  }
+  },
+  "workspaceActions": "Workspace actions",
+  "revisionTargets": "Files and folders",
+  "addRevisionTarget": "Add file or folder",
+  "targetPath": "File or folder path",
+  "targetFolder": "Folder",
+  "targetFile": "File",
+  "atChangelist": "At changelist",
+  "beforeChangelist": "Before changelist",
+  "selectRevisionValue": "Select {{kind}}",
+  "revisionBrowseSearch": "Filter by name, number or description",
+  "loadMoreRevisions": "Load more",
+  "emptyRevisionTargets": "Add a file or folder to get.",
+  "revisionTargetsLoading": "Loading changelist files…",
+  "noRevisionMatches": "No matches",
+  "revertUnchanged": "Revert if unchanged",
+  "submitShelf": "Submit shelved",
+  "autoMergeUnavailable": "Cannot auto-merge. Merge this file manually.",
+  "autoResolveAfterSync": "Try auto-resolving conflicts",
+  "autoResolveAfterSyncHint": "After updating, safely merge eligible files across all opened changelists. Conflicting files remain unresolved.",
+  "autoResolveSummary": "Auto-resolved {{resolved}} files · {{remaining}} still need resolve"
 }

@@ -1,5 +1,9 @@
+import { SyntaxLine } from "@/components/syntax-text";
+import { useFileSyntax } from "@/lib/use-file-syntax";
+import { DiffToolbar } from "@/components/diff-toolbar";
+import { DiffSearchBar, DiffSearchScope } from "@/components/diff-search";
 import { t, useTranslation } from "@/i18n";
-import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FolderOpenIcon, SquarePenIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 import { AuthorName, ExactTime } from "@/components/revision-meta";
@@ -13,7 +17,7 @@ import { ContextMenuContent, ContextMenuItem } from "@/components/ui/context-men
 import { HoverTip } from "@/components/ui/tooltip";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { languageFor, styleSpans, textColumns, type TokenRange } from "@/lib/diff-text";
+import { textColumns, type TokenRange } from "@/lib/diff-text";
 import { formatAbsoluteTime, formatBlameWhen } from "@/lib/format";
 import { errorMessage, gitApi } from "@/lib/git";
 import { type SearchNode } from "@/lib/file-search";
@@ -571,49 +575,6 @@ function blameRows(lines: string[], hunks: BlameHunk[] | null, blameLoading: boo
   });
 }
 
-type TextHighlighter = (lines: string[], language: string) => TokenRange[][] | null;
-let loadedTextHighlighter: TextHighlighter | null = null;
-
-function useFileSyntax(path: string, lines: string[] | null) {
-  const language = lines == null ? null : languageFor(path);
-  const [highlighter, setHighlighter] = useState<TextHighlighter | null>(() => loadedTextHighlighter);
-  const [paint, setPaint] = useState<{ source: string[]; ranges: TokenRange[][] } | null>(null);
-  useEffect(() => {
-    if (!language || highlighter) return;
-    let live = true;
-    void import("@/lib/highlight").then((module) => {
-      loadedTextHighlighter = module.highlightText;
-      if (live) setHighlighter(() => module.highlightText);
-    });
-    return () => {
-      live = false;
-    };
-  }, [highlighter, language]);
-  // Color after the file and blame have painted. Prism on a long file is the
-  // slow part, and it used to run inside the same render that showed the text.
-  useEffect(() => {
-    if (!language || !highlighter || lines == null) return;
-    let cancelled = false;
-    const source = lines;
-    const run = () => {
-      if (cancelled) return;
-      const next = highlighter(source, language);
-      if (cancelled || !next) return;
-      startTransition(() => {
-        if (!cancelled) setPaint({ source, ranges: next });
-      });
-    };
-    const idle = window.requestIdleCallback?.(run, { timeout: 150 });
-    const timer = idle == null ? window.setTimeout(run, 1) : undefined;
-    return () => {
-      cancelled = true;
-      if (idle != null) window.cancelIdleCallback(idle);
-      if (timer != null) window.clearTimeout(timer);
-    };
-  }, [highlighter, language, lines]);
-  return paint && paint.source === lines ? paint.ranges : null;
-}
-
 function BlameAvatar({ name }: { name: string }) {
   const seed = avatarSeed(name, "");
   return (
@@ -852,14 +813,7 @@ const FileBrowse = memo(function FileBrowse({
 });
 
 function HighlightedLine({ text, ranges }: { text: string; ranges: TokenRange[] | undefined }) {
-  if (!ranges?.length) return text;
-  return styleSpans([{ text, changed: false }], ranges).map((span, index) =>
-    span.text ? (
-      <span key={index} className={span.cls ? `tok-${span.cls}` : undefined}>
-        {span.text}
-      </span>
-    ) : null,
-  );
+  return <SyntaxLine text={text} ranges={ranges} />;
 }
 
 function FileHistory({
@@ -937,18 +891,14 @@ function FileCommitDiff({
       </div>
     );
   }
-  if (diff.binary && commitId && isImagePath(diff.path)) {
-    return (
-      <div className="absolute inset-0 flex min-h-0 flex-col">
-        <ImageDiff repoPath={repoPath} source={{ kind: "commit", oid: commitId, path: diff.path, oldPath: diff.oldPath }} refreshIdentity={diff} />
-      </div>
-    );
-  }
-  if (diff.binary) return <p className="p-4 text-sm text-muted-foreground">{t("git-files.binaryFile")}</p>;
-  if (diff.lines.length === 0) return <p className="p-4 text-sm text-muted-foreground">{t("git-files.noTextDiff")}</p>;
+  const source = commitId ? { kind: "commit" as const, oid: commitId, path: diff.path, oldPath: diff.oldPath } : null;
+  const image = source && diff.binary && isImagePath(diff.path);
+  const textual = !diff.binary && !image;
   return (
-    <div className="absolute inset-0 flex min-h-0 flex-col">
-      <DiffLines diff={diff} />
-    </div>
+    <DiffSearchScope lines={diff.lines.map(line => line.kind === "hunk" ? "" : line.content.replace(/\r/g, ""))} enabled={textual} className="absolute inset-0">
+      <div className="flex h-10 shrink-0 items-center justify-end border-b px-2"><DiffToolbar textual={Boolean(textual)} source={source ? {kind:"git", repoPath, source} : null} line={diff.lines.find(line => line.newLineno)?.newLineno ?? null} /></div>
+      <DiffSearchBar />
+      {image ? <ImageDiff repoPath={repoPath} source={source} refreshIdentity={diff} /> : diff.binary ? <p className="p-4 text-sm text-muted-foreground">{t("git-files.binaryFile")}</p> : diff.lines.length === 0 ? <p className="p-4 text-sm text-muted-foreground">{t("git-files.noTextDiff")}</p> : <DiffLines diff={diff} />}
+    </DiffSearchScope>
   );
 }

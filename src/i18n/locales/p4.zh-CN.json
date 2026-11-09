@@ -288,7 +288,9 @@
     "revertTitle": "还原变更列表 {{id}}？",
     "revertDescription_one": "放弃 {{count}} 个文件中已签出的修改。新增文件保留在磁盘上，搁置内容保留在服务器上。",
     "revertDescription_other": "放弃 {{count}} 个文件中已签出的修改。新增文件保留在磁盘上，搁置内容保留在服务器上。",
-    "revertFailed": "无法还原文件。请查看操作错误后重试。"
+    "revertFailed": "无法还原文件。请查看操作错误后重试。",
+    "submitShelfDescription": "直接提交服务器上的搁置内容。",
+    "submitShelfOpened": "提交搁置内容前，请移走或还原此变更列表中仍打开的修改。"
   },
   "manual": {
     "open": "手工合并",
@@ -305,10 +307,12 @@
     "discardTitle": "放弃合并修改？",
     "discardHint": "当前弹窗中的修改尚未写入工作区。",
     "discard": "放弃修改",
-    "externalSetting": "外部合并工具",
-    "externalHint": "留空时尝试使用已安装的 P4Merge。自定义程序依次接收基线、本地、传入、结果四个文件路径；返回后仍需审阅并保存。",
+    "externalSetting": "外部工具",
+    "externalHint": "留空使用 P4Merge。自定义差异工具接收两个文件路径；合并工具依次接收基线、本地、传入和结果文件路径。",
     "externalWaiting": "正在等待合并工具…",
-    "externalDefault": "自动 · P4Merge"
+    "externalDefault": "自动 · P4Merge",
+    "confirmExternal": "确认合并完成",
+    "externalConfirmHint": "检查合并结果后，确认合并完成。关闭外部工具不会直接解决此文件。"
   },
   "clean": {
     "review_one": "确认 {{count}} 个文件",
@@ -430,7 +434,8 @@
       "compress": "压缩此工作区与服务器之间传输的数据。",
       "modtime": "同步文件时使用版本库中的文件时间。",
       "rmdir": "移除同步后变为空的目录。"
-    }
+    },
+    "saveBeforeSwitch": "先保存或取消工作区修改，再切换 Stream。"
   },
   "switchStream": {
     "title": "切换 Stream",
@@ -487,7 +492,10 @@
       "task": "任务",
       "sparsedev": "稀疏开发流",
       "sparserel": "稀疏发布流"
-    }
+    },
+    "mergeShort": "从父级合并",
+    "copyShort": "复制到工作区",
+    "actions": "Stream 操作"
   },
   "specs": {
     "title": "标签与分支映射",
@@ -567,49 +575,6 @@
     },
     "apply": "集成"
   },
-  "properties": {
-    "title": "文件属性",
-    "editTitle": "修改文件类型",
-    "count": "{{count}} 个文件",
-    "loading": "正在读取属性…",
-    "fileType": "文件类型",
-    "typeHelp": "完整类型（text+x、binary+l）会替换原类型；单独修饰符（+x）会追加到原类型。移除修饰符时请填写完整类型。",
-    "checkoutChange": "将 {{count}} 个未打开文件检出至",
-    "selected": "已选择 {{count}} 个文件",
-    "pendingHelp": "类型修改保留为待提交更改，提交后才生效。已打开文件保留原变更列表；未打开文件会检出至所选变更列表。",
-    "retention": "+S 修饰符可能在后续提交时清除较早的仓库修订。",
-    "checkout": "检出",
-    "changing": "正在修改文件类型",
-    "changed": "已修改文件类型",
-    "copyFailed": "无法复制到剪贴板",
-    "copied": "已复制路径",
-    "copy": "复制路径",
-    "locked": "已锁定",
-    "reload": "重新读取属性",
-    "depotPath": "仓库路径",
-    "localPath": "本地路径",
-    "have": "本地修订",
-    "head": "最新修订",
-    "depotType": "仓库类型",
-    "openType": "待提交类型",
-    "change": "变更列表",
-    "headChange": "最新变更列表",
-    "size": "仓库文件大小",
-    "submitted": "提交时间",
-    "modified": "文件修改时间",
-    "digest": "仓库 MD5",
-    "otherOpen": "其他工作区已打开（{{count}}）",
-    "blocked": {
-      "unmapped": "未映射",
-      "missing": "本地文件不存在",
-      "owner": "其他用户所有",
-      "unresolved": "需先解决冲突",
-      "deleted": "已删除",
-      "unsynced": "需先同步",
-      "action": "不支持此操作"
-    },
-    "placeholder": "text+x"
-  },
   "streamSpec": {
     "create": "新建流",
     "edit": "编辑流",
@@ -651,44 +616,6 @@
     },
     "reload": "重新读取定义",
     "discardReload": "丢弃草稿并重新读取"
-  },
-  "jobs": {
-    "title": "任务",
-    "create": "新建任务",
-    "edit": "编辑任务",
-    "delete": "删除任务",
-    "filter": "筛选任务…",
-    "filterHint": "使用 Perforce 任务表达式，例如 Status=open 或 User=alice。留空显示所有任务。",
-    "listLimit": "显示 200 个任务，请缩小筛选范围。",
-    "noMatches": "没有匹配的任务。",
-    "select": "选择一个任务。",
-    "updating": "正在更新任务",
-    "deleteHint": "输入任务名称以删除。请先移除其变更列表关联。",
-    "formHint": "字段和默认值来自服务器的任务定义。",
-    "readOnly": "只读",
-    "discardReload": "放弃草稿并重新载入",
-    "changelists": "关联的变更列表",
-    "linkedJobs": "关联任务",
-    "link": "关联任务",
-    "editFix": "修改关联状态",
-    "unlink": "移除关联",
-    "noFixes": "暂无关联。",
-    "fixLimit": "显示 200 条关联，请打开具体任务或变更列表以缩小范围。",
-    "job": "任务",
-    "changelist": "变更列表",
-    "fixStatus": "关联状态",
-    "defaultStatus": "服务器默认",
-    "keepStatus": "保持任务状态",
-    "currentStatus": "当前任务状态",
-    "previousFixStatus": "原关联状态",
-    "fixHint": "选择编号变更列表及应用到任务的状态。",
-    "unlinkHint": "仅移除关联，保留任务的当前状态。",
-    "applyNow": "此变更列表已提交，确认关联后立即更新任务状态。",
-    "applyOnSubmit": "此变更列表尚未提交，任务状态将在提交时更新。",
-    "confirmLink": "确认关联",
-    "previewFix": "预览关联",
-    "applyKeepStatus": "仅更新关联，任务的当前状态保持不变。",
-    "linkChange": "关联变更列表"
   },
   "streamWork": {
     "title": "Stream 定义",
@@ -737,5 +664,25 @@
     "resolveComparison": "版本对比 · 私有 → 公开 @{{change}}",
     "shelfComparison": "版本对比 · 工作区 → Shelf #{{change}}",
     "confirmDeleteShelf": "输入完整的 Stream 路径以移除搁置的定义。"
-  }
+  },
+  "workspaceActions": "工作区操作",
+  "revisionTargets": "文件和目录",
+  "addRevisionTarget": "添加文件或目录",
+  "targetPath": "文件或目录路径",
+  "targetFolder": "目录",
+  "targetFile": "文件",
+  "atChangelist": "此变更时",
+  "beforeChangelist": "此变更之前",
+  "selectRevisionValue": "选择{{kind}}",
+  "revisionBrowseSearch": "按名称、编号或描述筛选",
+  "loadMoreRevisions": "加载更多",
+  "emptyRevisionTargets": "添加要获取的文件或目录。",
+  "revisionTargetsLoading": "正在加载变更文件…",
+  "noRevisionMatches": "没有匹配项",
+  "revertUnchanged": "还原未修改的文件",
+  "submitShelf": "提交搁置内容",
+  "autoMergeUnavailable": "无法自动合并，请手动合并此文件。",
+  "autoResolveAfterSync": "尝试自动解决冲突",
+  "autoResolveAfterSyncHint": "更新后安全合并所有已打开更改列表中可自动合并的文件。有冲突的文件会保留为未解决状态。",
+  "autoResolveSummary": "已自动解决 {{resolved}} 个文件 · {{remaining}} 个仍需解决"
 }

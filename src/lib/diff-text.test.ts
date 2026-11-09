@@ -157,3 +157,12 @@ describe("textColumns", () => {
     expect(textColumns("ＡＢa\r")).toBe(5);
   });
 });
+
+it("detects languages in Windows paths, versioned depot paths and common configuration files", () => {
+  expect(languageFor("C:\\project\\src\\app.ts")).toBe("typescript");
+  expect(languageFor("//depot/main/config.json#4")).toBe("json");
+  expect(languageFor("//depot/main/app.rs@=42")).toBe("rust");
+  expect(languageFor(".env.production")).toBe("bash");
+  expect(languageFor(".gitignore")).toBe("ignore");
+  expect(languageFor(".editorconfig")).toBe("ini");
+});

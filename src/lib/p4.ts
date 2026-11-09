@@ -1,12 +1,9 @@
-import type { P4JobPage, P4Job, P4JobEdit, P4FixPage, P4FixRequest, P4FixPreview } from "@/types/p4-jobs";
 import { p4ComparisonDiff, type P4Comparison } from "@/lib/p4-comparison";
 import { invoke } from "@tauri-apps/api/core";
 import { t } from "@/i18n";
 import type {
   P4CleanRequest,
   P4CleanPreview,
-  P4FilePropertiesView,
-  P4FileTypeRequest,
   P4UnshelveRequest,
   P4StreamRequest,
   P4StreamPreview,
@@ -37,9 +34,10 @@ import type {
   P4Executables,
   P4OpenResult,
   P4ResolveView,
+  P4SyncResult,
   P4CompareRequest,
   P4BlameLine,
-  P4ImageSource,
+  P4FileSource,
   P4RevisionPage,
   P4HistoryCursor,
   RepoDetection,
@@ -90,13 +88,6 @@ export const p4Api = {
   previewStreamWork: (connection: P4Connection, request: P4StreamWorkRequest) => call<P4StreamWorkPreview>("p4_preview_stream_work", {connection, request}),
   applyStreamWork: (connection: P4Connection, request: P4StreamWorkRequest, fingerprint: string) => call<P4StreamWork>("p4_apply_stream_work", {connection, request, fingerprint}),
   streamChangeDiff: (connection: P4Connection, request: P4StreamDiffRequest) => call<FileDiff>("p4_stream_change_diff", {connection, request}),
-  listJobs: (connection: P4Connection, query: string) => call<P4JobPage>("p4_list_jobs", {connection, query}),
-  readJob: (connection: P4Connection, job: string | null) => call<P4Job>("p4_read_job", {connection, job}),
-  saveJob: (connection: P4Connection, edit: P4JobEdit, fingerprint: string | null) => call<P4Job>("p4_save_job", {connection, edit, fingerprint}),
-  deleteJob: (connection: P4Connection, job: string, fingerprint: string) => call<void>("p4_delete_job", {connection, job, fingerprint}),
-  jobFixes: (connection: P4Connection, job: string, change: string) => call<P4FixPage>("p4_job_fixes", {connection, job, change}),
-  previewJobFix: (connection: P4Connection, request: P4FixRequest) => call<P4FixPreview>("p4_preview_job_fix", {connection, request}),
-  applyJobFix: (connection: P4Connection, request: P4FixRequest, fingerprint: string) => call<void>("p4_apply_job_fix", {connection, request, fingerprint}),
 
   newStreamSpec: (connection: P4Connection, setup: P4StreamSetup) => call<P4StreamSpec>("p4_new_stream_spec", {connection, setup}),
   readStreamSpec: (connection: P4Connection, path: string) => call<P4StreamSpec>("p4_read_stream_spec", {connection, path}),
@@ -147,9 +138,10 @@ export const p4Api = {
     call<P4Describe>("p4_describe", { connection, changeId }),
   openedDiff: (connection: P4Connection, path: string) =>
     call<FileDiff>("p4_opened_diff", { connection, path }),
+  revisionTargets: (connection: P4Connection, changeId: string) => call<string[]>("p4_revision_targets", { connection, changeId }),
   shelfDiff: (connection: P4Connection, depotPath: string, changeId: string) =>
     call<FileDiff>("p4_shelf_diff", { connection, depotPath, changeId }),
-  imagePair: (connection: P4Connection, source: P4ImageSource) => call<ImagePair>("p4_image_pair", {connection, source}),
+  imagePair: (connection: P4Connection, source: P4FileSource) => call<ImagePair>("p4_image_pair", {connection, source}),
   annotate: (connection: P4Connection, depotPath: string, revision: string) => call<P4BlameLine[]>("p4_annotate", { connection, depotPath, revision }),
   compareFiles: (connection: P4Connection, request: P4CompareRequest) => call<P4Comparison>("p4_compare_files", { connection, request }).then(p4ComparisonDiff),
   revisionDiff: (connection: P4Connection, depotPath: string, rev: string) =>
@@ -184,13 +176,12 @@ export const p4Api = {
     call<void>("p4_delete_change", { connection, changeId }),
   moveFile: (connection: P4Connection, source: string, destination: string) =>
     call<void>("p4_move_file", { connection, source, destination }),
-  fileProperties: (connection: P4Connection, paths: string[]) => call<P4FilePropertiesView>("p4_file_properties", { connection, paths }),
-  changeFileTypes: (connection: P4Connection, request: P4FileTypeRequest, fingerprint: string) => call<void>("p4_change_file_types", { connection, request, fingerprint }),
   reopen: (connection: P4Connection, changeId: string, files: string[]) =>
     call<void>("p4_reopen", { connection, changeId, files }),
   revert: (connection: P4Connection, files: string[], wipe?: string[]) =>
     call<void>("p4_revert", { connection, files, wipe: wipe ?? null }),
-  revertUnchanged: (connection: P4Connection) => call<void>("p4_revert_unchanged", { connection }),
+  revertUnchanged: (connection: P4Connection, scope: {changeId?:string; paths?:string[]} = {}) => call<void>("p4_revert_unchanged", { connection, changeId:scope.changeId ?? null, paths:scope.paths ?? [] }),
+  submitShelf: (connection: P4Connection, changeId: string, description: string) => call<void>("p4_submit_shelf", {connection, changeId, description}),
   shelve: (connection: P4Connection, changeId: string, files?: string[]) =>
     call<void>("p4_shelve", { connection, changeId, files: files ?? null }),
   unshelve: (connection: P4Connection, changeId: string, target?: string, files?: string[]) =>
@@ -206,8 +197,8 @@ export const p4Api = {
     call<P4ResolveView>("p4_resolve_view", { connection, path }),
   resolveAccept: (connection: P4Connection, path: string, mode: "yours" | "theirs" | "merge") =>
     call<void>("p4_resolve_accept", { connection, path, mode }),
-  sync: (connection: P4Connection, paths: string[], activityId?: string) =>
-    call<string>("p4_sync", { connection, paths, activityId: activityId ?? null }),
+  sync: (connection: P4Connection, paths: string[], activityId?: string, autoResolve = false) =>
+    call<P4SyncResult>("p4_sync", { connection, paths, autoResolve, activityId: activityId ?? null }),
   getRevision: (connection: P4Connection, request: P4GetRevision, activityId?: string) =>
     call<string>("p4_get_revision", { connection, request, activityId: activityId ?? null }),
   listShelves: (connection: P4Connection, user: string, before: number | null) => call<P4ChangePage>("p4_list_shelves", { connection, user, before }),

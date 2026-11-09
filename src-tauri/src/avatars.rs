@@ -11,7 +11,7 @@ use reqwest::{Client, Response};
 use serde::Deserialize;
 use url::Url;
 
-use crate::prefs::{AppPrefs, AvatarProvider};
+use crate::prefs::{AppPrefs, AvatarProvider, GitAvatarProvider};
 
 const MAX_BODY_BYTES: usize = 65_536;
 const MAX_CACHE_BYTES: usize = 8 * 1_048_576;
@@ -20,16 +20,72 @@ const POSITIVE_TTL: Duration = Duration::from_secs(6 * 60 * 60);
 const NEGATIVE_TTL: Duration = Duration::from_secs(15 * 60);
 static STATE: OnceLock<Mutex<AvatarState>> = OnceLock::new();
 
+pub fn provider_for_remotes(
+    choice: GitAvatarProvider,
+    remotes: &[crate::git::RemoteInfo],
+) -> AvatarProvider {
+    match choice {
+        GitAvatarProvider::Builtin => AvatarProvider::Builtin,
+        GitAvatarProvider::Github => AvatarProvider::Github,
+        GitAvatarProvider::Gitlab => AvatarProvider::Gitlab,
+        GitAvatarProvider::Auto => remotes
+            .iter()
+            .find(|remote| remote.name == "origin")
+            .or_else(|| remotes.first())
+            .and_then(|remote| remote.url.as_deref().or(remote.push_url.as_deref()))
+            .map(provider_for_url)
+            .unwrap_or_default(),
+    }
+}
+
+fn provider_for_url(value: &str) -> AvatarProvider {
+    let value = value.trim();
+    let parsed = if value.contains("://") {
+        Url::parse(value)
+    } else {
+        let Some((authority, path)) = value.split_once(':') else {
+            return AvatarProvider::Builtin;
+        };
+        if authority.contains(['/', '\\']) || path.is_empty() {
+            return AvatarProvider::Builtin;
+        }
+        Url::parse(&format!("ssh://{authority}/{path}"))
+    };
+    let Ok(url) = parsed else {
+        return AvatarProvider::Builtin;
+    };
+    if !matches!(url.scheme(), "https" | "http" | "ssh" | "git" | "git+ssh")
+        || url
+            .path()
+            .split('/')
+            .filter(|part| !part.is_empty())
+            .count()
+            < 2
+    {
+        return AvatarProvider::Builtin;
+    }
+    match url
+        .host_str()
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "github.com" => AvatarProvider::Github,
+        "gitlab.com" => AvatarProvider::Gitlab,
+        _ => AvatarProvider::Builtin,
+    }
+}
+
 #[derive(Clone, PartialEq)]
 struct Policy {
-    provider: AvatarProvider,
+    provider: GitAvatarProvider,
     proxy: crate::network::HttpProxy,
 }
 
 impl From<&AppPrefs> for Policy {
     fn from(prefs: &AppPrefs) -> Self {
         Self {
-            provider: prefs.avatar_provider,
+            provider: prefs.git_avatar_provider,
             proxy: prefs.http_proxy.clone(),
         }
     }
@@ -87,11 +143,14 @@ pub fn preferences_changed(prefs: &AppPrefs) {
 }
 
 /// Failures are intentionally silent and fall back to the local avatar.
-pub async fn lookup(prefs: AppPrefs, email: String) -> Option<String> {
-    if prefs.avatar_provider == AvatarProvider::Builtin {
+pub async fn lookup(prefs: AppPrefs, provider: AvatarProvider, email: String) -> Option<String> {
+    if provider == AvatarProvider::Builtin
+        || prefs.git_avatar_provider == GitAvatarProvider::Builtin
+    {
         return None;
     }
     let email = normalized_email(&email)?;
+    let key = format!("{provider:?}:{email}");
     let policy = Policy::from(&prefs);
     let (generation, id) = {
         let mut state = state().lock().ok()?;
@@ -105,47 +164,44 @@ pub async fn lookup(prefs: AppPrefs, email: String) -> Option<String> {
         let now = Instant::now();
         if let Some(cached) = state
             .cache
-            .get_mut(&email)
+            .get_mut(&key)
             .filter(|entry| entry.expires > now)
         {
             cached.touched = now;
             return cached.data.clone();
         }
-        if state.active.len() >= 2 || state.active.contains_key(&email) {
+        if state.active.len() >= 2 || state.active.contains_key(&key) {
             return None;
         }
         state.sequence = state.sequence.wrapping_add(1);
         let id = state.sequence;
         state
             .active
-            .insert(email.clone(), Active { id, cancel: None });
+            .insert(key.clone(), Active { id, cancel: None });
         (state.generation, id)
     };
     let task_email = email.clone();
+    let task_key = key.clone();
     let task = tauri::async_runtime::spawn(async move {
         let _lease = ActiveLease {
-            email: task_email.clone(),
+            key: task_key.clone(),
             id,
         };
         let data = match crate::network::client_from_preferences(&prefs) {
-            Ok(client) => fetch(&client, prefs.avatar_provider, &task_email, generation).await,
+            Ok(client) => fetch(&client, provider, &task_email, generation).await,
             Err(_) => None,
         };
         let mut state = state().lock().ok()?;
         if state.generation != generation {
             return None;
         }
-        state.insert(task_email, data.clone(), Instant::now());
+        state.insert(task_key, data.clone(), Instant::now());
         data
     });
     let abort = task.inner().abort_handle();
     {
         let mut state = state().lock().ok()?;
-        if let Some(active) = state
-            .active
-            .get_mut(&email)
-            .filter(|active| active.id == id)
-        {
+        if let Some(active) = state.active.get_mut(&key).filter(|active| active.id == id) {
             active.cancel = Some(Box::new(move || abort.abort()));
         } else {
             abort.abort();
@@ -155,7 +211,7 @@ pub async fn lookup(prefs: AppPrefs, email: String) -> Option<String> {
 }
 
 struct ActiveLease {
-    email: String,
+    key: String,
     id: u64,
 }
 
@@ -164,10 +220,10 @@ impl Drop for ActiveLease {
         if let Ok(mut state) = state().lock() {
             if state
                 .active
-                .get(&self.email)
+                .get(&self.key)
                 .is_some_and(|active| active.id == self.id)
             {
-                state.active.remove(&self.email);
+                state.active.remove(&self.key);
             }
         }
     }
@@ -627,6 +683,79 @@ fn webp_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn automatic_providers_use_the_remote_host_without_guessing_self_hosted_services() {
+        for (url, expected) in [
+            (
+                "https://github.com/owner/project.git",
+                AvatarProvider::Github,
+            ),
+            ("git@github.com:owner/project.git", AvatarProvider::Github),
+            (
+                "ssh://git@GITHUB.COM:22/owner/project.git",
+                AvatarProvider::Github,
+            ),
+            ("git@gitlab.com:group/project.git", AvatarProvider::Gitlab),
+            (
+                "https://gitlab.com/group/subgroup/project.git",
+                AvatarProvider::Gitlab,
+            ),
+            (
+                "https://github.com.evil.example/owner/project.git",
+                AvatarProvider::Builtin,
+            ),
+            (
+                "https://github.com@evil.example/owner/project.git",
+                AvatarProvider::Builtin,
+            ),
+            (
+                "https://gitlab.example.com/group/project.git",
+                AvatarProvider::Builtin,
+            ),
+            ("/projects/project.git", AvatarProvider::Builtin),
+            (r"C:\projects\project.git", AvatarProvider::Builtin),
+            (
+                "file:///projects/github.com/project.git",
+                AvatarProvider::Builtin,
+            ),
+            ("https://github.com", AvatarProvider::Builtin),
+        ] {
+            assert_eq!(provider_for_url(url), expected, "{url}");
+        }
+        let remotes = vec![
+            crate::git::RemoteInfo {
+                name: "upstream".into(),
+                url: Some("https://gitlab.com/group/project".into()),
+                push_url: None,
+            },
+            crate::git::RemoteInfo {
+                name: "origin".into(),
+                url: Some("git@github.com:owner/project".into()),
+                push_url: Some("git@gitlab.com:group/project".into()),
+            },
+        ];
+        assert_eq!(
+            provider_for_remotes(GitAvatarProvider::Auto, &remotes),
+            AvatarProvider::Github
+        );
+        assert_eq!(
+            provider_for_remotes(GitAvatarProvider::Auto, &remotes[..1]),
+            AvatarProvider::Gitlab
+        );
+        assert_eq!(
+            provider_for_remotes(GitAvatarProvider::Auto, &[]),
+            AvatarProvider::Builtin
+        );
+        assert_eq!(
+            provider_for_remotes(GitAvatarProvider::Builtin, &remotes),
+            AvatarProvider::Builtin
+        );
+        assert_eq!(
+            provider_for_remotes(GitAvatarProvider::Gitlab, &remotes),
+            AvatarProvider::Gitlab
+        );
+    }
 
     #[test]
     fn email_queries_cannot_inject_search_qualifiers_or_urls() {

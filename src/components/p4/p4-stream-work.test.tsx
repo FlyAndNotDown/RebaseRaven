@@ -8,13 +8,13 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { setLanguagePreference } from "@/i18n";
 import type { P4StreamWork, P4StreamWorkRequest } from "@/types/p4-stream-specs";
 
-const actions = vi.hoisted(() => ({work:vi.fn(), previewWork:vi.fn(), applyWork:vi.fn(), read:vi.fn(), selectChange:vi.fn(), setView:vi.fn(), setShelvesOpen:vi.fn()}));
-vi.mock("@/state/p4-context", () => ({useP4: () => ({streamSpecs:actions, busy:false, connection:{stream:"//project/dev"}, pending:[{id:"default",description:""},{id:"42",description:"Stream edits"}], selectChange:actions.selectChange, setView:actions.setView, setShelvesOpen:actions.setShelvesOpen})}));
+const actions = vi.hoisted(() => ({work:vi.fn(), previewWork:vi.fn(), applyWork:vi.fn(), read:vi.fn(), selectChange:vi.fn(), setView:vi.fn()}));
+vi.mock("@/state/p4-context", () => ({useP4: () => ({streamSpecs:actions, busy:false, connection:{stream:"//project/dev"}, pending:[{id:"default",description:""},{id:"42",description:"Stream edits"}], selectChange:actions.selectChange, setView:actions.setView})}));
 vi.mock("@/components/p4/p4-diff", () => ({P4Diff:({diff}: {diff?: {lines:{content:string}[]}}) => <div>{diff?.lines.map(line=>line.content).join("\n")}</div>}));
 let root: Root, container: HTMLDivElement;
 const closed = vi.fn();
 function work(opened = false): P4StreamWork {
-  return {spec:{path:"//project/dev",name:"Development",owner:"alice",kind:"development",parent:"//project/main",parentView:"inherit",description:"Development",options:{locked:false,ownerSubmit:false,toParent:true,fromParent:true,mergeAny:false},paths:["share ..."],remapped:[],ignored:[],fingerprint:"form",opened,editableFields:["Paths"]},opened:opened?{change:"42",baseChange:"40"}:null,headChange:"40",currentText:"Stream: //project/dev\nParentView: inherit\n",headText:"",diff:{path:"//project/dev",oldPath:null,binary:false,truncated:false,lines:[]},unresolved:false,resolveOutput:"",fingerprint:"workspace"};
+  return {spec:{path:"//project/dev",name:"Development",owner:"alice",kind:"development",parent:"//project/main",parentView:"inherit",description:"Development",options:{locked:false,ownerSubmit:false,toParent:true,fromParent:true,mergeAny:false},paths:["share ..."],remapped:[],ignored:[],fingerprint:"form",opened,editableFields:["Paths"]},opened:opened?{change:"42",baseChange:"40"}:null,headChange:"40",baseText:"",currentText:"Stream: //project/dev\nParentView: inherit\n",headText:"",diff:{path:"//project/dev",oldPath:null,binary:false,truncated:false,lines:[]},unresolved:false,resolveOutput:"",fingerprint:"workspace"};
 }
 beforeEach(() => {
   Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});setLanguagePreference("en");vi.resetAllMocks();
@@ -93,7 +93,7 @@ it("returns from a nested shelf restoration to the owning pending changelist",as
   actions.work.mockResolvedValue(work(true)); const navigate=vi.fn();
   await render(<P4StreamWorkDialog restore="50" onClose={closed} onNavigate={navigate}/>);
   await click("Show pending changelist");
-  expect(actions.selectChange).toHaveBeenCalledWith("42");expect(actions.setView).toHaveBeenCalledWith("pending");expect(actions.setShelvesOpen).toHaveBeenCalledWith(false);expect(navigate).toHaveBeenCalledOnce();expect(closed).not.toHaveBeenCalled();
+  expect(actions.selectChange).toHaveBeenCalledWith("42");expect(actions.setView).toHaveBeenCalledWith("pending");expect(navigate).toHaveBeenCalledOnce();expect(closed).not.toHaveBeenCalled();
 });
 
 it("shows both private and public values when reviewing stream conflicts",async()=>{
@@ -117,4 +117,20 @@ it.each([false,true])("explains the shelf submit restriction with openedStream=%
   await render(<P4ChangeDialog request={{id:"42",description:"Update mappings",mode:"submit"}} openedCount={1} openedStream={openedStream} shelved available busy={false} onConfirm={submit} onClose={closed} onManageShelf={manage}/>);
   expect(button("Submit changelist").disabled).toBe(true);expect(document.querySelector('[role="alert"]')?.textContent).toContain("shelved content");
   await click("Delete shelf");expect(manage).toHaveBeenCalledOnce();expect(submit).not.toHaveBeenCalled();
+});
+
+it("submits a shelf directly once its changelist has no opened changes", async () => {
+  const submit = vi.fn(async () => true);
+  await render(<P4ChangeDialog request={{id:"42",description:"Update mappings",mode:"submitShelf"}} openedCount={0} shelved available busy={false} onConfirm={submit} onClose={closed} />);
+  expect(button("Submit shelved").disabled).toBe(false);
+  await click("Submit shelved");
+  expect(submit).toHaveBeenCalledWith("Update mappings");
+});
+
+it.each([{openedCount:1,openedStream:false},{openedCount:0,openedStream:true}])("blocks shelf submission while changes are still opened: %j", async (opened) => {
+  const submit = vi.fn(async () => true);
+  await render(<P4ChangeDialog request={{id:"42",description:"Update mappings",mode:"submitShelf"}} {...opened} shelved available busy={false} onConfirm={submit} onClose={closed} />);
+  expect(button("Submit shelved").disabled).toBe(true);
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain("opened changes");
+  expect(submit).not.toHaveBeenCalled();
 });

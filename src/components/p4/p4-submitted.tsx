@@ -1,9 +1,9 @@
+import { CommitMessage } from "@/components/commit-message";
 import { P4StreamDiffDialog } from "@/components/p4/p4-stream-work";
 import type { P4StreamDiffRequest } from "@/types/p4-stream-specs";
-import { P4ChangeJobsDialog } from "@/components/p4/p4-job-fixes";
 import { t, useTranslation } from "@/i18n";
 import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
-import { GitBranchIcon, ClipboardListIcon, CheckIcon, ChevronDownIcon, DownloadIcon, HistoryIcon } from "lucide-react";
+import { GitBranchIcon, CheckIcon, ChevronDownIcon, DownloadIcon, HistoryIcon } from "lucide-react";
 import { toast } from "sonner";
 import { AuthorAvatar } from "@/components/author-avatar";
 import { AuthorName, ExactTime, RevisionDot } from "@/components/revision-meta";
@@ -23,9 +23,6 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
-  ContextMenuSub,
-  ContextMenuSubContent,
-  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Input } from "@/components/ui/input";
@@ -65,7 +62,6 @@ export function P4Submitted() {
   useTranslation();
   const p4 = useP4();
   const [streamDiff, setStreamDiff] = useState<P4StreamDiffRequest | null>(null);
-  const [jobsChange, setJobsChange] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
   const [users, setUsers] = useState<string[]>([]);
@@ -326,7 +322,7 @@ export function P4Submitted() {
               )
             ) : (
               <>
-                {changes.map((change) => {
+                {changes.map((change, index) => {
                   const active = change.id === p4.selectedSubmitted;
                   return (
                     <ContextMenu key={change.id}>
@@ -339,12 +335,12 @@ export function P4Submitted() {
                           )}
                           onClick={() => void p4.selectSubmitted(change.id)}
                         >
-                          <RevisionDot />
+                          <RevisionDot before={index > 0} after={index < changes.length - 1 || hasMore} extend={6} />
                           <ChangeBadge id={change.id} />
                           <span className="min-w-0 flex-1 truncate text-xs">
                             {changeSummary(change.description) || t("p4.noDescription")}
                           </span>
-                          <AuthorName name={change.user} />
+                          <AuthorName vcs="perforce" name={change.user} />
                           <ExactTime time={change.time} />
                         </button>
                       </ContextMenuTrigger>
@@ -364,20 +360,7 @@ export function P4Submitted() {
                         }}>
                           <DownloadIcon />{t("p4.getLatest")}
                         </ContextMenuItem>
-                        <ContextMenuSub>
-                          <ContextMenuSubTrigger disabled={p4.busy}><HistoryIcon />{t("p4.getRevision")}</ContextMenuSubTrigger>
-                          <ContextMenuSubContent>
-                            <ContextMenuItem onSelect={() => setRevisionTarget({ changeId: change.id, revision: change.id })}>
-                              {t("p4.revisionAtChange")}
-                            </ContextMenuItem>
-                            <ContextMenuItem disabled={Number(change.id) <= 1} onSelect={() => setRevisionTarget({ changeId: change.id, revision: String(Number(change.id) - 1) })}>
-                              {t("p4.revisionBeforeChange")}
-                            </ContextMenuItem>
-                            <ContextMenuItem onSelect={() => setRevisionTarget({ changeId: change.id })}>
-                              {t("p4.chooseRevision")}
-                            </ContextMenuItem>
-                          </ContextMenuSubContent>
-                        </ContextMenuSub>
+                        <ContextMenuItem disabled={p4.busy} onSelect={() => setRevisionTarget({changeId:change.id,revision:change.id})}><HistoryIcon />{t("p4.getRevision")}</ContextMenuItem>
                       </ContextMenuContent>
                     </ContextMenu>
                   );
@@ -392,7 +375,7 @@ export function P4Submitted() {
           </div>
         </div>
         {streamDiff ? <P4StreamDiffDialog target={streamDiff} onClose={() => setStreamDiff(null)} /> : null}
-        {jobsChange ? <P4ChangeJobsDialog change={jobsChange} onClose={() => setJobsChange(null)} /> : null}
+
         {revisionTarget ? <P4GetRevisionDialog target={revisionTarget} onClose={() => setRevisionTarget(null)} /> : null}
       </ResizablePanel>
       <ResizableHandle />
@@ -400,8 +383,7 @@ export function P4Submitted() {
         <ResizablePanelGroup orientation="vertical" className="min-h-0 min-w-0">
           <ResizablePanel id="p4-submitted-files" defaultSize="32%" minSize="16%">
             <div className="absolute inset-0 flex min-h-0 flex-col">
-              <div className="shrink-0 border-b px-3 py-2">
-                <div className="flex min-w-0 items-center gap-2"><div className="min-w-0 flex-1 truncate text-sm">{heading}</div>{meta ? <HoverTip label={t("p4.jobs.linkedJobs")}><Button variant="ghost" size="icon-xs" aria-label={t("p4.jobs.linkedJobs")} disabled={p4.busy} onClick={() => setJobsChange(meta.id)}><ClipboardListIcon /></Button></HoverTip> : null}</div>
+              <CommitMessage key={meta?.id ?? "empty"} className="border-b" message={meta?.description || heading || ""} metadata={<>
                 {meta ? (
                   <div className="mt-1 flex items-center gap-x-2 text-[11px] text-muted-foreground">
                     <HoverTip label={t("p4.copyUser")}>
@@ -410,7 +392,7 @@ export function P4Submitted() {
                       className="inline-flex min-w-0 items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-muted hover:text-foreground"
                       onClick={() => void copyText(meta.user, t("p4.copiedUser"))}
                     >
-                      <AuthorAvatar name={meta.user} email="" className="size-4" />
+                      <AuthorAvatar vcs="perforce" name={meta.user} email="" className="size-4" />
                       <span className="truncate">{meta.user}</span>
                     </button>
                     </HoverTip>
@@ -436,7 +418,7 @@ export function P4Submitted() {
                     </HoverTip>
                   </div>
                 ) : null}
-              </div>
+              </>} />
               <div className="relative min-h-0 flex-1">
                 {p4.selectedSubmitted && !detail ? <FileRowsSkeleton fill /> : null}
                 <div className={cn("absolute inset-0 overflow-auto px-1 py-1", p4.selectedSubmitted && !detail && "hidden")}>
@@ -465,7 +447,7 @@ export function P4Submitted() {
           <ResizableHandle withHandle />
           <ResizablePanel id="p4-submitted-diff" defaultSize="68%" minSize="24%">
             <P4Diff
-              imageSource={file && detail?.files.find((entry) => entry.depotPath === file) ? {kind:"revision",path:file,revision:detail.files.find((entry) => entry.depotPath === file)!.rev} : undefined}
+              fileSource={file && detail?.files.find((entry) => entry.depotPath === file) ? {kind:"revision",path:file,revision:detail.files.find((entry) => entry.depotPath === file)!.rev} : undefined}
               diff={diff}
               loading={diffLoading || (Boolean(p4.selectedSubmitted) && !detail)}
               empty={

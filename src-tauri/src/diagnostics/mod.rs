@@ -1,18 +1,22 @@
 mod archive;
 mod command;
 mod event;
+mod process;
+pub(crate) use process::{Capture, CommandTrace, LoggedChild, LoggedReader};
 
 pub use command::CommandOutput;
 use command::{excerpt, CommandReport};
 use event::Event;
 pub use event::{Code, Status};
 
-use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::Output;
-use std::sync::{mpsc, OnceLock};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    mpsc, OnceLock,
+};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use log::Record;
@@ -48,11 +52,14 @@ const MAX_LOG_BYTES: usize = FILE_BYTES * LOG_NAMES.len();
 const MAX_DURATION_MS: u64 = 86_400_000;
 const MAX_TIMESTAMP_MS: u64 = 4_102_444_800_000;
 const ISSUES_URL: &str = "https://github.com/FlyAndNotDown/RebaseRaven/issues";
+static DROPPED: AtomicU64 = AtomicU64::new(0);
 static EVENTS: OnceLock<mpsc::SyncSender<Work>> = OnceLock::new();
 
 enum Work {
     Append(Event),
     Clear(mpsc::Sender<io::Result<()>>),
+    Summary(mpsc::Sender<io::Result<Summary>>),
+    Export(PathBuf, mpsc::Sender<io::Result<ExportResult>>),
 }
 
 #[derive(Serialize)]
@@ -78,7 +85,7 @@ pub fn initialize(app: &AppHandle) -> AppResult<()> {
         return Ok(());
     }
     let directory = log_directory(app)?;
-    let (sender, receiver) = mpsc::sync_channel(64);
+    let (sender, receiver) = mpsc::sync_channel(512);
     std::thread::Builder::new()
         .name("local-diagnostics".into())
         .spawn(move || write_logs(&directory, receiver))
@@ -89,16 +96,23 @@ pub fn initialize(app: &AppHandle) -> AppResult<()> {
 }
 
 fn write_logs(directory: &Path, receiver: mpsc::Receiver<Work>) {
-    let mut limiter = RateLimit::default();
     let mut next_prune = Instant::now();
     loop {
         let wait = next_prune.saturating_duration_since(Instant::now());
         let event = match receiver.recv_timeout(wait) {
             Ok(Work::Append(event)) => Some(event),
+            Ok(Work::Summary(reply)) => {
+                let _ = reply.send(Store::new(directory).and_then(|store| store.summary()));
+                continue;
+            }
+            Ok(Work::Export(destination, reply)) => {
+                let _ =
+                    reply.send(Store::new(directory).and_then(|store| store.export(&destination)));
+                continue;
+            }
             Ok(Work::Clear(reply)) => {
                 // Earlier writes have already drained, so they cannot restore cleared logs.
                 let result = clear_stores(directory);
-                limiter = RateLimit::default();
                 let _ = reply.send(result);
                 continue;
             }
@@ -107,7 +121,6 @@ fn write_logs(directory: &Path, receiver: mpsc::Receiver<Work>) {
         };
         let now = Instant::now();
         let prune = now >= next_prune;
-        let event = event.filter(|event| limiter.allow(event, now));
         if prune {
             next_prune = now + PRUNE_INTERVAL;
         }
@@ -118,6 +131,10 @@ fn write_logs(directory: &Path, receiver: mpsc::Receiver<Work>) {
                 }
                 if let Some(event) = event {
                     let _ = store.append(&event);
+                }
+                let dropped = DROPPED.swap(0, Ordering::Relaxed);
+                if dropped > 0 {
+                    let _=store.append(&Event {time_unix_ms:unix_ms(),code:Code::DiagnosticsDropped,status:Status::Failure,duration_ms:None,reason:Some(format!("{dropped} log records were skipped while the diagnostic queue was full.")),command:None});
                 }
             }
         }
@@ -173,7 +190,7 @@ pub fn record_cli(
     error: Option<&AppError>,
 ) {
     let elapsed = started.elapsed();
-    if !code.passive() || status != Status::Success || elapsed >= Duration::from_secs(1) {
+    {
         enqueue(code, status, Some(elapsed), || {
             let command = CommandReport::new(code.category(), args, output);
             (error.and_then(error_excerpt), Some(command))
@@ -213,23 +230,36 @@ fn enqueue(
 ) {
     if let Some(sender) = EVENTS.get() {
         let (reason, command) = details();
-        let _ = sender.try_send(Work::Append(Event {
-            time_unix_ms: unix_ms(),
-            code,
-            status,
-            duration_ms: duration
-                .map(|value| value.as_millis().min(u128::from(MAX_DURATION_MS)) as u64),
-            reason,
-            command,
-        }));
+        if sender
+            .try_send(Work::Append(Event {
+                time_unix_ms: unix_ms(),
+                code,
+                status,
+                duration_ms: duration
+                    .map(|value| value.as_millis().min(u128::from(MAX_DURATION_MS)) as u64),
+                reason,
+                command,
+            }))
+            .is_err()
+        {
+            DROPPED.fetch_add(1, Ordering::Relaxed);
+        }
     }
 }
 
+fn request<T>(build: impl FnOnce(mpsc::Sender<io::Result<T>>) -> Work) -> io::Result<T> {
+    let writer = EVENTS.get().ok_or_else(invalid_store)?;
+    let (reply, response) = mpsc::channel();
+    writer.send(build(reply)).map_err(|_| invalid_store())?;
+    response.recv().unwrap_or_else(|_| Err(invalid_store()))
+}
 pub fn summary(app: &AppHandle) -> AppResult<Summary> {
-    let directory = log_directory(app)?;
-    Store::new(&directory)
-        .and_then(|store| store.summary())
-        .map_err(|_| AppError::msg("Could not read local diagnostics. Try again."))
+    let result = if EVENTS.get().is_some() {
+        request(Work::Summary)
+    } else {
+        Store::new(&log_directory(app)?).and_then(|store| store.summary())
+    };
+    result.map_err(|_| AppError::msg("Could not read local diagnostics. Try again."))
 }
 
 pub fn clear(app: &AppHandle) -> AppResult<()> {
@@ -247,7 +277,11 @@ pub fn clear(app: &AppHandle) -> AppResult<()> {
 
 pub fn export(app: &AppHandle, destination: &Path) -> AppResult<ExportResult> {
     let directory = log_directory(app)?;
-    let result = Store::new(&directory).and_then(|store| store.export(destination));
+    let result = if EVENTS.get().is_some() {
+        request(|reply| Work::Export(destination.to_path_buf(), reply))
+    } else {
+        Store::new(&directory).and_then(|store| store.export(destination))
+    };
     record(
         Code::DiagnosticsExport,
         if result.is_ok() {
@@ -263,10 +297,8 @@ pub fn export(app: &AppHandle, destination: &Path) -> AppResult<ExportResult> {
 }
 
 pub fn open_directory(app: &AppHandle) -> AppResult<()> {
-    let directory = log_directory(app)?;
-    let store = Store::new(&directory)
-        .map_err(|_| AppError::msg("Could not open the local diagnostics folder."))?;
-    crate::platform::open_path(&store.directory)
+    summary(app)?;
+    crate::platform::open_path(&log_directory(app)?)
         .map_err(|_| AppError::msg("Could not open the local diagnostics folder."))
 }
 
@@ -301,51 +333,6 @@ fn clear_previous_store(
         Ok(_) => Store::new(directory)?.clear_files(names),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error),
-    }
-}
-
-#[derive(Default)]
-struct RateLimit {
-    last: HashMap<(Code, Status, String), Instant>,
-    window: Option<Instant>,
-    count: usize,
-}
-
-impl RateLimit {
-    fn allow(&mut self, event: &Event, now: Instant) -> bool {
-        if self
-            .window
-            .is_none_or(|start| now.duration_since(start) >= Duration::from_secs(60))
-        {
-            self.window = Some(now);
-            self.count = 0;
-            self.last
-                .retain(|_, last| now.duration_since(*last) < Duration::from_secs(5));
-        }
-        if self.count >= 60 {
-            return false;
-        }
-        if event.code.passive() {
-            let invocation = event
-                .command
-                .as_ref()
-                .map(|command| command.invocation.as_str());
-            let key = (
-                event.code,
-                event.status,
-                invocation.unwrap_or("").to_owned(),
-            );
-            if self
-                .last
-                .get(&key)
-                .is_some_and(|last| now.duration_since(*last) < Duration::from_secs(5))
-            {
-                return false;
-            }
-            self.last.insert(key, now);
-        }
-        self.count += 1;
-        true
     }
 }
 
@@ -557,7 +544,8 @@ impl Store {
         }
         let file_count = entries.len();
         let manifest = serde_json::json!({
-            "schemaVersion": 4,
+            "schemaVersion": 5,
+            "encrypted": false,
             "appVersion": env!("CARGO_PKG_VERSION"),
             "os": std::env::consts::OS,
             "arch": std::env::consts::ARCH,
@@ -565,7 +553,7 @@ impl Store {
             "skippedEntries": skipped_entries,
         });
         entries.push(("manifest.json", serde_json::to_vec_pretty(&manifest)?));
-        entries.push(("README.txt", b"RebaseRaven local diagnostics\n\nEach line contains the local time and UTC offset, level, module, and message. Command entries include the command and selected options, outcome, and available exit status and output excerpts. Output can contain repository paths, server addresses, or other project details. Review this archive before sharing it.\n".to_vec()));
+        entries.push(("README.txt", b"RebaseRaven local diagnostics\n\nEach line contains the local time and UTC offset, level, module, and message. Command entries include working directories, command arguments, timing, exit status, and captured output. Large outputs are explicitly truncated. This ZIP is not encrypted and does not need a password. Sharing it gives recipients access to local command records, project paths, server addresses, and potentially file contents.\n".to_vec()));
         let contents = archive::stored_zip(&entries)?;
         crate::fsutil::write_atomic(&destination, &contents)?;
         Ok(ExportResult {
@@ -941,24 +929,6 @@ mod tests {
         assert!(Store::new(&path).is_err());
         drop(first);
         assert!(Store::new(&path).is_ok());
-    }
-
-    #[test]
-    fn repetitive_events_are_throttled_but_new_statuses_are_distinct() {
-        let mut limit = RateLimit::default();
-        let now = Instant::now();
-        let mut read = event();
-        read.code = Code::GitStatus;
-        assert!(limit.allow(&read, now));
-        assert!(!limit.allow(&read, now + Duration::from_secs(1)));
-        read.status = Status::Failure;
-        assert!(limit.allow(&read, now + Duration::from_secs(1)));
-        read.status = Status::Success;
-        assert!(limit.allow(&read, now + Duration::from_secs(5)));
-
-        read.code = Code::GitFetch;
-        assert!(limit.allow(&read, now + Duration::from_secs(5)));
-        assert!(limit.allow(&read, now + Duration::from_secs(5)));
     }
 
     #[cfg(unix)]

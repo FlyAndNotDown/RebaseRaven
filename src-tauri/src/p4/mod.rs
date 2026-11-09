@@ -3,23 +3,18 @@ mod cli;
 pub use clean::{apply_clean, preview_clean, P4CleanPreview, P4CleanRequest};
 mod client;
 pub use client::{save_workspace, workspace_settings, P4WorkspaceEdit, P4WorkspaceSettings};
+mod external;
 mod history;
 mod images;
+pub use external::external_file_pair;
 mod integration;
-mod jobs;
 pub use history::{annotate, compare_files, P4BlameLine, P4CompareRequest, P4Comparison};
-pub use images::{image_pair, P4ImageSource};
+pub use images::{image_pair, P4FileSource};
 pub use integration::{
     apply_integration, preview_integration, P4IntegrationPreview, P4IntegrationRequest,
 };
-pub use jobs::{
-    apply_job_fix, delete_job, job_fixes, list_jobs, preview_job_fix, read_job, save_job,
-    P4FixPage, P4FixPreview, P4FixRequest, P4Job, P4JobEdit, P4JobPage,
-};
 mod operations;
 mod parse;
-mod properties;
-pub use properties::{change_file_types, file_properties, P4FilePropertiesView, P4FileTypeRequest};
 mod review;
 mod shelves;
 mod specs;
@@ -57,9 +52,10 @@ pub use workspace::{
     list_streams, list_user_clients, list_users, listing_status, locate, login,
     manual_resolve_apply, manual_resolve_external, manual_resolve_view, move_file, new_change,
     open_workspace, opened_diff, prepare_client, refresh_pending, reopen, resolve_accept,
-    resolve_view, revert, revert_unchanged, revision_diff, save_change, search_depot, search_files,
-    search_submitted, shelf_diff, shelve, submit, submitted, sync, unshelve, P4Auth, P4ChangePage,
-    P4Changelist, P4CheckedConnection, P4Connection, P4CreateRequest, P4DepotEntry, P4Describe,
-    P4DirEntry, P4EntryStatus, P4FileSearch, P4GetRevision, P4HistoryCursor, P4Location,
-    P4ManualResolve, P4Open, P4ResolveView, P4RevisionPage, P4StreamOption, RepoDetection,
+    resolve_view, revert, revert_unchanged, revision_diff, revision_targets, save_change,
+    search_depot, search_files, search_submitted, shelf_diff, shelve, submit, submit_shelf,
+    submitted, sync, unshelve, P4Auth, P4ChangePage, P4Changelist, P4CheckedConnection,
+    P4Connection, P4CreateRequest, P4DepotEntry, P4Describe, P4DirEntry, P4EntryStatus,
+    P4FileSearch, P4GetRevision, P4HistoryCursor, P4Location, P4ManualResolve, P4Open,
+    P4ResolveView, P4RevisionPage, P4StreamOption, P4SyncResult, RepoDetection,
 };

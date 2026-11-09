@@ -1,19 +1,18 @@
+import { DiffToolbar } from "@/components/diff-toolbar";
+import { useDiffWhitespace } from "@/components/use-diff-whitespace";
+import { useP4 } from "@/state/p4-context";
+import type { TextPair, DiffToolSource } from "@/lib/diff-tools";
 import { t, useTranslation } from "@/i18n";
-import { useMemo } from "react";
+import { DiffLines } from "@/components/diff-viewer";
+import { DiffSearchBar, DiffSearchScope } from "@/components/diff-search";
 import { P4ImageDiff } from "@/components/p4/p4-image-diff";
 import { isImagePath } from "@/components/image-diff";
-import type { P4ImageSource } from "@/types/p4";
-import { Columns2Icon } from "lucide-react";
+import type { P4FileSource } from "@/types/p4";
 import { toast } from "sonner";
 import { DiffSkeleton } from "@/components/skeletons";
-import { Button } from "@/components/ui/button";
-import { HoverTip } from "@/components/ui/tooltip";
-import { splitRows } from "@/lib/diff-select";
-import { textColumns } from "@/lib/diff-text";
 import { cn } from "@/lib/utils";
-import { useWindowedRows } from "@/lib/use-windowed-rows";
-import { useGitPick } from "@/state/git-context";
-import type { DiffLine, FileDiff } from "@/types/git";
+import { useGitSelect } from "@/state/git-context";
+import type { FileDiff } from "@/types/git";
 
 async function copyPath(value: string) {
   if (!value) {
@@ -29,27 +28,32 @@ async function copyPath(value: string) {
 }
 
 export function P4Diff({
-  diff,
-  loading,
+  diff: originalDiff,
+  loading: originalLoading,
   empty,
-  split,
   captions,
   chrome = true,
-  imageSource,
+  fileSource,
+  textSource,
 }: {
   diff: FileDiff | null;
   loading: boolean;
   empty: string;
-  split?: boolean;
   captions?: [string, string];
   chrome?: boolean;
-  imageSource?: P4ImageSource;
+  fileSource?: P4FileSource;
+  textSource?: TextPair;
 }) {
   useTranslation();
-  const { prefs, setDiffOptions } = useGitPick(["prefs", "setDiffOptions"]);
-  const contentLines = useMemo(() => diff?.lines.filter((line) => line.kind !== "hunk") ?? [], [diff]);
-  const sideBySide = split ?? prefs.diffSplit;
-  const image = Boolean(imageSource && diff && isImagePath(diff.path));
+  const prefs = useGitSelect(state => state.prefs);
+  const { connection } = useP4();
+  const source: Exclude<DiffToolSource, {kind:"git"}> | null = textSource ? {kind:"text", ...textSource} : fileSource && connection ? {kind:"perforce", connection, source:fileSource} : null;
+  const filtered = useDiffWhitespace(originalDiff, originalDiff && isImagePath(originalDiff.path) ? null : source);
+  const diff = filtered.diff ?? originalDiff;
+  const loading = originalLoading || filtered.loading;
+
+  const sideBySide = prefs.diffSplit;
+  const image = Boolean(fileSource && diff && isImagePath(diff.path));
   const frame = chrome ? "absolute inset-0" : "min-h-0 flex-1";
   if (loading && !diff) {
     return (
@@ -66,7 +70,7 @@ export function P4Diff({
     );
   }
   return (
-    <div className={cn("flex min-h-0 min-w-0 flex-col", frame)}>
+    <DiffSearchScope lines={diff.lines.map(line => line.kind === "hunk" ? "" : line.content.replace(/\r/g, ""))} enabled={!loading && !filtered.error && !diff.binary && !image} className={frame}>
       {chrome ? (
         <div className="flex h-10 shrink-0 items-center justify-between gap-3 border-b px-3">
           <button
@@ -76,117 +80,28 @@ export function P4Diff({
           >
             {diff.path || t("p4.diff")}
           </button>
-          {diff.binary || image ? null : (
-            <HoverTip label={t("p4.sideBySide")}>
-              <Button
-                type="button"
-                size="icon-xs"
-                variant={sideBySide ? "secondary" : "ghost"}
-                aria-pressed={sideBySide}
-                aria-label={t("p4.sideBySide")}
-                onClick={() => void setDiffOptions({ split: !sideBySide })}
-              >
-                <Columns2Icon />
-              </Button>
-            </HoverTip>
-          )}
+          <DiffToolbar textual={!diff.binary && !image} source={source} line={diff.lines.find(line => line.newLineno)?.newLineno ?? null} split={sideBySide} />
         </div>
-      ) : null}
+      ) : <div className="flex h-8 shrink-0 items-center justify-end border-b px-2"><DiffToolbar textual={!diff.binary && !image} source={source} split={sideBySide} /></div>}
+      <DiffSearchBar />
       {captions && sideBySide && !diff.binary && !image ? (
         <div className="grid shrink-0 grid-cols-2 border-b text-xs text-muted-foreground">
           <div className="px-3 py-1.5">{captions[0]}</div>
           <div className="border-l px-3 py-1.5">{captions[1]}</div>
         </div>
       ) : null}
-      {imageSource && image ? <P4ImageDiff source={imageSource} refreshIdentity={diff} captions={captions} /> : diff.binary ? (
+      {filtered.error ? <p role="alert" className="p-3 text-sm text-destructive">{filtered.error}</p> : loading ? <div className="relative min-h-0 flex-1"><DiffSkeleton fill /></div> : fileSource && image ? <P4ImageDiff source={fileSource} refreshIdentity={diff} captions={captions} /> : diff.binary ? (
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">{t("p4.binaryFile")}</div>
-      ) : contentLines.length === 0 ? (
+      ) : diff.lines.length === 0 ? (
         <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">
           {t("p4.noTextDifferences")}
         </div>
-      ) : sideBySide ? (
-        <SplitDiff lines={contentLines} />
       ) : (
-        <InlineDiff lines={contentLines} />
+        <DiffLines diff={diff} split={sideBySide} />
       )}
       {diff.truncated && !image ? (
         <div className="shrink-0 border-t px-3 py-1.5 text-[11px] text-muted-foreground">{t("p4.diffTruncated")}</div>
       ) : null}
-    </div>
+    </DiffSearchScope>
   );
-}
-
-function InlineDiff({ lines }: { lines: DiffLine[] }) {
-  useTranslation();
-  const { viewportRef, start, end, before, after } = useWindowedRows(lines.length, 20);
-  const widest = useMemo(() => lines.reduce((width, line) => Math.max(width, textColumns(line.content)), 0), [lines]);
-  return (
-    <div ref={viewportRef} className="min-h-0 flex-1 overflow-auto font-mono text-[12px] leading-5 [tab-size:4]">
-      <div style={{ minWidth: `calc(4.5rem + ${widest}ch)` }}>
-      <div aria-hidden style={{ height: before }} />
-      {lines.slice(start, end).map((line, index) => (
-        <DiffRow key={start + index} line={line} />
-      ))}
-      <div aria-hidden style={{ height: after }} />
-      </div>
-    </div>
-  );
-}
-
-function SplitDiff({ lines }: { lines: DiffLine[] }) {
-  useTranslation();
-  const pairs = useMemo(() => splitRows(lines), [lines]);
-  const { viewportRef, start, end, before, after } = useWindowedRows(pairs.length, 20);
-  return (
-    <div ref={viewportRef} className="min-h-0 flex-1 overflow-auto font-mono text-[12px] leading-5">
-      <div aria-hidden style={{ height: before }} />
-      {pairs.slice(start, end).map((row, index) => {
-        if (row.kind === "hunk") return null;
-        const left = row.left === null ? undefined : lines[row.left];
-        const right = row.right === null ? undefined : lines[row.right];
-        return (
-          <div key={start + index} className="grid h-5 grid-cols-2">
-            <SplitCell line={left} side="left" />
-            <SplitCell line={right} side="right" />
-          </div>
-        );
-      })}
-      <div aria-hidden style={{ height: after }} />
-    </div>
-  );
-}
-
-function SplitCell({ line, side }: { line: DiffLine | undefined; side: "left" | "right" }) {
-  useTranslation();
-  const blank = !line || line.kind === "hunk" || (side === "left" && line.kind === "add") || (side === "right" && line.kind === "delete");
-  const lineno = blank || !line ? "" : side === "left" ? line.oldLineno : line.newLineno;
-  return (
-    <div className={cn("flex min-w-0 border-r border-border/60", !blank && line && lineClass(line.kind))}>
-      <span className="w-10 shrink-0 select-none px-2 text-right text-muted-foreground/80 tabular-nums">
-        {lineno ?? ""}
-      </span>
-      <span className="min-w-0 flex-1 truncate px-2" title={blank ? undefined : line.content}>{blank ? " " : line.content || " "}</span>
-    </div>
-  );
-}
-
-function DiffRow({ line }: { line: DiffLine }) {
-  useTranslation();
-  const mark = line.kind === "add" ? "+" : line.kind === "delete" ? "−" : line.kind === "hunk" ? "" : " ";
-  return (
-    <div className={cn("flex h-5 min-w-0", lineClass(line.kind))}>
-      <span className="w-10 shrink-0 select-none px-2 text-right text-muted-foreground/80">
-        {line.kind === "delete" ? line.oldLineno : line.newLineno}
-      </span>
-      <span className="w-4 shrink-0 select-none">{mark}</span>
-      <span className="min-w-0 flex-1 whitespace-pre px-2">{line.kind === "hunk" ? line.content : line.content || " "}</span>
-    </div>
-  );
-}
-
-function lineClass(kind: string) {
-  if (kind === "add") return "bg-diff-add-bg text-diff-add";
-  if (kind === "delete") return "bg-diff-del-bg text-diff-del";
-  if (kind === "hunk") return "bg-diff-hunk/15 text-diff-hunk";
-  return "";
 }
