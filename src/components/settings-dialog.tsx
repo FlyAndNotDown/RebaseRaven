@@ -426,6 +426,9 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
                   onRemove={removeGitExecutable}
                   onAdd={() => void addGitExecutable()}
                 />
+                <AvatarSettings vcs="git" provider={prefs.gitAvatarProvider} onSave={async gitAvatarProvider => {
+                  if (!await persistPrefs({gitAvatarProvider})) throw new Error("Could not save the avatar provider.");
+                }} />
                 <FieldGroup title={t("desktop.settingsDialog.identity")} hint={t("desktop.settingsDialog.saved_to_your_global_git_configuration_repository_settings")}>
                   {identityReady ? (
                     <>
@@ -535,6 +538,9 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
                   onRemove={removeP4Executable}
                   onAdd={() => void addP4Executable()}
                 />
+                <AvatarSettings vcs="perforce" provider={prefs.p4AvatarProvider} onSave={async p4AvatarProvider => {
+                  if (!await persistPrefs({p4AvatarProvider})) throw new Error("Could not save the avatar provider.");
+                }} />
                 <FieldGroup title={t("p4.manual.externalSetting")} hint={t("p4.manual.externalHint")}>
                   <ToolPicker emptyLabel={t("p4.manual.externalDefault")} id="p4-diff-tool" label={t("desktop.settingsDialog.diff_tool")} value={prefs.p4DiffTool} tools={guiTools} ready={guiToolsReady} onChange={(p4DiffTool) => { void persistPrefs({ p4DiffTool }); }} />
                   <ToolPicker emptyLabel={t("p4.manual.externalDefault")} id="p4-merge-tool" label={t("desktop.settingsDialog.merge_tool")} value={prefs.p4MergeTool} tools={guiTools} ready={guiToolsReady} onChange={(p4MergeTool) => { void persistPrefs({ p4MergeTool }); }} />
@@ -630,12 +636,6 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
                     onChange={(value) => {
                       setThemeChoice(value);
                       setTheme(value);
-                    }}
-                  />
-                  <AvatarSettings
-                    provider={prefs.avatarProvider}
-                    onSave={async (avatarProvider) => {
-                      if (!await persistPrefs({ avatarProvider })) throw new Error("Could not save the avatar provider.");
                     }}
                   />
                 </FieldGroup>

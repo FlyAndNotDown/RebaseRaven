@@ -388,9 +388,11 @@
     "avatarSettings": {
       "built_in": "Built-in",
       "author_avatars": "Author avatars",
-      "built_in_stays_offline_choosing_github_or_gitlab": "GitHub and GitLab receive commit email addresses to match public profiles.",
       "about_author_avatar_providers": "About author avatar providers",
-      "could_not_save_the_avatar_provider_try_again": "Could not save the avatar provider. Try again."
+      "could_not_save_the_avatar_provider_try_again": "Could not save the avatar provider. Try again.",
+      "auto": "Auto",
+      "git_hint": "Auto uses the origin URL, or the first remote if origin is absent. GitHub and GitLab receive commit email addresses to match public profiles. Other hosts use Built-in.",
+      "p4_hint": "Perforce uses offline, built-in author avatars."
     },
     "appUpdates": {
       "check_failed": "Update check failed",

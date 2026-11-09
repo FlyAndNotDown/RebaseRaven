@@ -82,9 +82,9 @@ describe("layouts", () => {
 });
 
 describe("normalizePrefs", () => {
-  it("keeps network and avatar choices compatible with older preferences", () => {
-    expect(normalizePrefs({})).toMatchObject({ httpProxy: { mode: "system", url: "" }, avatarProvider: "builtin" });
-    expect(normalizePrefs({ httpProxy: { mode: "manual", url: "http://proxy.example.com:8080" }, avatarProvider: "gitlab" })).toMatchObject({ httpProxy: { mode: "manual", url: "http://proxy.example.com:8080" }, avatarProvider: "gitlab" });
+  it("defaults to automatic Git avatars and offline Perforce avatars", () => {
+    expect(normalizePrefs({})).toMatchObject({ httpProxy: { mode: "system", url: "" }, gitAvatarProvider: "auto", p4AvatarProvider:"builtin" });
+    expect(normalizePrefs({ httpProxy: { mode: "manual", url: "http://proxy.example.com:8080" }, gitAvatarProvider: "gitlab" })).toMatchObject({ httpProxy: { mode: "manual", url: "http://proxy.example.com:8080" }, gitAvatarProvider: "gitlab" });
   });
   it("fills defaults and only accepts real booleans", () => {
     expect(normalizePrefs(null)).toEqual(defaultPrefs);

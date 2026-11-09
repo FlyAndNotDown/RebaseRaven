@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { AppPrefs } from "@/types/git";
 import { createSettingsWriter } from "./settings-writes";
 
-type Preferences = Pick<AppPrefs, "avatarProvider" | "autoFetchMinutes" | "editorId">;
-const initial: Preferences = { avatarProvider: "builtin", autoFetchMinutes: 10, editorId: "system" };
+type Preferences = Pick<AppPrefs, "gitAvatarProvider" | "autoFetchMinutes" | "editorId">;
+const initial: Preferences = { gitAvatarProvider: "builtin", autoFetchMinutes: 10, editorId: "system" };
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -17,14 +17,14 @@ describe("settings writes", () => {
     const writer = createSettingsWriter(initial);
     const completions = [deferred<Preferences>(), deferred<Preferences>(), deferred<Preferences>()];
     const write = vi.fn((_next: Preferences) => completions[write.mock.calls.length - 1].promise);
-    const a = writer.save({ avatarProvider: "github" }, write);
+    const a = writer.save({ gitAvatarProvider: "github" }, write);
     const b = writer.save({ autoFetchMinutes: 30 }, write);
-    completions[1].resolve({ ...initial, avatarProvider: "github", autoFetchMinutes: 30 });
+    completions[1].resolve({ ...initial, gitAvatarProvider: "github", autoFetchMinutes: 30 });
     await b;
 
-    const c = writer.save({ avatarProvider: "builtin" }, write);
+    const c = writer.save({ gitAvatarProvider: "builtin" }, write);
     // A can return late after an unrelated executable availability probe.
-    completions[0].resolve({ ...initial, avatarProvider: "github" });
+    completions[0].resolve({ ...initial, gitAvatarProvider: "github" });
     await a;
     expect(writer.value).toEqual({ ...initial, autoFetchMinutes: 30 });
     completions[2].resolve({ ...initial, autoFetchMinutes: 30 });
@@ -32,14 +32,14 @@ describe("settings writes", () => {
 
     const nextWrite = vi.fn(async (next: Preferences) => next);
     await writer.save({ editorId: "code" }, nextWrite);
-    expect(nextWrite).toHaveBeenCalledWith({ avatarProvider: "builtin", autoFetchMinutes: 30, editorId: "code" });
+    expect(nextWrite).toHaveBeenCalledWith({ gitAvatarProvider: "builtin", autoFetchMinutes: 30, editorId: "code" });
   });
 
   it("protects pending edits from incoming snapshots and accepts the latest normalized save", async () => {
     const writer = createSettingsWriter(initial);
     const result = deferred<Preferences>();
     const save = writer.save({ editorId: "editor" }, () => result.promise);
-    writer.sync({ ...initial, avatarProvider: "github" });
+    writer.sync({ ...initial, gitAvatarProvider: "github" });
     expect(writer.value.editorId).toBe("editor");
     result.resolve({ ...initial, editorId: "resolved-editor" });
     await save;
@@ -51,12 +51,12 @@ describe("settings writes", () => {
   it("preserves entered edits after failure and releases saving for a retry", async () => {
     const writer = createSettingsWriter(initial);
     const result = deferred<Preferences>();
-    const save = writer.save({ avatarProvider: "gitlab" }, () => result.promise);
+    const save = writer.save({ gitAvatarProvider: "gitlab" }, () => result.promise);
     result.reject(new Error("Save unavailable"));
     await expect(save).rejects.toThrow("Save unavailable");
     const retry = vi.fn(async (next: Preferences) => next);
     await writer.save({}, retry);
-    expect(retry).toHaveBeenCalledWith({ ...initial, avatarProvider: "gitlab" });
+    expect(retry).toHaveBeenCalledWith({ ...initial, gitAvatarProvider: "gitlab" });
     writer.sync(initial);
     expect(writer.value).toEqual(initial);
   });

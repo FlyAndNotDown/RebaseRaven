@@ -143,13 +143,21 @@ fn http_fixture_ignores_abandoned_connections_and_requires_complete_headers() {
 }
 
 #[test]
-fn old_preferences_default_to_system_routing_and_builtin_avatars() {
+fn empty_preferences_use_system_routing_and_separate_avatar_defaults() {
     let prefs: AppPrefs = serde_json::from_str("{}").unwrap();
     assert_eq!(prefs.http_proxy, HttpProxy::default());
-    assert_eq!(prefs.avatar_provider, crate::prefs::AvatarProvider::Builtin);
+    assert_eq!(
+        prefs.git_avatar_provider,
+        crate::prefs::GitAvatarProvider::Auto
+    );
+    assert_eq!(
+        prefs.p4_avatar_provider,
+        crate::prefs::P4AvatarProvider::Builtin
+    );
     let serialized = serde_json::to_value(prefs).unwrap();
     assert_eq!(serialized["httpProxy"]["mode"], "system");
-    assert_eq!(serialized["avatarProvider"], "builtin");
+    assert_eq!(serialized["gitAvatarProvider"], "auto");
+    assert_eq!(serialized["p4AvatarProvider"], "builtin");
 }
 
 #[test]

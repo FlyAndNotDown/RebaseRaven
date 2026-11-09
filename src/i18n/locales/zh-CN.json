@@ -388,9 +388,11 @@
     "avatarSettings": {
       "built_in": "内置",
       "author_avatars": "作者头像",
-      "built_in_stays_offline_choosing_github_or_gitlab": "选择 GitHub 或 GitLab 会向对应服务发送提交者邮箱，以匹配公开资料。",
       "about_author_avatar_providers": "关于作者头像来源",
-      "could_not_save_the_avatar_provider_try_again": "无法保存头像来源，请重试。"
+      "could_not_save_the_avatar_provider_try_again": "无法保存头像来源，请重试。",
+      "auto": "自动",
+      "git_hint": "自动根据 origin URL 选择来源；没有 origin 时使用第一个远端。GitHub 和 GitLab 会接收提交邮箱以匹配公开资料，其它托管服务使用内置头像。",
+      "p4_hint": "Perforce 使用离线生成的内置作者头像。"
     },
     "appUpdates": {
       "check_failed": "检查更新失败",

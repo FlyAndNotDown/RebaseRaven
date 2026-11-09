@@ -121,13 +121,24 @@ async fn open_diagnostic_issues() -> AppResult<()> {
 async fn get_author_avatar(
     email: String,
     provider: prefs::AvatarProvider,
+    repo_path: String,
     app: AppHandle,
 ) -> AppResult<Option<String>> {
-    let prefs = blocking(move || prefs::load_prefs(&app)).await?;
-    if prefs.avatar_provider != provider {
+    let (prefs, selected) = blocking(move || {
+        let prefs = prefs::load_prefs(&app)?;
+        let remotes = if prefs.git_avatar_provider == prefs::GitAvatarProvider::Auto {
+            with_repo(&repo_path, |repo| git::list_remotes(repo))?
+        } else {
+            Vec::new()
+        };
+        let provider = avatars::provider_for_remotes(prefs.git_avatar_provider, &remotes);
+        Ok((prefs, provider))
+    })
+    .await?;
+    if selected != provider {
         return Ok(None);
     }
-    Ok(avatars::lookup(prefs, email).await)
+    Ok(avatars::lookup(prefs, selected, email).await)
 }
 
 // Kept synchronous so rapid saves land in the order they were sent.

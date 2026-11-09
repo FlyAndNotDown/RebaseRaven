@@ -38,7 +38,7 @@ export function P4Blame({ revision, openChange }: { revision: P4Revision; openCh
           const group = line.change !== lines[start + offset - 1]?.change || offset === 0;
           return <div key={line.line} className="flex h-6 items-center hover:bg-muted/40">
             <div className="sticky left-0 flex h-full w-64 shrink-0 items-center gap-2 border-r bg-background px-2">
-              {group ? <><HoverTip label={`${line.user} · ${line.time}`}><button type="button" className="shrink-0 rounded hover:ring-1 hover:ring-ring" aria-label={t("p4.history.openChange") + ` #${line.change}`} onClick={() => openChange(line.change)}><ChangeBadge id={line.change} /></button></HoverTip><span className="min-w-0 truncate"><AuthorName name={line.user} /></span></> : null}
+              {group ? <><HoverTip label={`${line.user} · ${line.time}`}><button type="button" className="shrink-0 rounded hover:ring-1 hover:ring-ring" aria-label={t("p4.history.openChange") + ` #${line.change}`} onClick={() => openChange(line.change)}><ChangeBadge id={line.change} /></button></HoverTip><span className="min-w-0 truncate"><AuthorName vcs="perforce" name={line.user} /></span></> : null}
             </div>
             <span className="w-12 shrink-0 px-2 text-right font-mono text-[11px] text-muted-foreground tabular-nums">{line.line}</span><code className="whitespace-pre px-2 font-mono text-xs [tab-size:4]">{line.content || " "}</code>
           </div>;

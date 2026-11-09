@@ -16,15 +16,17 @@ export function AuthorName({
   name,
   email = "",
   className,
+  vcs = "git",
 }: {
   name: string;
   email?: string;
   className?: string;
+  vcs?: "git" | "perforce";
 }) {
   if (!name) return null;
   return (
     <span className={cn("flex w-28 shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground", className)}>
-      <AuthorAvatar name={name} email={email} className="size-4" />
+      <AuthorAvatar name={name} email={email} className="size-4" vcs={vcs} />
       <span className="min-w-0 truncate">{name}</span>
     </span>
   );

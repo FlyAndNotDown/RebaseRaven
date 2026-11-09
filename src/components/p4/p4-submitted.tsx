@@ -340,7 +340,7 @@ export function P4Submitted() {
                           <span className="min-w-0 flex-1 truncate text-xs">
                             {changeSummary(change.description) || t("p4.noDescription")}
                           </span>
-                          <AuthorName name={change.user} />
+                          <AuthorName vcs="perforce" name={change.user} />
                           <ExactTime time={change.time} />
                         </button>
                       </ContextMenuTrigger>
@@ -392,7 +392,7 @@ export function P4Submitted() {
                       className="inline-flex min-w-0 items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-muted hover:text-foreground"
                       onClick={() => void copyText(meta.user, t("p4.copiedUser"))}
                     >
-                      <AuthorAvatar name={meta.user} email="" className="size-4" />
+                      <AuthorAvatar vcs="perforce" name={meta.user} email="" className="size-4" />
                       <span className="truncate">{meta.user}</span>
                     </button>
                     </HoverTip>
