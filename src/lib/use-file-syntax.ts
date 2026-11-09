@@ -42,4 +42,3 @@ export function useFileSyntax(path: string, lines: string[] | null) {
   }, [highlighter, language, lines]);
   return paint && paint.source === lines && paint.language === language ? paint.ranges : null;
 }
-
