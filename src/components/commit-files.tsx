@@ -1,3 +1,4 @@
+import { CommitMessage } from "@/components/commit-message";
 import { t, useTranslation } from "@/i18n";
 import { memo, useCallback, useState } from "react";
 import { ArrowLeftRightIcon, ShieldCheckIcon, XIcon } from "lucide-react";
@@ -138,9 +139,7 @@ export function CommitFiles() {
   return (
     <div className="absolute inset-0 flex min-h-0 flex-col">
       {signatureTarget && signatureTarget.tabId === activeTabId && signatureTarget.path === snapshot?.repo.path && signatureTarget.object.value === commit.id ? <SignatureVerificationDialog key={`${signatureTarget.tabId}:${commit.id}`} target={signatureTarget} onClose={() => setSignatureTarget(null)} /> : null}
-      <div className="shrink-0 px-3 py-2">
-        <div className="flex items-start gap-2">
-          <div className="min-w-0 flex-1 text-sm font-medium">{commit.summary}</div>
+      <CommitMessage key={commit.id} message={commitDetails.message} actions={<>
           <HoverTip label={t("git.signature.action")}>
             <Button type="button" size="icon-xs" variant="ghost" aria-label={t("git.signature.action")} disabled={!snapshot} onClick={() => {if (snapshot) setSignatureTarget({tabId:activeTabId,path:snapshot.repo.path,object:{kind:"commit",value:commit.id}});}}>
               <ShieldCheckIcon />
@@ -151,7 +150,7 @@ export function CommitFiles() {
               <XIcon />
             </Button>
           </HoverTip>
-        </div>
+      </>} metadata={
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
           <HoverTip label={t("git-files.copyAuthor")}>
           <button
@@ -185,15 +184,7 @@ export function CommitFiles() {
           </button>
           </HoverTip>
         </div>
-        {commit.body ? (
-          <ScrollArea
-            className="mt-2 max-h-24"
-            viewportClassName="h-auto max-h-24 [&>div]:h-auto! [&>div]:min-h-0!"
-          >
-            <p className="whitespace-pre-wrap text-xs text-muted-foreground">{commit.body}</p>
-          </ScrollArea>
-        ) : null}
-      </div>
+      } />
       <ScrollArea className="min-h-0 flex-1 border-t">
       <ul className="px-1 py-1">
         {commitDetails.files.map((file) => (

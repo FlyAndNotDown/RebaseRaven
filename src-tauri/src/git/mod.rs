@@ -218,6 +218,7 @@ pub struct CommitFile {
 #[serde(rename_all = "camelCase")]
 pub struct CommitDetails {
     pub commit: CommitSummary,
+    pub message: String,
     pub files: Vec<CommitFile>,
 }
 

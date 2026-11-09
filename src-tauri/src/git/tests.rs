@@ -905,6 +905,16 @@ fn merge_commit_lists_files_against_first_parent() {
 }
 
 #[test]
+fn commit_details_preserve_wrapped_subjects_and_message_paragraphs() {
+    let (root, repo) = temp_repo();
+    let message = "feat: describe navigation\ncontinued subject\n\n- Keep indentation\n  on this line\n\nFinal paragraph.";
+    commit_file(&repo, &root, "navigation.txt", "routes\n", message);
+    let details = commit_details(&repo, "HEAD").unwrap();
+    assert_eq!(details.message, message);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn discard_restores_tracked_and_removes_new_files() {
     let (root, repo) = temp_repo();
     commit_file(&repo, &root, "tracked.txt", "base\n", "base");

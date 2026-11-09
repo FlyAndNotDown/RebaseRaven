@@ -100,5 +100,9 @@
     "next": "Next match (Enter)",
     "close": "Close search (Esc)",
     "noMatches": "No matches"
+  },
+  "message": {
+    "showMore": "Show full message",
+    "showLess": "Collapse message"
   }
 }

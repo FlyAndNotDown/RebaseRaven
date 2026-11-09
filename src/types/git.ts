@@ -144,6 +144,7 @@ export interface CommitFile {
 
 export interface CommitDetails {
   commit: CommitSummary;
+  message: string;
   files: CommitFile[];
 }
 

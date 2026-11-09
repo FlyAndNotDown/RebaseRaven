@@ -1,3 +1,4 @@
+import { CommitMessage } from "@/components/commit-message";
 import { P4StreamDiffDialog } from "@/components/p4/p4-stream-work";
 import type { P4StreamDiffRequest } from "@/types/p4-stream-specs";
 import { t, useTranslation } from "@/i18n";
@@ -398,8 +399,7 @@ export function P4Submitted() {
         <ResizablePanelGroup orientation="vertical" className="min-h-0 min-w-0">
           <ResizablePanel id="p4-submitted-files" defaultSize="32%" minSize="16%">
             <div className="absolute inset-0 flex min-h-0 flex-col">
-              <div className="shrink-0 border-b px-3 py-2">
-                <div className="flex min-w-0 items-center gap-2"><div className="min-w-0 flex-1 truncate text-sm">{heading}</div></div>
+              <CommitMessage key={meta?.id ?? "empty"} className="border-b" message={meta?.description || heading || ""} metadata={<>
                 {meta ? (
                   <div className="mt-1 flex items-center gap-x-2 text-[11px] text-muted-foreground">
                     <HoverTip label={t("p4.copyUser")}>
@@ -434,7 +434,7 @@ export function P4Submitted() {
                     </HoverTip>
                   </div>
                 ) : null}
-              </div>
+              </>} />
               <div className="relative min-h-0 flex-1">
                 {p4.selectedSubmitted && !detail ? <FileRowsSkeleton fill /> : null}
                 <div className={cn("absolute inset-0 overflow-auto px-1 py-1", p4.selectedSubmitted && !detail && "hidden")}>
