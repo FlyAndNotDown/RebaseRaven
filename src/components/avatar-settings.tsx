@@ -4,6 +4,7 @@ import { ChevronDownIcon, InfoIcon, LoaderCircleIcon, XIcon } from "lucide-react
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { HoverTip } from "@/components/ui/tooltip";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { GitAvatarProvider } from "@/lib/avatar";
 
 const PROVIDERS: { value: GitAvatarProvider; label: string }[] = [
@@ -13,12 +14,12 @@ const PROVIDERS: { value: GitAvatarProvider; label: string }[] = [
   { value: "gitlab", label: "GitLab" },
 ];
 
-type Props = {vcs:"git"; provider:GitAvatarProvider; onSave:(provider:GitAvatarProvider) => Promise<unknown>}
-  | {vcs:"perforce"; provider:"builtin"; onSave:(provider:"builtin") => Promise<unknown>};
+type Props = ({vcs:"git"; provider:GitAvatarProvider; onSave:(provider:GitAvatarProvider) => Promise<unknown>}
+  | {vcs:"perforce"; provider:"builtin"; onSave:(provider:"builtin") => Promise<unknown>}) & {ready?:boolean};
 
 export function AvatarSettings(props: Props) {
   useTranslation();
-  const {provider, vcs} = props;
+  const {provider, vcs, ready = true} = props;
   const providers = vcs === "git" ? PROVIDERS : PROVIDERS.filter(item => item.value === "builtin");
   const labelId = useId();
   const [saving, setSaving] = useState(false);
@@ -47,7 +48,7 @@ export function AvatarSettings(props: Props) {
             <Button variant="ghost" size="icon-xs" aria-label={t("desktop.avatarSettings.about_author_avatar_providers")}><InfoIcon /></Button>
           </HoverTip>
         </div>
-        <DropdownMenu>
+        {!ready ? <Skeleton className="h-8 w-32" role="status" aria-label={t("common.loadingNamed", {name:t("desktop.avatarSettings.author_avatars")})} /> : <DropdownMenu>
           <HoverTip label={errorText}>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="min-w-32 justify-between" aria-labelledby={`${labelId} ${labelId}-choice`} aria-describedby={error ? `${labelId}-error` : undefined} disabled={saving}>
@@ -63,7 +64,7 @@ export function AvatarSettings(props: Props) {
               {providers.map((item) => <DropdownMenuRadioItem key={item.value} value={item.value} disabled={saving}>{item.label}</DropdownMenuRadioItem>)}
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
-        </DropdownMenu>
+        </DropdownMenu>}
       </div>
       <p id={`${labelId}-error`} role="alert" className="sr-only">{errorText}</p>
     </>
