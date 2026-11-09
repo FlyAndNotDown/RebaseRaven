@@ -430,7 +430,8 @@
       "compress": "压缩此工作区与服务器之间传输的数据。",
       "modtime": "同步文件时使用版本库中的文件时间。",
       "rmdir": "移除同步后变为空的目录。"
-    }
+    },
+    "saveBeforeSwitch": "先保存或取消工作区修改，再切换 Stream。"
   },
   "switchStream": {
     "title": "切换 Stream",
@@ -699,5 +700,6 @@
     "resolveComparison": "版本对比 · 私有 → 公开 @{{change}}",
     "shelfComparison": "版本对比 · 工作区 → Shelf #{{change}}",
     "confirmDeleteShelf": "输入完整的 Stream 路径以移除搁置的定义。"
-  }
+  },
+  "workspaceActions": "工作区操作"
 }

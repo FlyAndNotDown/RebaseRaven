@@ -1,6 +1,6 @@
 import { t, useTranslation } from "@/i18n";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { TagsIcon, NetworkIcon, ArchiveIcon, CircleDotIcon, FolderTreeIcon, HistoryIcon, SettingsIcon } from "lucide-react";
+import { ArchiveRestoreIcon, TagsIcon, NetworkIcon, ArchiveIcon, CircleDotIcon, FolderTreeIcon, HistoryIcon, SettingsIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SettingsDialog } from "@/components/lazy-dialogs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -19,6 +19,7 @@ const itemMeta: Record<View, { label: string; icon: typeof CircleDotIcon }> = {
 const perforceItems: { id: P4View; label: string; icon: typeof CircleDotIcon }[] = [
   { id: "pending", get label() { return t("desktop.appSidebar.pending"); }, icon: CircleDotIcon },
   { id: "submitted", get label() { return t("desktop.appSidebar.history"); }, icon: HistoryIcon },
+  { id: "shelves", get label() { return t("p4.shelves.title"); }, icon: ArchiveRestoreIcon },
   { id: "workspace", get label() { return t("desktop.appSidebar.workspace"); }, icon: FolderTreeIcon },
   { id: "specs", get label() { return t("p4.specs.title"); }, icon: TagsIcon },
   { id: "streams", get label() { return t("p4.streamTree.title"); }, icon: NetworkIcon },

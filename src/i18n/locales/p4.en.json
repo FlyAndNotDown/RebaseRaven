@@ -430,7 +430,8 @@
       "compress": "Compress data transferred between this workspace and the server.",
       "modtime": "Use the depot file timestamp when syncing.",
       "rmdir": "Delete folders left empty by a sync operation."
-    }
+    },
+    "saveBeforeSwitch": "Save or discard workspace edits before switching streams."
   },
   "switchStream": {
     "title": "Switch stream",
@@ -699,5 +700,6 @@
     "resolveComparison": "Version comparison · private → public @{{change}}",
     "shelfComparison": "Version comparison · workspace → shelf #{{change}}",
     "confirmDeleteShelf": "Type the full stream path to remove its shelved definition."
-  }
+  },
+  "workspaceActions": "Workspace actions"
 }

@@ -12,7 +12,6 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { P4ConnectionDialog } from "@/components/p4/p4-connection-dialog";
-import { P4ShelvesDialog } from "@/components/p4/p4-shelves-dialog";
 import { P4StreamDialog } from "@/components/p4/p4-stream-dialog";
 import { P4ReconcileDialog } from "@/components/p4/p4-reconcile-dialog";
 import { P4CleanDialog } from "@/components/p4/p4-clean-dialog";
@@ -117,7 +116,6 @@ interface P4ContextValue {
   renameFile: (source: string, destination: string) => Promise<boolean>;
   fileProperties: (paths: string[]) => Promise<P4FilePropertiesView>;
   changeFileTypes: (request: P4FileTypeRequest, fingerprint: string) => Promise<void>;
-  setShelvesOpen: (open: boolean) => void;
   listShelves: (user: string, before: number | null) => Promise<P4ChangePage>;
   shelfDetail: (changeId: string) => Promise<P4Changelist>;
   shelfDiff: (path: string, changeId: string) => Promise<FileDiff>;
@@ -235,7 +233,6 @@ export function P4Provider({ children }: { children: ReactNode }) {
   }, []);
   const [loginOpen, setLoginOpen] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
-  const [shelvesOpen, setShelvesOpen] = useState(false);
   const [integrationInitial, setIntegrationInitial] = useState<P4IntegrationInitial|null>(null);
   const openIntegration = useCallback((initial: P4IntegrationInitial = {}) => setIntegrationInitial(initial), []);
   const [streamOpen, updateStreamOpen] = useState(false);
@@ -1666,7 +1663,6 @@ export function P4Provider({ children }: { children: ReactNode }) {
       renameFile,
       fileProperties,
       changeFileTypes,
-      setShelvesOpen,
       listShelves,
       shelfDetail,
       shelfDiff,
@@ -1749,7 +1745,6 @@ export function P4Provider({ children }: { children: ReactNode }) {
       renameFile,
       fileProperties,
       changeFileTypes,
-      setShelvesOpen,
       listShelves,
       shelfDetail,
       shelfDiff,
@@ -1837,7 +1832,6 @@ export function P4Provider({ children }: { children: ReactNode }) {
         {children}
         <P4ConnectionDialog />
         {workspaceOpen && connection ? <P4WorkspaceDialog key={JSON.stringify(connection)} /> : null}
-        {shelvesOpen && connection ? <P4ShelvesDialog key={JSON.stringify(connection)} onClose={() => setShelvesOpen(false)} /> : null}
         {integrationInitial && connection ? <P4IntegrationDialog key={JSON.stringify([connection,integrationInitial])} initial={integrationInitial} onClose={() => setIntegrationInitial(null)} /> : null}
         {streamOpen && connection ? <P4StreamDialog initial={streamInitial} key={JSON.stringify([connection,streamInitial])} onClose={() => setStreamOpen(false)} /> : null}
         {reconcileOpen && connection ? <P4ReconcileDialog key={JSON.stringify(connection)} onClose={() => setReconcileOpen(false)} /> : null}

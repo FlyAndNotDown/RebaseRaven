@@ -8,8 +8,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { setLanguagePreference } from "@/i18n";
 import type { P4StreamWork, P4StreamWorkRequest } from "@/types/p4-stream-specs";
 
-const actions = vi.hoisted(() => ({work:vi.fn(), previewWork:vi.fn(), applyWork:vi.fn(), read:vi.fn(), selectChange:vi.fn(), setView:vi.fn(), setShelvesOpen:vi.fn()}));
-vi.mock("@/state/p4-context", () => ({useP4: () => ({streamSpecs:actions, busy:false, connection:{stream:"//project/dev"}, pending:[{id:"default",description:""},{id:"42",description:"Stream edits"}], selectChange:actions.selectChange, setView:actions.setView, setShelvesOpen:actions.setShelvesOpen})}));
+const actions = vi.hoisted(() => ({work:vi.fn(), previewWork:vi.fn(), applyWork:vi.fn(), read:vi.fn(), selectChange:vi.fn(), setView:vi.fn()}));
+vi.mock("@/state/p4-context", () => ({useP4: () => ({streamSpecs:actions, busy:false, connection:{stream:"//project/dev"}, pending:[{id:"default",description:""},{id:"42",description:"Stream edits"}], selectChange:actions.selectChange, setView:actions.setView})}));
 vi.mock("@/components/p4/p4-diff", () => ({P4Diff:({diff}: {diff?: {lines:{content:string}[]}}) => <div>{diff?.lines.map(line=>line.content).join("\n")}</div>}));
 let root: Root, container: HTMLDivElement;
 const closed = vi.fn();
@@ -93,7 +93,7 @@ it("returns from a nested shelf restoration to the owning pending changelist",as
   actions.work.mockResolvedValue(work(true)); const navigate=vi.fn();
   await render(<P4StreamWorkDialog restore="50" onClose={closed} onNavigate={navigate}/>);
   await click("Show pending changelist");
-  expect(actions.selectChange).toHaveBeenCalledWith("42");expect(actions.setView).toHaveBeenCalledWith("pending");expect(actions.setShelvesOpen).toHaveBeenCalledWith(false);expect(navigate).toHaveBeenCalledOnce();expect(closed).not.toHaveBeenCalled();
+  expect(actions.selectChange).toHaveBeenCalledWith("42");expect(actions.setView).toHaveBeenCalledWith("pending");expect(navigate).toHaveBeenCalledOnce();expect(closed).not.toHaveBeenCalled();
 });
 
 it("shows both private and public values when reviewing stream conflicts",async()=>{
