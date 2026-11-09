@@ -536,7 +536,7 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
                   onAdd={() => void addP4Executable()}
                 />
                 <FieldGroup title={t("p4.manual.externalSetting")} hint={t("p4.manual.externalHint")}>
-                  <ToolPicker id="p4-diff-tool" label={t("desktop.settingsDialog.diff_tool")} value={tools.diffTool} tools={guiTools} ready={guiToolsReady} onChange={(value) => changeTool("diffTool", value)} />
+                  <ToolPicker emptyLabel={t("p4.manual.externalDefault")} id="p4-diff-tool" label={t("desktop.settingsDialog.diff_tool")} value={prefs.p4DiffTool} tools={guiTools} ready={guiToolsReady} onChange={(p4DiffTool) => { void persistPrefs({ p4DiffTool }); }} />
                   <ToolPicker emptyLabel={t("p4.manual.externalDefault")} id="p4-merge-tool" label={t("desktop.settingsDialog.merge_tool")} value={prefs.p4MergeTool} tools={guiTools} ready={guiToolsReady} onChange={(p4MergeTool) => { void persistPrefs({ p4MergeTool }); }} />
                 </FieldGroup>
                 <FieldGroup title={t("common.refresh")}>

@@ -137,6 +137,7 @@ impl ExternalFiles {
 
 pub fn external_diff(
     pair: FilePair,
+    tool: Option<&str>,
     on_error: impl FnOnce(String) + Send + 'static,
 ) -> AppResult<()> {
     let directory = tempfile::Builder::new()
@@ -150,11 +151,23 @@ pub fn external_diff(
     let after = after.join(file_name(&pair.path));
     fs::write(&before, pair.before.unwrap_or_default())?;
     fs::write(&after, pair.after.unwrap_or_default())?;
-    crate::git::launch_file_difftool(directory, &before, &after, on_error)
+    if let Some(tool) = tool {
+        let tool = tool.to_string();
+        std::thread::spawn(move || {
+            if let Err(error) =
+                crate::git::diff_files_external(&tool, directory.path(), &before, &after)
+            {
+                on_error(error.to_string());
+            }
+        });
+        Ok(())
+    } else {
+        crate::git::launch_file_difftool(directory, &before, &after, on_error)
+    }
 }
 
 pub fn file_name(name: &str) -> &str {
-    name.rsplit(['/', '\\'])
+    name.rsplit(|ch| ch == '/' || cfg!(windows) && ch == '\\')
         .find(|part| !part.is_empty() && *part != "." && *part != "..")
         .unwrap_or("revision.txt")
 }
@@ -178,6 +191,10 @@ mod tests {
         assert!(fs::metadata(&path).unwrap().permissions().readonly());
         drop(files);
         assert!(!path.exists());
-        assert_eq!(file_name(r"C:\source\example.rs"), "example.rs");
+        if cfg!(windows) {
+            assert_eq!(file_name(r"C:\source\example.rs"), "example.rs");
+        } else {
+            assert_eq!(file_name(r"folder/with\backslash.rs"), r"with\backslash.rs");
+        }
     }
 }

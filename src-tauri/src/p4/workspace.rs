@@ -525,7 +525,9 @@ pub fn opened_diff(connection: &P4Connection, path: &str) -> AppResult<FileDiff>
         );
     }
     let text = cli::run_p4_diff(&env, &["diff", "-du", &spec])?;
-    Ok(parse_single_diff(&text, path))
+    let mut diff = parse_single_diff(&text, path);
+    diff.binary |= file_type_is_binary(&field(&record, "type"));
+    Ok(diff)
 }
 
 pub fn shelf_diff(

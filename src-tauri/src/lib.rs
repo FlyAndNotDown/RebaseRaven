@@ -1319,8 +1319,9 @@ async fn open_diff_document(
     let files = files.inner().clone();
     blocking(move || {
         let pair = source.files(file_tools::FILE_LIMIT)?;
+        let prefs = prefs::load_prefs(&app)?;
         if external_diff {
-            file_tools::external_diff(pair, move |message| {
+            file_tools::external_diff(pair, Some(&prefs.p4_diff_tool), move |message| {
                 let _ = app.emit(
                     "tool-error",
                     ToolError {
@@ -1330,7 +1331,6 @@ async fn open_diff_document(
             })
         } else {
             let path = files.editor(&pair)?;
-            let prefs = prefs::load_prefs(&app)?;
             file_tools::open_editor(&path, line, &prefs.editor_id)
         }
     })

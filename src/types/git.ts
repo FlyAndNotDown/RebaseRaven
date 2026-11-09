@@ -400,6 +400,7 @@ export interface AppPrefs {
   /** Empty uses the p4 executable on PATH. Otherwise an absolute path. */
   p4Path: string;
   p4MergeTool: string;
+  p4DiffTool: string;
   /** User-added p4 executables. The PATH entry is not included. */
   extraP4Paths: string[];
   /** Default P4PORT for a new workspace. */

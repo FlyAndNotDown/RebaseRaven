@@ -305,8 +305,8 @@
     "discardTitle": "Discard merge edits?",
     "discardHint": "The edits in this dialog have not been written to your workspace.",
     "discard": "Discard edits",
-    "externalSetting": "External merge tool",
-    "externalHint": "Empty uses P4Merge when installed. Custom executables receive four file paths: base, yours, theirs, result. Review the returned result before saving.",
+    "externalSetting": "External tools",
+    "externalHint": "Empty uses P4Merge. Custom diff tools receive two file paths; merge tools receive base, yours, theirs, and result.",
     "externalWaiting": "Waiting for the merge tool…",
     "externalDefault": "Automatic · P4Merge"
   },

@@ -516,6 +516,7 @@ pub fn launch_difftool(
                         after: Some(fs::read(file)?),
                         working_path: None,
                     },
+                    None,
                     on_error,
                 );
             }
@@ -600,16 +601,8 @@ pub fn run_mergetool(repo: &mut Repository, path: &str) -> AppResult<WorkspaceSn
     snapshot(repo)
 }
 
-/// Launch a known GUI merge tool without a shell, using the same discovery as Git settings.
-/// Custom executables use the P4MERGE four-file argument contract.
-pub fn merge_files_external(
-    tool: &str,
-    cwd: &Path,
-    base: &Path,
-    yours: &Path,
-    theirs: &Path,
-    result: &Path,
-) -> AppResult<()> {
+/// Shared executable discovery for direct Perforce diff and merge tools.
+fn external_tool_program(tool: &str) -> AppResult<PathBuf> {
     let value = if tool.trim().is_empty() {
         "p4merge"
     } else {
@@ -627,9 +620,62 @@ pub fn merge_files_external(
     } else {
         crate::locate::which(value)
     }
-    .ok_or_else(|| {
-        AppError::msg("Choose an installed external merge tool in Perforce settings.")
-    })?;
+    .ok_or_else(|| AppError::msg("Choose an installed external tool in Perforce settings."))?;
+    Ok(program)
+}
+
+pub fn diff_files_external(tool: &str, cwd: &Path, before: &Path, after: &Path) -> AppResult<()> {
+    let mut command = crate::locate::command(external_tool_program(tool)?);
+    let result = cwd.join("result");
+    command
+        .current_dir(cwd)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    command.args(external_diff_arguments(tool, before, after, &result));
+    let status = command.status()?;
+    if !matches!(status.code(), Some(0 | 1)) {
+        return Err(AppError::msg(
+            "The external diff tool exited without a successful result.",
+        ));
+    }
+    Ok(())
+}
+
+fn external_diff_arguments(
+    tool: &str,
+    before: &Path,
+    after: &Path,
+    result: &Path,
+) -> Vec<std::ffi::OsString> {
+    let mut args: Vec<std::ffi::OsString> = match tool.trim() {
+        "vscode" | "cursor" => vec!["--wait".into(), "--diff".into()],
+        "araxis" => vec!["-wait".into(), "-2".into()],
+        "smerge" => vec!["mergetool".into()],
+        _ => Vec::new(),
+    };
+    args.extend([before.as_os_str().to_owned(), after.as_os_str().to_owned()]);
+    if tool.trim() == "smerge" {
+        args.extend(["-o".into(), result.as_os_str().to_owned()]);
+    }
+    args
+}
+
+/// Custom merge executables use the P4MERGE four-file argument contract.
+pub fn merge_files_external(
+    tool: &str,
+    cwd: &Path,
+    base: &Path,
+    yours: &Path,
+    theirs: &Path,
+    result: &Path,
+) -> AppResult<()> {
+    let value = if tool.trim().is_empty() {
+        "p4merge"
+    } else {
+        tool.trim()
+    };
+    let program = external_tool_program(value)?;
     let mut command = crate::locate::command(program);
     command
         .current_dir(cwd)
@@ -700,6 +746,40 @@ mod tests {
         assign_tool, config_get_file, config_set_file, path_from_cmd, quote_git_program,
         CUSTOM_DIFF,
     };
+
+    #[test]
+    fn external_diff_arguments_preserve_literal_paths_for_gui_tools() {
+        use std::ffi::OsString;
+        use std::path::Path;
+        let before = Path::new("before/a #1 & draft.txt");
+        let after = Path::new("after/a #1 & draft.txt");
+        let result = Path::new("result.txt");
+        for tool in ["p4merge", "bc", "kdiff3", "meld", "winmerge", "custom-tool"] {
+            assert_eq!(
+                super::external_diff_arguments(tool, before, after, result),
+                vec![before.as_os_str(), after.as_os_str()]
+            );
+        }
+        assert_eq!(
+            super::external_diff_arguments("vscode", before, after, result),
+            vec![
+                OsString::from("--wait"),
+                "--diff".into(),
+                before.as_os_str().into(),
+                after.as_os_str().into()
+            ]
+        );
+        assert_eq!(
+            super::external_diff_arguments("smerge", before, after, result),
+            vec![
+                OsString::from("mergetool"),
+                before.as_os_str().into(),
+                after.as_os_str().into(),
+                "-o".into(),
+                result.as_os_str().into()
+            ]
+        );
+    }
 
     fn test_config(label: &str) -> std::path::PathBuf {
         let unique = std::time::SystemTime::now()

@@ -305,8 +305,8 @@
     "discardTitle": "放弃合并修改？",
     "discardHint": "当前弹窗中的修改尚未写入工作区。",
     "discard": "放弃修改",
-    "externalSetting": "外部合并工具",
-    "externalHint": "留空时尝试使用已安装的 P4Merge。自定义程序依次接收基线、本地、传入、结果四个文件路径；返回后仍需审阅并保存。",
+    "externalSetting": "外部工具",
+    "externalHint": "留空使用 P4Merge。自定义差异工具接收两个文件路径；合并工具依次接收基线、本地、传入和结果文件路径。",
     "externalWaiting": "正在等待合并工具…",
     "externalDefault": "自动 · P4Merge"
   },
