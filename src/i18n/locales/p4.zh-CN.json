@@ -310,7 +310,9 @@
     "externalSetting": "外部工具",
     "externalHint": "留空使用 P4Merge。自定义差异工具接收两个文件路径；合并工具依次接收基线、本地、传入和结果文件路径。",
     "externalWaiting": "正在等待合并工具…",
-    "externalDefault": "自动 · P4Merge"
+    "externalDefault": "自动 · P4Merge",
+    "confirmExternal": "确认合并完成",
+    "externalConfirmHint": "检查合并结果后，确认合并完成。关闭外部工具不会直接解决此文件。"
   },
   "clean": {
     "review_one": "确认 {{count}} 个文件",
@@ -678,5 +680,9 @@
   "revisionTargetsLoading": "正在加载变更文件…",
   "noRevisionMatches": "没有匹配项",
   "revertUnchanged": "还原未修改的文件",
-  "submitShelf": "提交搁置内容"
+  "submitShelf": "提交搁置内容",
+  "autoMergeUnavailable": "无法自动合并，请手动合并此文件。",
+  "autoResolveAfterSync": "尝试自动解决冲突",
+  "autoResolveAfterSyncHint": "更新后安全合并所有已打开更改列表中可自动合并的文件。有冲突的文件会保留为未解决状态。",
+  "autoResolveSummary": "已自动解决 {{resolved}} 个文件 · {{remaining}} 个仍需解决"
 }

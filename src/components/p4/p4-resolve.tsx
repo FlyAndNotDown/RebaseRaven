@@ -1,6 +1,6 @@
 import { t, useTranslation } from "@/i18n";
 import { useEffect, useRef, useState } from "react";
-import { GitMergeIcon, LoaderCircleIcon } from "lucide-react";
+import { ExternalLinkIcon, GitMergeIcon, LoaderCircleIcon, TriangleAlertIcon } from "lucide-react";
 import { P4ManualResolve } from "@/components/p4/p4-manual-resolve";
 import { P4Diff } from "@/components/p4/p4-diff";
 import { Button } from "@/components/ui/button";
@@ -48,11 +48,12 @@ export function P4Resolve({ path, onClose }: { path: string; onClose: () => void
   }, [attempt, path, resolveView]);
 
   async function accept() {
-    if (!view || !mode || workspaceBusy || running.current) return;
+    if (!view || !mode || (mode === "merge" && !view.autoMergeable) || workspaceBusy || running.current) return;
     running.current = true;
     setBusy(true);
     try {
       if (await resolveAccept(path, mode)) onClose();
+      else { setView(null); setMode(null); setAttempt((value) => value + 1); }
     } finally {
       running.current = false;
       setBusy(false);
@@ -63,13 +64,13 @@ export function P4Resolve({ path, onClose }: { path: string; onClose: () => void
 
   return (
     <Dialog open onOpenChange={(open) => !open && !running.current && onClose()}>
-      <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-4xl" showCloseButton={!busy}>
+      <DialogContent className="flex h-[min(52rem,92dvh)] w-[96vw] flex-col sm:max-w-[min(88rem,96vw)]" showCloseButton={!busy}>
         <DialogHeader>
           <DialogTitle>{t("p4.resolveFile", { file: depotBase(path) })}</DialogTitle>
           <DialogDescription className="truncate font-mono text-xs" title={path}>{path}</DialogDescription>
         </DialogHeader>
         {view?.summary ? <p className="truncate text-xs text-muted-foreground" title={p4DisplayText(view.summary)}>{p4DisplayText(view.summary)}</p> : null}
-        <div className="relative flex h-[min(42vh,24rem)] min-h-24 min-w-0 flex-col overflow-hidden rounded-lg border">
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border">
           {error ? (
             <div role="alert" className="flex flex-1 flex-col items-center justify-center gap-2 p-4 text-center text-sm text-destructive">
               {error}
@@ -94,17 +95,18 @@ export function P4Resolve({ path, onClose }: { path: string; onClose: () => void
         <fieldset className="flex flex-wrap gap-2" disabled={!view || busy || workspaceBusy}>
           <legend className="sr-only">{t("p4.resolve")}</legend>
           {choices.map((choice) => choice.mode !== "merge" || view?.content ? (
-            <HoverTip key={choice.mode} label={choice.tip}>
+            <HoverTip key={choice.mode} label={choice.mode === "merge" && !view?.autoMergeable ? t("p4.autoMergeUnavailable") : choice.tip}>
               <label className="flex min-h-8 items-center gap-1.5 rounded-md border px-2.5 text-sm has-checked:border-foreground/50 has-checked:bg-muted has-disabled:opacity-50">
-                <input type="radio" name="p4-resolve-mode" className="size-3.5 accent-foreground" checked={mode === choice.mode} onChange={() => setMode(choice.mode)} />
+                <input type="radio" name="p4-resolve-mode" className="size-3.5 accent-foreground" disabled={choice.mode === "merge" && !view?.autoMergeable} checked={mode === choice.mode} onChange={() => setMode(choice.mode)} />
                 {choice.label}
+                {choice.mode === "merge" && !view?.autoMergeable ? <TriangleAlertIcon className="size-3.5 text-status-warning" /> : null}
               </label>
             </HoverTip>
           ) : null)}
         </fieldset>
         <DialogFooter>
           {view?.content && view.pendingResolves === 1 ? <Button className="mr-auto" variant="outline" disabled={busy || workspaceBusy} onClick={() => setManual(true)}>{t("p4.manual.open")}</Button> : null}
-          {view?.content && view.pendingResolves === 1 ? <Button variant="ghost" disabled={busy || workspaceBusy} onClick={() => { setExternal(true); setManual(true); }}>{t("git-files.openMergeTool")}</Button> : null}
+          {view?.content && view.pendingResolves === 1 ? <HoverTip label={t("git-files.openMergeTool")}><Button size="icon-sm" variant="ghost" aria-label={t("git-files.openMergeTool")} disabled={busy || workspaceBusy} onClick={() => { setExternal(true); setManual(true); }}><ExternalLinkIcon /></Button></HoverTip> : null}
           <Button variant="outline" disabled={busy} onClick={onClose}>{t("common.cancel")}</Button>
           <Button disabled={!view || !mode || busy || workspaceBusy} onClick={() => void accept()}>
             {busy ? <LoaderCircleIcon className="motion-safe:animate-spin" /> : <GitMergeIcon />}

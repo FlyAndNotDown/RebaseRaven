@@ -104,5 +104,7 @@
   "message": {
     "showMore": "Show full message",
     "showLess": "Collapse message"
-  }
+  },
+  "beforeEdits": "Before edits",
+  "mergedResult": "Merged result"
 }

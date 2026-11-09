@@ -18,6 +18,7 @@ export function P4ManualResolve({ path, onClose, onBack, external = false }: { p
   const { manualResolveView, manualResolveApply, manualResolveExternal, busy: workspaceBusy } = useP4();
   const [view, setView] = useState<P4ManualResolve | null>(null);
   const [externalResult, setExternalResult] = useState<string | null>(null);
+  const [externalUsed, setExternalUsed] = useState(false);
   const [edited, setEdited] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -35,7 +36,7 @@ export function P4ManualResolve({ path, onClose, onBack, external = false }: { p
         if (external) {
           running.current = true; if (live) setBusy(true);
           const result = await manualResolveExternal(path, threeWayText(next.base, next.yours, next.theirs), next.fingerprint);
-          if (live) setExternalResult(result.replace(/\r\n/g, "\n"));
+          if (live) { setExternalResult(result.replace(/\r\n/g, "\n")); setExternalUsed(true); }
         }
         if (live) setView(next);
       } catch (caught) { if (live) setError(displayError(caught)); }
@@ -63,22 +64,22 @@ export function P4ManualResolve({ path, onClose, onBack, external = false }: { p
   async function runExternal(text: string) {
     if (!view || running.current || workspaceBusy) return;
     running.current = true; setBusy(true);
-    try { return await manualResolveExternal(path, text, view.fingerprint); }
+    try { const result = await manualResolveExternal(path, text, view.fingerprint); setExternalUsed(true); return result; }
     finally { running.current = false; setBusy(false); }
   }
 
   return <>
     <Dialog open onOpenChange={(open) => { if (!open) close("close"); }}>
-      <DialogContent className="flex h-[min(48rem,88vh)] flex-col sm:max-w-[min(70rem,94vw)]" showCloseButton={!busy && !workspaceBusy}>
+      <DialogContent className="flex h-[min(52rem,92dvh)] w-[96vw] flex-col sm:max-w-[min(88rem,96vw)]" showCloseButton={!busy && !workspaceBusy}>
         <DialogHeader>
           <DialogTitle>{t("p4.manual.title", { file: depotBase(path) })}</DialogTitle>
           <DialogDescription className="truncate font-mono text-xs" title={path}>{path}</DialogDescription>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border">
-          {view ? <ConflictTextEditor path={path} key={view.fingerprint} initialText={initial} current={t("p4.manual.yours")} incoming={t("p4.manual.theirs")} onSave={save} onExternal={runExternal} disabled={busy || workspaceBusy} saveLabel={t("p4.manual.apply")} onTextChange={setEdited} displayError={displayError} />
+          {view ? <ConflictTextEditor path={path} key={view.fingerprint} initialText={initial} current={t("p4.manual.yours")} incoming={t("p4.manual.theirs")} onSave={save} onExternal={runExternal} disabled={busy || workspaceBusy} saveLabel={t(externalUsed ? "p4.manual.confirmExternal" : "p4.manual.apply")} onTextChange={setEdited} displayError={displayError} />
             : !error ? <div role="status" className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"><LoaderCircleIcon className="size-4 animate-spin" />{t(busy ? "p4.manual.externalWaiting" : "p4.loadingResolve")}</div> : <p role="alert" className="p-4 text-sm text-destructive">{error}</p>}
         </div>
-        <p className="shrink-0 text-xs text-muted-foreground">{t("p4.manual.hint")}</p>
+        <p className="shrink-0 text-xs text-muted-foreground">{t(externalUsed ? "p4.manual.externalConfirmHint" : "p4.manual.hint")}</p>
         <DialogFooter>
           <Button variant="ghost" className="mr-auto" disabled={busy || workspaceBusy} onClick={() => close("back")}>{t("p4.manual.back")}</Button>
           {!view && error ? <Button variant="outline" disabled={busy || workspaceBusy} onClick={() => { setError(null); setAttempt((value) => value + 1); }}>{t("common.retry")}</Button> : null}

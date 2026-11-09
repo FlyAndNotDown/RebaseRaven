@@ -310,7 +310,9 @@
     "externalSetting": "External tools",
     "externalHint": "Empty uses P4Merge. Custom diff tools receive two file paths; merge tools receive base, yours, theirs, and result.",
     "externalWaiting": "Waiting for the merge tool…",
-    "externalDefault": "Automatic · P4Merge"
+    "externalDefault": "Automatic · P4Merge",
+    "confirmExternal": "Mark merge complete",
+    "externalConfirmHint": "Review the result, then mark the merge complete. Closing the external tool does not resolve the file."
   },
   "clean": {
     "review_one": "Review {{count}} file",
@@ -678,5 +680,9 @@
   "revisionTargetsLoading": "Loading changelist files…",
   "noRevisionMatches": "No matches",
   "revertUnchanged": "Revert if unchanged",
-  "submitShelf": "Submit shelved"
+  "submitShelf": "Submit shelved",
+  "autoMergeUnavailable": "Cannot auto-merge. Merge this file manually.",
+  "autoResolveAfterSync": "Try auto-resolving conflicts",
+  "autoResolveAfterSyncHint": "After updating, safely merge eligible files across all opened changelists. Conflicting files remain unresolved.",
+  "autoResolveSummary": "Auto-resolved {{resolved}} files · {{remaining}} still need resolve"
 }

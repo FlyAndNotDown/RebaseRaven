@@ -34,6 +34,7 @@ import type {
   P4Executables,
   P4OpenResult,
   P4ResolveView,
+  P4SyncResult,
   P4CompareRequest,
   P4BlameLine,
   P4FileSource,
@@ -196,8 +197,8 @@ export const p4Api = {
     call<P4ResolveView>("p4_resolve_view", { connection, path }),
   resolveAccept: (connection: P4Connection, path: string, mode: "yours" | "theirs" | "merge") =>
     call<void>("p4_resolve_accept", { connection, path, mode }),
-  sync: (connection: P4Connection, paths: string[], activityId?: string) =>
-    call<string>("p4_sync", { connection, paths, activityId: activityId ?? null }),
+  sync: (connection: P4Connection, paths: string[], activityId?: string, autoResolve = false) =>
+    call<P4SyncResult>("p4_sync", { connection, paths, autoResolve, activityId: activityId ?? null }),
   getRevision: (connection: P4Connection, request: P4GetRevision, activityId?: string) =>
     call<string>("p4_get_revision", { connection, request, activityId: activityId ?? null }),
   listShelves: (connection: P4Connection, user: string, before: number | null) => call<P4ChangePage>("p4_list_shelves", { connection, user, before }),

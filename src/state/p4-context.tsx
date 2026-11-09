@@ -1165,18 +1165,25 @@ export function P4Provider({ children }: { children: ReactNode }) {
       if (!release) return;
       const id = beginActivity(t("p4.gettingLatest"), current.connection.client);
       try {
-        const output = await guard(current.connection, () => p4Api.sync(current.connection, paths, id));
-        toast.success(syncSummary(output));
+        const output = await guard(current.connection, () => p4Api.sync(current.connection, paths, id, prefs.p4AutoResolveAfterSync));
+        if (output.autoResolve) {
+          const summary = output.autoResolve;
+          const message = t("p4.autoResolveSummary", {resolved:summary.resolved,remaining:summary.remaining});
+          if (summary.remaining > 0 || summary.failed) toast.warning(message);
+          else toast.success(message);
+        } else toast.success(syncSummary(output.output));
         await reloadPending(current);
         bumpFiles();
       } catch (caught) {
+        await reloadPending(current).catch(() => {});
+        bumpFiles();
         report(caught);
       } finally {
         endActivity(id);
         release();
       }
     },
-    [lockMutation, beginActivity, bumpFiles, endActivity, guard, reloadPending, report],
+    [lockMutation, beginActivity, bumpFiles, endActivity, guard, reloadPending, report, prefs.p4AutoResolveAfterSync],
   );
 
   const getRevision = useCallback(

@@ -104,5 +104,7 @@
   "message": {
     "showMore": "展开完整消息",
     "showLess": "收起消息"
-  }
+  },
+  "beforeEdits": "编辑前",
+  "mergedResult": "合并结果"
 }

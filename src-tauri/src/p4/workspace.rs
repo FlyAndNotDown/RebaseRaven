@@ -1982,6 +1982,7 @@ pub struct P4ResolveView {
     pub summary: String,
     /// A text merge can accept the merged result. Branch and delete resolves cannot.
     pub content: bool,
+    pub auto_mergeable: bool,
     /// False when the two sides could not be diffed. The choices still work.
     pub comparable: bool,
     pub working_copy: bool,
@@ -2005,6 +2006,9 @@ pub fn resolve_view(connection: &P4Connection, path: &str) -> AppResult<P4Resolv
         path: facts.depot.clone(),
         summary: resolve_summary(&facts),
         content: resolve_can_merge(&facts.action, &facts.kind),
+        auto_mergeable: pending_resolves == 1
+            && resolve_can_merge(&facts.action, &facts.kind)
+            && auto_merge_available(&env, &spec),
         comparable,
         working_copy,
         pending_resolves,
@@ -2022,14 +2026,9 @@ pub(super) fn resolve_file_versions(
     let preview = run_ok(&env, &["-ztag", "resolve", "-n", "-o", &spec], None)?;
     let (facts, _) = pending_resolve_facts(&preview, &spec)
         .ok_or_else(|| AppError::msg("This file does not need resolve."))?;
-    let end = if facts.end_rev.is_empty() {
-        &facts.start_rev
-    } else {
-        &facts.end_rev
-    };
     let incoming = Version {
         depot: facts.from_file.clone(),
-        spec: Some(format!("{}#{end}", facts.from_file)),
+        spec: Some(incoming_resolve_spec(&facts)),
         local: None,
         absent: false,
         binary: false,
@@ -2164,7 +2163,9 @@ fn manual_resolve_snapshot(
         merge_text(bytes, truncated)
     };
     let base = read_revision(&facts.base_file, &facts.base_rev)?;
-    let theirs = read_revision(&facts.from_file, &facts.end_rev)?;
+    let (bytes, truncated) =
+        cli::read_file_prefix(&env, &incoming_resolve_spec(&facts), MANUAL_MERGE_LIMIT)?;
+    let theirs = merge_text(bytes, truncated)?;
     let mut hash = std::collections::hash_map::DefaultHasher::new();
     (
         &connection.port,
@@ -2287,6 +2288,7 @@ struct ResolveFacts {
     end_rev: String,
     base_file: String,
     base_rev: String,
+    shelved_change: String,
 }
 
 fn pending_resolve_facts(text: &str, depot: &str) -> Option<(ResolveFacts, usize)> {
@@ -2310,6 +2312,7 @@ fn pending_resolve_facts(text: &str, depot: &str) -> Option<(ResolveFacts, usize
             end_rev: field(&record, "endFromRev"),
             base_file: field(&record, "baseFile"),
             base_rev: field(&record, "baseRev"),
+            shelved_change: field(&record, "shelvedChange"),
         };
         return Some((facts, 1 + records.count()));
     }
@@ -2363,6 +2366,7 @@ fn parse_resolve_preview(text: &str) -> Option<ResolveFacts> {
         end_rev,
         base_file,
         base_rev,
+        shelved_change: String::new(),
     })
 }
 
@@ -2407,7 +2411,11 @@ fn depot_revs(text: &str) -> Vec<(String, String, String)> {
 }
 
 fn resolve_summary(facts: &ResolveFacts) -> String {
-    let source = revision_span(&facts.from_file, &facts.start_rev, &facts.end_rev);
+    let source = if facts.shelved_change.parse::<u64>().unwrap_or(0) > 0 {
+        incoming_resolve_spec(facts)
+    } else {
+        revision_span(&facts.from_file, &facts.start_rev, &facts.end_rev)
+    };
     if source.is_empty() {
         return "Needs resolve".to_string();
     }
@@ -2459,6 +2467,43 @@ fn resolve_can_merge(action: &str, kind: &str) -> bool {
     kind.contains("content") || action == "content" || action == "merge" || action == "edit"
 }
 
+fn incoming_resolve_spec(facts: &ResolveFacts) -> String {
+    if facts.shelved_change.parse::<u64>().unwrap_or(0) > 0 {
+        format!("{}@={}", facts.from_file, facts.shelved_change)
+    } else {
+        let revision = if facts.end_rev.is_empty() {
+            &facts.start_rev
+        } else {
+            &facts.end_rev
+        };
+        format!("{}#{revision}", facts.from_file)
+    }
+}
+
+fn merge_preview_is_clean(text: &str) -> bool {
+    let mut found = false;
+    for line in text.lines().filter(|line| line.contains("Diff chunks:")) {
+        let Some((_, conflicts)) = line.rsplit_once(" + ") else {
+            return false;
+        };
+        let Some(count) = conflicts.trim().strip_suffix(" conflicting") else {
+            return false;
+        };
+        if count.parse::<usize>() != Ok(0) {
+            return false;
+        }
+        found = true;
+    }
+    found
+}
+
+fn auto_merge_available(env: &P4Env, spec: &str) -> bool {
+    // Build the native merge preview, then skip without accepting or changing the file.
+    cli::run_p4(env, &["resolve", "-o", spec], Some("s\n"))
+        .map(|output| merge_preview_is_clean(&String::from_utf8_lossy(&output.stdout)))
+        .unwrap_or(false)
+}
+
 fn resolve_diff(env: &P4Env, facts: &ResolveFacts) -> (FileDiff, bool, bool) {
     let depot = facts.depot.clone();
     let end = if facts.end_rev.is_empty() {
@@ -2469,7 +2514,7 @@ fn resolve_diff(env: &P4Env, facts: &ResolveFacts) -> (FileDiff, bool, bool) {
     if !depot.starts_with("//") || facts.from_file.is_empty() || end.is_empty() {
         return (empty_diff(&depot), false, false);
     }
-    let incoming = format!("{}#{end}", facts.from_file);
+    let incoming = incoming_resolve_spec(facts);
     if depot == facts.from_file {
         if let Ok(text) = cli::run_p4_diff(env, &["diff", "-du", "-f", &incoming]) {
             return (parse_single_diff(&text, &depot), true, true);
@@ -2538,16 +2583,83 @@ struct SyncFlags {
     preview: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct P4AutoResolveSummary {
+    pub resolved: usize,
+    pub remaining: usize,
+    pub failed: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct P4SyncResult {
+    pub output: String,
+    pub auto_resolve: Option<P4AutoResolveSummary>,
+}
+
+fn unresolved_files(env: &P4Env, scope: &str) -> AppResult<BTreeSet<String>> {
+    match run_ok(env, &["-ztag", "resolve", "-n", "-o", scope], None) {
+        Ok(text) => Ok(parse_ztag(&text)
+            .iter()
+            .filter_map(|record| record.get("clientFile").cloned())
+            .collect()),
+        Err(error)
+            if error
+                .to_string()
+                .to_lowercase()
+                .contains("no file(s) to resolve") =>
+        {
+            Ok(BTreeSet::new())
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn auto_resolve_files(env: &P4Env, client: &str) -> AppResult<P4AutoResolveSummary> {
+    if !valid_client_name(client) {
+        return Err(AppError::msg("Choose a valid workspace."));
+    }
+    // Client scope includes the default and every numbered opened changelist.
+    let scope = format!("//{client}/...");
+    let before = unresolved_files(env, &scope)?;
+    if before.is_empty() {
+        return Ok(P4AutoResolveSummary {
+            resolved: 0,
+            remaining: 0,
+            failed: false,
+        });
+    }
+    let result = cli::run_p4(env, &["resolve", "-am", &scope], None)?;
+    let after = unresolved_files(env, &scope)?;
+    Ok(P4AutoResolveSummary {
+        resolved: before.difference(&after).count(),
+        remaining: after.len(),
+        failed: !result.status.success(),
+    })
+}
+
 pub fn sync(
     connection: &P4Connection,
     paths: &[String],
+    auto_resolve: bool,
     progress: impl FnMut(&str),
-) -> AppResult<String> {
+) -> AppResult<P4SyncResult> {
     let paths: Vec<_> = paths
         .iter()
         .map(|path| workspace_file_spec(&connection.root, path))
         .collect();
-    sync_paths(&env_for(connection), &paths, SyncFlags::default(), progress)
+    let env = env_for(connection);
+    let output = sync_paths(&env, &paths, SyncFlags::default(), progress)?;
+    let auto_resolve = if auto_resolve {
+        Some(auto_resolve_files(&env, &connection.client)?)
+    } else {
+        None
+    };
+    Ok(P4SyncResult {
+        output,
+        auto_resolve,
+    })
 }
 
 pub fn get_revision(
@@ -3239,7 +3351,7 @@ pub fn create_workspace(
     run_ok(&env, &["client", "-i"], Some(&spec))?;
     write_config(&root, &env)?;
     let connection = connection_after_create(&env, &root, &stream)?;
-    if let Err(err) = sync(&connection, &[], &mut progress) {
+    if let Err(err) = sync(&connection, &[], false, &mut progress) {
         return Err(AppError::msg(format!(
             "Workspace '{client}' was created, but sync failed: {err}"
         )));
@@ -5331,6 +5443,35 @@ Description:
             "Merging //depot/dev/app.ini#4,#7 using base //depot/dev/app.ini#3"
         );
         assert!(pending_resolve_facts("", "//depot/main/app.ini").is_none());
+    }
+
+    #[test]
+    fn auto_merge_requires_native_conflict_statistics() {
+        assert!(merge_preview_is_clean(
+            "Diff chunks: 1 yours + 2 theirs + 0 both + 0 conflicting\nresolve skipped.\n"
+        ));
+        assert!(!merge_preview_is_clean(
+            "Diff chunks: 0 yours + 0 theirs + 0 both + 1 conflicting\n"
+        ));
+        assert!(!merge_preview_is_clean(
+            "Diff chunks: 1 yours + invalid conflicting\n"
+        ));
+        assert!(!merge_preview_is_clean("No file(s) to resolve.\n"));
+        assert!(!merge_preview_is_clean("Diff chunks: 1 yours + 0 theirs + 0 both + 0 conflicting\nDiff chunks: 0 yours + 0 theirs + 0 both + 2 conflicting"));
+    }
+
+    #[test]
+    fn shelf_resolves_read_the_incoming_shelf_instead_of_the_depot_base() {
+        let tagged = "... clientFile /fixture/main/app.ini\n... fromFile //depot/main/app.ini\n... startFromRev none\n... endFromRev 4\n... shelvedChange 123\n... baseFile //depot/main/app.ini\n... baseRev 4\n... resolveType content\n... contentResolveType 3waytext\n";
+        let (mut facts, count) = pending_resolve_facts(tagged, "//depot/main/app.ini").unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(incoming_resolve_spec(&facts), "//depot/main/app.ini@=123");
+        assert_eq!(
+            resolve_summary(&facts),
+            "Merging //depot/main/app.ini@=123 using base //depot/main/app.ini#4"
+        );
+        facts.shelved_change = String::new();
+        assert_eq!(incoming_resolve_spec(&facts), "//depot/main/app.ini#4");
     }
 
     #[test]

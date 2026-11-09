@@ -51,6 +51,7 @@ export interface P4ResolveView {
   path: string;
   summary: string;
   content: boolean;
+  autoMergeable: boolean;
   comparable: boolean;
   workingCopy: boolean;
   pendingResolves: number;
@@ -255,3 +256,6 @@ export interface P4CleanRequest {
 }
 export interface P4CleanFile {path: string; depotPath: string; action: "restoreModified" | "restoreMissing" | "removeUntracked"; revision: string | null}
 export interface P4CleanPreview {files: P4CleanFile[]; fingerprint: string}
+
+export interface P4AutoResolveSummary { resolved: number; remaining: number; failed: boolean }
+export interface P4SyncResult { output: string; autoResolve: P4AutoResolveSummary | null }

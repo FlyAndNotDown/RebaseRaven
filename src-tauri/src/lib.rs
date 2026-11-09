@@ -2014,12 +2014,14 @@ async fn p4_sync(
     connection: p4::P4Connection,
     paths: Vec<String>,
     activity_id: Option<String>,
+    auto_resolve: bool,
     app: AppHandle,
-) -> AppResult<String> {
+) -> AppResult<p4::P4SyncResult> {
     blocking(move || {
         p4::sync(
             &connection,
             &paths,
+            auto_resolve,
             progress_sink(&app, activity_id.as_deref()),
         )
     })

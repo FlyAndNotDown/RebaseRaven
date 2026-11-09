@@ -75,6 +75,8 @@ pub struct AppPrefs {
     pub p4_merge_tool: String,
     #[serde(default)]
     pub p4_diff_tool: String,
+    #[serde(default)]
+    pub p4_auto_resolve_after_sync: bool,
     /// User-added p4 executables. The PATH entry is not stored here.
     #[serde(default)]
     pub extra_p4_paths: Vec<String>,
@@ -177,6 +179,7 @@ impl Default for AppPrefs {
             p4_path: String::new(),
             p4_merge_tool: String::new(),
             p4_diff_tool: String::new(),
+            p4_auto_resolve_after_sync: false,
             extra_p4_paths: Vec::new(),
             p4_port: String::new(),
             p4_user: String::new(),

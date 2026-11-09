@@ -165,3 +165,12 @@ describe("normalizePrefs", () => {
     expect(normalizePrefs({ p4RefreshMinutes: -5 }).p4RefreshMinutes).toBe(60);
   });
 });
+
+describe("automatic Perforce resolve preference", () => {
+  it("defaults off and preserves an explicit saved selection", () => {
+    expect(defaultPrefs.p4AutoResolveAfterSync).toBe(false);
+    expect(normalizePrefs({}).p4AutoResolveAfterSync).toBe(false);
+    expect(normalizePrefs({ p4AutoResolveAfterSync: true }).p4AutoResolveAfterSync).toBe(true);
+    expect(normalizePrefs({ p4AutoResolveAfterSync: false }).p4AutoResolveAfterSync).toBe(false);
+  });
+});

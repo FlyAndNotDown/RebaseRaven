@@ -57,5 +57,5 @@ pub use workspace::{
     submitted, sync, unshelve, P4Auth, P4ChangePage, P4Changelist, P4CheckedConnection,
     P4Connection, P4CreateRequest, P4DepotEntry, P4Describe, P4DirEntry, P4EntryStatus,
     P4FileSearch, P4GetRevision, P4HistoryCursor, P4Location, P4ManualResolve, P4Open,
-    P4ResolveView, P4RevisionPage, P4StreamOption, RepoDetection,
+    P4ResolveView, P4RevisionPage, P4StreamOption, P4SyncResult, RepoDetection,
 };

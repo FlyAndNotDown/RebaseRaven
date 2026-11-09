@@ -402,6 +402,7 @@ export interface AppPrefs {
   p4Path: string;
   p4MergeTool: string;
   p4DiffTool: string;
+  p4AutoResolveAfterSync: boolean;
   /** User-added p4 executables. The PATH entry is not included. */
   extraP4Paths: string[];
   /** Default P4PORT for a new workspace. */
