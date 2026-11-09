@@ -4,8 +4,6 @@ import { t } from "@/i18n";
 import type {
   P4CleanRequest,
   P4CleanPreview,
-  P4FilePropertiesView,
-  P4FileTypeRequest,
   P4UnshelveRequest,
   P4StreamRequest,
   P4StreamPreview,
@@ -177,8 +175,6 @@ export const p4Api = {
     call<void>("p4_delete_change", { connection, changeId }),
   moveFile: (connection: P4Connection, source: string, destination: string) =>
     call<void>("p4_move_file", { connection, source, destination }),
-  fileProperties: (connection: P4Connection, paths: string[]) => call<P4FilePropertiesView>("p4_file_properties", { connection, paths }),
-  changeFileTypes: (connection: P4Connection, request: P4FileTypeRequest, fingerprint: string) => call<void>("p4_change_file_types", { connection, request, fingerprint }),
   reopen: (connection: P4Connection, changeId: string, files: string[]) =>
     call<void>("p4_reopen", { connection, changeId, files }),
   revert: (connection: P4Connection, files: string[], wipe?: string[]) =>

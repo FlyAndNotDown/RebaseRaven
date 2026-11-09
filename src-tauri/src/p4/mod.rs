@@ -15,8 +15,6 @@ pub use integration::{
 };
 mod operations;
 mod parse;
-mod properties;
-pub use properties::{change_file_types, file_properties, P4FilePropertiesView, P4FileTypeRequest};
 mod review;
 mod shelves;
 mod specs;

@@ -1,10 +1,9 @@
 import { P4StreamWorkDialog, P4StreamDiffDialog } from "@/components/p4/p4-stream-work";
 import type { P4StreamDiffRequest } from "@/types/p4-stream-specs";
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { GitBranchIcon, ArchiveIcon, ArchiveRestoreIcon, ChevronDownIcon, CopyIcon, GitMergeIcon, InfoIcon, Settings2Icon, Loader2Icon, PencilIcon, PlusIcon, SendIcon, Trash2Icon, Undo2Icon } from "lucide-react";
+import { GitBranchIcon, ArchiveIcon, ArchiveRestoreIcon, ChevronDownIcon, CopyIcon, GitMergeIcon, Loader2Icon, PencilIcon, PlusIcon, SendIcon, Trash2Icon, Undo2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { ChangeBadge } from "@/components/p4/change-badge";
-import { P4FilePropertiesDialog } from "@/components/p4/p4-file-properties";
 import { P4ChangeDialog, type ChangeDialogRequest } from "@/components/p4/p4-change-dialog";
 import { FileStatusIcon } from "@/components/p4/file-status-icon";
 import { FileStatusTip, fileStatusText } from "@/components/p4/file-status-tip";
@@ -41,7 +40,6 @@ export function P4Pending() {
   const p4 = useP4();
   const [streamWorkOpen, setStreamWorkOpen] = useState(false);
   const [streamDiff, setStreamDiff] = useState<P4StreamDiffRequest | null>(null);
-  const [properties, setProperties] = useState<{ paths: string[]; edit: boolean } | null>(null);
   const [creating, setCreating] = useState(false);
   const [changeDialog, setChangeDialog] = useState<ChangeDialogRequest | null>(null);
   const [deletingChange, setDeletingChange] = useState<string | null>(null);
@@ -230,9 +228,6 @@ export function P4Pending() {
     const canShelve = targets.some((item) => item.change !== "default");
     return (
       <ContextMenuContent className="min-w-44">
-        <ContextMenuItem onSelect={() => setProperties({ paths: [file.path], edit: false })}><InfoIcon />{t("p4.properties.title")}</ContextMenuItem>
-        <ContextMenuItem disabled={p4.busy} onSelect={() => setProperties({ paths: targets.map(item => item.path), edit: true })}><Settings2Icon />{t("p4.properties.editTitle")}</ContextMenuItem>
-        <ContextMenuSeparator />
         {entry.status === "conflict" ? (
           <>
             <ContextMenuItem
@@ -505,7 +500,6 @@ export function P4Pending() {
         </ResizablePanel>
       </ResizablePanelGroup>
       {resolvingPath ? <P4Resolve key={resolvingPath} path={resolvingPath} onClose={closeResolution} /> : null}
-      {properties ? <P4FilePropertiesDialog key={JSON.stringify(properties)} {...properties} onClose={() => setProperties(null)} /> : null}
       {streamWorkOpen ? <P4StreamWorkDialog onClose={() => setStreamWorkOpen(false)} /> : null}
       {streamDiff ? <P4StreamDiffDialog target={streamDiff} onClose={() => setStreamDiff(null)} /> : null}
 

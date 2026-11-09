@@ -33,8 +33,6 @@ import type { FileDiff } from "@/types/git";
 import type {
   P4CleanRequest,
   P4CleanPreview,
-  P4FilePropertiesView,
-  P4FileTypeRequest,
   P4UnshelveRequest,
   P4StreamRequest,
   P4StreamPreview,
@@ -114,8 +112,6 @@ interface P4ContextValue {
   createChange: (description: string) => Promise<boolean>;
   deleteChange: (changeId: string) => Promise<boolean>;
   renameFile: (source: string, destination: string) => Promise<boolean>;
-  fileProperties: (paths: string[]) => Promise<P4FilePropertiesView>;
-  changeFileTypes: (request: P4FileTypeRequest, fingerprint: string) => Promise<void>;
   listShelves: (user: string, before: number | null) => Promise<P4ChangePage>;
   shelfDetail: (changeId: string) => Promise<P4Changelist>;
   shelfDiff: (path: string, changeId: string) => Promise<FileDiff>;
@@ -673,28 +669,6 @@ export function P4Provider({ children }: { children: ReactNode }) {
       release();
     }
   }, [lockMutation, beginActivity, endActivity, guard, reloadPending, report]);
-
-  const fileProperties = useCallback(async (paths: string[]) => {
-    const current = sessionRef.current;
-    if (!current) throw new Error(t("p4-operations.connectionRequired"));
-    return guard(current.connection, () => p4Api.fileProperties(current.connection, paths));
-  }, [guard]);
-
-  const changeFileTypes = useCallback(async (request: P4FileTypeRequest, fingerprint: string) => {
-    const current = sessionRef.current;
-    if (!current) throw new Error(t("p4-operations.connectionRequired"));
-    const release = lockMutation(current, t("p4.properties.changing"));
-    if (!release) throw new Error(t("p4-operations.workspaceBusy"));
-    const id = beginActivity(t("p4.properties.changing"), undefined, undefined, current.tabId);
-    try {
-      await guard(current.connection, () => p4Api.changeFileTypes(current.connection, request, fingerprint));
-      toast.success(t("p4.properties.changed"));
-    } finally {
-      await reloadPending(current).catch(report);
-      if (activeTabRef.current.id === current.tabId) bumpFiles();
-      endActivity(id); release();
-    }
-  }, [guard, lockMutation, beginActivity, endActivity, reloadPending, report, bumpFiles]);
 
   const renameFile = useCallback(async (source: string, destination: string) => {
     const current = sessionRef.current;
@@ -1661,8 +1635,6 @@ export function P4Provider({ children }: { children: ReactNode }) {
       createChange,
       deleteChange,
       renameFile,
-      fileProperties,
-      changeFileTypes,
       listShelves,
       shelfDetail,
       shelfDiff,
@@ -1743,8 +1715,6 @@ export function P4Provider({ children }: { children: ReactNode }) {
       createChange,
       deleteChange,
       renameFile,
-      fileProperties,
-      changeFileTypes,
       listShelves,
       shelfDetail,
       shelfDiff,
