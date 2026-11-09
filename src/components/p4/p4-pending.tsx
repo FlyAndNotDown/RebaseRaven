@@ -31,6 +31,7 @@ import { changeSummary, depotBase, p4ActionStatus } from "@/lib/p4";
 import { HoverTip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useP4 } from "@/state/p4-context";
+import { useP4PendingExpansion } from "@/state/use-p4-pending-expansion";
 import { pendingChangeDescription } from "@/state/p4-session";
 import type { P4Changelist } from "@/types/p4";
 import { t, useTranslation } from "@/i18n";
@@ -44,8 +45,7 @@ export function P4Pending() {
   const [changeDialog, setChangeDialog] = useState<ChangeDialogRequest | null>(null);
   const [deletingChange, setDeletingChange] = useState<string | null>(null);
   const [deleteFailed, setDeleteFailed] = useState(false);
-  const [expanded, setExpanded] = useState<Set<string> | null>(null);
-  const [shelvedOpen, setShelvedOpen] = useState<Set<string>>(() => new Set());
+  const {openChanges, shelvedOpen, setExpanded, setShelvedOpen} = useP4PendingExpansion(p4.connection?.root ?? "", p4.selectedChange);
   const [revertRequest, setRevertRequest] = useState<RevertRequest | null>(null);
   const [deletingShelf, setDeletingShelf] = useState(false);
   const [resolving, setResolving] = useState<{ change: string; path: string } | null>(null);
@@ -58,7 +58,6 @@ export function P4Pending() {
   const pointerDrag = useRef<(() => void) | null>(null);
   const currentResolve = resolving ?? p4.resolveRequest;
   const resolvingPath = currentResolve?.change === p4.selectedChange ? currentResolve.path : null;
-  const openChanges = expanded ?? new Set(p4.selectedChange ? [p4.selectedChange] : []);
   const changeToDelete = p4.pending.find((change) => change.id === deletingChange);
   const canDeleteChange = changeToDelete != null && !changeToDelete.shelved && !changeToDelete.stream && !changeToDelete.shelvedStream && changeToDelete.files.length === 0;
   const dialogChange = changeDialog ? p4.pending.find((change) => change.id === changeDialog.id) : null;

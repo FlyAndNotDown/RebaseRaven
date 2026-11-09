@@ -139,6 +139,8 @@ interface GitContextValue {
   commitsLoading: boolean;
   historyRevs: string[];
   historyExpanded: string[] | null;
+  p4PendingExpanded: Record<string, string[]>;
+  setP4PendingExpanded: (path: string, update: (current: string[] | undefined) => string[]) => void;
   view: View;
   changeSelection: ChangeSelection | null;
   historySelection: HistorySelection | null;
@@ -367,6 +369,8 @@ export function GitProvider({ children }: { children: ReactNode }) {
   const openingPathsRef = useRef(new Set<string>());
   const historyRevsMapRef = useRef<Record<string, string[]>>({});
   const historyExpandedMapRef = useRef<Record<string, string[]>>({});
+  const p4PendingExpandedRef = useRef<Record<string, string[]>>({});
+  const [p4PendingExpanded, setP4PendingExpandedState] = useState<Record<string, string[]>>({});
   // Per tab, so a load in one repository cannot cancel a load in another.
   const historyLoadGen = useRef<GenMap>({});
   const compareLoadGen = useRef<GenMap>({});
@@ -513,7 +517,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
     }
     historyRevsMapRef.current = historyRevs;
     historyExpandedMapRef.current = historyExpanded;
-    void gitApi.saveSession({ openPaths, openRepos, active, historyRevs, historyExpanded }).catch(() => undefined);
+    void gitApi.saveSession({ openPaths, openRepos, active, historyRevs, historyExpanded, p4PendingExpanded:p4PendingExpandedRef.current }).catch(() => undefined);
   }, []);
 
   const restoreSession = useCallback((session: AppSession, recentsList: RecentRepo[]) => {
@@ -524,6 +528,8 @@ export function GitProvider({ children }: { children: ReactNode }) {
     const historyExpandedMap = session.historyExpanded ?? {};
     historyRevsMapRef.current = historyRevsMap;
     historyExpandedMapRef.current = historyExpandedMap;
+    p4PendingExpandedRef.current = session.p4PendingExpanded ?? {};
+    setP4PendingExpandedState(p4PendingExpandedRef.current);
 
     const entries =
       session.openRepos && session.openRepos.length > 0
@@ -1131,6 +1137,13 @@ export function GitProvider({ children }: { children: ReactNode }) {
     },
     [patchSession, persistSession],
   );
+
+  const setP4PendingExpanded = useCallback((path: string, update: (current: string[] | undefined) => string[]) => {
+    const next = [...new Set(update(p4PendingExpandedRef.current[path]))];
+    p4PendingExpandedRef.current = {...p4PendingExpandedRef.current, [path]:next};
+    setP4PendingExpandedState(p4PendingExpandedRef.current);
+    persistSession(tabsRef.current, activeTabIdRef.current);
+  }, [persistSession]);
 
   const stashPatchFor = useCallback((tabId: string, stashes: StashInfo[]): Partial<RepoSession> => {
     const selection = sessionsRef.current[tabId]?.stashSelection;
@@ -3085,6 +3098,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       commitsLoading: session?.commitsLoading ?? false,
       historyRevs: session?.historyRevs ?? NO_REVS,
       historyExpanded: session?.historyExpanded ?? null,
+      p4PendingExpanded,
       view: session?.view ?? "changes",
       changeSelection: session?.changeSelection ?? null,
       historySelection: session?.historySelection ?? null,
@@ -3107,7 +3121,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       loading,
       publishPrompt,
     }),
-    [activeTab, activeTabId, gitMissing, kindPrompt, loading, openPanel, prefs, prefsReady, publishPrompt, recents, session, tabs],
+    [activeTab, activeTabId, gitMissing, kindPrompt, loading, openPanel, prefs, prefsReady, publishPrompt, recents, session, tabs, p4PendingExpanded],
   );
 
   // Every action reads refs rather than render state, so this object keeps its
@@ -3146,6 +3160,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       loadMoreCommits,
       setHistoryRevs,
       setHistoryExpanded,
+      setP4PendingExpanded,
       forgetRecent,
       refreshRecents,
       closeRepo,
@@ -3251,6 +3266,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       loadMoreCommits,
       setHistoryRevs,
       setHistoryExpanded,
+      setP4PendingExpanded,
       forgetRecent,
       refreshRecents,
       closeRepo,

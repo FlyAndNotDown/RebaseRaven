@@ -40,6 +40,8 @@ pub struct AppSession {
     pub history_revs: HashMap<String, Vec<String>>,
     #[serde(default)]
     pub history_expanded: HashMap<String, Vec<String>>,
+    #[serde(default)]
+    pub p4_pending_expanded: HashMap<String, Vec<String>>,
 }
 
 impl Default for AppSession {
@@ -50,6 +52,7 @@ impl Default for AppSession {
             active: "welcome".to_string(),
             history_revs: HashMap::new(),
             history_expanded: HashMap::new(),
+            p4_pending_expanded: HashMap::new(),
         }
     }
 }
@@ -81,6 +84,7 @@ pub fn load_session(app: &AppHandle) -> AppResult<AppSession> {
     }
     session.history_revs = normalize_path_lists(session.history_revs);
     session.history_expanded = normalize_path_lists(session.history_expanded);
+    session.p4_pending_expanded = normalize_path_lists(session.p4_pending_expanded);
     Ok(session)
 }
 
@@ -143,6 +147,7 @@ pub fn save_session(app: &AppHandle, mut session: AppSession) -> AppResult<AppSe
     }
     session.history_revs = normalize_path_lists(session.history_revs);
     session.history_expanded = normalize_path_lists(session.history_expanded);
+    session.p4_pending_expanded = normalize_path_lists(session.p4_pending_expanded);
     let path = session_path(app)?;
     crate::fsutil::write_atomic(
         &path,

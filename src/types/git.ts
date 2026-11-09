@@ -496,6 +496,7 @@ export interface AppSession {
   active: string;
   historyRevs?: Record<string, string[]>;
   historyExpanded?: Record<string, string[]>;
+  p4PendingExpanded?: Record<string, string[]>;
 }
 
 export interface SshKeyInfo {
