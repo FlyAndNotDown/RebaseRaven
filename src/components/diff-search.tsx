@@ -25,6 +25,10 @@ interface SearchState {
 const SearchContext = createContext<SearchState | null>(null);
 export const useDiffSearch = () => useContext(SearchContext);
 
+function visibleSearchTarget(node: HTMLElement) {
+  return node.getClientRects().length > 0 && !node.closest('[inert], [aria-hidden="true"]') && getComputedStyle(node).visibility !== "hidden";
+}
+
 export function DiffSearchScope({ lines, children, enabled = true, className, onOpen }: {
   lines: string[];
   children: ReactNode;
@@ -68,10 +72,10 @@ export function DiffSearchScope({ lines, children, enabled = true, className, on
       const next = open && event.key === "F3" && !event.ctrlKey && !event.metaKey;
       if (!find && !next) return;
       const node = root.current;
-      if (!node || !node.getClientRects().length) return;
-      const dialog = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).filter(item => item.getClientRects().length).at(-1);
+      if (!node || !visibleSearchTarget(node)) return;
+      const dialog = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).filter(visibleSearchTarget).at(-1);
       if (dialog && !dialog.contains(node)) return;
-      const scopes = Array.from((dialog ?? document).querySelectorAll<HTMLElement>("[data-diff-search]")).filter(item => item.getClientRects().length);
+      const scopes = Array.from((dialog ?? document).querySelectorAll<HTMLElement>("[data-diff-search]")).filter(visibleSearchTarget);
       const focused = event.target instanceof Element ? event.target.closest("[data-diff-search]") : null;
       if ((focused ?? scopes.at(-1)) !== node) return;
       event.preventDefault();

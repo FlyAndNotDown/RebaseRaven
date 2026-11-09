@@ -50,3 +50,10 @@ it("routes find to the foremost dialog and leaves unrelated dialogs alone", asyn
   expect((await key(document.body,"f",{ctrlKey:true})).defaultPrevented).toBe(false);
   expect(document.querySelector('[role="search"]')).toBeNull();
 });
+
+it("ignores retained inactive workspaces even when they still have layout rectangles", async () => {
+  await act(async () => root.render(<TooltipProvider><div data-active>{scope()}</div><div inert aria-hidden="true" style={{opacity:0}}>{scope()}</div></TooltipProvider>));
+  await key(document.body,"f",{ctrlKey:true});
+  expect(document.querySelector('[data-active] input')).not.toBeNull();
+  expect(document.querySelector('[inert] input')).toBeNull();
+});
