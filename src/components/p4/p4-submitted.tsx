@@ -322,7 +322,7 @@ export function P4Submitted() {
               )
             ) : (
               <>
-                {changes.map((change) => {
+                {changes.map((change, index) => {
                   const active = change.id === p4.selectedSubmitted;
                   return (
                     <ContextMenu key={change.id}>
@@ -335,7 +335,7 @@ export function P4Submitted() {
                           )}
                           onClick={() => void p4.selectSubmitted(change.id)}
                         >
-                          <RevisionDot />
+                          <RevisionDot before={index > 0} after={index < changes.length - 1 || hasMore} extend={6} />
                           <ChangeBadge id={change.id} />
                           <span className="min-w-0 flex-1 truncate text-xs">
                             {changeSummary(change.description) || t("p4.noDescription")}

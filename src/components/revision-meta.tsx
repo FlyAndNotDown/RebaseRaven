@@ -3,13 +3,12 @@ import { HoverTip } from "@/components/ui/tooltip";
 import { formatAbsoluteTime, formatExactTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-export function RevisionDot({ className }: { className?: string }) {
-  return (
-    <span
-      aria-hidden
-      className={cn("size-[9px] shrink-0 rounded-full border-[1.5px] border-muted-foreground/80", className)}
-    />
-  );
+export function RevisionDot({ before = true, after = true, extend = 0 }: { before?: boolean; after?: boolean; extend?: number }) {
+  return <span aria-hidden className="relative w-4 shrink-0 self-stretch text-[var(--graph-1)]">
+    {before ? <span className="absolute left-1/2 w-[2px] -translate-x-1/2 bg-current" style={{top:-extend, bottom:"50%"}} /> : null}
+    {after ? <span className="absolute left-1/2 w-[2px] -translate-x-1/2 bg-current" style={{top:"50%", bottom:-extend}} /> : null}
+    <span className="absolute top-1/2 left-1/2 size-2 -translate-1/2 rounded-full bg-current" />
+  </span>;
 }
 
 export function AuthorName({

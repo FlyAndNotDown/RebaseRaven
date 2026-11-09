@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRightIcon, CheckIcon, ChevronDownIcon, ExternalLinkIcon, LoaderCircleIcon } from "lucide-react";
+import { ArrowDownToLineIcon, ArrowUpFromLineIcon, DownloadIcon, ArrowRightIcon, CheckIcon, ChevronDownIcon, ExternalLinkIcon, LoaderCircleIcon } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { AuthorName, ExactTime, RevisionDot } from "@/components/revision-meta";
 import { ChangeBadge } from "@/components/p4/change-badge";
@@ -107,13 +107,13 @@ export function P4FileHistory({ path }: { path: string }) {
         <div ref={viewportRef} className="min-h-0 flex-1 overflow-auto p-1" onScroll={(event) => { const node = event.currentTarget; if (next && !error && node.scrollTop + node.clientHeight >= node.scrollHeight - 100) void load(next); }}>
           {loading && !revisions ? <HistorySkeleton fill label={t("p4.loadingHistory")} /> : revisions?.length === 0 ? <p className="p-3 text-xs text-muted-foreground">{t("p4.noRevisions")}</p> : <>
             <div aria-hidden style={{ height: before }} />
-            {revisions?.slice(start, end).map((revision) => <ContextMenu key={`${revision.depotPath}#${revision.rev}`}><ContextMenuTrigger asChild>
+            {revisions?.slice(start, end).map((revision, index) => <ContextMenu key={`${revision.depotPath}#${revision.rev}`}><ContextMenuTrigger asChild>
               <button type="button" title={revision.depotPath} className={cn("flex h-8 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted/70", selected?.rev === revision.rev && selected.depotPath === revision.depotPath && "bg-muted")} onClick={(event) => { if (event.shiftKey) edit("base", revisionVersion(revision)); else void showRevision(revision); }}>
-                <RevisionDot /><span className="w-10 shrink-0 font-mono text-xs">#{revision.rev}</span><ChangeBadge id={revision.change} /><span className="min-w-0 flex-1 truncate text-xs">{changeSummary(revision.description) || t("p4.noDescription")}</span><AuthorName vcs="perforce" name={revision.user} /><ExactTime time={revision.time} />
+                <RevisionDot before={start + index > 0} after={start + index < revisions.length - 1 || !!next} /><span className="w-10 shrink-0 font-mono text-xs">#{revision.rev}</span><ChangeBadge id={revision.change} /><span className="min-w-0 flex-1 truncate text-xs">{changeSummary(revision.description) || t("p4.noDescription")}</span><AuthorName vcs="perforce" name={revision.user} /><ExactTime time={revision.time} />
               </button></ContextMenuTrigger><ContextMenuContent>
-                <ContextMenuItem onClick={() => edit("base", revisionVersion(revision))}>{t("p4.history.setBase")}</ContextMenuItem>
-                <ContextMenuItem onClick={() => edit("head", revisionVersion(revision))}>{t("p4.history.setHead")}</ContextMenuItem>
-                <ContextMenuSeparator /><ContextMenuItem onClick={() => setRevisionTarget({path:revision.depotPath,recursive:false,revision:revision.rev})}>{t("p4.getRevision")}</ContextMenuItem>
+                <ContextMenuItem onClick={() => edit("base", revisionVersion(revision))}><ArrowDownToLineIcon />{t("p4.history.setBase")}</ContextMenuItem>
+                <ContextMenuItem onClick={() => edit("head", revisionVersion(revision))}><ArrowUpFromLineIcon />{t("p4.history.setHead")}</ContextMenuItem>
+                <ContextMenuSeparator /><ContextMenuItem onClick={() => setRevisionTarget({path:revision.depotPath,recursive:false,revision:revision.rev})}><DownloadIcon />{t("p4.getRevision")}</ContextMenuItem>
                 <ContextMenuSeparator /><ContextMenuItem onClick={() => openChange(revision.change)}><ExternalLinkIcon />{t("p4.history.openChange")}</ContextMenuItem>
               </ContextMenuContent></ContextMenu>)}
             <div aria-hidden style={{ height: after }} />
