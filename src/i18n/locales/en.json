@@ -359,7 +359,7 @@
       "could_not_read_local_diagnostics_try_again": "Could not read local diagnostics. Try again.",
       "export_local_diagnostics": "Export local diagnostics",
       "local_diagnostics": "Local diagnostics",
-      "local_log_contents": "Local logs include commands, exit status, and short output excerpts. Review the export for project details before sharing.",
+      "local_log_contents": "Local logs record Git and Perforce commands, working directories, timing, exit status, and output. Large outputs are truncated. Export requires confirmation.",
       "retention": "Keeps up to {{days}} days within {{maximum}}.",
       "about_local_diagnostics": "About local diagnostics",
       "refresh_diagnostic_storage_usage": "Refresh storage usage",
@@ -383,7 +383,10 @@
       "could_not_open_issues_try_again": "Could not open Issues. Try again.",
       "zipArchive": "ZIP archive",
       "storageUsage_one": "{{used}} / {{maximum}} · {{count}} log file",
-      "storageUsage_other": "{{used}} / {{maximum}} · {{count}} log files"
+      "storageUsage_other": "{{used}} / {{maximum}} · {{count}} log files",
+      "exportConfirmationTitle": "Export command logs?",
+      "exportConfirmationDescription": "Logs may contain local paths, repository and server addresses, command arguments, file contents, and other project information. The ZIP is not encrypted. Export only if you are comfortable allowing its recipients, including developers, to read these records.",
+      "exportConfirm": "Continue export"
     },
     "avatarSettings": {
       "built_in": "Built-in",

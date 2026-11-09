@@ -239,7 +239,13 @@ pub(super) fn snapshot_mutex(root: &Path) -> Arc<Mutex<()>> {
 pub fn snapshot(repo: &mut Repository) -> AppResult<WorkspaceSnapshot> {
     let root = workdir(repo)?.to_path_buf();
     let gate = snapshot_mutex(&root);
+    let waited = std::time::Instant::now();
     let _guard = gate.lock().unwrap_or_else(|err| err.into_inner());
+    crate::diagnostics::record_slow_or_failed(
+        crate::diagnostics::Code::GitSnapshotWait,
+        waited,
+        &Ok::<(), AppError>(()),
+    );
     let status_root = root.clone();
     let status_task = thread::spawn(move || status_from_git(&status_root));
     let built: AppResult<_> = (|| {

@@ -69,6 +69,22 @@ where
     result
 }
 
+async fn with_repo_diagnostic<T, F>(path: String, code: diagnostics::Code, f: F) -> AppResult<T>
+where
+    T: Send + 'static,
+    F: FnOnce(&mut git::Repository) -> AppResult<T> + Send + 'static,
+{
+    let started = std::time::Instant::now();
+    diagnostics::record(code, diagnostics::Status::Started, None);
+    let result = blocking(move || with_repo(&path, f)).await;
+    diagnostics::record(
+        code,
+        diagnostics::Status::of(&result),
+        Some(started.elapsed()),
+    );
+    result
+}
+
 #[tauri::command]
 async fn initialize_repository(path: String, branch: String) -> AppResult<String> {
     blocking(move || git::initialize_repository(&path, &branch)).await
@@ -184,18 +200,30 @@ pub fn askpass_client() -> Option<i32> {
 
 #[tauri::command]
 async fn open_repository(path: String, app: AppHandle) -> AppResult<WorkspaceSnapshot> {
-    blocking(move || {
+    let started = std::time::Instant::now();
+    diagnostics::record(
+        diagnostics::Code::GitOpen,
+        diagnostics::Status::Started,
+        None,
+    );
+    let result = blocking(move || {
         let mut repo = git::discover(&path)?;
         let snapshot = git::snapshot(&mut repo)?;
         recents::remember_repo(&app, &snapshot.repo.path, &snapshot.repo.name, "git")?;
         Ok(snapshot)
     })
-    .await
+    .await;
+    diagnostics::record(
+        diagnostics::Code::GitOpen,
+        diagnostics::Status::of(&result),
+        Some(started.elapsed()),
+    );
+    result
 }
 
 #[tauri::command]
 async fn refresh_workspace(repo_path: String) -> AppResult<WorkspaceSnapshot> {
-    with_repo_async(repo_path, git::snapshot).await
+    with_repo_diagnostic(repo_path, diagnostics::Code::GitSnapshot, git::snapshot).await
 }
 
 #[tauri::command]
@@ -206,7 +234,7 @@ async fn get_commits(
     query: Option<String>,
     rev: Option<Vec<String>>,
 ) -> AppResult<Vec<CommitSummary>> {
-    with_repo_async(repo_path, move |repo| {
+    with_repo_diagnostic(repo_path, diagnostics::Code::GitHistory, move |repo| {
         git::commits(
             repo,
             limit.unwrap_or(80),
@@ -220,7 +248,10 @@ async fn get_commits(
 
 #[tauri::command]
 async fn get_branches(repo_path: String) -> AppResult<BranchList> {
-    with_repo_async(repo_path, move |repo| git::branches(repo, true)).await
+    with_repo_diagnostic(repo_path, diagnostics::Code::GitMetadata, move |repo| {
+        git::branches(repo, true)
+    })
+    .await
 }
 
 #[tauri::command]

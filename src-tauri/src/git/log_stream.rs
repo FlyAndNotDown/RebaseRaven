@@ -1,6 +1,7 @@
 use super::*;
 
-use std::process::{Child, ChildStdout};
+use crate::diagnostics::{LoggedChild, LoggedReader};
+use std::process::ChildStdout;
 use std::time::Instant;
 
 /// A stream nobody has read for this long is closed so its `git log` process
@@ -9,8 +10,8 @@ const STREAM_IDLE: Duration = Duration::from_secs(120);
 
 struct LogStream {
     args: Vec<String>,
-    child: Child,
-    reader: BufReader<ChildStdout>,
+    child: LoggedChild,
+    reader: BufReader<LoggedReader<ChildStdout>>,
     position: usize,
     used: Instant,
 }
@@ -129,6 +130,7 @@ pub(super) fn log_page(
         page.push(b'\n');
         count += 1;
     }
+    stream.child.checkpoint();
     stream.position += count;
     stream.used = Instant::now();
     if ended {

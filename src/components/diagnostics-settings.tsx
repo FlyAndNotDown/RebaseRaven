@@ -18,6 +18,7 @@ export function DiagnosticsSettings() {
   const [summary, setSummary] = useState<DiagnosticSummary | null>(null);
   const [action, setAction] = useState<Action | null>(null);
   const [feedback, setFeedback] = useState<Partial<Record<Action, Feedback>>>({});
+  const [exportOpen, setExportOpen] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
   const [revision, setRevision] = useState(0);
   const [loadedRevision, setLoadedRevision] = useState<number | null>(null);
@@ -166,9 +167,21 @@ export function DiagnosticsSettings() {
         {summary ? t("desktop.diagnosticsSettings.storageUsage", { used: formatBytes(summary.totalBytes), maximum: formatBytes(summary.maxBytes), count: summary.fileCount })
           : refreshing ? t("desktop.diagnosticsSettings.reading_diagnostic_storage") : t("desktop.diagnosticsSettings.storage_usage_unavailable")}
       </p>
+      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("desktop.diagnosticsSettings.exportConfirmationTitle")}</DialogTitle>
+            <DialogDescription>{t("desktop.diagnosticsSettings.exportConfirmationDescription")}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">{t("common.cancel")}</Button></DialogClose>
+            <Button onClick={() => {setExportOpen(false); void run("export");}}>{t("desktop.diagnosticsSettings.exportConfirm")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <div className="flex flex-wrap gap-2">
         <HoverTip label={actionTip("export", t("desktop.diagnosticsSettings.review_export_before_sharing"))}>
-          <Button size="sm" disabled={action !== null || refreshing} aria-busy={action === "export"} aria-describedby={`${titleId}-export-feedback`} onClick={() => void run("export")}>
+          <Button size="sm" disabled={action !== null || refreshing} aria-busy={action === "export"} aria-describedby={`${titleId}-export-feedback`} onClick={() => setExportOpen(true)}>
             {actionIcon("export", DownloadIcon)}{t("desktop.diagnosticsSettings.export_zip")}
           </Button>
         </HoverTip>

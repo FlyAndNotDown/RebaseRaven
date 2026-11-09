@@ -127,6 +127,21 @@ mod tests {
     }
 
     #[test]
+    fn exports_plain_zip_entries_without_encryption_flags() {
+        let zip = stored_zip(&[("events.log", b"command output\n".to_vec())]).unwrap();
+        assert_eq!(u16::from_le_bytes(zip[6..8].try_into().unwrap()) & 1, 0);
+        let end = zip.len() - 22;
+        let central = u32::from_le_bytes(zip[end + 16..end + 20].try_into().unwrap()) as usize;
+        assert_eq!(
+            u16::from_le_bytes(zip[central + 8..central + 10].try_into().unwrap()) & 1,
+            0
+        );
+        assert!(zip
+            .windows(b"command output".len())
+            .any(|bytes| bytes == b"command output"));
+    }
+
+    #[test]
     fn central_directory_points_to_the_real_local_entries() {
         let output = stored_zip(&[
             ("events.log", b"hello\n".to_vec()),

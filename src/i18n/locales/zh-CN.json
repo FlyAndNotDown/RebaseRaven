@@ -359,7 +359,7 @@
       "could_not_read_local_diagnostics_try_again": "无法读取本地诊断信息，请重试。",
       "export_local_diagnostics": "导出本地诊断信息",
       "local_diagnostics": "本地诊断",
-      "local_log_contents": "本地日志包含命令、退出状态和输出摘录。分享前请检查导出文件中的项目详情。",
+      "local_log_contents": "本地日志记录 Git 和 Perforce 命令、工作目录、耗时、退出状态及输出。过长输出会截断，导出前需要确认。",
       "retention": "最多保留 {{days}} 天，总容量不超过 {{maximum}}。",
       "about_local_diagnostics": "关于本地诊断",
       "refresh_diagnostic_storage_usage": "刷新存储用量",
@@ -383,7 +383,10 @@
       "could_not_open_issues_try_again": "无法打开问题反馈，请重试。",
       "zipArchive": "ZIP 压缩文件",
       "storageUsage_one": "{{used}} / {{maximum}} · {{count}} 个日志文件",
-      "storageUsage_other": "{{used}} / {{maximum}} · {{count}} 个日志文件"
+      "storageUsage_other": "{{used}} / {{maximum}} · {{count}} 个日志文件",
+      "exportConfirmationTitle": "导出命令日志？",
+      "exportConfirmationDescription": "日志可能包含本地路径、仓库与服务器地址、命令参数、文件内容及其它项目信息。ZIP 不加密。继续导出即表示你知晓，文件的接收者（包括开发者）可以查看这些记录。",
+      "exportConfirm": "继续导出"
     },
     "avatarSettings": {
       "built_in": "内置",
