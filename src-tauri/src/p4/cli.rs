@@ -803,6 +803,32 @@ fn stream_once(
     Ok((status, stdout_text, stderr_text))
 }
 
+// Windows CLI runtimes can expand bare wildcards before p4 parses its options.
+// Keep server-side patterns quoted using the C runtime's argument encoding.
+#[cfg(any(windows, test))]
+fn quoted_windows_pattern(value: &str) -> String {
+    let mut quoted = String::from("\"");
+    let mut slashes = 0;
+    for ch in value.chars() {
+        if ch == '\\' {
+            slashes += 1;
+            continue;
+        }
+        quoted.extend(std::iter::repeat_n(
+            '\\',
+            slashes * if ch == '"' { 2 } else { 1 },
+        ));
+        if ch == '"' {
+            quoted.push('\\');
+        }
+        quoted.push(ch);
+        slashes = 0;
+    }
+    quoted.extend(std::iter::repeat_n('\\', slashes * 2));
+    quoted.push('"');
+    quoted
+}
+
 fn prepared(program: PathBuf, env: &P4Env, args: &[&str]) -> Command {
     let mut command = p4_command(program);
     if env.cwd.as_os_str().is_empty() {
@@ -824,7 +850,15 @@ fn prepared(program: PathBuf, env: &P4Env, args: &[&str]) -> Command {
     if !env.charset.is_empty() {
         command.arg("-C").arg(&env.charset);
     }
-    command.args(args);
+    for arg in args {
+        #[cfg(windows)]
+        if arg.contains(['*', '?']) {
+            use std::os::windows::process::CommandExt;
+            command.raw_arg(quoted_windows_pattern(arg));
+            continue;
+        }
+        command.arg(arg);
+    }
     command.env_remove("P4CONFIG");
     command.env_remove("P4PASSWD");
     command
@@ -918,6 +952,64 @@ mod tests {
     };
     use std::path::Path;
     use std::sync::Arc;
+
+    #[test]
+    fn windows_patterns_stay_one_quoted_argument() {
+        use super::quoted_windows_pattern;
+
+        assert_eq!(quoted_windows_pattern("*"), r#""*""#);
+        assert_eq!(quoted_windows_pattern("*release*"), r#""*release*""#);
+        assert_eq!(quoted_windows_pattern("owner?*"), r#""owner?*""#);
+        assert_eq!(
+            quoted_windows_pattern("*release notes*"),
+            r#""*release notes*""#
+        );
+        assert_eq!(quoted_windows_pattern(r#"*a"b*"#), r#""*a\"b*""#);
+        assert_eq!(quoted_windows_pattern(r#"*a\"b*"#), r#""*a\\\"b*""#);
+        assert_eq!(
+            quoted_windows_pattern(r"C:\folder\*\"),
+            r#""C:\folder\*\\""#
+        );
+    }
+
+    #[test]
+    fn prepared_preserves_server_patterns_without_local_expansion() {
+        let env = P4Env {
+            cwd: Default::default(),
+            port: String::new(),
+            user: String::new(),
+            client: String::new(),
+            charset: String::new(),
+        };
+        let command = prepared(
+            "p4.exe".into(),
+            &env,
+            &["-ztag", "branches", "-E", "*", "-u", "owner?*", "-m", "201"],
+        );
+        let args: Vec<_> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy())
+            .collect();
+        #[cfg(windows)]
+        assert_eq!(
+            args,
+            [
+                "-ztag",
+                "branches",
+                "-E",
+                r#""*""#,
+                "-u",
+                r#""owner?*""#,
+                "-m",
+                "201"
+            ]
+        );
+        #[cfg(not(windows))]
+        assert_eq!(
+            args,
+            ["-ztag", "branches", "-E", "*", "-u", "owner?*", "-m", "201"]
+        );
+    }
 
     #[cfg(unix)]
     #[test]
