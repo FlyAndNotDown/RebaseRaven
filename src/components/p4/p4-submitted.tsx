@@ -1,9 +1,8 @@
 import { P4StreamDiffDialog } from "@/components/p4/p4-stream-work";
 import type { P4StreamDiffRequest } from "@/types/p4-stream-specs";
-import { P4ChangeJobsDialog } from "@/components/p4/p4-job-fixes";
 import { t, useTranslation } from "@/i18n";
 import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
-import { GitBranchIcon, ClipboardListIcon, CheckIcon, ChevronDownIcon, DownloadIcon, HistoryIcon } from "lucide-react";
+import { GitBranchIcon, CheckIcon, ChevronDownIcon, DownloadIcon, HistoryIcon } from "lucide-react";
 import { toast } from "sonner";
 import { AuthorAvatar } from "@/components/author-avatar";
 import { AuthorName, ExactTime, RevisionDot } from "@/components/revision-meta";
@@ -65,7 +64,6 @@ export function P4Submitted() {
   useTranslation();
   const p4 = useP4();
   const [streamDiff, setStreamDiff] = useState<P4StreamDiffRequest | null>(null);
-  const [jobsChange, setJobsChange] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
   const [users, setUsers] = useState<string[]>([]);
@@ -392,7 +390,7 @@ export function P4Submitted() {
           </div>
         </div>
         {streamDiff ? <P4StreamDiffDialog target={streamDiff} onClose={() => setStreamDiff(null)} /> : null}
-        {jobsChange ? <P4ChangeJobsDialog change={jobsChange} onClose={() => setJobsChange(null)} /> : null}
+
         {revisionTarget ? <P4GetRevisionDialog target={revisionTarget} onClose={() => setRevisionTarget(null)} /> : null}
       </ResizablePanel>
       <ResizableHandle />
@@ -401,7 +399,7 @@ export function P4Submitted() {
           <ResizablePanel id="p4-submitted-files" defaultSize="32%" minSize="16%">
             <div className="absolute inset-0 flex min-h-0 flex-col">
               <div className="shrink-0 border-b px-3 py-2">
-                <div className="flex min-w-0 items-center gap-2"><div className="min-w-0 flex-1 truncate text-sm">{heading}</div>{meta ? <HoverTip label={t("p4.jobs.linkedJobs")}><Button variant="ghost" size="icon-xs" aria-label={t("p4.jobs.linkedJobs")} disabled={p4.busy} onClick={() => setJobsChange(meta.id)}><ClipboardListIcon /></Button></HoverTip> : null}</div>
+                <div className="flex min-w-0 items-center gap-2"><div className="min-w-0 flex-1 truncate text-sm">{heading}</div></div>
                 {meta ? (
                   <div className="mt-1 flex items-center gap-x-2 text-[11px] text-muted-foreground">
                     <HoverTip label={t("p4.copyUser")}>

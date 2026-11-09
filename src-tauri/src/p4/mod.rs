@@ -6,15 +6,10 @@ pub use client::{save_workspace, workspace_settings, P4WorkspaceEdit, P4Workspac
 mod history;
 mod images;
 mod integration;
-mod jobs;
 pub use history::{annotate, compare_files, P4BlameLine, P4CompareRequest, P4Comparison};
 pub use images::{image_pair, P4ImageSource};
 pub use integration::{
     apply_integration, preview_integration, P4IntegrationPreview, P4IntegrationRequest,
-};
-pub use jobs::{
-    apply_job_fix, delete_job, job_fixes, list_jobs, preview_job_fix, read_job, save_job,
-    P4FixPage, P4FixPreview, P4FixRequest, P4Job, P4JobEdit, P4JobPage,
 };
 mod operations;
 mod parse;

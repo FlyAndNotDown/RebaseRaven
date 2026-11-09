@@ -1,4 +1,3 @@
-import type { P4JobActions } from "@/types/p4-jobs";
 import { t, useTranslation } from "@/i18n";
 import {
   createContext,
@@ -79,7 +78,6 @@ class LoginCancelled extends Error {
 }
 
 interface P4ContextValue {
-  jobs: P4JobActions;
   specs: P4SpecActions;
   streamSpecs: P4StreamSpecActions;
   openIntegration: (initial?: P4IntegrationInitial) => void;
@@ -1584,7 +1582,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
     [lockMutation, beginActivity, endActivity, reconnect, report, retargetRepoTab, setTabMeta],
   );
 
-  const { specs, streamSpecs, jobs } = useMemo<{specs: P4SpecActions; streamSpecs: P4StreamSpecActions; jobs: P4JobActions}>(() => {
+  const { specs, streamSpecs } = useMemo<{specs: P4SpecActions; streamSpecs: P4StreamSpecActions}>(() => {
     async function read<T>(action: (connection: P4Connection) => Promise<T>): Promise<T> {
       const owner = sessionRef.current;
       if (!owner) throw new Error(t("p4-operations.connectionRequired"));
@@ -1607,15 +1605,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
         endActivity(activity); release();
       }
     }
-    return { jobs: {
-      list: query => read(c => p4Api.listJobs(c, query)),
-      read: job => read(c => p4Api.readJob(c, job)),
-      save: (edit, fingerprint) => write(c => p4Api.saveJob(c, edit, fingerprint), false, t("p4.jobs.updating")),
-      remove: (job, fingerprint) => write(c => p4Api.deleteJob(c, job, fingerprint), false, t("p4.jobs.updating")),
-      fixes: (job, change) => read(c => p4Api.jobFixes(c, job, change)),
-      previewFix: request => read(c => p4Api.previewJobFix(c, request)),
-      applyFix: (request, fingerprint) => write(c => p4Api.applyJobFix(c, request, fingerprint), true, t("p4.jobs.updating")),
-    }, specs: {
+    return { specs: {
       list: (kind, query, owner) => read(c => p4Api.listSpecs(c, kind, query, owner)),
       read: (kind, name) => read(c => p4Api.readSpec(c, kind, name)),
       files: name => read(c => p4Api.labelFiles(c, name)),
@@ -1639,7 +1629,6 @@ export function P4Provider({ children }: { children: ReactNode }) {
     () => ({
       specs,
       streamSpecs,
-      jobs,
       openIntegration,
       previewIntegration,
       applyIntegration,
@@ -1748,7 +1737,6 @@ export function P4Provider({ children }: { children: ReactNode }) {
     [
       specs,
       streamSpecs,
-      jobs,
       openIntegration,
       previewIntegration,
       applyIntegration,
