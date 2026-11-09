@@ -75,7 +75,7 @@ export function P4ManualResolve({ path, onClose, onBack, external = false }: { p
           <DialogDescription className="truncate font-mono text-xs" title={path}>{path}</DialogDescription>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border">
-          {view ? <ConflictTextEditor key={view.fingerprint} initialText={initial} current={t("p4.manual.yours")} incoming={t("p4.manual.theirs")} onSave={save} onExternal={runExternal} disabled={busy || workspaceBusy} saveLabel={t("p4.manual.apply")} onTextChange={setEdited} displayError={displayError} />
+          {view ? <ConflictTextEditor path={path} key={view.fingerprint} initialText={initial} current={t("p4.manual.yours")} incoming={t("p4.manual.theirs")} onSave={save} onExternal={runExternal} disabled={busy || workspaceBusy} saveLabel={t("p4.manual.apply")} onTextChange={setEdited} displayError={displayError} />
             : !error ? <div role="status" className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"><LoaderCircleIcon className="size-4 animate-spin" />{t(busy ? "p4.manual.externalWaiting" : "p4.loadingResolve")}</div> : <p role="alert" className="p-4 text-sm text-destructive">{error}</p>}
         </div>
         <p className="shrink-0 text-xs text-muted-foreground">{t("p4.manual.hint")}</p>

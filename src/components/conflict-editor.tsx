@@ -1,3 +1,4 @@
+import { SyntaxText, SyntaxTextarea } from "@/components/syntax-text";
 import { DiffSearchBar, DiffSearchButton, DiffSearchScope, DiffSearchSelection } from "@/components/diff-search";
 import { formatNumber, t, useTranslation } from "@/i18n";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
@@ -39,12 +40,13 @@ export function ConflictEditor({ repoPath, path, rebasing }: { repoPath: string;
     <Button size="xs" variant="outline" onClick={() => void resolveConflict(path, "theirs")}>{t("git-files.useSide", { side: incoming })}</Button>
     <Button size="xs" variant="outline" onClick={() => void runMergetool(path)}>{t("git-files.openMergeTool")}</Button>
   </div>;
-  return <ConflictTextEditor key={repoPath + path} initialText={view.text} current={current} incoming={incoming}
+  return <ConflictTextEditor key={repoPath + path} path={path} initialText={view.text} current={current} incoming={incoming}
     onSave={async (text) => { await saveConflict(path, view.text.includes("\r\n") ? text.replace(/\n/g, "\r\n") : text); }}
     onExternal={async () => { await runMergetool(path); }} />;
 }
 
-export function ConflictTextEditor({ initialText, current, incoming, onSave, onExternal, disabled = false, saveLabel, onTextChange, displayError = errorMessage }: {
+export function ConflictTextEditor({ path = "", initialText, current, incoming, onSave, onExternal, disabled = false, saveLabel, onTextChange, displayError = errorMessage }: {
+  path?: string;
   initialText: string;
   current: string;
   incoming: string;
@@ -235,11 +237,12 @@ export function ConflictTextEditor({ initialText, current, incoming, onSave, onE
       <DiffSearchBar />
       <DiffSearchSelection editor={editor} text={text} />
       {error ? <p role="alert" className="shrink-0 px-3 py-2 text-xs text-destructive">{error}</p> : null}
-      {whole ? <textarea ref={editor} aria-label={t("git-files.fullEditing")} value={text} disabled={blocked} onChange={(event) => edit(event.target.value)} spellCheck={false} wrap="off" className="min-h-0 flex-1 resize-none p-3 font-mono text-xs leading-5 outline-none" /> : <div className="min-h-0 flex-1 overflow-auto">
+      {whole ? <SyntaxTextarea path={path} ref={editor} aria-label={t("git-files.fullEditing")} value={text} disabled={blocked} onChange={(event) => edit(event.target.value)} spellCheck={false} wrap="off" className="min-h-0 flex-1" inputClassName="h-full w-full resize-none p-3 font-mono text-xs leading-5 outline-none [tab-size:4]" /> : <div className="min-h-0 flex-1 overflow-auto">
         <div className="min-w-max py-2">
           {segments.map((segment) =>
             segment.kind === "text" ? (
               <FitText
+                path={path}
                 disabled={blocked}
                 key={`text-${segment.start}`}
                 value={shownText(segment.text, segment.end < text.length)}
@@ -275,7 +278,8 @@ export function ConflictTextEditor({ initialText, current, incoming, onSave, onE
                 </div>
                 <MarkerLine>{t("git-files.currentMarker", { side: current })}</MarkerLine>
                 <FitText
-                disabled={blocked}
+                  path={path}
+                  disabled={blocked}
                   value={visibleBody(segment.hunk.ours)}
                   className="bg-diff-del-bg text-diff-del"
                   onChange={(value) => edit(setConflictSide(textRef.current, segment.index, "ours", value))}
@@ -284,13 +288,14 @@ export function ConflictTextEditor({ initialText, current, incoming, onSave, onE
                   <details>
                     <summary className="cursor-pointer bg-muted/40 px-3 py-1 text-xs text-muted-foreground">{t("git-files.commonBase")}</summary>
                     <pre className="bg-muted/30 px-3 font-mono text-[12px] leading-5 whitespace-pre text-muted-foreground">
-                      {visibleBody(segment.hunk.base) || " "}
+                      <SyntaxText path={path} text={visibleBody(segment.hunk.base) || " "} />
                     </pre>
                   </details>
                 ) : null}
                 <MarkerLine>=======</MarkerLine>
                 <FitText
-                disabled={blocked}
+                  path={path}
+                  disabled={blocked}
                   value={visibleBody(segment.hunk.theirs)}
                   className="bg-diff-add-bg text-diff-add"
                   onChange={(value) => edit(setConflictSide(textRef.current, segment.index, "theirs", value))}
@@ -343,11 +348,13 @@ function MarkerLine({ children }: { children: string }) {
 }
 
 function FitText({
+  path,
   value,
   onChange,
   className,
   disabled,
 }: {
+  path: string;
   value: string;
   onChange: (value: string) => void;
   className?: string;
@@ -363,7 +370,8 @@ function FitText({
     if (el.scrollWidth > el.clientWidth) el.style.width = `${el.scrollWidth}px`;
   }, [value]);
   return (
-    <textarea
+    <SyntaxTextarea
+      path={path}
       ref={ref}
       value={value}
       disabled={disabled}
@@ -377,10 +385,8 @@ function FitText({
         if (event.target.value === value) return;
         onChange(event.target.value);
       }}
-      className={cn(
-        "block w-full resize-none overflow-hidden bg-transparent px-3 font-mono text-[12px] leading-5 whitespace-pre outline-none",
-        className,
-      )}
+      className={className}
+      inputClassName="block w-full resize-none overflow-hidden bg-transparent px-3 font-mono text-[12px] leading-5 whitespace-pre outline-none [tab-size:4]"
     />
   );
 }

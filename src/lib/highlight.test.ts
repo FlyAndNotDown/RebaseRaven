@@ -43,3 +43,17 @@ describe("highlightText", () => {
     expect(highlightText(["x".repeat(5000)], "cpp")).toBeNull();
   });
 });
+
+it.each([
+  ["ignore", "# generated files"], ["bash", "export MODE=production"],
+  ["php", "<?php echo 42;"], ["dart", "class App {}"],
+  ["scala", "val count = 42"], ["diff", "+ added line"],
+  ["markdown", "# Heading"], ["yaml", "enabled: true"],
+])("supports the %s grammar with ranges that preserve the original text", (language, text) => {
+  const ranges = highlightText([text], language);
+  expect(ranges?.[0].length).toBeGreaterThan(0);
+  for (const range of ranges?.[0] ?? []) {
+    expect(range.start).toBeGreaterThanOrEqual(0);
+    expect(range.end).toBeLessThanOrEqual(text.length);
+  }
+});

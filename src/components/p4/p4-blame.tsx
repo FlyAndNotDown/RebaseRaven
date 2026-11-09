@@ -1,3 +1,5 @@
+import { SyntaxLine } from "@/components/syntax-text";
+import { useFileSyntax } from "@/lib/use-file-syntax";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "@/i18n";
 import { Button } from "@/components/ui/button";
@@ -27,6 +29,8 @@ export function P4Blame({ revision, openChange }: { revision: P4Revision; openCh
   }, [annotate, key, revision.depotPath, revision.rev, attempt]);
   const current = result?.key === key ? result : null;
   const lines = current?.lines;
+  const texts = useMemo(() => lines?.map((line) => line.content) ?? null, [lines]);
+  const syntax = useFileSyntax(revision.depotPath, texts);
   const widest = useMemo(() => lines?.reduce((width, line) => Math.max(width, textColumns(line.content)), 0) ?? 0, [lines]);
   const { viewportRef, start, end, before, after } = useWindowedRows(lines?.length ?? 0, 24);
   return <div className="relative flex min-h-0 flex-1 flex-col">
@@ -40,7 +44,7 @@ export function P4Blame({ revision, openChange }: { revision: P4Revision; openCh
             <div className="sticky left-0 flex h-full w-64 shrink-0 items-center gap-2 border-r bg-background px-2">
               {group ? <><HoverTip label={`${line.user} · ${line.time}`}><button type="button" className="shrink-0 rounded hover:ring-1 hover:ring-ring" aria-label={t("p4.history.openChange") + ` #${line.change}`} onClick={() => openChange(line.change)}><ChangeBadge id={line.change} /></button></HoverTip><span className="min-w-0 truncate"><AuthorName vcs="perforce" name={line.user} /></span></> : null}
             </div>
-            <span className="w-12 shrink-0 px-2 text-right font-mono text-[11px] text-muted-foreground tabular-nums">{line.line}</span><code className="whitespace-pre px-2 font-mono text-xs [tab-size:4]">{line.content || " "}</code>
+            <span className="w-12 shrink-0 px-2 text-right font-mono text-[11px] text-muted-foreground tabular-nums">{line.line}</span><code className="whitespace-pre px-2 font-mono text-xs [tab-size:4]"><SyntaxLine text={line.content || " "} ranges={syntax?.[start + offset]} /></code>
           </div>;
         })}
         <div aria-hidden style={{ height: after }} />

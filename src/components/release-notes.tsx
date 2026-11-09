@@ -1,3 +1,4 @@
+import { SyntaxText } from "@/components/syntax-text";
 import { memo, useMemo, type MouseEvent } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -26,7 +27,7 @@ export const ReleaseNotes = memo(function ReleaseNotes({ notes, label, onOpenLin
     ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5 marker:text-muted-foreground">{children}</ul>,
     ol: ({ children, start }) => <ol start={start} className="my-2 list-decimal space-y-1 pl-5 marker:text-muted-foreground">{children}</ol>,
     li: ({ children }) => <li className="[&>p]:my-1">{children}</li>,
-    code: ({ children }) => <code className="rounded border bg-background/60 px-1 py-px font-mono text-xs">{children}</code>,
+    code: ({ children, className }) => <code className="rounded border bg-background/60 px-1 py-px font-mono text-xs">{className?.startsWith("language-") && typeof children === "string" ? <SyntaxText text={children} path={`snippet.${className.slice(9)}`} /> : children}</code>,
     pre: ({ children }) => <pre tabIndex={0} className="my-3 max-w-full overflow-x-auto rounded-md border bg-background/60 p-3 font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring/50 [&>code]:border-0 [&>code]:bg-transparent [&>code]:p-0">{children}</pre>,
     blockquote: ({ children }) => <blockquote className="my-3 border-l-2 pl-3 text-muted-foreground">{children}</blockquote>,
     hr: () => <hr className="my-4" />,

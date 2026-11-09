@@ -44,6 +44,28 @@ export function styleSpans(spans: TextSpan[], ranges: TokenRange[] | null | unde
 }
 
 const LANGUAGE_BY_EXTENSION: Record<string, string> = {
+  javascript: "javascript",
+  typescript: "typescript",
+  python: "python",
+  rust: "rust",
+  csharp: "csharp",
+  markup: "markup",
+  docker: "docker",
+  powershell: "powershell",
+  php: "php",
+  dart: "dart",
+  scala: "scala",
+  m: "objectivec",
+  mm: "objectivec",
+  r: "r",
+  pl: "perl",
+  patch: "diff",
+  diff: "diff",
+  gitignore: "ignore",
+  dockerignore: "ignore",
+  p4ignore: "ignore",
+  env: "bash",
+  conf: "ini",
   c: "c",
   h: "cpp",
   cc: "cpp",
@@ -73,6 +95,7 @@ const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   uplugin: "json",
   rs: "rust",
   py: "python",
+  pyi: "python",
   go: "go",
   rb: "ruby",
   lua: "lua",
@@ -84,6 +107,7 @@ const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   xml: "markup",
   svg: "markup",
   vue: "markup",
+  svelte: "markup",
   xaml: "markup",
   csproj: "markup",
   vcxproj: "markup",
@@ -96,6 +120,7 @@ const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   toml: "toml",
   ini: "ini",
   cfg: "ini",
+  properties: "ini",
   sh: "bash",
   bash: "bash",
   zsh: "bash",
@@ -121,6 +146,13 @@ const LANGUAGE_BY_NAME: Record<string, string> = {
   gnumakefile: "makefile",
   "cmakelists.txt": "cmake",
   ".gitignore": "ignore",
+  ".gitattributes": "git",
+  ".dockerignore": "ignore",
+  ".p4ignore": "ignore",
+  ".editorconfig": "ini",
+  ".gitconfig": "ini",
+  ".p4config": "ini",
+  "nginx.conf": "nginx",
 };
 
 /**
@@ -135,8 +167,9 @@ export function hunkLabel(content: string): string {
 
 /** The Prism language for a path, or null when it has none worth highlighting. */
 export function languageFor(path: string): string | null {
-  const name = (path.split("/").pop() ?? path).toLowerCase();
-  if (LANGUAGE_BY_NAME[name]) return LANGUAGE_BY_NAME[name] === "ignore" ? null : LANGUAGE_BY_NAME[name];
+  const name = (path.replace(/\\/g, "/").split("/").pop() ?? path).replace(/(?:#(?:\d+|head|have|none)|@=?\d+)$/, "").toLowerCase();
+  if (LANGUAGE_BY_NAME[name]) return LANGUAGE_BY_NAME[name];
+  if (name === ".env" || name.startsWith(".env.")) return "bash";
   const dot = name.lastIndexOf(".");
   if (dot < 0) return null;
   return LANGUAGE_BY_EXTENSION[name.slice(dot + 1)] ?? null;
