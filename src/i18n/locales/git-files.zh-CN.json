@@ -91,5 +91,14 @@
   "blameAuthor": "{{author}}，{{when}}",
   "fullEditing": "编辑全文",
   "blockEditing": "逐块编辑",
-  "commonBase": "共同基线"
+  "commonBase": "共同基线",
+  "search": {
+    "find": "在差异中查找",
+    "placeholder": "查找…",
+    "matchCase": "区分大小写",
+    "previous": "上一个匹配（Shift+Enter）",
+    "next": "下一个匹配（Enter）",
+    "close": "关闭搜索（Esc）",
+    "noMatches": "无匹配"
+  }
 }

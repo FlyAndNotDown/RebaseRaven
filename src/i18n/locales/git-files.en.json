@@ -91,5 +91,14 @@
   "blameAuthor": "{{author}}, {{when}}",
   "fullEditing": "Edit full text",
   "blockEditing": "Edit conflict blocks",
-  "commonBase": "Common base"
+  "commonBase": "Common base",
+  "search": {
+    "find": "Find in diff",
+    "placeholder": "Find…",
+    "matchCase": "Match case",
+    "previous": "Previous match (Shift+Enter)",
+    "next": "Next match (Enter)",
+    "close": "Close search (Esc)",
+    "noMatches": "No matches"
+  }
 }

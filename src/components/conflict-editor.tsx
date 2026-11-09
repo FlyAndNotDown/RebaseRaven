@@ -1,3 +1,4 @@
+import { DiffSearchBar, DiffSearchButton, DiffSearchScope, DiffSearchSelection } from "@/components/diff-search";
 import { formatNumber, t, useTranslation } from "@/i18n";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDownIcon, ChevronUpIcon, Redo2Icon, Undo2Icon } from "lucide-react";
@@ -57,6 +58,7 @@ export function ConflictTextEditor({ initialText, current, incoming, onSave, onE
   useTranslation();
   const [text, setText] = useState(() => initialText.replace(/\r\n/g, "\n"));
   const [whole, setWhole] = useState(false);
+  const editor = useRef<HTMLTextAreaElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const textRef = useRef(text);
@@ -167,7 +169,7 @@ export function ConflictTextEditor({ initialText, current, incoming, onSave, onE
       const target = event.target;
       if (target instanceof HTMLElement) {
         const field = target.closest("textarea, input, select, [contenteditable='true']");
-        if (field && !field.closest("[data-conflict-editor]")) return;
+        if (field && (!field.closest("[data-conflict-editor]") || field.closest('[role="search"]'))) return;
       }
       event.preventDefault();
       if (undoKey) undoRef.current();
@@ -192,6 +194,7 @@ export function ConflictTextEditor({ initialText, current, incoming, onSave, onE
   }
 
   return (
+    <DiffSearchScope lines={text.split("\n")} className="flex-1" onOpen={() => setWhole(true)}>
     <div className="flex min-h-0 flex-1 flex-col" data-conflict-editor="">
       <div className="flex h-9 shrink-0 items-center gap-1 border-b px-3">
         <IconButton label={t("git-files.previousConflict")} disabled={blocked || hunks.length === 0 || shown === 0} onClick={() => go(shown - 1)}>
@@ -209,7 +212,8 @@ export function ConflictTextEditor({ initialText, current, incoming, onSave, onE
         <span className="text-xs text-muted-foreground">
           {hunks.length === 0 ? t("git-files.noConflicts") : t("git-files.conflictPosition", { position: formatNumber(shown + 1), total: formatNumber(hunks.length) })}
         </span>
-        <Button type="button" size="xs" variant="ghost" className="ml-auto" disabled={blocked} onClick={() => setWhole((value) => !value)}>{t(whole ? "git-files.blockEditing" : "git-files.fullEditing")}</Button>
+        <div className="ml-auto"><DiffSearchButton /></div>
+        <Button type="button" size="xs" variant="ghost" disabled={blocked} onClick={() => setWhole((value) => !value)}>{t(whole ? "git-files.blockEditing" : "git-files.fullEditing")}</Button>
         <Button
           type="button"
           size="xs"
@@ -228,8 +232,10 @@ export function ConflictTextEditor({ initialText, current, incoming, onSave, onE
           {saveLabel ?? t("git-files.markResolved")}
         </Button>
       </div>
+      <DiffSearchBar />
+      <DiffSearchSelection editor={editor} text={text} />
       {error ? <p role="alert" className="shrink-0 px-3 py-2 text-xs text-destructive">{error}</p> : null}
-      {whole ? <textarea aria-label={t("git-files.fullEditing")} value={text} disabled={blocked} onChange={(event) => edit(event.target.value)} spellCheck={false} wrap="off" className="min-h-0 flex-1 resize-none p-3 font-mono text-xs leading-5 outline-none" /> : <div className="min-h-0 flex-1 overflow-auto">
+      {whole ? <textarea ref={editor} aria-label={t("git-files.fullEditing")} value={text} disabled={blocked} onChange={(event) => edit(event.target.value)} spellCheck={false} wrap="off" className="min-h-0 flex-1 resize-none p-3 font-mono text-xs leading-5 outline-none" /> : <div className="min-h-0 flex-1 overflow-auto">
         <div className="min-w-max py-2">
           {segments.map((segment) =>
             segment.kind === "text" ? (
@@ -296,6 +302,7 @@ export function ConflictTextEditor({ initialText, current, incoming, onSave, onE
         </div>
       </div>}
     </div>
+    </DiffSearchScope>
   );
 }
 

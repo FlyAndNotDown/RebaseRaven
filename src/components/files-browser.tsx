@@ -1,3 +1,4 @@
+import { DiffSearchBar, DiffSearchButton, DiffSearchScope } from "@/components/diff-search";
 import { t, useTranslation } from "@/i18n";
 import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FolderOpenIcon, SquarePenIcon, XIcon } from "lucide-react";
@@ -947,8 +948,10 @@ function FileCommitDiff({
   if (diff.binary) return <p className="p-4 text-sm text-muted-foreground">{t("git-files.binaryFile")}</p>;
   if (diff.lines.length === 0) return <p className="p-4 text-sm text-muted-foreground">{t("git-files.noTextDiff")}</p>;
   return (
-    <div className="absolute inset-0 flex min-h-0 flex-col">
+    <DiffSearchScope lines={diff.lines.map(line => line.kind === "hunk" ? "" : line.content.replace(/\r/g, ""))} className="absolute inset-0">
+      <div className="flex h-8 shrink-0 items-center justify-end border-b px-2"><DiffSearchButton /></div>
+      <DiffSearchBar />
       <DiffLines diff={diff} />
-    </div>
+    </DiffSearchScope>
   );
 }

@@ -1,6 +1,8 @@
 import { formatNumber, t, useTranslation } from "@/i18n";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Columns2Icon, ExternalLinkIcon, PilcrowIcon, SquarePenIcon, XIcon } from "lucide-react";
+import { DiffSearchBar, DiffSearchButton, DiffSearchScope, useDiffSearch } from "@/components/diff-search";
+import { searchSpans, type TextMatch } from "@/lib/text-search";
 import { ConflictEditor } from "@/components/conflict-editor";
 import { ImageDiff, isImagePath } from "@/components/image-diff";
 import { DiffSkeleton } from "@/components/skeletons";
@@ -211,7 +213,7 @@ export function DiffViewer({ source }: { source: DiffSource }) {
   if (!selection) return null;
 
   return (
-    <div className="absolute inset-0 flex min-h-0 flex-col">
+    <DiffSearchScope lines={diff?.lines.map(line => line.kind === "hunk" ? "" : line.content.replace(/\r/g, "")) ?? []} enabled={textual} className="absolute inset-0">
       <div className="flex h-10 shrink-0 items-center justify-between gap-3 border-b px-3">
         <div className="min-w-0">
           <div className="truncate font-mono text-sm">{title}</div>
@@ -229,6 +231,7 @@ export function DiffViewer({ source }: { source: DiffSource }) {
           ) : null}
           {textual ? (
             <>
+              <DiffSearchButton />
               <HoverTip label={t("git-files.sideBySide")}>
                 <Button
                   type="button"
@@ -303,6 +306,7 @@ export function DiffViewer({ source }: { source: DiffSource }) {
           </HoverTip>
         </div>
       </div>
+      {textual ? <DiffSearchBar /> : null}
       {conflicted && selection.type === "change" ? (
         <ConflictEditor
           key={`${snapshot?.repo.path ?? ""}:${selection.path}`}
@@ -327,19 +331,23 @@ export function DiffViewer({ source }: { source: DiffSource }) {
           lineActions={source === "changes" ? lineActions : undefined}
         />
       )}
-    </div>
+    </DiffSearchScope>
   );
 }
 
 export const DiffLines = memo(function DiffLines({
   diff,
   lineActions,
+  split: forcedSplit,
 }: {
   diff: FileDiff;
   lineActions?: DiffLineActions;
+  split?: boolean;
 }) {
   useTranslation();
-  const split = useGitSelect((state) => state.prefs.diffSplit);
+  const preferredSplit = useGitSelect((state) => state.prefs.diffSplit);
+  const split = forcedSplit ?? preferredSplit;
+  const search = useDiffSearch();
   const lineSpans = useMemo(() => diffLineSpans(diff.lines), [diff]);
   const syntax = useSyntaxRanges(diff, lineSpans);
   const widest = useMemo(
@@ -376,6 +384,24 @@ export const DiffLines = memo(function DiffLines({
     splitHeights ?? (pairs ? pairs.length : diff.lines.length),
     splitHeights ? 8 : DIFF_ROW_HEIGHT,
   );
+  const searchOffsets = useMemo(() => {
+    if (!splitHeights) return null;
+    let offset = 0;
+    return splitHeights.map(height => {const top = offset; offset += height; return top;});
+  }, [splitHeights]);
+  const activeMatch = search?.active;
+  useLayoutEffect(() => {
+    const node = rows.viewport;
+    if (!node || !activeMatch) return;
+    const index = pairs ? pairs.findIndex(row => row.kind === "hunk" ? row.index === activeMatch.line : row.left === activeMatch.line || row.right === activeMatch.line) : activeMatch.line;
+    if (index < 0) return;
+    if (index < rows.start || index >= rows.end) {
+      const top = searchOffsets?.[index] ?? index * DIFF_ROW_HEIGHT;
+      node.scrollTo({top: Math.max(0, top - node.clientHeight / 2)});
+    } else {
+      node.querySelector<HTMLElement>(`[data-search-match="${activeMatch.id}"]`)?.scrollIntoView({block:"nearest", inline:"center"});
+    }
+  }, [activeMatch, pairs, searchOffsets, rows.viewport, rows.start, rows.end]);
   // Picks belong to one diff; a reloaded diff starts with none.
   const [picks, setPicks] = useState<{ diff: FileDiff; set: ReadonlySet<number>; anchor: number | null }>(
     () => ({ diff, set: NO_PICKS, anchor: null }),
@@ -489,6 +515,8 @@ export const DiffLines = memo(function DiffLines({
         spans={styleSpans(lineSpans[index] ?? [], syntax?.[index])}
         kind={diff.lines[index].kind}
         wrap={wrap}
+        matches={search?.byLine.get(index)}
+        active={search?.active?.id}
       />
     );
   }
@@ -696,14 +724,14 @@ function marker(line: DiffLine) {
   return line.kind === "hunk" ? "" : " ";
 }
 
-function DiffLineText({ spans, kind, wrap }: { spans: StyledSpan[]; kind: string; wrap?: boolean }) {
-  const body = spans.map((span, index) => {
+function DiffLineText({ spans, kind, wrap, matches = [], active }: { spans: StyledSpan[]; kind: string; wrap?: boolean; matches?: TextMatch[]; active?: number }) {
+  const body = searchSpans(spans, matches).map((span, index) => {
     if (!span.text) return null;
     const tone = span.tone ?? (span.changed ? kind : "");
     const mark = tone === "add" ? "bg-diff-add-char" : tone === "delete" ? "bg-diff-del-char" : undefined;
     return (
       <span key={index} className={cn(mark, span.cls && `tok-${span.cls}`)}>
-        {span.text}
+        {span.match === null ? span.text : <mark data-search-match={span.match} className={cn("rounded-[2px] bg-amber-300/35 text-inherit", span.match === active && "bg-amber-400/80 text-black ring-1 ring-amber-500/70")}>{span.text}</mark>}
       </span>
     );
   });
