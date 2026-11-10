@@ -46,6 +46,8 @@ pub struct AppPrefs {
     pub editor_id: String,
     #[serde(default = "default_sidebar_order")]
     pub sidebar_order: Vec<String>,
+    #[serde(default = "default_p4_sidebar_order")]
+    pub p4_sidebar_order: Vec<String>,
     #[serde(default)]
     pub panel_layouts: PanelLayouts,
     #[serde(default)]
@@ -156,6 +158,20 @@ fn default_sidebar_order() -> Vec<String> {
     ]
 }
 
+fn default_p4_sidebar_order() -> Vec<String> {
+    [
+        "pending",
+        "submitted",
+        "shelves",
+        "workspace",
+        "specs",
+        "streams",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect()
+}
+
 impl Default for AppPrefs {
     fn default() -> Self {
         Self {
@@ -167,6 +183,7 @@ impl Default for AppPrefs {
             terminal_id: default_terminal_id(),
             editor_id: default_editor_id(),
             sidebar_order: default_sidebar_order(),
+            p4_sidebar_order: default_p4_sidebar_order(),
             panel_layouts: PanelLayouts::default(),
             pull_rebase: false,
             changes_tree: false,
@@ -236,6 +253,24 @@ pub fn save_prefs(app: &AppHandle, mut prefs: AppPrefs) -> AppResult<AppPrefs> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sidebar_orders_are_saved_independently_and_missing_perforce_order_uses_defaults() {
+        let mut prefs: AppPrefs =
+            serde_json::from_str(r#"{"sidebarOrder":["files","history","changes","stash"]}"#)
+                .unwrap();
+        assert_eq!(prefs.p4_sidebar_order, default_p4_sidebar_order());
+        prefs.p4_sidebar_order.reverse();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("prefs.json");
+        fs::write(&path, serde_json::to_vec(&prefs).unwrap()).unwrap();
+        let restored = load_prefs_file(&path).unwrap();
+        assert_eq!(
+            restored.sidebar_order,
+            ["files", "history", "changes", "stash"]
+        );
+        assert_eq!(restored.p4_sidebar_order, prefs.p4_sidebar_order);
+    }
 
     #[test]
     fn avatar_preferences_are_separate_and_default_to_auto_git_and_builtin_perforce() {

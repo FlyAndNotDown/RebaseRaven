@@ -368,6 +368,7 @@ export interface AppPrefs {
   /** "system", or an id from `list_editors`. */
   editorId: string;
   sidebarOrder: string[];
+  p4SidebarOrder: string[];
   panelLayouts: PanelLayouts;
   pullRebase: boolean;
   /** Group changed files by folder instead of listing them flat. */
