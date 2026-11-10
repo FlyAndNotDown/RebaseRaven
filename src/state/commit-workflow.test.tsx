@@ -362,25 +362,11 @@ it("keeps the editor and amend choice on a failed commit", async () => {
   expect(resolveCommitEditor(model).amend).toBe(true);
 });
 
-it("retains signing choices on failure and isolates them by repository until a successful commit", async () => {
-  await type("Signed revision");
-  await act(async()=>model.setCommitEditor(model.activeTabId,{...resolveCommitEditor(model),signing:"sign",signoff:true}));
-  const failed=await start();
-  expect(gitApi.commit).toHaveBeenLastCalledWith(A,"Signed revision",false,{signing:"sign",signoff:true});
-  await act(async()=>pending.shift()!.reject(new Error("Signing key unavailable")));
-  expect(await failed.result).toBe(false);await remount();
-  expect(resolveCommitEditor(model)).toMatchObject({signing:"sign",signoff:true,text:"Signed revision"});
-  await open(B);expect(resolveCommitEditor(model)).toMatchObject({signing:"default",signoff:false});
-  await switchTo(A);const retry=await start();await finish();expect(await retry.result).toBe(true);
-  expect(resolveCommitEditor(model)).toMatchObject({signing:"default",signoff:false,text:""});
-});
-
 it("loads reviewed message text into the owning editor without committing or preserving amend",async()=>{
   await type("My draft");await amend();
-  await act(async()=>model.setCommitEditor(model.activeTabId,{...resolveCommitEditor(model),signing:"sign",signoff:true}));
   const review=reviewCommitDraft(model);await act(async()=>model.setView("history"));
   let applied=false;await act(async()=>{applied=model.reuseCommitMessage(model.activeTabId,A,review,"Historical subject\ncontinued\n\nBody\n","replace");});
-  expect(applied).toBe(true);expect(model.view).toBe("changes");expect(input().value).toContain("Historical subject\ncontinued");expect(resolveCommitEditor(model)).toMatchObject({amend:false,signing:"sign",signoff:true});expect(gitApi.commit).not.toHaveBeenCalled();
+  expect(applied).toBe(true);expect(model.view).toBe("changes");expect(input().value).toContain("Historical subject\ncontinued");expect(resolveCommitEditor(model)).toMatchObject({amend:false});expect(gitApi.commit).not.toHaveBeenCalled();
 });
 
 it("rejects a stale message review after input, tab switching, or repository relocation",async()=>{
@@ -390,14 +376,6 @@ it("rejects a stale message review after input, tab switching, or repository rel
   const fresh=reviewCommitDraft(model);await open(B);await type("Keep B");
   await act(async()=>{applied=model.reuseCommitMessage(owner,A,fresh,"Imported","replace");});expect(applied).toBe(false);expect(input().value).toBe("Keep B");
   await switchTo(A);await act(async()=>{applied=model.reuseCommitMessage(owner,B,fresh,"Imported","replace");});expect(applied).toBe(false);expect(input().value).toBe("Keep newer A");
-});
-
-it("passes the reviewed signature and signoff choices through commit and push", async () => {
-  await enablePush();await type("Signed then pushed");
-  await act(async()=>model.setCommitEditor(model.activeTabId,{...resolveCommitEditor(model),signing:"unsigned",signoff:true}));
-  const operation=await startPush();
-  expect(gitApi.commit).toHaveBeenLastCalledWith(A,"Signed then pushed",false,{signing:"unsigned",signoff:true});
-  await finish();expect(await operation.result).toBe(true);expect(gitApi.pushRemote).toHaveBeenCalled();
 });
 
 it("restores Undo messages on remount and respects an explicit clear", async () => {
@@ -666,7 +644,7 @@ it("respects amend mode in the actual menu without automatically force pushing",
     item!.click();
     await Promise.resolve();
   });
-  expect(gitApi.commit).toHaveBeenCalledWith(A, "Amended message", true, {signing:"default",signoff:false});
+  expect(gitApi.commit).toHaveBeenCalledWith(A, "Amended message", true);
   await open(B);
   await finish();
   expect(gitApi.pushRemote).toHaveBeenCalledWith(

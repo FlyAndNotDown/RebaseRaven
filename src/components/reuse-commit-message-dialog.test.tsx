@@ -34,7 +34,7 @@ it("loads the full native message and waits for explicit confirmation",async()=>
 });
 
 it("previews replacement and append against the existing draft",async()=>{
-  model.commitEditor={...resolveCommitEditor(model),text:"Keep my draft",signing:"sign",signoff:true,amend:true};
+  model.commitEditor={...resolveCommitEditor(model),text:"Keep my draft",amend:true};
   await render();expect((document.getElementById("reuse-current-draft") as HTMLTextAreaElement).value).toBe("Keep my draft");expect(proposed()).toBe(message);
   await click("Append");expect(proposed()).toBe(`Keep my draft\n\n${message}`);await click("Append to draft");expect(reuse).toHaveBeenLastCalledWith(target.tabId,target.path,expect.objectContaining({text:"Keep my draft"}),message,"append");
 });

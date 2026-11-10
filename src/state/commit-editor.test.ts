@@ -16,14 +16,6 @@ function typeText(current: ReturnType<typeof session>, text: string, amend = fal
 }
 
 describe("repository commit editor", () => {
-  it("keeps signing and signoff with the owning draft across edits and remounts", () => {
-    const current = session();
-    const chosen = {...current, commitEditor:editCommitEditor(current, {...resolveCommitEditor(current), text:"Signed work", signing:"sign", signoff:true})};
-    expect(resolveCommitEditor(typeText(chosen, "Updated explanation", true))).toMatchObject({signing:"sign",signoff:true,amend:true});
-    const remounted = {...chosen,view:"history" as const};
-    expect(resolveCommitEditor(remounted)).toMatchObject({signing:"sign",signoff:true});
-    expect(resolveCommitEditor(session())).toMatchObject({signing:"default",signoff:false});
-  });
   it("restores independent drafts and amend choices after view and repository remounts", () => {
     const first = typeText(session(), "First repository\n\nKeep these details", true);
     const second = typeText({ ...session(), path: "/work/another" }, "Second repository");
@@ -129,11 +121,10 @@ describe("commit completion ownership", () => {
 });
 
 describe("reviewed message reuse", () => {
-  it("starts a new commit while preserving the draft's signing choices", () => {
+  it("starts a new commit without preserving amend mode", () => {
     const current = typeText(session(), "Existing draft", true);
-    current.commitEditor = {...current.commitEditor!, signing:"sign", signoff:true};
     const next = reuseCommitEditor(current, reviewCommitDraft(current), "Original subject\ncontinued\n\nBody\n", "replace");
-    expect(next).toMatchObject({text:"Original subject\ncontinued\n\nBody\n",amend:false,signing:"sign",signoff:true});
+    expect(next).toMatchObject({text:"Original subject\ncontinued\n\nBody\n",amend:false});
     expect(current.commitEditor.text).toBe("Existing draft");
   });
 

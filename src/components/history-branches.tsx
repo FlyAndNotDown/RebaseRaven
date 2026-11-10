@@ -12,7 +12,6 @@ import {
   PencilIcon,
   LinkIcon,
   SearchIcon,
-  ShieldCheckIcon,
   TagIcon,
   Trash2Icon,
   UploadIcon,
@@ -21,7 +20,6 @@ import { AddRemoteDialog } from "@/components/lazy-dialogs";
 import { BranchUpstreamDialog, EditRemoteDialog, RemotePushUrlsDialog, RenameRemoteDialog, RenameBranchDialog } from "@/components/branch-management-dialogs";
 import { useTranslation } from "@/i18n";
 import { CreateTagDialog } from "@/components/create-ref-dialogs";
-import { SignatureVerificationDialog, type SignatureDialogTarget } from "@/components/signature-verification-dialog";
 import { MergeDialog, RebaseOntoDialog } from "@/components/rebase-dialog";
 import { RepoStructure } from "@/components/repo-structure";
 import { BranchSidebarSkeleton } from "@/components/skeletons";
@@ -68,7 +66,6 @@ export function HistoryBranches() {
   const { t } = useTranslation();
   const {
     snapshot,
-    activeTabId,
     historyRevs,
     setHistoryRevs,
     historyExpanded,
@@ -90,7 +87,6 @@ export function HistoryBranches() {
     openComparison,
   } = useGitPick([
     "snapshot",
-    "activeTabId",
     "historyRevs",
     "setHistoryRevs",
     "historyExpanded",
@@ -130,7 +126,6 @@ export function HistoryBranches() {
   const [merging, setMerging] = useState<BranchInfo | null>(null);
   const [creatingTag, setCreatingTag] = useState(false);
   const [deletingTag, setDeletingTag] = useState<string | null>(null);
-  const [signatureTarget, setSignatureTarget] = useState<SignatureDialogTarget | null>(null);
   const [selectedNames, setSelectedNames] = useState<string[]>([]);
   const [deletingMany, setDeletingMany] = useState<BranchInfo[] | null>(null);
   const [branchesReadyFor, setBranchesReadyFor] = useState("");
@@ -376,7 +371,6 @@ export function HistoryBranches() {
             onCreateTag={() => setCreatingTag(true)}
             createTagDisabled={!snapshot?.repo.headId}
             onDeleteTag={setDeletingTag}
-            onVerifyTag={name => setSignatureTarget({tabId:activeTabId, path:repoPath, object:{kind:"tag",value:name}})}
             onPushTag={(remote, name) => void pushTag(remote, name)}
             remotes={snapshot?.remotes.map((remote) => remote.name) ?? []}
             selectedNames={selectedNames}
@@ -405,7 +399,6 @@ export function HistoryBranches() {
           <RepoStructure onReady={setStructureReadyFor} />
         </div>
       </ScrollArea>
-      {signatureTarget && signatureTarget.tabId === activeTabId && signatureTarget.path === repoPath ? <SignatureVerificationDialog key={`${signatureTarget.tabId}:${signatureTarget.object.value}`} target={signatureTarget} onClose={() => setSignatureTarget(null)} /> : null}
       <MergeDialog
         target={merging ? { onto: merging.name, label: merging.name } : null}
         onOpenChange={(open) => {
@@ -702,7 +695,6 @@ function TreeRows({
   onCreateTag,
   createTagDisabled,
   onDeleteTag,
-  onVerifyTag,
   onPushTag,
   remotes,
   selectedNames,
@@ -735,7 +727,6 @@ function TreeRows({
   onCreateTag?: () => void;
   createTagDisabled?: boolean;
   onDeleteTag?: (name: string) => void;
-  onVerifyTag?: (name: string) => void;
   onPushTag?: (remote: string, name: string) => void;
   remotes?: string[];
   selectedNames?: string[];
@@ -775,8 +766,6 @@ function TreeRows({
               <ContextMenuContent className="min-w-44">
                 <ContextMenuItem onClick={() => onCheckout({ name, isHead: false, isRemote: false, upstream: null })}>
                   <ArrowDownToLineIcon />{t("git.sidebar.checkout")}</ContextMenuItem>
-                {onVerifyTag ? <ContextMenuItem onClick={() => onVerifyTag(name)}>
-                  <ShieldCheckIcon />{t("git.signature.action")}</ContextMenuItem> : null}
                 {onPushTag && remotes && remotes.length > 0 ? (
                   <ContextMenuSub>
                     <ContextMenuSubTrigger>
@@ -1022,7 +1011,6 @@ function TreeRows({
                 onCreateTag={onCreateTag}
                 createTagDisabled={createTagDisabled}
                 onDeleteTag={onDeleteTag}
-                onVerifyTag={onVerifyTag}
                 onPushTag={onPushTag}
                 remotes={remotes}
                 selectedNames={selectedNames}

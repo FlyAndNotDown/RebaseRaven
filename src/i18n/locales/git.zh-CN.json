@@ -217,7 +217,7 @@
     "replace": "替换",
     "append": "追加",
     "proposed": "最终说明",
-    "hint": "复制说明，保留当前身份和签名选项，并关闭修订最后一次提交。",
+    "hint": "复制说明，沿用当前身份，并关闭修订最后一次提交。",
     "use": "使用说明",
     "replaceAction": "替换草稿",
     "appendAction": "追加到草稿",
@@ -226,95 +226,6 @@
     "operation": "请先完成当前 Git 操作，再载入新的提交草稿。",
     "stale": "草稿或检出的版本已变化，请重新审阅当前草稿。",
     "empty": "此提交没有说明。"
-  },
-  "signature": {
-    "action": "验证签名…",
-    "title": "签名验证",
-    "commit": "提交签名",
-    "tag": "标签签名",
-    "localHint": "使用此仓库的 Git 配置、公钥和信任设置在本机验证。",
-    "verifying": "正在验证签名…",
-    "retry": "重新验证",
-    "output": "Git 输出",
-    "truncated": "输出已截断。",
-    "status": {
-      "verified": "签名验证通过",
-      "untrusted": "签名者未受信任",
-      "expiredSignature": "签名已过期",
-      "expiredKey": "签名密钥已过期",
-      "revoked": "签名密钥已撤销",
-      "invalid": "签名无效",
-      "failed": "无法验证",
-      "unsigned": "未签名",
-      "lightweight": "轻量标签",
-      "changed": "标签已变化"
-    },
-    "detail": {
-      "verified": "已通过本机 Git 验证。",
-      "untrusted": "签名有效，但本机尚未完全信任该签名者。",
-      "expiredSignature": "此签名已过期。",
-      "expiredKey": "此签名使用的密钥已过期。",
-      "revoked": "此签名使用的密钥已被撤销。",
-      "invalid": "签名与对象内容不匹配。",
-      "failed": "请检查验证器输出，以及本机公钥或信任配置。",
-      "unsigned": "此对象没有签名。",
-      "lightweight": "轻量标签本身没有标签签名，其目标的签名需单独验证。",
-      "changed": "验证期间此标签被移动或删除，请重新验证当前对象。"
-    }
-  },
-  "signingSettings": {
-    "chooseFile": "选择文件",
-    "chooseField": "选择{{label}}",
-    "title": "签名",
-    "identity": "身份",
-    "description": "身份与签名设置。",
-    "repository": "此仓库",
-    "worktree": "当前工作树",
-    "scopeHint": "只修改此仓库的配置，不改动其他来源的设置。",
-    "worktreeHint": "已开启独立工作树配置，覆盖项仅作用于当前工作树；重置字段可恢复继承设置。",
-    "loading": "正在加载仓库设置",
-    "enabled": "开启",
-    "disabled": "关闭",
-    "openpgp": "OpenPGP",
-    "gitDefault": "Git 默认值",
-    "inherit": "继承 · {{value}}",
-    "invalid": "无效值：{{value}}",
-    "reset": "继承此项设置",
-    "resetField": "将{{label}}重置为继承",
-    "reload": "重新加载",
-    "readOnly": "此配置为只读文件，或链接到了其他文件，请修改来源配置。",
-    "source": "已被覆盖",
-    "overridden": "当前生效：{{value}}\n来源：{{origin}}\n请修改来源配置以更改此值。",
-    "fields": {
-      "user_name": "用户名",
-      "user_email": "邮箱",
-      "gpg_format": "签名格式",
-      "user_signingkey": "签名密钥",
-      "commit_gpgsign": "默认签名提交",
-      "tag_gpgsign": "默认签名标签",
-      "gpg_ssh_allowedsignersfile": "受信任签名者文件",
-      "gpg_ssh_revocationfile": "已撤销密钥文件"
-    },
-    "hints": {
-      "user_name": "留空可继承其他 Git 配置来源中的用户名。",
-      "user_email": "留空可继承其他 Git 配置来源中的邮箱。",
-      "gpg_format": "可选择 OpenPGP、SSH 或 X.509，使用 Git 为对应格式配置的签名程序。",
-      "user_signingkey": "OpenPGP、X.509 使用密钥标识；SSH 可使用私钥路径、配合 ssh-agent 的公钥路径，或 key:: 加公钥内容。留空表示继承。",
-      "commit_gpgsign": "提交选项选择“使用 Git 配置”时生效，单次提交明确选择的签名方式优先。",
-      "tag_gpgsign": "创建注解标签且签名选项选择“使用 Git 配置”时生效，轻量标签仍不签名。",
-      "gpg_ssh_allowedsignersfile": "用于本机验证的受信任主体和 SSH 公钥文件，支持绝对路径或仓库内相对路径；留空表示继承。",
-      "gpg_ssh_revocationfile": "SSH 密钥撤销列表，或已撤销公钥文件；留空表示继承。"
-    }
-  },
-  "signing": {
-    "signature": "签名",
-    "modes": { "default": "按 Git 配置", "sign": "签名", "unsigned": "不签名" },
-    "hint": "使用 Git 已配置的签名方式和密钥，仅对本次提交或标签生效。",
-    "signoff": "添加 Signed-off-by",
-    "signoffTrailer": "Signed-off-by",
-    "signoffHint": "将提交者身份添加为 Signed-off-by 尾注。加密签名通过独立选项控制。",
-    "tagName": "标签名称",
-    "annotationRequired": "注释（签名时必填）"
   },
   "ui": {
     "continue": "继续",
@@ -517,7 +428,8 @@
     "squash": "合并提交",
     "fixup": "合并并丢弃说明",
     "new_worktree_menu": "新建工作树…",
-    "remove_menu": "移除…"
+    "remove_menu": "移除…",
+    "tag_name": "标签名称"
   },
   "dynamic": {
     "fileCount_one": "{{count}} 个文件",
@@ -760,6 +672,30 @@
       "force": "强制解锁",
       "empty": "当前没有锁定的文件。",
       "loadHint": "刷新以获取文件锁并核验所有者，需要服务端支持文件锁。"
+    }
+  },
+  "repositorySettings": {
+    "identity": "身份",
+    "description": "设置此仓库使用的提交身份。",
+    "repository": "此仓库",
+    "worktree": "当前工作树",
+    "scopeHint": "只修改此仓库的配置，不改动其他来源的设置。",
+    "worktreeHint": "已开启独立工作树配置，覆盖项仅作用于当前工作树；重置字段可恢复继承设置。",
+    "loading": "正在加载仓库设置",
+    "gitDefault": "Git 默认值",
+    "reset": "继承此项设置",
+    "resetField": "将{{label}}重置为继承",
+    "reload": "重新加载",
+    "readOnly": "此配置为只读文件，或链接到了其他文件，请修改来源配置。",
+    "source": "已被覆盖",
+    "overridden": "当前生效：{{value}}\n来源：{{origin}}\n请修改来源配置以更改此值。",
+    "fields": {
+      "user_name": "用户名",
+      "user_email": "邮箱"
+    },
+    "hints": {
+      "user_name": "留空可继承其他 Git 配置来源中的用户名。",
+      "user_email": "留空可继承其他 Git 配置来源中的邮箱。"
     }
   }
 }

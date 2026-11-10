@@ -131,7 +131,7 @@ it("retargets a worktree session without losing selections, commit drafts or his
     historyRevs: ["feature"], view: "history" as const,
     changeSelection: { type: "change" as const, path: "file.txt", staged: false },
     commitDraft: { text: "Keep this draft", nonce: 8 },
-    commitEditor: { text: "Keep my edits", amend: true, headId: "reviewed", preparedMessage: "", draftNonce: 8, signing: "default" as const, signoff: false },
+    commitEditor: { text: "Keep my edits", amend: true, headId: "reviewed", preparedMessage: "", draftNonce: 8 },
     snapshot: { repo: { path: "/work/old", name: "old", currentBranch: "feature" } } as WorkspaceSnapshot,
   };
   const next = relocatedSession(previous, "/work/new", "new");

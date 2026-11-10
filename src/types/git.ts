@@ -224,8 +224,7 @@ export interface GitIdentity {
   email: string;
 }
 
-export type GitSigningMode = "default" | "sign" | "unsigned";
-export type GitRepositoryKey = "user.name" | "user.email" | "gpg.format" | "user.signingkey" | "commit.gpgsign" | "tag.gpgsign" | "gpg.ssh.allowedsignersfile" | "gpg.ssh.revocationfile";
+export type GitRepositoryKey = "user.name" | "user.email";
 export interface GitRepositoryField {
   key: GitRepositoryKey;
   value: string | null;
@@ -241,19 +240,6 @@ export interface GitRepositorySettings {
   fingerprint: string;
 }
 export interface GitRepositoryChange {key: GitRepositoryKey; value: string | null}
-export type GitSignatureTarget = {kind: "commit" | "tag"; value: string};
-export type GitSignatureStatus = "verified" | "untrusted" | "expiredSignature" | "expiredKey" | "revoked" | "invalid" | "failed" | "unsigned" | "lightweight" | "changed";
-export interface GitSignatureVerification {
-  oid: string;
-  status: GitSignatureStatus;
-  output: string;
-  truncated: boolean;
-}
-export interface CommitOptions {
-  signing: GitSigningMode;
-  signoff: boolean;
-}
-
 export interface TerminalOption {
   id: string;
   name: string;

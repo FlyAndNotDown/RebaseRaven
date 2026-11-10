@@ -22,13 +22,11 @@ import {
   ListIcon,
   MinusIcon,
   PlusIcon,
-  ShieldCheckIcon,
   Trash2Icon,
   Undo2Icon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { GitSigningMenu } from "@/components/git-signing";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { HoverTip } from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -37,7 +35,6 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -723,10 +720,6 @@ export function ChangesPane() {
             }
           }}
         />
-        {!operation && (editor.signoff || editor.signing !== "default") ? <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-          {editor.signing !== "default" ? <HoverTip label={t("git.signing.hint")}><span className="inline-flex items-center gap-1"><ShieldCheckIcon className="size-3" />{t(`git.signing.modes.${editor.signing}`)}</span></HoverTip> : null}
-          {editor.signoff ? <HoverTip label={t("git.signing.signoffHint")}><span>{t("git.signing.signoffTrailer")}</span></HoverTip> : null}
-        </div> : null}
         <div className="mt-2 flex items-center justify-between gap-2">
           <Button
             type="button"
@@ -768,11 +761,6 @@ export function ChangesPane() {
                     className="whitespace-nowrap"
                     onCheckedChange={(checked) => toggleAmend(checked === true)}
                   ><FilePenLineIcon />{t("git.ui.amend_last_commit")}</DropdownMenuCheckboxItem>
-                  <DropdownMenuSeparator />
-                  <GitSigningMenu value={editor.signing} disabled={committing} onChange={signing => setCommitEditor(activeTabId, {...editor, signing})} />
-                  <DropdownMenuCheckboxItem checked={editor.signoff} disabled={committing} onCheckedChange={checked => setCommitEditor(activeTabId, {...editor, signoff:checked === true})}>
-                    <HoverTip label={t("git.signing.signoffHint")}><span>{t("git.signing.signoff")}</span></HoverTip>
-                  </DropdownMenuCheckboxItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             )}

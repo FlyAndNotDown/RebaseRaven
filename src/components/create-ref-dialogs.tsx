@@ -14,8 +14,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { GitSigningSelect } from "@/components/git-signing";
-import type { GitSigningMode } from "@/types/git";
 import { useGitPick } from "@/state/git-context";
 
 type CommitLike = { id: string; shortId: string; summary: string };
@@ -133,7 +131,6 @@ function TagForm({ commit, onDone }: { commit: CommitLike | null; onDone: () => 
   const { createTag } = useGitPick(["createTag"]);
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
-  const [signing, setSigning] = useState<GitSigningMode>("default");
   const [busy, setBusy] = useState(false);
   const running = useRef(false);
 
@@ -143,10 +140,10 @@ function TagForm({ commit, onDone }: { commit: CommitLike | null; onDone: () => 
       onSubmit={(event) => {
         event.preventDefault();
         const trimmed = name.trim();
-        if (!trimmed || running.current || signing === "sign" && !message.trim()) return;
+        if (!trimmed || running.current) return;
         running.current = true;
         setBusy(true);
-        void createTag(trimmed, message.trim() || undefined, commit?.id, signing).then((ok) => {
+        void createTag(trimmed, message.trim() || undefined, commit?.id).then((ok) => {
           running.current = false;
           setBusy(false);
           if (ok) onDone();
@@ -163,22 +160,21 @@ function TagForm({ commit, onDone }: { commit: CommitLike | null; onDone: () => 
         className="mt-3 font-mono"
         autoFocus
         placeholder={t("git.dynamic.tagExample")}
-        aria-label={t("git.signing.tagName")}
+        aria-label={t("git.ui.tag_name")}
         disabled={busy}
         value={name}
         onChange={(event) => setName(event.target.value)}
       />
-      <div className="mt-4 grid gap-2"><Label htmlFor="tag-annotation">{t(signing === "sign" ? "git.signing.annotationRequired" : "git.ui.message_optional")}</Label><Textarea
+      <div className="mt-4 grid gap-2"><Label htmlFor="tag-annotation">{t("git.ui.message_optional")}</Label><Textarea
         id="tag-annotation"
         className="min-h-20 resize-none"
         disabled={busy}
         value={message}
         onChange={(event) => setMessage(event.target.value)}
       /></div>
-      <div className="mt-4"><GitSigningSelect id="tag-signing" value={signing} onChange={setSigning} disabled={busy} /></div>
       <DialogFooter className="mt-4">
         <Button type="button" variant="outline" onClick={onDone}>{t("git.ui.cancel")}</Button>
-        <Button type="submit" disabled={!name.trim() || busy || signing === "sign" && !message.trim()}>{t("git.ui.create")}</Button>
+        <Button type="submit" disabled={!name.trim() || busy}>{t("git.ui.create")}</Button>
       </DialogFooter>
     </form>
   );

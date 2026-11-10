@@ -217,7 +217,7 @@
     "replace": "Replace",
     "append": "Append",
     "proposed": "Resulting message",
-    "hint": "Copies the message while keeping your current identity and signing choices. Amend is turned off.",
+    "hint": "Copies the message using your current identity. Amend is turned off.",
     "use": "Use message",
     "replaceAction": "Replace draft",
     "appendAction": "Append to draft",
@@ -226,95 +226,6 @@
     "operation": "Finish the current Git operation before loading a new commit draft.",
     "stale": "The draft or checked-out revision changed. Review the current draft again.",
     "empty": "This commit has no message."
-  },
-  "signature": {
-    "action": "Verify signature…",
-    "title": "Signature verification",
-    "commit": "Commit signature",
-    "tag": "Tag signature",
-    "localHint": "Verified locally using this repository’s Git configuration, keys, and trust settings.",
-    "verifying": "Verifying signature…",
-    "retry": "Verify again",
-    "output": "Git output",
-    "truncated": "Output truncated.",
-    "status": {
-      "verified": "Signature verified",
-      "untrusted": "Signer not trusted",
-      "expiredSignature": "Signature expired",
-      "expiredKey": "Signing key expired",
-      "revoked": "Signing key revoked",
-      "invalid": "Invalid signature",
-      "failed": "Unable to verify",
-      "unsigned": "Not signed",
-      "lightweight": "Lightweight tag",
-      "changed": "Tag changed"
-    },
-    "detail": {
-      "verified": "Accepted by the local Git verifier.",
-      "untrusted": "The signature is valid, but the signer is not fully trusted locally.",
-      "expiredSignature": "This signature has expired.",
-      "expiredKey": "The key used for this signature has expired.",
-      "revoked": "The key used for this signature has been revoked.",
-      "invalid": "The signature does not match the object.",
-      "failed": "Check the verifier output and local key or trust configuration.",
-      "unsigned": "This object has no signature.",
-      "lightweight": "A lightweight tag has no tag signature. Its target’s signature is separate.",
-      "changed": "This tag was moved or deleted during verification. Verify again to check its current object."
-    }
-  },
-  "signingSettings": {
-    "chooseFile": "Choose a file",
-    "chooseField": "Choose {{label}}",
-    "title": "Signing",
-    "identity": "Identity",
-    "description": "Identity and signing settings.",
-    "repository": "This repository",
-    "worktree": "This worktree",
-    "scopeHint": "Only this repository configuration is edited. Other configuration sources stay intact.",
-    "worktreeHint": "Worktree configuration is enabled. These overrides apply only to this worktree; resetting a field restores inherited settings.",
-    "loading": "Loading repository settings",
-    "enabled": "Enabled",
-    "disabled": "Disabled",
-    "openpgp": "OpenPGP",
-    "gitDefault": "Git default",
-    "inherit": "Inherit · {{value}}",
-    "invalid": "Invalid value: {{value}}",
-    "reset": "Inherit this setting",
-    "resetField": "Reset {{label}} to inherit",
-    "reload": "Reload",
-    "readOnly": "This configuration is read-only or linked to another file. Edit its source instead.",
-    "source": "Overridden",
-    "overridden": "Effective: {{value}}\nSource: {{origin}}\nEdit its source configuration to change this value.",
-    "fields": {
-      "user_name": "User name",
-      "user_email": "Email",
-      "gpg_format": "Signature format",
-      "user_signingkey": "Signing key",
-      "commit_gpgsign": "Sign commits by default",
-      "tag_gpgsign": "Sign tags by default",
-      "gpg_ssh_allowedsignersfile": "Allowed signers file",
-      "gpg_ssh_revocationfile": "Revoked keys file"
-    },
-    "hints": {
-      "user_name": "Leave empty to inherit the name from other Git configuration sources.",
-      "user_email": "Leave empty to inherit the email from other Git configuration sources.",
-      "gpg_format": "Choose OpenPGP, SSH, or X.509. Git uses the configured signing program for the selected format.",
-      "user_signingkey": "OpenPGP or X.509: key identifier. SSH: private key path, public key path with ssh-agent, or key:: followed by a public key. Leave empty to inherit.",
-      "commit_gpgsign": "Applies when commit options use Git configuration. An explicit per-commit choice takes precedence.",
-      "tag_gpgsign": "Applies to annotated tags when tag options use Git configuration. Lightweight tags remain unsigned.",
-      "gpg_ssh_allowedsignersfile": "A file of trusted principals and SSH public keys used for local signature verification. Absolute paths and paths relative to the repository are supported. Leave empty to inherit.",
-      "gpg_ssh_revocationfile": "An SSH key revocation list or a file of revoked public keys. Leave empty to inherit."
-    }
-  },
-  "signing": {
-    "signature": "Signature",
-    "modes": { "default": "Use Git configuration", "sign": "Sign", "unsigned": "Do not sign" },
-    "hint": "Uses the signing backend and key configured in Git. Applies only to this commit or tag.",
-    "signoff": "Add Signed-off-by",
-    "signoffTrailer": "Signed-off-by",
-    "signoffHint": "Adds your committer identity as a Signed-off-by trailer. Cryptographic signing is controlled separately.",
-    "tagName": "Tag name",
-    "annotationRequired": "Annotation (required for signing)"
   },
   "ui": {
     "continue": "Continue",
@@ -517,7 +428,8 @@
     "squash": "Squash",
     "fixup": "Fixup",
     "new_worktree_menu": "New worktree…",
-    "remove_menu": "Remove…"
+    "remove_menu": "Remove…",
+    "tag_name": "Tag name"
   },
   "dynamic": {
     "fileCount_one": "{{count}} file",
@@ -760,6 +672,30 @@
       "force": "Force unlock",
       "empty": "No files are locked.",
       "loadHint": "Refresh to retrieve locks and verify their owners. Locking requires server support."
+    }
+  },
+  "repositorySettings": {
+    "identity": "Identity",
+    "description": "Configure the identity used for this repository.",
+    "repository": "This repository",
+    "worktree": "This worktree",
+    "scopeHint": "Only this repository configuration is edited. Other configuration sources stay intact.",
+    "worktreeHint": "Worktree configuration is enabled. These overrides apply only to this worktree; resetting a field restores inherited settings.",
+    "loading": "Loading repository settings",
+    "gitDefault": "Git default",
+    "reset": "Inherit this setting",
+    "resetField": "Reset {{label}} to inherit",
+    "reload": "Reload",
+    "readOnly": "This configuration is read-only or linked to another file. Edit its source instead.",
+    "source": "Overridden",
+    "overridden": "Effective: {{value}}\nSource: {{origin}}\nEdit its source configuration to change this value.",
+    "fields": {
+      "user_name": "User name",
+      "user_email": "Email"
+    },
+    "hints": {
+      "user_name": "Leave empty to inherit the name from other Git configuration sources.",
+      "user_email": "Leave empty to inherit the email from other Git configuration sources."
     }
   }
 }

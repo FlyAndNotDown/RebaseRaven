@@ -4,16 +4,7 @@ use std::hash::{Hash, Hasher};
 use std::io::Write;
 
 const STALE: &str = "Repository configuration changed. Reload it before saving.";
-const KEYS: [&str; 8] = [
-    "user.name",
-    "user.email",
-    "gpg.format",
-    "user.signingkey",
-    "commit.gpgsign",
-    "tag.gpgsign",
-    "gpg.ssh.allowedsignersfile",
-    "gpg.ssh.revocationfile",
-];
+const KEYS: [&str; 2] = ["user.name", "user.email"];
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -87,26 +78,19 @@ fn contents(path: &Path) -> AppResult<Option<Vec<u8>>> {
     }
 }
 
-fn normalized(key: &str, value: Option<&str>) -> String {
-    if matches!(key, "commit.gpgsign" | "tag.gpgsign") {
-        let Some(value) = value else {
-            return "true".into();
-        };
-        match value.to_ascii_lowercase().as_str() {
-            "true" | "yes" | "on" => return "true".into(),
-            "false" | "no" | "off" | "" => return "false".into(),
-            _ => {
-                if let Ok(number) = value.parse::<i64>() {
-                    return (number != 0).to_string();
-                }
-            }
-        }
-    }
-    value.unwrap_or_default().to_string()
-}
-
 fn records(repo: &Repository) -> AppResult<Vec<Record>> {
-    let output = run_git(repo.workdir(), &["config", "--null", "--includes", "--show-origin", "--show-scope", "--get-regexp", "^(user\\.name|user\\.email|gpg\\.format|user\\.signingkey|commit\\.gpgsign|tag\\.gpgsign|gpg\\.ssh\\.allowedsignersfile|gpg\\.ssh\\.revocationfile)$"])?;
+    let output = run_git(
+        repo.workdir(),
+        &[
+            "config",
+            "--null",
+            "--includes",
+            "--show-origin",
+            "--show-scope",
+            "--get-regexp",
+            r"^(user\.name|user\.email)$",
+        ],
+    )?;
     if !output.status.success() && output.status.code() != Some(1) {
         return Err(git_output_error(output));
     }
@@ -137,7 +121,7 @@ fn records(repo: &Repository) -> AppResult<Vec<Record>> {
                 scope: parts[0].into(),
                 origin: parts[1].into(),
                 key: key.into(),
-                value: normalized(key, value),
+                value: value.unwrap_or_default().to_string(),
             }
         })
         .collect())
@@ -237,15 +221,9 @@ pub fn set_repository_settings(
             return Err(AppError::msg("This repository setting is overridden by another configuration source. Edit its source instead."));
         }
         if let Some(value) = &change.value {
-            let valid = match change.key.as_str() {
-                "gpg.format" => matches!(value.as_str(), "openpgp" | "ssh" | "x509"),
-                "commit.gpgsign" | "tag.gpgsign" => matches!(value.as_str(), "true" | "false"),
-                _ => {
-                    !value.trim().is_empty()
-                        && value.len() <= 8192
-                        && !value.chars().any(char::is_control)
-                }
-            };
+            let valid = !value.trim().is_empty()
+                && value.len() <= 8192
+                && !value.chars().any(char::is_control);
             if !valid {
                 return Err(AppError::msg(
                     "Enter a valid repository setting, or reset it to inherit.",
@@ -314,7 +292,7 @@ pub fn set_repository_settings(
                 ],
             )?;
             let text = String::from_utf8_lossy(&checked);
-            if normalized(&change.key, Some(text.strip_suffix('\0').unwrap_or(&text))) != *value {
+            if text.strip_suffix('\0').unwrap_or(&text) != *value {
                 return Err(AppError::msg("An included configuration overrides this repository setting. Edit its source instead."));
             }
         } else {
@@ -375,13 +353,19 @@ mod tests {
     }
 
     #[test]
-    fn identity_and_signing_share_one_atomic_configuration_and_include_inheritance() {
+    fn identity_overrides_inherit_and_preserve_unrelated_configuration() {
         let (_root, repo) = repository();
         let included = repo.commondir().join("identity.cfg");
-        fs::write(&included,"[user]\n name = Included Author\n email = included@example.com\n[gpg]\n format = openpgp\n").unwrap();
+        fs::write(
+            &included,
+            "[user]\n name = Included Author\n email = included@example.com\n",
+        )
+        .unwrap();
         config_set_local(&repo, "include.path", "identity.cfg").unwrap();
+        config_set_local(&repo, "commit.gpgsign", "true").unwrap();
         let original = fs::read(&included).unwrap();
         let state = repository_settings(&repo).unwrap();
+        assert_eq!(state.fields.len(), 2);
         assert_eq!(field(&state, "user.name").value, None);
         assert_eq!(
             field(&state, "user.name").inherited.as_deref(),
@@ -390,24 +374,15 @@ mod tests {
         let state = set_repository_settings(
             &repo,
             &[
-                change("user.name", Some("Repository Author")),
-                change("gpg.format", Some("ssh")),
-                change("commit.gpgsign", Some("false")),
+                change("user.name", Some("Local Author")),
+                change("user.email", Some("local@example.com")),
             ],
             &state.fingerprint,
         )
         .unwrap();
         assert_eq!(
-            config_get(&repo, "user.name").as_deref(),
-            Some("Repository Author")
-        );
-        assert_eq!(
-            field(&state, "user.email").effective.as_deref(),
-            Some("included@example.com")
-        );
-        assert_eq!(
-            field(&state, "gpg.format").effective.as_deref(),
-            Some("ssh")
+            field(&state, "user.name").effective.as_deref(),
+            Some("Local Author")
         );
         let state =
             set_repository_settings(&repo, &[change("user.name", None)], &state.fingerprint)
@@ -416,105 +391,49 @@ mod tests {
             field(&state, "user.name").effective.as_deref(),
             Some("Included Author")
         );
+        assert_eq!(
+            config_get_local(&repo, "commit.gpgsign").as_deref(),
+            Some("true")
+        );
         assert_eq!(fs::read(&included).unwrap(), original);
     }
 
     #[test]
-    fn settings_distinguish_inheritance_explicit_false_and_duplicate_local_values() {
+    fn identity_updates_collapse_duplicate_local_values() {
         let (_root, repo) = repository();
-        let inherited = repo.commondir().join("shared.cfg");
-        fs::write(
-            &inherited,
-            "[commit]\n gpgsign = yes\n[gpg]\n format = ssh\n[user]\n signingkey = inherited-key\n",
-        )
-        .unwrap();
-        config_set_local(&repo, "include.path", "shared.cfg").unwrap();
-        config_set_local(&repo, "commit.gpgsign", "0").unwrap();
-        run_git_stdout(
-            repo.workdir(),
-            &["config", "--add", "commit.gpgsign", "off"],
-        )
-        .unwrap();
+        config_set_local(&repo, "user.name", "First").unwrap();
+        run_git_stdout(repo.workdir(), &["config", "--add", "user.name", "Second"]).unwrap();
         let state = repository_settings(&repo).unwrap();
-        assert_eq!(
-            field(&state, "commit.gpgsign").value.as_deref(),
-            Some("false")
-        );
-        assert_eq!(
-            field(&state, "commit.gpgsign").inherited.as_deref(),
-            Some("true")
-        );
-        assert_eq!(field(&state, "gpg.format").value, None);
-        assert_eq!(
-            field(&state, "gpg.format").effective.as_deref(),
-            Some("ssh")
-        );
-        let state = set_repository_settings(
+        assert_eq!(field(&state, "user.name").value.as_deref(), Some("Second"));
+        set_repository_settings(
             &repo,
-            &[
-                change("commit.gpgsign", None),
-                change("user.signingkey", Some("a key with spaces")),
-            ],
-            &state.fingerprint,
-        )
-        .unwrap();
-        assert_eq!(field(&state, "commit.gpgsign").value, None);
-        assert_eq!(
-            field(&state, "commit.gpgsign").effective.as_deref(),
-            Some("true")
-        );
-        assert_eq!(
-            field(&state, "user.signingkey").effective.as_deref(),
-            Some("a key with spaces")
-        );
-        assert!(fs::read_to_string(&inherited)
-            .unwrap()
-            .contains("inherited-key"));
-        let state = set_repository_settings(
-            &repo,
-            &[change("user.signingkey", None)],
+            &[change("user.name", Some("Updated"))],
             &state.fingerprint,
         )
         .unwrap();
         assert_eq!(
-            field(&state, "user.signingkey").effective.as_deref(),
-            Some("inherited-key")
-        );
-        config_set_local(&repo, "commit.gpgsign", "nonsense").unwrap();
-        let state = repository_settings(&repo).unwrap();
-        assert_eq!(
-            field(&state, "commit.gpgsign").value.as_deref(),
-            Some("nonsense")
-        );
-        let state = set_repository_settings(
-            &repo,
-            &[change("commit.gpgsign", Some("true"))],
-            &state.fingerprint,
-        )
-        .unwrap();
-        assert_eq!(
-            field(&state, "commit.gpgsign").effective.as_deref(),
-            Some("true")
+            run_git_stdout(
+                repo.workdir(),
+                &["config", "--local", "--get-all", "user.name"]
+            )
+            .unwrap(),
+            b"Updated\n"
         );
     }
 
     #[test]
-    fn stale_locked_or_invalid_changes_leave_all_configuration_bytes_unchanged() {
+    fn stale_locked_or_invalid_changes_preserve_configuration() {
         let (_root, repo) = repository();
         let file = repo.commondir().join("config");
-        let inherited = repo.commondir().join("shared.cfg");
-        fs::write(&inherited, "[gpg]\n format = ssh\n").unwrap();
-        config_set_local(&repo, "include.path", "shared.cfg").unwrap();
         let state = repository_settings(&repo).unwrap();
         let original = fs::read(&file).unwrap();
         for changes in [
-            vec![change("core.hooksPath", Some("ignored"))],
-            vec![change("gpg.format", Some("other"))],
-            vec![change("commit.gpgsign", Some("yes"))],
-            vec![change("user.signingkey", Some("bad\nvalue"))],
+            vec![change("gpg.format", Some("ssh"))],
+            vec![change("user.name", Some("bad\nname"))],
+            vec![change("user.email", Some(""))],
             vec![
-                change("tag.gpgsign", Some("true")),
-                change("tag.gpgsign", None),
+                change("user.name", Some("First")),
+                change("user.name", None),
             ],
         ] {
             assert!(set_repository_settings(&repo, &changes, &state.fingerprint).is_err());
@@ -524,83 +443,53 @@ mod tests {
         fs::write(&lock, "another writer").unwrap();
         assert!(set_repository_settings(
             &repo,
-            &[change("commit.gpgsign", Some("true"))],
+            &[change("user.name", Some("Local"))],
             &state.fingerprint
         )
         .is_err());
         assert_eq!(fs::read_to_string(&lock).unwrap(), "another writer");
         fs::remove_file(lock).unwrap();
-        fs::write(&inherited, "[gpg]\n format = openpgp\n").unwrap();
+        config_set_local(&repo, "unrelated.value", "keep").unwrap();
+        let changed = fs::read(&file).unwrap();
         assert!(set_repository_settings(
             &repo,
-            &[change("commit.gpgsign", Some("true"))],
+            &[change("user.name", Some("Local"))],
             &state.fingerprint
         )
         .unwrap_err()
         .to_string()
         .contains("Reload"));
-        assert_eq!(fs::read(&file).unwrap(), original);
-        let state = repository_settings(&repo).unwrap();
-        config_set_local(&repo, "unrelated.value", "keep").unwrap();
-        let updated = fs::read(&file).unwrap();
-        assert!(set_repository_settings(
-            &repo,
-            &[change("commit.gpgsign", Some("true"))],
-            &state.fingerprint
-        )
-        .is_err());
-        assert_eq!(fs::read(&file).unwrap(), updated);
+        assert_eq!(fs::read(&file).unwrap(), changed);
     }
 
     #[test]
-    fn later_includes_cannot_turn_a_saved_override_into_a_silent_noop() {
+    fn later_includes_cannot_make_an_identity_override_a_silent_noop() {
         let (_root, repo) = repository();
-        let file = repo.commondir().join("config");
-        fs::write(&file,"[core]\n repositoryformatversion = 0\n[user]\n name = Example\n[gpg]\n format = ssh\n[include]\n path = late.cfg\n").unwrap();
-        let inherited = repo.commondir().join("late.cfg");
-        fs::write(
-            &inherited,
-            "[gpg]\n format = openpgp\n[user]\n signingkey = inherited-key\n",
-        )
-        .unwrap();
+        config_set_local(&repo, "user.name", "Original").unwrap();
+        let included = repo.commondir().join("identity.cfg");
+        fs::write(&included, "[user]\n name = Included\n").unwrap();
+        config_set_local(&repo, "include.path", "identity.cfg").unwrap();
         let state = repository_settings(&repo).unwrap();
-        let original = fs::read(&file).unwrap();
-        assert!(!field(&state, "gpg.format").editable);
-        assert!(field(&state, "user.signingkey").editable);
+        assert!(!field(&state, "user.name").editable);
+        let original = fs::read(repo.commondir().join("config")).unwrap();
         assert!(set_repository_settings(
             &repo,
-            &[change("gpg.format", Some("ssh"))],
+            &[change("user.name", Some("Local"))],
             &state.fingerprint
         )
         .is_err());
-        assert!(set_repository_settings(
-            &repo,
-            &[
-                change("commit.gpgsign", Some("true")),
-                change("user.signingkey", Some("local-key"))
-            ],
-            &state.fingerprint
-        )
-        .unwrap_err()
-        .to_string()
-        .contains("included"));
-        assert_eq!(fs::read(&file).unwrap(), original);
-        assert!(!repo.commondir().join("config.lock").exists());
-        assert!(fs::read_to_string(inherited)
-            .unwrap()
-            .contains("inherited-key"));
-        let reset =
-            set_repository_settings(&repo, &[change("gpg.format", None)], &state.fingerprint)
+        assert_eq!(fs::read(repo.commondir().join("config")).unwrap(), original);
+        let state =
+            set_repository_settings(&repo, &[change("user.name", None)], &state.fingerprint)
                 .unwrap();
-        assert_eq!(field(&reset, "gpg.format").value, None);
         assert_eq!(
-            field(&reset, "gpg.format").effective.as_deref(),
-            Some("openpgp")
+            field(&state, "user.name").effective.as_deref(),
+            Some("Included")
         );
     }
 
     #[test]
-    fn worktree_overrides_use_the_right_file_and_lock_without_affecting_other_worktrees() {
+    fn worktree_identity_uses_its_own_configuration_and_lock() {
         let (root, repo) = repository();
         config_set_local(&repo, "user.name", "Example").unwrap();
         config_set_local(&repo, "user.email", "example@example.com").unwrap();
@@ -612,12 +501,11 @@ mod tests {
                 "commit",
                 "--allow-empty",
                 "-m",
-                "Initial revision",
+                "Initial",
             ],
         )
         .unwrap();
         config_set_local(&repo, "extensions.worktreeConfig", "true").unwrap();
-        config_set_local(&repo, "commit.gpgsign", "true").unwrap();
         let linked = root.path().join("linked");
         run_git_stdout(
             repo.workdir(),
@@ -634,47 +522,30 @@ mod tests {
         let linked = open_at(&linked).unwrap();
         let state = repository_settings(&linked).unwrap();
         assert!(state.worktree);
-        assert_eq!(field(&state, "commit.gpgsign").value, None);
         let lock = linked.path().join("config.worktree.lock");
         fs::write(&lock, "another writer").unwrap();
         assert!(set_repository_settings(
             &linked,
-            &[change("commit.gpgsign", Some("false"))],
+            &[change("user.name", Some("Worktree Author"))],
             &state.fingerprint
         )
         .is_err());
-        assert_eq!(fs::read_to_string(&lock).unwrap(), "another writer");
         fs::remove_file(lock).unwrap();
-        let updated = set_repository_settings(
+        let state = set_repository_settings(
             &linked,
-            &[
-                change("commit.gpgsign", Some("false")),
-                change("gpg.format", Some("ssh")),
-            ],
+            &[change("user.name", Some("Worktree Author"))],
             &state.fingerprint,
         )
         .unwrap();
-        assert!(linked.path().join("config.worktree").is_file());
         assert_eq!(
-            field(&updated, "commit.gpgsign").effective.as_deref(),
-            Some("false")
+            field(&state, "user.name").effective.as_deref(),
+            Some("Worktree Author")
         );
         assert_eq!(
-            field(&repository_settings(&repo).unwrap(), "commit.gpgsign")
+            field(&repository_settings(&repo).unwrap(), "user.name")
                 .effective
                 .as_deref(),
-            Some("true")
-        );
-        assert!(!repo.commondir().join("config.worktree").exists());
-        let updated = set_repository_settings(
-            &linked,
-            &[change("commit.gpgsign", None)],
-            &updated.fingerprint,
-        )
-        .unwrap();
-        assert_eq!(
-            field(&updated, "commit.gpgsign").effective.as_deref(),
-            Some("true")
+            Some("Example")
         );
     }
 
@@ -689,10 +560,9 @@ mod tests {
         let state = repository_settings(&repo).unwrap();
         let original = fs::read(&source).unwrap();
         assert!(state.read_only);
-        assert!(state.fields.iter().all(|field| !field.editable));
         assert!(set_repository_settings(
             &repo,
-            &[change("gpg.format", Some("ssh"))],
+            &[change("user.name", Some("Local"))],
             &state.fingerprint
         )
         .is_err());
