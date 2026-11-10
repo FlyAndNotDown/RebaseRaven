@@ -1006,23 +1006,6 @@ async fn apply_sparse_checkout(
 }
 
 #[tauri::command]
-async fn bisect_state(repo_path: String) -> AppResult<git::BisectState> {
-    with_repo_async(repo_path, move |repo| git::bisect_state(repo)).await
-}
-
-#[tauri::command]
-async fn bisect_action(
-    repo_path: String,
-    action: git::BisectAction,
-    fingerprint: String,
-) -> AppResult<git::BisectOutcome> {
-    with_repo_async(repo_path, move |repo| {
-        git::bisect_action(repo, &action, &fingerprint)
-    })
-    .await
-}
-
-#[tauri::command]
 async fn resolve_conflict(
     repo_path: String,
     path: String,
@@ -2531,8 +2514,6 @@ pub fn run() {
             merge_ref,
             operation_continue,
             operation_abort,
-            bisect_state,
-            bisect_action,
             sparse_checkout_state,
             git_lfs_state,
             git_lfs_action,

@@ -19,7 +19,7 @@ type EditorSession = {
 
 export function preparedCommitMessage(snapshot: WorkspaceSnapshot | null) {
   const operation = snapshot?.repo.operation;
-  return operation?.kind === "bisect" ? "" : operation?.message ?? "";
+  return operation?.message ?? "";
 }
 
 /** Resolve native messages without replacing a user's edited or explicitly cleared text. */

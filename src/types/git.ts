@@ -153,46 +153,6 @@ export interface CompareRevision {
   label: string;
 }
 
-export interface BisectRevision {
-  id: string;
-  shortId: string;
-  summary: string;
-}
-
-export interface BisectState {
-  active: boolean;
-  original: string | null;
-  current: BisectRevision | null;
-  bad: BisectRevision | null;
-  goodTerm: string;
-  badTerm: string;
-  goodCount: number;
-  skippedCount: number;
-  remainingCount: number | null;
-  truncated: boolean;
-  found: boolean;
-  firstBad: BisectRevision | null;
-  ambiguous: boolean;
-  candidates: BisectRevision[];
-  noCheckout: boolean;
-  firstParent: boolean;
-  fingerprint: string;
-}
-
-export type BisectVerdict = "good" | "bad" | "skip";
-export type BisectAction =
-  | { kind: "start"; bad: string; good: string[]; paths: string[]; firstParent: boolean }
-  | { kind: "mark"; verdict: BisectVerdict; revision?: string }
-  | { kind: "checkout"; revision: string }
-  | { kind: "reset" };
-export interface BisectUpdate {
-  state: BisectState;
-  report: string;
-}
-export interface BisectOutcome extends BisectUpdate {
-  snapshot: WorkspaceSnapshot;
-}
-
 export interface RevisionComparison {
   base: CompareRevision;
   head: CompareRevision;

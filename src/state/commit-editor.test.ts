@@ -66,10 +66,9 @@ describe("repository commit editor", () => {
     const amended = typeText(session(), "Reword this commit", true);
     expect(resolveCommitEditor(amended).amend).toBe(true);
     expect(resolveCommitEditor({ ...amended, snapshot: snapshot("second") }).amend).toBe(false);
-    for (const kind of ["merge", "rebase", "cherry-pick", "revert", "bisect"]) {
+    for (const kind of ["merge", "rebase", "cherry-pick", "revert"]) {
       expect(resolveCommitEditor({ ...amended, snapshot: snapshot("first", "Native message", kind) }).amend).toBe(false);
     }
-    expect(resolveCommitEditor({ ...session(), snapshot: snapshot("first", "Ignore bisect text", "bisect") }).text).toBe("");
   });
 
   it("rejects a stale amend toggle when a newer repository snapshot already changed HEAD", () => {

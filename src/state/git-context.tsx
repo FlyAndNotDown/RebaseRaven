@@ -69,9 +69,6 @@ import {
 } from "@/state/snapshot-compare";
 import type {
   Activity,
-  BisectAction,
-  BisectOutcome,
-  BisectUpdate,
   AppPrefs,
   AppSession,
   PanelLayout,
@@ -98,7 +95,7 @@ import type {
 } from "@/types/git";
 
 export { COMMIT_PAGE, WELCOME_TAB_ID, defaultFetchRemote, primaryRemote };
-export type Panel = "lfs" | "sparse-checkout" | "reflog" | "bisect" | "add-submodule" | "palette" | "settings" | "settings-about" | "new-branch";
+export type Panel = "lfs" | "sparse-checkout" | "reflog" | "add-submodule" | "palette" | "settings" | "settings-about" | "new-branch";
 export type RepoKindPrompt = {
   path: string;
   gitPath: string;
@@ -252,7 +249,6 @@ interface GitContextValue {
   mergeRef: (onto: string, label: string) => Promise<boolean>;
   operationContinue: (message?: string) => Promise<boolean>;
   operationAbort: () => Promise<boolean>;
-  bisectAction: (action: BisectAction, fingerprint: string) => Promise<BisectUpdate | null>;
   changeSparseCheckout: (repoPath: string, request: SparseCheckoutRequest, fingerprint: string, allowIgnoredRemoval: boolean) => Promise<SparseCheckoutUpdate | null>;
   changeLfs: (repoPath: string, action: LfsAction, fingerprint: string) => Promise<LfsUpdate | null>;
   resolveConflict: (path: string, side: "ours" | "theirs" | "both") => Promise<boolean>;
@@ -2604,22 +2600,6 @@ export function GitProvider({ children }: { children: ReactNode }) {
     return ok && received.value ? {state:received.value.state, report:received.value.report, locks:received.value.locks} : null;
   }, [refreshAfterReplay, runMutation]);
 
-  const bisectAction = useCallback(async (action: BisectAction, fingerprint: string): Promise<BisectUpdate | null> => {
-    const tabId = activeTabIdRef.current;
-    const received: { value: BisectOutcome | null } = { value: null };
-    const ok = await runMutation(
-      t(`git.bisect.${action.kind}Activity`),
-      async (repoPath) => {
-        received.value = await gitApi.bisectAction(repoPath, action, fingerprint);
-        return received.value.snapshot;
-      },
-      undefined,
-      { tabId },
-    );
-    if (!ok) await refreshAfterReplay(tabId);
-    return ok && received.value ? { state: received.value.state, report: received.value.report } : null;
-  }, [refreshAfterReplay, runMutation]);
-
   const resolveConflict = useCallback(
     async (path: string, side: "ours" | "theirs" | "both") => {
       return runMutation(
@@ -3200,7 +3180,6 @@ export function GitProvider({ children }: { children: ReactNode }) {
       mergeRef,
       operationContinue,
       operationAbort,
-      bisectAction,
       changeSparseCheckout,
       changeLfs,
       resolveConflict,
@@ -3305,7 +3284,6 @@ export function GitProvider({ children }: { children: ReactNode }) {
       mergeRef,
       operationContinue,
       operationAbort,
-      bisectAction,
       changeSparseCheckout,
       changeLfs,
       resolveConflict,

@@ -23,7 +23,6 @@ import {
   MessageSquareTextIcon,
   RotateCcwIcon,
   SearchIcon,
-  BinaryIcon,
   Undo2Icon,
   UndoDotIcon,
   UserIcon,
@@ -286,7 +285,7 @@ export function HistoryPane() {
           break;
       }
     },
-    [activeTabId, repoPath, createPatch, headPushed, openComparison, selectCommit, undoLastCommit],
+    [repoPath, createPatch, headPushed, openComparison, selectCommit, undoLastCommit],
   );
 
   const selectRows = useCallback(
@@ -414,11 +413,6 @@ export function HistoryPane() {
             />
           </HoverTip>
         </div>
-        <HoverTip label={t("git.bisect.title")}>
-          <Button type="button" variant="ghost" size="icon-sm" aria-label={t("git.bisect.title")} onClick={() => setOpenPanel("bisect")}>
-            <BinaryIcon />
-          </Button>
-        </HoverTip>
         <HoverTip label={t("git.ui.reflog")}>
           <Button
             type="button"

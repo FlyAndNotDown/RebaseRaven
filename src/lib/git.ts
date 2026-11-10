@@ -3,9 +3,6 @@ import type { LfsState, LfsAction, LfsOutcome } from "@/types/lfs";
 import type { SparseCheckoutState, SparseCheckoutRequest, SparseCheckoutPreview, SparseCheckoutOutcome } from "@/types/sparse-checkout";
 import type {
   AppPrefs,
-  BisectAction,
-  BisectState,
-  BisectOutcome,
   AppSession,
   BranchInfo,
   BranchList,
@@ -117,9 +114,6 @@ export const gitApi = {
   sparseCheckoutState: (repoPath: string) => call<SparseCheckoutState>("sparse_checkout_state", {repoPath}),
   previewSparseCheckout: (repoPath: string, request: SparseCheckoutRequest, fingerprint: string) => call<SparseCheckoutPreview>("preview_sparse_checkout", {repoPath, request, fingerprint}),
   applySparseCheckout: (repoPath: string, request: SparseCheckoutRequest, fingerprint: string, allowIgnoredRemoval: boolean, activityId?: string) => call<SparseCheckoutOutcome>("apply_sparse_checkout", {repoPath, request, fingerprint, allowIgnoredRemoval, activityId:activityId || null}),
-  bisectState: (repoPath: string) => call<BisectState>("bisect_state", { repoPath }),
-  bisectAction: (repoPath: string, action: BisectAction, fingerprint: string) =>
-    call<BisectOutcome>("bisect_action", { repoPath, action, fingerprint }),
   listRecents: () => call<RecentRepo[]>("list_recents"),
   forgetRecent: (path: string) => call<RecentRepo[]>("forget_recent", { path }),
   loadSession: () => call<AppSession>("load_session"),
