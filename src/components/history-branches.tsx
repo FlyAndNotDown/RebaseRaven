@@ -482,13 +482,13 @@ export function HistoryBranches() {
               {t("git.sidebar.deleteLocalBranchDescription", { name: trackedDelete?.name })}
             </DialogDescription>
           </DialogHeader>
-          <label className="flex items-start gap-2 text-sm">
+          <label className="flex min-w-0 items-start gap-2 text-sm">
             <Checkbox
-              className="mt-0.5"
+              className="mt-0.5 shrink-0"
               checked={deleteRemoteToo}
               onCheckedChange={(value) => setDeleteRemoteToo(value === true)}
             />
-            <span>
+            <span className="min-w-0 [overflow-wrap:anywhere]">
               {t("git.sidebar.alsoDeleteRemoteBranch", { name: trackedDelete?.upstream })}
             </span>
           </label>
@@ -623,9 +623,9 @@ export function HistoryBranches() {
                 : t("git.sidebar.cannotUndo")}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-1">
+          <div className="max-h-56 min-w-0 space-y-1 overflow-y-auto">
             {deletingMany?.map((branch) => (
-              <div key={branch.name} className="truncate font-mono text-xs">
+              <div key={branch.name} className="min-w-0 font-mono text-xs [overflow-wrap:anywhere]">
                 {branch.name}
               </div>
             ))}
