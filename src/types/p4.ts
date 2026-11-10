@@ -74,6 +74,7 @@ export interface P4Location {
 }
 
 export interface P4DirEntry {
+  ignored: boolean;
   name: string;
   path: string;
   dir: boolean;

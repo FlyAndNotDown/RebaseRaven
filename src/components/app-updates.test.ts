@@ -21,7 +21,7 @@ describe("update settings", () => {
     expect(html).toContain('role="alert"');
     expect(html).toContain("Update check failed");
     expect(html).toContain("Download manually");
-    expect(html).not.toContain("Update</button>");
+    expect(html).not.toContain("Update and restart</button>");
   });
 
   it("shows the available version and expanded release notes beside its update action", () => {
@@ -29,19 +29,19 @@ describe("update settings", () => {
     expect(html).toContain("v0.1.6</h4>");
     expect(html).toContain('aria-label="Release notes"');
     expect(html).not.toContain("<details");
-    expect(html).toContain("Update</button>");
+    expect(html).toContain("Update and restart</button>");
   });
 
   it("keeps release details while an installation is in progress and disables another install", () => {
     const html = render({ ...available, request: "install", lastRequest: "install" });
     expect(html).toContain("v0.1.6</h4>");
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>[\s\S]*?Update<\/button>/);
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>[\s\S]*?Update and restart<\/button>/);
     expect(html).toContain('role="status"');
   });
 
   it("does not offer installation after success or invent a release when already current", () => {
     const installed = render({ ...available, status: "installed", lastRequest: "install" });
-    expect(installed).not.toContain("Update</button>");
+    expect(installed).not.toContain("Update and restart</button>");
     expect(installed).toContain("Restart RebaseRaven</button>");
     const current = render({ ...available, status: "current", update: null });
     expect(current).not.toContain("v0.1.6");

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDownIcon, DownloadIcon, GitBranchIcon, GitMergeIcon, InfoIcon, LoaderCircleIcon, LockKeyholeIcon, PencilIcon, PlusIcon, RefreshCwIcon, TagIcon, Trash2Icon } from "lucide-react";
 import { useTranslation } from "@/i18n";
+import { AuthorAvatar } from "@/components/author-avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -64,9 +65,10 @@ export function P4Specs() {
     <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
       <ResizablePanel id="p4-spec-list" defaultSize="36%" minSize="25%">
         <div className="absolute inset-0 overflow-auto p-1" role="list" aria-label={t(kind === "label" ? "p4.specs.labels" : "p4.specs.branches")}>
-          {items ? items.length ? items.map(item => <button key={item.name} type="button" aria-pressed={selected === item.name} onClick={() => setSelected(item.name)} className={cn("flex w-full items-start gap-2 rounded-md px-3 py-2.5 text-left hover:bg-muted/60", selected === item.name && "bg-muted")}>
-            <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1"><span className="block truncate font-mono text-xs" title={item.name}>{item.name}</span><span className="mt-1 block truncate text-[11px] text-muted-foreground">{item.description.trim() || item.owner}</span></span>
+          {items ? items.length ? items.map(item => <button key={item.name} type="button" aria-pressed={selected === item.name} onClick={() => setSelected(item.name)} className={cn("flex h-8 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted/60", selected === item.name && "bg-muted")}>
+            <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate font-mono text-xs" title={item.name}>{item.name}</span>
+            <span className="flex min-w-0 max-w-[42%] items-center gap-1.5 text-[11px] text-muted-foreground" title={item.owner}><AuthorAvatar name={item.owner} email="" vcs="perforce" className="size-4" /><span className="truncate">{item.owner}</span></span>
           </button>) : <p className="p-6 text-center text-xs text-muted-foreground">{t("p4.specs.noMatches")}</p> : !shownError ? <Loading /> : null}
         </div>
       </ResizablePanel>

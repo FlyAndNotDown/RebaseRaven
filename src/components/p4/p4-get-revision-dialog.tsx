@@ -1,3 +1,4 @@
+import { ChoiceSelect } from "@/components/ui/choice-select";
 import { t, useTranslation } from "@/i18n";
 import { useEffect, useId, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -17,7 +18,6 @@ import type { P4RevisionMode, P4RevisionPath } from "@/types/p4";
 
 type RevisionKind = Exclude<P4RevisionMode, "latest" | "beforeChangelist">;
 export type P4RevisionTarget = { path: string; recursive: boolean; label?: string; revision?: string } | { changeId: string; revision?: string };
-const selectClass = "h-8 rounded-lg border border-input bg-transparent px-2 text-sm disabled:opacity-50 dark:bg-input/30";
 
 export function P4GetRevisionDialog({ target, onClose }: { target: P4RevisionTarget; onClose: () => void }) {
   useTranslation();
@@ -96,15 +96,15 @@ export function P4GetRevisionDialog({ target, onClose }: { target: P4RevisionTar
             {targets.map((item,index) => <div key={`${item.path}:${item.recursive}`} className="flex h-9 items-center gap-2 px-2 text-xs">{item.recursive ? <FolderIcon className="size-3.5 shrink-0 text-muted-foreground" /> : <FileIcon className="size-3.5 shrink-0 text-muted-foreground" />}<span title={item.path} className="min-w-0 flex-1 truncate font-mono">{connection ? relativeToRoot(connection.root,item.path) || item.path : item.path}{item.recursive ? "/..." : ""}</span><HoverTip label={t("common.remove")}><Button variant="ghost" size="icon-xs" disabled={blocked} aria-label={t("common.remove")} onClick={() => {setTargets(current => current.filter((_,position) => index !== position));invalidate();}}><Trash2Icon /></Button></HoverTip></div>)}
             {scopeLoading ? <p role="status" className="p-3 text-xs text-muted-foreground">{t("p4.revisionTargetsLoading")}</p> : scopeError ? <div className="grid gap-2 p-3"><p role="alert" className="text-xs text-destructive">{scopeError}</p><Button variant="outline" size="sm" onClick={() => {setScopeLoading(true);setScopeAttempt(value => value+1);}}>{t("common.retry")}</Button></div> : !targets.length ? <p className="p-3 text-xs text-muted-foreground">{t("p4.emptyRevisionTargets")}</p> : null}
           </div>
-          {adding ? <div className="flex flex-wrap gap-2"><select aria-label={t("p4.targetPath")} className={selectClass} value={folder ? "folder" : "file"} disabled={blocked} onChange={event => setFolder(event.target.value === "folder")}><option value="file">{t("p4.targetFile")}</option><option value="folder">{t("p4.targetFolder")}</option></select><Input autoFocus value={newPath} aria-label={t("p4.targetPath")} placeholder="//depot/path" className="min-w-40 flex-1 font-mono" disabled={blocked} onChange={event => setNewPath(event.target.value)} onKeyDown={event => {if (event.key === "Enter") {event.preventDefault();addPaths([newPath]);}}} /><Button size="sm" variant="outline" disabled={blocked} onClick={() => void browsePaths()}>{t("p4.browse")}</Button><Button size="sm" disabled={blocked || !newPath.trim()} onClick={() => addPaths([newPath])}>{t("common.add")}</Button></div> : null}
+          {adding ? <div className="flex flex-wrap gap-2"><ChoiceSelect aria-label={t("p4.targetPath")} className="w-28" value={folder ? "folder" : "file"} disabled={blocked} onValueChange={value => setFolder(value === "folder")} options={[{value:"file",label:t("p4.targetFile")},{value:"folder",label:t("p4.targetFolder")}]} /><Input autoFocus value={newPath} aria-label={t("p4.targetPath")} placeholder="//depot/path" className="min-w-40 flex-1 font-mono" disabled={blocked} onChange={event => setNewPath(event.target.value)} onKeyDown={event => {if (event.key === "Enter") {event.preventDefault();addPaths([newPath]);}}} /><Button size="sm" variant="outline" disabled={blocked} onClick={() => void browsePaths()}>{t("p4.browse")}</Button><Button size="sm" disabled={blocked || !newPath.trim()} onClick={() => addPaths([newPath])}>{t("common.add")}</Button></div> : null}
         </section>
         <fieldset className="grid gap-3" disabled={blocked}>
           <label className="flex items-center gap-2 text-sm"><input type="radio" name={group} className="size-3.5 accent-foreground" checked={latest} onChange={() => {setLatest(true);invalidate();}} />{t("p4.getLatestRevision")}</label>
           <div className="grid gap-2">
             <label className="flex items-center gap-2 text-sm"><input type="radio" name={group} className="size-3.5 accent-foreground" checked={!latest} onChange={() => {setLatest(false);invalidate();}} />{t("p4.specifyRevisionUsing")}</label>
             <div className="flex flex-wrap gap-2 pl-5">
-              <select aria-label={t("p4.revisionType")} className={selectClass} value={kind} disabled={latest || blocked} onChange={event => {setKind(event.target.value as RevisionKind);setValue("");setBefore(false);invalidate();}}>{kinds.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select>
-              {kind === "changelist" ? <select aria-label={t("p4.atChangelist")} className={selectClass} value={before ? "before" : "at"} disabled={latest || blocked} onChange={event => {setBefore(event.target.value === "before");invalidate();}}><option value="at">{t("p4.atChangelist")}</option><option value="before">{t("p4.beforeChangelist")}</option></select> : null}
+              <ChoiceSelect aria-label={t("p4.revisionType")} className="w-36" value={kind} disabled={latest || blocked} onValueChange={next => {setKind(next);setValue("");setBefore(false);invalidate();}} options={kinds.map(item => ({value:item.id,label:item.label}))} />
+              {kind === "changelist" ? <ChoiceSelect aria-label={t("p4.atChangelist")} className="w-40" value={before ? "before" : "at"} disabled={latest || blocked} onValueChange={next => {setBefore(next === "before");invalidate();}} options={[{value:"at",label:t("p4.atChangelist")},{value:"before",label:t("p4.beforeChangelist")}]} /> : null}
               <Input value={value} disabled={latest || blocked} placeholder={kinds.find(item => item.id === kind)?.placeholder} aria-label={t("p4.revision")} spellCheck={false} className="min-w-32 flex-1 font-mono" onChange={event => {setValue(event.target.value);invalidate();}} />
               {canBrowse ? <Button size="sm" variant="outline" disabled={latest || blocked} onClick={() => setBrowsing(true)}>{t("p4.browse")}</Button> : null}
             </div>

@@ -312,22 +312,6 @@ async fn get_commit_message(repo_path: String, oid: String) -> AppResult<String>
 }
 
 #[tauri::command]
-async fn verify_git_signature(
-    repo_path: String,
-    target: git::GitSignatureTarget,
-    activity_id: String,
-) -> AppResult<git::GitSignatureVerification> {
-    blocking(move || {
-        git::with_cancel(Some(&activity_id), || {
-            git::with_background(true, || {
-                with_repo(&repo_path, |repo| git::verify_signature(repo, &target))
-            })
-        })
-    })
-    .await
-}
-
-#[tauri::command]
 async fn get_git_repository_settings(repo_path: String) -> AppResult<git::GitRepositorySettings> {
     with_repo_async(repo_path, |repo| git::repository_settings(repo)).await
 }
@@ -436,15 +420,9 @@ async fn commit_changes(
     repo_path: String,
     message: String,
     amend: Option<bool>,
-    options: Option<git::CommitOptions>,
 ) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, move |repo| {
-        git::commit_with_options(
-            repo,
-            &message,
-            amend.unwrap_or(false),
-            options.unwrap_or_default(),
-        )?;
+        git::commit(repo, &message, amend.unwrap_or(false))?;
         git::snapshot(repo)
     })
     .await
@@ -771,21 +749,9 @@ async fn create_tag(
     name: String,
     message: Option<String>,
     target: Option<String>,
-    signing: Option<git::GitSigningMode>,
 ) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, move |repo| {
-        match signing.unwrap_or_default() {
-            git::GitSigningMode::Default => {
-                git::create_tag(repo, &name, message.as_deref(), target.as_deref())?
-            }
-            mode => git::create_tag_with_signing(
-                repo,
-                &name,
-                message.as_deref(),
-                target.as_deref(),
-                mode,
-            )?,
-        }
+        git::create_tag(repo, &name, message.as_deref(), target.as_deref())?;
         git::snapshot(repo)
     })
     .await
@@ -1035,23 +1001,6 @@ async fn apply_sparse_checkout(
                 progress_sink(&app, activity_id.as_deref()),
             )
         })
-    })
-    .await
-}
-
-#[tauri::command]
-async fn bisect_state(repo_path: String) -> AppResult<git::BisectState> {
-    with_repo_async(repo_path, move |repo| git::bisect_state(repo)).await
-}
-
-#[tauri::command]
-async fn bisect_action(
-    repo_path: String,
-    action: git::BisectAction,
-    fingerprint: String,
-) -> AppResult<git::BisectOutcome> {
-    with_repo_async(repo_path, move |repo| {
-        git::bisect_action(repo, &action, &fingerprint)
     })
     .await
 }
@@ -2065,9 +2014,10 @@ async fn p4_apply_reconcile(
 async fn p4_list_shelves(
     connection: p4::P4Connection,
     user: String,
+    client: String,
     before: Option<u64>,
 ) -> AppResult<p4::P4ChangePage> {
-    blocking(move || p4::list_shelves(&connection, &user, before)).await
+    blocking(move || p4::list_shelves(&connection, &user, &client, before)).await
 }
 
 #[tauri::command]
@@ -2507,7 +2457,6 @@ pub fn run() {
             get_workdir_diff,
             get_commit_details,
             get_commit_message,
-            verify_git_signature,
             get_git_repository_settings,
             set_git_repository_settings,
             list_directory,
@@ -2565,8 +2514,6 @@ pub fn run() {
             merge_ref,
             operation_continue,
             operation_abort,
-            bisect_state,
-            bisect_action,
             sparse_checkout_state,
             git_lfs_state,
             git_lfs_action,

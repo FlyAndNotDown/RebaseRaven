@@ -1,4 +1,5 @@
 {
+  "submodule": "Submodule",
   "files": "Files",
   "selectFile": "Select a file",
   "openEditor": "Open in editor",

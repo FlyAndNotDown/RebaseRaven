@@ -12,16 +12,15 @@ import {
   PencilIcon,
   LinkIcon,
   SearchIcon,
-  ShieldCheckIcon,
   TagIcon,
   Trash2Icon,
   UploadIcon,
 } from "lucide-react";
 import { AddRemoteDialog } from "@/components/lazy-dialogs";
 import { BranchUpstreamDialog, EditRemoteDialog, RemotePushUrlsDialog, RenameRemoteDialog, RenameBranchDialog } from "@/components/branch-management-dialogs";
+import { deleteBranchBatch, type BranchDeletionOwner } from "@/lib/branch-deletion";
 import { useTranslation } from "@/i18n";
 import { CreateTagDialog } from "@/components/create-ref-dialogs";
-import { SignatureVerificationDialog, type SignatureDialogTarget } from "@/components/signature-verification-dialog";
 import { MergeDialog, RebaseOntoDialog } from "@/components/rebase-dialog";
 import { RepoStructure } from "@/components/repo-structure";
 import { BranchSidebarSkeleton } from "@/components/skeletons";
@@ -67,8 +66,8 @@ type BranchTreeNode = {
 export function HistoryBranches() {
   const { t } = useTranslation();
   const {
-    snapshot,
     activeTabId,
+    snapshot,
     historyRevs,
     setHistoryRevs,
     historyExpanded,
@@ -89,8 +88,8 @@ export function HistoryBranches() {
     pushTag,
     openComparison,
   } = useGitPick([
-    "snapshot",
     "activeTabId",
+    "snapshot",
     "historyRevs",
     "setHistoryRevs",
     "historyExpanded",
@@ -116,10 +115,11 @@ export function HistoryBranches() {
   const [needle, setNeedle] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [deleting, setDeleting] = useState<BranchInfo | null>(null);
-  const [forceDeleting, setForceDeleting] = useState<BranchInfo | null>(null);
+  const [forceDeleting, setForceDeleting] = useState<{ branches: BranchInfo[]; owner: BranchDeletionOwner; remote: string | null } | null>(null);
+  const deletingRef = useRef(false);
+  const [deletionBusy, setDeletionBusy] = useState(false);
   const [trackedDelete, setTrackedDelete] = useState<BranchInfo | null>(null);
   const [deleteRemoteToo, setDeleteRemoteToo] = useState(true);
-  const [pendingRemote, setPendingRemote] = useState<string | null>(null);
   const [deletingRemote, setDeletingRemote] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{ repoPath: string; branch: BranchInfo } | null>(null);
   const [upstreamBranch, setUpstreamBranch] = useState<{ repoPath: string; branch: BranchInfo } | null>(null);
@@ -130,9 +130,8 @@ export function HistoryBranches() {
   const [merging, setMerging] = useState<BranchInfo | null>(null);
   const [creatingTag, setCreatingTag] = useState(false);
   const [deletingTag, setDeletingTag] = useState<string | null>(null);
-  const [signatureTarget, setSignatureTarget] = useState<SignatureDialogTarget | null>(null);
   const [selectedNames, setSelectedNames] = useState<string[]>([]);
-  const [deletingMany, setDeletingMany] = useState<BranchInfo[] | null>(null);
+  const [deletingMany, setDeletingMany] = useState<{ branches: BranchInfo[]; owner: BranchDeletionOwner } | null>(null);
   const [branchesReadyFor, setBranchesReadyFor] = useState("");
   const [structureReadyFor, setStructureReadyFor] = useState("");
   const branchAnchor = useRef<string | null>(null);
@@ -249,28 +248,26 @@ export function HistoryBranches() {
     setHistoryRevs([...historyRevs, name]);
   }
 
-  async function removeLocalBranch(branch: BranchInfo, force: boolean, remote: string | null) {
-    const result = await deleteBranch(branch.name, force);
-    if (result === "unmerged") {
-      setPendingRemote(remote);
-      setForceDeleting(branch);
-      return;
+  async function deleteMany(branches: BranchInfo[], owner: BranchDeletionOwner = { tabId: activeTabId, repoPath }, forceFirst = false, remote: string | null = null) {
+    if (deletingRef.current) return;
+    deletingRef.current = true;
+    setDeletionBusy(true);
+    try {
+      const result = await deleteBranchBatch(branches, (name, force) => deleteBranch(name, force, owner), forceFirst);
+      if (result.kind === "unmerged") {
+        setForceDeleting({ branches: result.remaining, owner, remote });
+      } else if (result.kind === "complete") {
+        if (remote) await deleteBranch(remote, false, owner);
+        setSelectedNames([]);
+      }
+    } finally {
+      deletingRef.current = false;
+      setDeletionBusy(false);
     }
-    if (result === true && remote) await deleteBranch(remote);
   }
 
-  async function deleteMany(branches: BranchInfo[]) {
-    for (const branch of branches) {
-      if (branch.isHead) continue;
-      const result = await deleteBranch(branch.name);
-      if (result === "unmerged") {
-        setPendingRemote(null);
-        setForceDeleting(branch);
-        return;
-      }
-      if (result !== true) return;
-    }
-    setSelectedNames([]);
+  function removeLocalBranch(branch: BranchInfo, force: boolean, remote: string | null) {
+    return deleteMany([branch], { tabId: activeTabId, repoPath }, force, remote);
   }
 
   function requestDelete(branch: BranchInfo) {
@@ -323,7 +320,7 @@ export function HistoryBranches() {
   return (
     <div
       className="absolute inset-0 flex min-h-0 min-w-0 flex-col overflow-hidden"
-      aria-busy={!sidebarReady}
+      aria-busy={!sidebarReady || deletionBusy}
     >
       <div className="shrink-0 border-b px-2 py-1.5">
         <div className="relative">
@@ -376,7 +373,6 @@ export function HistoryBranches() {
             onCreateTag={() => setCreatingTag(true)}
             createTagDisabled={!snapshot?.repo.headId}
             onDeleteTag={setDeletingTag}
-            onVerifyTag={name => setSignatureTarget({tabId:activeTabId, path:repoPath, object:{kind:"tag",value:name}})}
             onPushTag={(remote, name) => void pushTag(remote, name)}
             remotes={snapshot?.remotes.map((remote) => remote.name) ?? []}
             selectedNames={selectedNames}
@@ -398,14 +394,13 @@ export function HistoryBranches() {
               const hide = new Set(names);
               setHistoryRevs(historyRevs.filter((rev) => !hide.has(rev)));
             }}
-            onDeleteBranches={setDeletingMany}
+            onDeleteBranches={branches => setDeletingMany({ branches, owner: { tabId: activeTabId, repoPath } })}
           />
         ) : null}
         <div className={cn((!sidebarReady || Boolean(needle)) && "hidden")}>
           <RepoStructure onReady={setStructureReadyFor} />
         </div>
       </ScrollArea>
-      {signatureTarget && signatureTarget.tabId === activeTabId && signatureTarget.path === repoPath ? <SignatureVerificationDialog key={`${signatureTarget.tabId}:${signatureTarget.object.value}`} target={signatureTarget} onClose={() => setSignatureTarget(null)} /> : null}
       <MergeDialog
         target={merging ? { onto: merging.name, label: merging.name } : null}
         onOpenChange={(open) => {
@@ -466,11 +461,12 @@ export function HistoryBranches() {
             <Button
               type="button"
               variant="destructive"
+              disabled={deletionBusy}
               onClick={() => {
                 const branch = deleting;
                 if (!branch) return;
                 setDeleting(null);
-                void deleteBranch(branch.name);
+                void deleteMany([branch]);
               }}
             >{t("common.delete")}</Button>
           </DialogFooter>
@@ -489,13 +485,13 @@ export function HistoryBranches() {
               {t("git.sidebar.deleteLocalBranchDescription", { name: trackedDelete?.name })}
             </DialogDescription>
           </DialogHeader>
-          <label className="flex items-start gap-2 text-sm">
+          <label className="flex min-w-0 items-start gap-2 text-sm">
             <Checkbox
-              className="mt-0.5"
+              className="mt-0.5 shrink-0"
               checked={deleteRemoteToo}
               onCheckedChange={(value) => setDeleteRemoteToo(value === true)}
             />
-            <span>
+            <span className="min-w-0 [overflow-wrap:anywhere]">
               {t("git.sidebar.alsoDeleteRemoteBranch", { name: trackedDelete?.upstream })}
             </span>
           </label>
@@ -504,6 +500,7 @@ export function HistoryBranches() {
             <Button
               type="button"
               variant="destructive"
+              disabled={deletionBusy}
               onClick={() => {
                 const branch = trackedDelete;
                 if (!branch) return;
@@ -520,7 +517,6 @@ export function HistoryBranches() {
         onOpenChange={(open) => {
           if (!open) {
             setForceDeleting(null);
-            setPendingRemote(null);
           }
         }}
       >
@@ -528,7 +524,7 @@ export function HistoryBranches() {
           <DialogHeader>
             <DialogTitle>{t("git.sidebar.deleteUnmergedTitle")}</DialogTitle>
             <DialogDescription>
-              {t("git.sidebar.deleteUnmergedDescription", { name: forceDeleting?.name })}
+              {t("git.sidebar.deleteUnmergedDescription", { name: forceDeleting?.branches[0]?.name })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -537,19 +533,17 @@ export function HistoryBranches() {
               variant="outline"
               onClick={() => {
                 setForceDeleting(null);
-                setPendingRemote(null);
               }}
             >{t("common.cancel")}</Button>
             <Button
               type="button"
               variant="destructive"
+              disabled={deletionBusy}
               onClick={() => {
-                const branch = forceDeleting;
-                const remote = pendingRemote;
-                if (!branch) return;
+                const pending = forceDeleting;
+                if (!pending) return;
                 setForceDeleting(null);
-                setPendingRemote(null);
-                void removeLocalBranch(branch, true, remote);
+                void deleteMany(pending.branches, pending.owner, true, pending.remote);
               }}
             >{t("git.sidebar.deleteAnyway")}</Button>
           </DialogFooter>
@@ -603,6 +597,7 @@ export function HistoryBranches() {
             <Button
               type="button"
               variant="destructive"
+              disabled={deletionBusy}
               onClick={() => {
                 const name = deletingTag;
                 const remotes = tagRemotes;
@@ -622,17 +617,17 @@ export function HistoryBranches() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {t("git.sidebar.deleteBranchesTitle", { count: deletingMany?.length ?? 0 })}
+              {t("git.sidebar.deleteBranchesTitle", { count: deletingMany?.branches.length ?? 0 })}
             </DialogTitle>
             <DialogDescription>
-              {deletingMany?.some((branch) => !branch.isRemote && branch.upstream)
+              {deletingMany?.branches.some((branch) => !branch.isRemote && branch.upstream)
                 ? t("git.sidebar.keepRemoteBranches")
                 : t("git.sidebar.cannotUndo")}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-1">
-            {deletingMany?.map((branch) => (
-              <div key={branch.name} className="truncate font-mono text-xs">
+          <div className="max-h-56 min-w-0 space-y-1 overflow-y-auto">
+            {deletingMany?.branches.map((branch) => (
+              <div key={branch.name} className="min-w-0 font-mono text-xs [overflow-wrap:anywhere]">
                 {branch.name}
               </div>
             ))}
@@ -642,11 +637,12 @@ export function HistoryBranches() {
             <Button
               type="button"
               variant="destructive"
+              disabled={deletionBusy}
               onClick={() => {
-                const branches = deletingMany;
-                if (!branches) return;
+                const pending = deletingMany;
+                if (!pending) return;
                 setDeletingMany(null);
-                void deleteMany(branches);
+                void deleteMany(pending.branches, pending.owner);
               }}
             >{t("common.delete")}</Button>
           </DialogFooter>
@@ -665,6 +661,7 @@ export function HistoryBranches() {
             <Button
               type="button"
               variant="destructive"
+              disabled={deletionBusy}
               onClick={() => {
                 const name = deletingRemote;
                 if (!name) return;
@@ -702,7 +699,6 @@ function TreeRows({
   onCreateTag,
   createTagDisabled,
   onDeleteTag,
-  onVerifyTag,
   onPushTag,
   remotes,
   selectedNames,
@@ -735,7 +731,6 @@ function TreeRows({
   onCreateTag?: () => void;
   createTagDisabled?: boolean;
   onDeleteTag?: (name: string) => void;
-  onVerifyTag?: (name: string) => void;
   onPushTag?: (remote: string, name: string) => void;
   remotes?: string[];
   selectedNames?: string[];
@@ -775,8 +770,6 @@ function TreeRows({
               <ContextMenuContent className="min-w-44">
                 <ContextMenuItem onClick={() => onCheckout({ name, isHead: false, isRemote: false, upstream: null })}>
                   <ArrowDownToLineIcon />{t("git.sidebar.checkout")}</ContextMenuItem>
-                {onVerifyTag ? <ContextMenuItem onClick={() => onVerifyTag(name)}>
-                  <ShieldCheckIcon />{t("git.signature.action")}</ContextMenuItem> : null}
                 {onPushTag && remotes && remotes.length > 0 ? (
                   <ContextMenuSub>
                     <ContextMenuSubTrigger>
@@ -1022,7 +1015,6 @@ function TreeRows({
                 onCreateTag={onCreateTag}
                 createTagDisabled={createTagDisabled}
                 onDeleteTag={onDeleteTag}
-                onVerifyTag={onVerifyTag}
                 onPushTag={onPushTag}
                 remotes={remotes}
                 selectedNames={selectedNames}

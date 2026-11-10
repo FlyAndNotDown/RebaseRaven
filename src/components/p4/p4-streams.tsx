@@ -134,7 +134,7 @@ export function P4Streams() {
     {error ? <p role="alert" className="shrink-0 border-b px-3 py-2 text-xs text-destructive">{error}</p> : null}
     {streams && streams.length >= 2000 ? <p className="border-b px-3 py-1 text-[11px] text-muted-foreground">{t("p4.streamTree.limit")}</p> : null}
     <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
-      <ResizablePanel id="p4-stream-tree" defaultSize="64%" minSize="35%">
+      <ResizablePanel id="p4-stream-tree" defaultSize="30%" minSize="20%" maxSize="55%">
         <div ref={viewportRef} className="absolute inset-0 overflow-auto p-1" role="tree" aria-label={t("p4.streamTree.title")}>
           {!streams && loading ? <div className="flex h-full items-center justify-center"><LoaderCircleIcon className="size-5 animate-spin text-muted-foreground" /></div> : !rows.length ? <p className="p-6 text-center text-xs text-muted-foreground">{t("p4.noMatchingStreams")}</p> : <>
             <div aria-hidden style={{height:before}} />
@@ -157,7 +157,7 @@ export function P4Streams() {
         </div>
       </ResizablePanel>
       <ResizableHandle />
-      <ResizablePanel id="p4-stream-inspector" defaultSize="36%" minSize="26%">
+      <ResizablePanel id="p4-stream-inspector" defaultSize="70%" minSize="35%">
         <div className="absolute inset-0 overflow-auto">
           {selected ? <>
             <div className="border-b px-3 py-2.5">

@@ -93,22 +93,15 @@ const OPERATION_LABEL: Record<string, string> = {
 
 export function RebaseBanner() {
   useTranslation();
-  const { snapshot, operationContinue, operationAbort, rebaseSkip, setView, setOpenPanel } = useGitPick([
+  const { snapshot, operationContinue, operationAbort, rebaseSkip, setView } = useGitPick([
     "snapshot",
     "operationContinue",
     "operationAbort",
     "rebaseSkip",
     "setView",
-    "setOpenPanel",
   ]);
   const operation = snapshot?.repo.operation;
   if (!operation) return null;
-  if (operation.kind === "bisect") {
-    return <div className="flex shrink-0 items-center gap-2 border-b bg-muted/60 px-3 py-1.5">
-      <p className="min-w-0 flex-1 truncate text-sm">{t("git.bisect.inProgress")}</p>
-      <Button type="button" size="xs" variant="outline" onClick={() => setOpenPanel("bisect")}>{t("git.bisect.open")}</Button>
-    </div>;
-  }
   const conflicted = (snapshot?.status.unstaged ?? []).some((file) => file.kind === "conflicted");
   const progress =
     operation.step && operation.total ? t("git.dynamic.operationProgress", { step: operation.step, total: operation.total }) : "";

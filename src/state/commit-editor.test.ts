@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { WorkspaceSnapshot } from "@/types/git";
 import { emptySession } from "./session";
-import { canClearCommitEditor, commitEditorSubmission, editCommitEditor, resolveCommitEditor, reviewCommitDraft, reuseCommitEditor, reusedCommitMessage } from "./commit-editor";
+import { canClearCommitEditor, commitEditorSubmission, editCommitEditor, resolveCommitEditor } from "./commit-editor";
 
 function snapshot(headId = "first", message?: string, kind = "merge") {
   return { repo: { headId, operation: message === undefined ? null : { kind, message } } } as WorkspaceSnapshot;
@@ -16,14 +16,6 @@ function typeText(current: ReturnType<typeof session>, text: string, amend = fal
 }
 
 describe("repository commit editor", () => {
-  it("keeps signing and signoff with the owning draft across edits and remounts", () => {
-    const current = session();
-    const chosen = {...current, commitEditor:editCommitEditor(current, {...resolveCommitEditor(current), text:"Signed work", signing:"sign", signoff:true})};
-    expect(resolveCommitEditor(typeText(chosen, "Updated explanation", true))).toMatchObject({signing:"sign",signoff:true,amend:true});
-    const remounted = {...chosen,view:"history" as const};
-    expect(resolveCommitEditor(remounted)).toMatchObject({signing:"sign",signoff:true});
-    expect(resolveCommitEditor(session())).toMatchObject({signing:"default",signoff:false});
-  });
   it("restores independent drafts and amend choices after view and repository remounts", () => {
     const first = typeText(session(), "First repository\n\nKeep these details", true);
     const second = typeText({ ...session(), path: "/work/another" }, "Second repository");
@@ -74,10 +66,9 @@ describe("repository commit editor", () => {
     const amended = typeText(session(), "Reword this commit", true);
     expect(resolveCommitEditor(amended).amend).toBe(true);
     expect(resolveCommitEditor({ ...amended, snapshot: snapshot("second") }).amend).toBe(false);
-    for (const kind of ["merge", "rebase", "cherry-pick", "revert", "bisect"]) {
+    for (const kind of ["merge", "rebase", "cherry-pick", "revert"]) {
       expect(resolveCommitEditor({ ...amended, snapshot: snapshot("first", "Native message", kind) }).amend).toBe(false);
     }
-    expect(resolveCommitEditor({ ...session(), snapshot: snapshot("first", "Ignore bisect text", "bisect") }).text).toBe("");
   });
 
   it("rejects a stale amend toggle when a newer repository snapshot already changed HEAD", () => {
@@ -125,43 +116,5 @@ describe("commit completion ownership", () => {
     expect(canClearCommitEditor(custom, commitEditorSubmission(custom, "Explain the resolution"))).toBe(true);
     const unedited = typeText(native, "Merge feature\n");
     expect(canClearCommitEditor(unedited, commitEditorSubmission(unedited))).toBe(true);
-  });
-});
-
-describe("reviewed message reuse", () => {
-  it("starts a new commit while preserving the draft's signing choices", () => {
-    const current = typeText(session(), "Existing draft", true);
-    current.commitEditor = {...current.commitEditor!, signing:"sign", signoff:true};
-    const next = reuseCommitEditor(current, reviewCommitDraft(current), "Original subject\ncontinued\n\nBody\n", "replace");
-    expect(next).toMatchObject({text:"Original subject\ncontinued\n\nBody\n",amend:false,signing:"sign",signoff:true});
-    expect(current.commitEditor.text).toBe("Existing draft");
-  });
-
-  it("shows the exact appended result without folding paragraphs or dropping trailers", () => {
-    const source="Subject\ncontinued\n\nSigned-off-by: Original <original@example.com>\n";
-    expect(reusedCommitMessage("Keep my draft\n\n",source,"append")).toBe(`Keep my draft\n\n${source}`);
-    expect(reusedCommitMessage("  ",source,"append")).toBe(source);
-  });
-
-  it("rejects fresh input even if it repeats the reviewed text", () => {
-    const current=typeText(session(),"My draft");const review=reviewCommitDraft(current);
-    expect(reuseCommitEditor(typeText(current,"My draft"),review,"Imported message","replace")).toBeNull();
-    expect(reuseCommitEditor({...current,commitDraft:{text:"Undo arrived",nonce:3}},review,"Imported message","replace")).toBeNull();
-    expect(reuseCommitEditor(current,review," \n","replace")).toBeNull();
-  });
-
-  it("rejects a changed HEAD, branch, or operation without replacing the draft", () => {
-    const current=typeText(session(),"My draft");const review=reviewCommitDraft(current);
-    expect(reuseCommitEditor({...current,snapshot:snapshot("changed")},review,"Imported message","replace")).toBeNull();
-    const branchChanged={...current,snapshot:{...current.snapshot!,repo:{...current.snapshot!.repo,currentBranch:"different"}}};
-    expect(reuseCommitEditor(branchChanged,review,"Imported message","replace")).toBeNull();
-    expect(reuseCommitEditor({...current,snapshot:snapshot("first","Merge message")},review,"Imported message","replace")).toBeNull();
-  });
-
-  it("consumes the previous Undo message so clearing imported text keeps it cleared", () => {
-    const current={...session(),commitDraft:{text:"Undone message",nonce:3}};
-    const editor=reuseCommitEditor(current,reviewCommitDraft(current),"Imported message","replace")!;
-    expect(editor.draftNonce).toBe(3);
-    expect(resolveCommitEditor(typeText({...current,commitEditor:editor},"")).text).toBe("");
   });
 });

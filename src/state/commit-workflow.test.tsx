@@ -14,7 +14,7 @@ import { GitProvider, useGitPick } from "@/state/git-context";
 import { ChangesPane } from "@/components/changes-pane";
 import { AppToolbar } from "@/components/app-toolbar";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { resolveCommitEditor, reviewCommitDraft } from "@/state/commit-editor";
+import { resolveCommitEditor } from "@/state/commit-editor";
 import { gitApi } from "@/lib/git";
 import { defaultPrefs } from "@/lib/prefs";
 import { setLanguagePreference } from "@/i18n";
@@ -94,7 +94,7 @@ function useModel() {
     "setView",
     "setCommitEditor",
     "commit",
-    "reuseCommitMessage",
+    "deleteBranch",
     "commitAndPush",
     "pushRemote",
     "publishPrompt",
@@ -360,44 +360,6 @@ it("keeps the editor and amend choice on a failed commit", async () => {
   expect(await operation.result).toBe(false);
   expect(input().value).toBe("Retain failed commit");
   expect(resolveCommitEditor(model).amend).toBe(true);
-});
-
-it("retains signing choices on failure and isolates them by repository until a successful commit", async () => {
-  await type("Signed revision");
-  await act(async()=>model.setCommitEditor(model.activeTabId,{...resolveCommitEditor(model),signing:"sign",signoff:true}));
-  const failed=await start();
-  expect(gitApi.commit).toHaveBeenLastCalledWith(A,"Signed revision",false,{signing:"sign",signoff:true});
-  await act(async()=>pending.shift()!.reject(new Error("Signing key unavailable")));
-  expect(await failed.result).toBe(false);await remount();
-  expect(resolveCommitEditor(model)).toMatchObject({signing:"sign",signoff:true,text:"Signed revision"});
-  await open(B);expect(resolveCommitEditor(model)).toMatchObject({signing:"default",signoff:false});
-  await switchTo(A);const retry=await start();await finish();expect(await retry.result).toBe(true);
-  expect(resolveCommitEditor(model)).toMatchObject({signing:"default",signoff:false,text:""});
-});
-
-it("loads reviewed message text into the owning editor without committing or preserving amend",async()=>{
-  await type("My draft");await amend();
-  await act(async()=>model.setCommitEditor(model.activeTabId,{...resolveCommitEditor(model),signing:"sign",signoff:true}));
-  const review=reviewCommitDraft(model);await act(async()=>model.setView("history"));
-  let applied=false;await act(async()=>{applied=model.reuseCommitMessage(model.activeTabId,A,review,"Historical subject\ncontinued\n\nBody\n","replace");});
-  expect(applied).toBe(true);expect(model.view).toBe("changes");expect(input().value).toContain("Historical subject\ncontinued");expect(resolveCommitEditor(model)).toMatchObject({amend:false,signing:"sign",signoff:true});expect(gitApi.commit).not.toHaveBeenCalled();
-});
-
-it("rejects a stale message review after input, tab switching, or repository relocation",async()=>{
-  await type("Keep A");const owner=model.activeTabId,review=reviewCommitDraft(model);
-  await type("Keep newer A");let applied=false;
-  await act(async()=>{applied=model.reuseCommitMessage(owner,A,review,"Imported","replace");});expect(applied).toBe(false);expect(input().value).toBe("Keep newer A");
-  const fresh=reviewCommitDraft(model);await open(B);await type("Keep B");
-  await act(async()=>{applied=model.reuseCommitMessage(owner,A,fresh,"Imported","replace");});expect(applied).toBe(false);expect(input().value).toBe("Keep B");
-  await switchTo(A);await act(async()=>{applied=model.reuseCommitMessage(owner,B,fresh,"Imported","replace");});expect(applied).toBe(false);expect(input().value).toBe("Keep newer A");
-});
-
-it("passes the reviewed signature and signoff choices through commit and push", async () => {
-  await enablePush();await type("Signed then pushed");
-  await act(async()=>model.setCommitEditor(model.activeTabId,{...resolveCommitEditor(model),signing:"unsigned",signoff:true}));
-  const operation=await startPush();
-  expect(gitApi.commit).toHaveBeenLastCalledWith(A,"Signed then pushed",false,{signing:"unsigned",signoff:true});
-  await finish();expect(await operation.result).toBe(true);expect(gitApi.pushRemote).toHaveBeenCalled();
 });
 
 it("restores Undo messages on remount and respects an explicit clear", async () => {
@@ -666,7 +628,7 @@ it("respects amend mode in the actual menu without automatically force pushing",
     item!.click();
     await Promise.resolve();
   });
-  expect(gitApi.commit).toHaveBeenCalledWith(A, "Amended message", true, {signing:"default",signoff:false});
+  expect(gitApi.commit).toHaveBeenCalledWith(A, "Amended message", true);
   await open(B);
   await finish();
   expect(gitApi.pushRemote).toHaveBeenCalledWith(
@@ -692,4 +654,22 @@ it("does not create a commit for an unavailable push destination or detached HEA
   expect(await operation.result).toBe(false);
   expect(gitApi.commit).not.toHaveBeenCalled();
   expect(input().value).toBe("Keep this message");
+});
+
+it("keeps reviewed branch deletions scoped to their repository after switching tabs", async () => {
+  const remove=vi.spyOn(gitApi,"deleteBranch").mockImplementation(async path=>snapshots[path]);
+  const owner={tabId:model.activeTabId,repoPath:A};await open(B);
+  let result:boolean|"unmerged"=false;
+  await act(async()=>{result=await model.deleteBranch("reviewed",false,owner);});
+  expect(result).toBe(true);expect(remove).toHaveBeenCalledWith(A,"reviewed",expect.any(String),false);expect(model.snapshot?.repo.path).toBe(B);
+  await act(async()=>{result=await model.deleteBranch("reviewed",false,{...owner,repoPath:B});});
+  expect(result).toBe(false);expect(remove).toHaveBeenCalledOnce();
+});
+
+it("reloads visible history after deleting an unfiltered branch", async () => {
+  vi.spyOn(gitApi,"deleteBranch").mockImplementation(async path=>snapshots[path]);
+  await act(async () => {model.setView("history");});
+  vi.mocked(gitApi.getCommits).mockClear();
+  await act(async () => {expect(await model.deleteBranch("reviewed")).toBe(true);});
+  expect(gitApi.getCommits).toHaveBeenCalledWith(A,expect.any(Number),0,undefined,[]);
 });

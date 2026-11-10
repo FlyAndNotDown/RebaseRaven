@@ -146,11 +146,6 @@ pub fn operation_continue(
         .ok_or_else(|| AppError::msg("No merge, rebase, cherry-pick, or revert is in progress"))?
         .kind;
     let message = message.map(str::trim).filter(|value| !value.is_empty());
-    if kind == "bisect" {
-        return Err(AppError::msg(
-            "Use bisect controls to classify a revision or reset the session",
-        ));
-    }
     if let Some(message) = message {
         if kind == "rebase" {
             // `rebase --continue` commits with rebase-merge/message.
@@ -245,6 +240,7 @@ pub(super) fn commits_to_replay(repo: &Repository, onto: &str) -> AppResult<Vec<
         let commit = peel_commit(repo, id)?;
         let summary = commit.summary().unwrap_or("").trim().to_string();
         commits.push(RebaseCommit {
+            message: commit.message.clone(),
             id: commit.id().to_string(),
             short_id: short_id(commit.id()),
             summary,
@@ -492,18 +488,7 @@ pub(super) fn git_operation(repo: &Repository) -> Option<GitOperation> {
     ]
     .into_iter()
     .find(|(name, _)| git_dir.join(name).is_file());
-    let Some(marker) = marker else {
-        return super::bisect::bisect_active(repo).then(|| GitOperation {
-            kind: "bisect".to_string(),
-            head_name: fs::read_to_string(git_dir.join("BISECT_START"))
-                .ok()
-                .map(|value| value.trim().to_string()),
-            onto: None,
-            step: None,
-            total: None,
-            message: None,
-        });
-    };
+    let marker = marker?;
     let onto = fs::read_to_string(git_dir.join(marker.0))
         .ok()
         .map(|value| value.trim().chars().take(7).collect())

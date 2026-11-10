@@ -4,6 +4,7 @@ import { normalizeHttpProxy } from "@/lib/network";
 import { normalizeLanguage } from "@/i18n/language";
 
 export const SIDEBAR_VIEWS = ["changes", "history", "stash", "files"] as const;
+export const P4_SIDEBAR_VIEWS = ["pending", "submitted", "shelves", "workspace", "specs", "streams"] as const;
 
 export const DEFAULT_PANEL_LAYOUTS: PanelLayouts = {
   historyShell: { "history-branches": 15, "history-main": 85 },
@@ -25,6 +26,7 @@ export const defaultPrefs: AppPrefs = {
   terminalId: "auto",
   editorId: "system",
   sidebarOrder: [...SIDEBAR_VIEWS],
+  p4SidebarOrder: [...P4_SIDEBAR_VIEWS],
   panelLayouts: { ...DEFAULT_PANEL_LAYOUTS },
   pullRebase: false,
   changesTree: false,
@@ -47,16 +49,24 @@ export const defaultPrefs: AppPrefs = {
 
 export const AUTO_FETCH_CHOICES = [0, 5, 15, 30, 60] as const;
 
-export function normalizeSidebarOrder(order?: string[] | null): string[] {
-  const allowed = new Set<string>(SIDEBAR_VIEWS);
-  const next: string[] = [];
+function normalizeViewOrder<T extends string>(views: readonly T[], order?: string[] | null): T[] {
+  const next: T[] = [];
   for (const item of order ?? []) {
-    if (allowed.has(item) && !next.includes(item)) next.push(item);
+    const view = views.find(value => value === item);
+    if (view && !next.includes(view)) next.push(view);
   }
-  for (const item of SIDEBAR_VIEWS) {
+  for (const item of views) {
     if (!next.includes(item)) next.push(item);
   }
   return next;
+}
+
+export function normalizeSidebarOrder(order?: string[] | null) {
+  return normalizeViewOrder(SIDEBAR_VIEWS, order);
+}
+
+export function normalizeP4SidebarOrder(order?: string[] | null) {
+  return normalizeViewOrder(P4_SIDEBAR_VIEWS, order);
 }
 
 export function compactLayout(layout: PanelLayout): PanelLayout {
@@ -204,6 +214,7 @@ export function normalizePrefs(prefs: Partial<AppPrefs> | null | undefined): App
     terminalId: prefs?.terminalId || "auto",
     editorId: !prefs?.editorId || prefs.editorId === "auto" ? "system" : prefs.editorId,
     sidebarOrder: normalizeSidebarOrder(prefs?.sidebarOrder),
+    p4SidebarOrder: normalizeP4SidebarOrder(prefs?.p4SidebarOrder),
     panelLayouts: normalizePanelLayouts(prefs?.panelLayouts),
     pullRebase: prefs?.pullRebase === true,
     changesTree: prefs?.changesTree === true,

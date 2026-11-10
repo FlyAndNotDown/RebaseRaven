@@ -15,7 +15,7 @@ function RepoSettingsContent({open,onOpenChange,repoPath,onSparse,onLfs}: {open:
   const [busy,setBusy]=useState(false);
   return <Dialog open={open} onOpenChange={value=>{if(!busy)onOpenChange(value);}}>
     <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-lg">
-      <DialogHeader><DialogTitle>{t("git.ui.repository_settings")}</DialogTitle><DialogDescription>{t(repoPath ? "git.signingSettings.description" : "git.ui.open_a_repository_to_edit_its_identity")}</DialogDescription></DialogHeader>
+      <DialogHeader><DialogTitle>{t("git.ui.repository_settings")}</DialogTitle><DialogDescription>{t(repoPath ? "git.repositorySettings.description" : "git.ui.open_a_repository_to_edit_its_identity")}</DialogDescription></DialogHeader>
       {open && repoPath ? <RepositorySettingsForm repoPath={repoPath} onClose={()=>onOpenChange(false)} onBusyChange={setBusy} onSparse={onSparse} onLfs={onLfs} /> : null}
     </DialogContent>
   </Dialog>;

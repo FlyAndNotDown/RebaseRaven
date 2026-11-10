@@ -581,7 +581,7 @@ html[lang="zh-CN"] .site-hero h1 { font-size: clamp(36px, 5vw, 64px); line-heigh
   background: color-mix(in oklch, var(--muted) 70%, transparent);
 }
 
-.demo-file-select:focus-visible, .demo-commit-row:focus-visible, .demo-change-row:focus-visible, .demo-mobile-file-picker select:focus-visible {
+.demo-file-select:focus-visible, .demo-commit-row:focus-visible, .demo-change-row:focus-visible, .demo-mobile-file-picker [data-slot="dropdown-menu-trigger"]:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: -2px;
 }
@@ -1010,7 +1010,7 @@ html[lang="zh-CN"] .site-hero h1 { font-size: clamp(36px, 5vw, 64px); line-heigh
   color: var(--muted-foreground);
 }
 
-.demo-history-file-picker select {
+.demo-history-file-picker [data-slot="dropdown-menu-trigger"] {
   min-width: 0;
   max-width: 230px;
   flex: 1;
@@ -1022,7 +1022,7 @@ html[lang="zh-CN"] .site-hero h1 { font-size: clamp(36px, 5vw, 64px); line-heigh
   font-size: 12px;
 }
 
-.demo-history-file-picker select:focus-visible {
+.demo-history-file-picker [data-slot="dropdown-menu-trigger"]:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: -2px;
 }
@@ -1396,7 +1396,7 @@ html[lang="zh-CN"] .site-hero h1 { font-size: clamp(36px, 5vw, 64px); line-heigh
   .demo-mobile-file-picker label {
     color: var(--muted-foreground);
   }
-  .demo-mobile-file-picker select {
+  .demo-mobile-file-picker [data-slot="dropdown-menu-trigger"] {
     min-width: 0;
     max-width: 145px;
     flex: 1;
@@ -1411,7 +1411,7 @@ html[lang="zh-CN"] .site-hero h1 { font-size: clamp(36px, 5vw, 64px); line-heigh
     padding-inline: 8px;
     font-size: 12px;
   }
-  .demo-history-file-picker select {
+  .demo-history-file-picker [data-slot="dropdown-menu-trigger"] {
     max-width: 145px;
     font-size: 12px;
   }

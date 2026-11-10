@@ -468,25 +468,34 @@ fn lock_queries_can_cancel_a_server_that_never_replies() {
     let Some((_dir, repo, server)) = fixture() else {
         return;
     };
+    let state = lfs_state(&repo).unwrap();
     server.state.lock().unwrap().hanging = true;
     let id = "lfs-lock-query-cancellation";
     let worker = thread::spawn(move || {
         with_cancel(Some(id), || {
-            perform(
+            action(
                 &repo,
-                LfsAction::Locks {
+                &state,
+                &LfsAction::Locks {
                     remote: "origin".into(),
                 },
+                &mut |_| {},
             )
         })
     });
     let started = std::time::Instant::now();
-    while !server.requested.load(Ordering::Relaxed) && started.elapsed() < Duration::from_secs(10) {
+    while !server.requested.load(Ordering::Relaxed)
+        && !worker.is_finished()
+        && started.elapsed() < Duration::from_secs(60)
+    {
         thread::sleep(Duration::from_millis(5));
     }
-    assert!(server.requested.load(Ordering::Relaxed));
+    let requested = server.requested.load(Ordering::Relaxed);
     let cancelled = std::time::Instant::now();
-    assert!(cancel_activity(id));
-    assert!(worker.join().unwrap().unwrap_err().is_cancelled());
+    let cancellation_accepted = cancel_activity(id);
+    let result = worker.join().unwrap();
+    assert!(requested, "Lock query did not reach the server: {result:?}");
+    assert!(cancellation_accepted);
+    assert!(result.unwrap_err().is_cancelled());
     assert!(cancelled.elapsed() < Duration::from_secs(3));
 }

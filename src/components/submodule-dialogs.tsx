@@ -1,3 +1,4 @@
+import { ChoiceSelect } from "@/components/ui/choice-select";
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ChevronDownIcon, InfoIcon, Loader2Icon, RefreshCwIcon } from "lucide-react";
 import { formatBytes, useTranslation } from "@/i18n";
@@ -150,8 +151,8 @@ function UpdateForm({ paths, remote, mutation, onClose }: { paths: string[]; rem
   const save = useSave(mutation, onClose);
   return <Frame background title={t("git.submodule.updateTitle")} description={paths.length === 1 ? paths[0] : t("git.submodule.all")} busy={save.busy} error={save.error} onClose={onClose} footer={<Button form="update-submodule" type="submit" disabled={save.busy}>{save.busy ? <Loader2Icon className="animate-spin motion-reduce:animate-none" /> : null}{t("git.submodule.update")}</Button>}>
     <form id="update-submodule" className="space-y-4" onSubmit={event => { event.preventDefault(); save.run(() => updateSubmodules(paths, { remote: fromRemote, recursive, fetch: true, strategy })); }}>
-      <div className="space-y-2"><Label htmlFor="submodule-source">{t("git.submodule.source")}</Label><select id="submodule-source" className="h-8 w-full rounded-md border bg-background px-2 text-sm" disabled={save.busy} value={fromRemote ? "remote" : "recorded"} onChange={event => setFromRemote(event.target.value === "remote")}><option value="recorded">{t("git.submodule.recorded")}</option><option value="remote">{t("git.submodule.remote")}</option></select></div>
-      <div className="space-y-2"><Label htmlFor="submodule-strategy">{t("git.submodule.strategy")}</Label><select id="submodule-strategy" className="h-8 w-full rounded-md border bg-background px-2 text-sm" disabled={save.busy} value={strategy} onChange={event => setStrategy(event.target.value as SubmoduleUpdateOptions["strategy"])}><option value="checkout">{t("git.submodule.checkout")}</option><option value="merge">{t("git.submodule.merge")}</option><option value="rebase">{t("git.submodule.rebase")}</option></select></div>
+      <div className="space-y-2"><Label htmlFor="submodule-source">{t("git.submodule.source")}</Label><ChoiceSelect id="submodule-source" value={fromRemote ? "remote" : "recorded"} disabled={save.busy} onValueChange={value => setFromRemote(value === "remote")} options={[{value:"recorded",label:t("git.submodule.recorded")},{value:"remote",label:t("git.submodule.remote")}]} /></div>
+      <div className="space-y-2"><Label htmlFor="submodule-strategy">{t("git.submodule.strategy")}</Label><ChoiceSelect id="submodule-strategy" value={strategy} disabled={save.busy} onValueChange={setStrategy} options={[{value:"checkout",label:t("git.submodule.checkout")},{value:"merge",label:t("git.submodule.merge")},{value:"rebase",label:t("git.submodule.rebase")}]} /></div>
       <label className="flex w-fit items-center gap-2 text-sm"><Checkbox checked={recursive} disabled={save.busy} onCheckedChange={value => setRecursive(value === true)} />{t("git.submodule.recursive")}</label>
     </form>
   </Frame>;

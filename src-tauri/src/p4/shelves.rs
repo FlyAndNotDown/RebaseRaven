@@ -17,19 +17,24 @@ use crate::error::{AppError, AppResult};
 pub fn list_shelves(
     connection: &P4Connection,
     user: &str,
+    client: &str,
     before: Option<u64>,
 ) -> AppResult<P4ChangePage> {
-    list_shelves_with(user, before, &mut |args| run(connection, args))
+    list_shelves_with(user, client, before, &mut |args| run(connection, args))
 }
 
 fn list_shelves_with(
     user: &str,
+    client: &str,
     before: Option<u64>,
     run: &mut impl FnMut(&[&str]) -> AppResult<String>,
 ) -> AppResult<P4ChangePage> {
     let mut limit = 51usize;
-    if user.starts_with('-') || user.chars().any(char::is_whitespace) {
-        return Err(AppError::msg("Choose a Perforce user name."));
+    if [user, client]
+        .iter()
+        .any(|value| value.starts_with('-') || value.chars().any(char::is_whitespace))
+    {
+        return Err(AppError::msg("Choose a Perforce user or workspace name."));
     }
     if before.is_some_and(|id| id <= 1) {
         return Ok(P4ChangePage {
@@ -43,6 +48,9 @@ fn list_shelves_with(
         let mut args = vec!["-ztag", "changes", "-s", "shelved", "-L", "-m", &count];
         if !user.trim().is_empty() {
             args.extend(["-u", user.trim()]);
+        }
+        if !client.trim().is_empty() {
+            args.extend(["-c", client.trim()]);
         }
         // File revision ranges only select submitted changes. Shelf pagination
         // scans metadata and filters by the changelist id instead.
@@ -73,7 +81,7 @@ fn list_shelves_with(
             .checked_mul(2)
             .filter(|limit| *limit <= 100_000)
             .ok_or_else(|| {
-                AppError::msg("Too many shelves. Filter by user or open a changelist by number.")
+                AppError::msg("Too many shelves. Filter by user or workspace, or open a changelist by number.")
             })?;
     }
 }
@@ -235,9 +243,10 @@ mod tests {
     #[test]
     fn pages_shelves_by_metadata_without_submitted_file_revision_ranges() {
         let mut limits = Vec::new();
-        let page = list_shelves_with("alice", Some(60), &mut |args| {
+        let page = list_shelves_with("alice", "workstation", Some(60), &mut |args| {
             assert!(!args.iter().any(|arg| arg.starts_with("//")));
             assert!(args.windows(2).any(|pair| pair == ["-u", "alice"]));
+            assert!(args.windows(2).any(|pair| pair == ["-c", "workstation"]));
             let limit = args[args.iter().position(|arg| *arg == "-m").unwrap() + 1].parse::<usize>().unwrap();
             limits.push(limit);
             Ok((1..=120).rev().take(limit).map(|id| format!("... change {id}\n... user alice\n... client dev-pc\n... status pending\n\n")).collect())
@@ -265,14 +274,30 @@ mod tests {
 
     #[test]
     fn returns_the_last_page_and_propagates_permission_errors() {
-        let page = list_shelves_with("", Some(3), &mut |_| {
+        let page = list_shelves_with("", "", Some(3), &mut |_| {
             Ok("... change 8\n\n... change 2\n\n".into())
         })
         .unwrap();
         assert_eq!(page.changes.len(), 1);
         assert!(!page.has_more);
-        assert!(
-            list_shelves_with("", None, &mut |_| Err(AppError::msg("Permission denied"))).is_err()
-        );
+        assert!(list_shelves_with("", "", None, &mut |_| Err(AppError::msg(
+            "Permission denied"
+        )))
+        .is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_shelf_filters_before_running_a_command() {
+        for (user, client) in [
+            ("-alice", ""),
+            ("", "-workspace"),
+            ("a b", ""),
+            ("", "a\nb"),
+        ] {
+            assert!(list_shelves_with(user, client, None, &mut |_| {
+                panic!("Invalid filters must not reach Perforce")
+            })
+            .is_err());
+        }
     }
 }

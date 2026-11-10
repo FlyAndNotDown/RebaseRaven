@@ -1,3 +1,4 @@
+import { ChoiceSelect } from "@/components/ui/choice-select";
 import { t, useTranslation } from "@/i18n";
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -518,19 +519,7 @@ function AddWorktreeForm({ mutation, onClose, onCreated }: { mutation: ReturnTyp
             ))}
           </div>
           {mode === "existing" ? (
-            <select
-              aria-label={t("git.ui.branch")}
-              disabled={saving}
-              className="h-8 rounded-md border bg-transparent px-2 font-mono text-sm"
-              value={branch}
-              onChange={(event) => setBranch(event.target.value)}
-            >
-              {branches.map((item) => (
-                <option key={item.name} value={item.name}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
+            <ChoiceSelect aria-label={t("git.ui.branch")} value={branch} disabled={saving} onValueChange={setBranch} className="font-mono" options={branches.map(item => ({value:item.name,label:item.name}))} />
           ) : (
             <Input
               aria-label={t("git.ui.new_branch_name")}

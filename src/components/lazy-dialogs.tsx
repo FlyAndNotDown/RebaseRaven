@@ -52,11 +52,6 @@ export const ReflogDialog = lazyDialog(
   (props) => props.open,
 );
 
-export const BisectDialog = lazyDialog(
-  () => import("@/components/bisect-dialog").then((module) => module.BisectDialog),
-  (props) => props.open,
-);
-
 export const SparseCheckoutDialog = lazyDialog(
   () => import("@/components/sparse-checkout-dialog").then((module) => module.SparseCheckoutDialog),
   (props) => props.open,

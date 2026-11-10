@@ -138,10 +138,46 @@ describe("application update lifecycle", () => {
     expect(store.getSnapshot().request).toBe("install");
     download.resolve(state(5, "installed"));
     await install;
+    expect(client.restart).toHaveBeenCalledTimes(1);
     await store.check();
     expect(client.check).toHaveBeenCalledTimes(1);
     await store.restart();
+    expect(client.restart).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps automatic relaunch in the same operation and offers a restart retry on failure", async () => {
+    const { client, store } = fixture();
+    client.check.mockResolvedValue(state(2, "available"));
+    await store.start();
+    const relaunch = deferred<void>();
+    client.restart.mockReturnValueOnce(relaunch.promise);
+    const installing = store.install("0.0.2");
+    await vi.waitFor(() => expect(client.restart).toHaveBeenCalledTimes(1));
+    expect(store.getSnapshot()).toMatchObject({ status: "installed", request: "restart", lastRequest: "restart" });
+    await store.restart();
+    await store.install("0.0.2");
     expect(client.restart).toHaveBeenCalledTimes(1);
+    relaunch.resolve();
+    await installing;
+
+    const retry = fixture();
+    retry.client.check.mockResolvedValue(state(2, "available"));
+    retry.client.restart.mockRejectedValueOnce(new Error("Relaunch failed"));
+    await retry.store.start();
+    await retry.store.install("0.0.2");
+    expect(retry.store.getSnapshot()).toMatchObject({ status: "installed", lastRequest: "restart", error: "Relaunch failed", notice: { kind: "error", request: "restart" } });
+    await retry.store.restart();
+    expect(retry.client.install).toHaveBeenCalledTimes(1);
+    expect(retry.client.restart).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not restart after a failed installation", async () => {
+    const { client, store } = fixture();
+    client.check.mockResolvedValue(state(2, "available"));
+    client.install.mockResolvedValue({ ...state(5, "error"), error: "Installation failed" });
+    await store.start();
+    await store.install("0.0.2");
+    expect(client.restart).not.toHaveBeenCalled();
   });
 
   it("retains a checked update after an install error so the owner can retry", async () => {

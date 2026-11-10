@@ -1,6 +1,6 @@
 [package]
 name = "rebaseraven"
-version = "0.1.12"
+version = "0.1.13"
 description = "A unified version control client"
 license = "MIT"
 edition = "2021"

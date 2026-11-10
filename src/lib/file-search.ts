@@ -1,4 +1,7 @@
+import type { GitFileKind } from "@/types/git";
+
 export interface SearchNode {
+  kind?: GitFileKind;
   relative: string;
   dir: boolean;
   status?: string;
@@ -31,7 +34,7 @@ export function nestSearchNodes(nodes: SearchNode[]): {
       const path = parent ? `${parent}/${parts[index]}` : parts[index];
       const map = bucket(parent);
       const existing = map.get(path);
-      if (!existing || existing.dir) {
+      if (!existing) {
         map.set(path, { relative: path, dir: true });
       }
       const last = index === parts.length - 1;
@@ -45,6 +48,11 @@ export function nestSearchNodes(nodes: SearchNode[]): {
     if (!relative || relative.split("/").includes("..")) continue;
     if (node.dir) {
       addDir(relative, false);
+      if (node.kind) {
+        const slash = relative.lastIndexOf("/");
+        const existing = bucket(slash >= 0 ? relative.slice(0, slash) : "").get(relative);
+        if (existing) existing.kind = node.kind;
+      }
       continue;
     }
     const slash = relative.lastIndexOf("/");
@@ -52,6 +60,7 @@ export function nestSearchNodes(nodes: SearchNode[]): {
     if (parent) addDir(parent, true);
     bucket(parent).set(relative, {
       relative,
+      kind: node.kind,
       dir: false,
       status: node.status ?? "",
       detail: node.detail ?? "",

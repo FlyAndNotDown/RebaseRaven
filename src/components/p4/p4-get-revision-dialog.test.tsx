@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { chooseChoice } from "@/test/choose-choice";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -21,7 +22,8 @@ async function render(target:P4RevisionTarget) {await act(async () => root.rende
 function button(label:string) {return [...document.querySelectorAll("button")].find(item => item.textContent?.trim() === label)!;}
 async function click(label:string) {await act(async () => button(label).click());}
 async function change(label:string,value:string,select=false) {
-  const element=document.querySelector(`${select ? "select" : "input"}[aria-label="${label}"]`)!;
+  const element=document.querySelector(`${select ? "button" : "input"}[aria-label="${label}"]`)!;
+  if (select) {await chooseChoice(element as HTMLElement,value);return;}
   await act(async () => {Object.getOwnPropertyDescriptor(select ? HTMLSelectElement.prototype : HTMLInputElement.prototype,"value")!.set!.call(element,value);element.dispatchEvent(new Event(select ? "change" : "input",{bubbles:true}));});
 }
 

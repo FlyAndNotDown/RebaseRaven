@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { chooseChoice } from "@/test/choose-choice";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -24,11 +25,12 @@ beforeEach(() => {
 });
 afterEach(async()=>{await act(async()=>root.unmount());container.remove();});
 async function render(element:React.ReactNode=<P4StreamWorkDialog onClose={closed}/>) {await act(async()=>root.render(<TooltipProvider>{element}</TooltipProvider>));}
-function button(text:string) {const value=[...document.querySelectorAll("button")].find(item=>item.textContent?.trim()===text);if(!value)throw new Error(`Missing button: ${text}`);return value;}
+function button(text:string) {const value=[...document.querySelectorAll<HTMLButtonElement>("button:not([aria-haspopup])")].find(item=>item.textContent?.trim()===text);if(!value)throw new Error(`Missing button: ${text}`);return value;}
 async function click(text:string) {await act(async()=>button(text).click());}
 async function enter(id:string,value:string) {
   const element=document.getElementById(id) as HTMLInputElement|HTMLSelectElement;
   expect(element).not.toBeNull();
+  if (element.tagName === "BUTTON") {await chooseChoice(element,value);return;}
   await act(async()=>{Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element),"value")!.set!.call(element,value);element.dispatchEvent(new Event(element.tagName==="SELECT"?"change":"input",{bubbles:true}));});
 }
 
@@ -41,7 +43,7 @@ it("opens a private edit only after a reviewed preview and pins it to the chosen
 
 it("invalidates approval when the destination changes",async()=>{
   await render();await click("Preview");await enter("p4-stream-change","42");
-  expect([...document.querySelectorAll("button")].some(item=>item.textContent?.trim()==="Open for private editing")).toBe(false);
+  expect([...document.querySelectorAll("button:not([aria-haspopup])")].some(item=>item.textContent?.trim()==="Open for private editing")).toBe(false);
   await click("Preview");await click("Open for private editing");
   expect(actions.previewWork).toHaveBeenCalledTimes(2);expect(actions.applyWork).toHaveBeenCalledWith(expect.objectContaining({change:"42"}),"reviewed-operation");
 });

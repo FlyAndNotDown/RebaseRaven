@@ -3,19 +3,12 @@ import type { LfsState, LfsAction, LfsOutcome } from "@/types/lfs";
 import type { SparseCheckoutState, SparseCheckoutRequest, SparseCheckoutPreview, SparseCheckoutOutcome } from "@/types/sparse-checkout";
 import type {
   AppPrefs,
-  BisectAction,
-  BisectState,
-  BisectOutcome,
   AppSession,
   BranchInfo,
   BranchList,
   CommitDetails,
-  CommitOptions,
-  GitSigningMode,
   GitRepositorySettings,
   GitRepositoryChange,
-  GitSignatureTarget,
-  GitSignatureVerification,
   CommitFile,
   CommitSummary,
   DirEntry,
@@ -116,15 +109,11 @@ export function subscribeGitMissing(listener: () => void) {
 export const gitApi = {
   getRepositorySettings: (repoPath: string) => call<GitRepositorySettings>("get_git_repository_settings", {repoPath}),
   setRepositorySettings: (repoPath: string, changes: GitRepositoryChange[], fingerprint: string) => call<GitRepositorySettings>("set_git_repository_settings", {repoPath, changes, fingerprint}),
-  verifySignature: (repoPath: string, target: GitSignatureTarget, activityId: string) => call<GitSignatureVerification>("verify_git_signature", {repoPath, target, activityId}),
   lfsState: (repoPath: string) => call<LfsState>("git_lfs_state", {repoPath}),
   lfsAction: (repoPath: string, action: LfsAction, fingerprint: string, activityId?: string) => call<LfsOutcome>("git_lfs_action", {repoPath, action, fingerprint, activityId:activityId || null}),
   sparseCheckoutState: (repoPath: string) => call<SparseCheckoutState>("sparse_checkout_state", {repoPath}),
   previewSparseCheckout: (repoPath: string, request: SparseCheckoutRequest, fingerprint: string) => call<SparseCheckoutPreview>("preview_sparse_checkout", {repoPath, request, fingerprint}),
   applySparseCheckout: (repoPath: string, request: SparseCheckoutRequest, fingerprint: string, allowIgnoredRemoval: boolean, activityId?: string) => call<SparseCheckoutOutcome>("apply_sparse_checkout", {repoPath, request, fingerprint, allowIgnoredRemoval, activityId:activityId || null}),
-  bisectState: (repoPath: string) => call<BisectState>("bisect_state", { repoPath }),
-  bisectAction: (repoPath: string, action: BisectAction, fingerprint: string) =>
-    call<BisectOutcome>("bisect_action", { repoPath, action, fingerprint }),
   listRecents: () => call<RecentRepo[]>("list_recents"),
   forgetRecent: (path: string) => call<RecentRepo[]>("forget_recent", { path }),
   loadSession: () => call<AppSession>("load_session"),
@@ -182,8 +171,8 @@ export const gitApi = {
     call<WorkspaceSnapshot>("apply_lines", { repoPath, path, staged, action, lines }),
   discardPaths: (repoPath: string, paths: string[]) =>
     call<WorkspaceSnapshot>("discard_paths", { repoPath, paths }),
-  commit: (repoPath: string, message: string, amend = false, options?: CommitOptions) =>
-    call<WorkspaceSnapshot>("commit_changes", { repoPath, message, amend, options }),
+  commit: (repoPath: string, message: string, amend = false) =>
+    call<WorkspaceSnapshot>("commit_changes", { repoPath, message, amend }),
   checkoutBranch: (repoPath: string, name: string) =>
     call<WorkspaceSnapshot>("checkout_branch", { repoPath, name }),
   checkoutDetached: (repoPath: string, oid: string) =>
@@ -274,13 +263,12 @@ export const gitApi = {
       setUpstream: options?.setUpstream ?? false,
       expectedBranch: options?.expectedBranch ?? null,
     }),
-  createTag: (repoPath: string, name: string, message?: string, target?: string, signing?: GitSigningMode) =>
+  createTag: (repoPath: string, name: string, message?: string, target?: string) =>
     call<WorkspaceSnapshot>("create_tag", {
       repoPath,
       name,
       message: message || null,
       target: target || null,
-      signing,
     }),
   deleteTag: (repoPath: string, name: string) =>
     call<WorkspaceSnapshot>("delete_tag", { repoPath, name }),

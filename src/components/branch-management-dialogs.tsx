@@ -1,3 +1,4 @@
+import { ChoiceSelect } from "@/components/ui/choice-select";
 import { useEffect, useState } from "react";
 import { InfoIcon, Loader2Icon } from "lucide-react";
 import { useTranslation } from "@/i18n";
@@ -114,11 +115,7 @@ export function BranchUpstreamDialog({ branch, remoteBranches, onOpenChange, onS
           </DialogHeader>
           <div className="my-4 grid gap-2">
             <Label htmlFor="branch-upstream">{t("git.branch.upstream")}</Label>
-            <select id="branch-upstream" autoFocus className="h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" value={upstream} disabled={busy} onChange={(event) => { setUpstream(event.target.value); setFailed(false); }}>
-              <option value="">{t("git.branch.noUpstream")}</option>
-              {missing ? <option value={upstream}>{upstream} {t("git.branch.missingUpstream")}</option> : null}
-              {names.map((name) => <option key={name} value={name}>{name}</option>)}
-            </select>
+            <ChoiceSelect id="branch-upstream" autoFocus value={upstream} disabled={busy} onValueChange={value => {setUpstream(value); setFailed(false);}} options={[{value:"",label:t("git.branch.noUpstream")}, ...(missing ? [{value:upstream,label:`${upstream} ${t("git.branch.missingUpstream")}`}] : []), ...names.map(name => ({value:name,label:name}))]} />
             {names.length === 0 ? <p className="text-xs text-muted-foreground">{t("git.branch.noRemoteBranches")}</p> : null}
             {failed ? <p role="alert" className="text-xs text-destructive">{t("git.branch.upstreamFailed")}</p> : null}
           </div>

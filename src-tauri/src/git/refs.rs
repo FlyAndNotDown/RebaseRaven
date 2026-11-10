@@ -205,16 +205,6 @@ pub fn create_tag(
     message: Option<&str>,
     target: Option<&str>,
 ) -> AppResult<()> {
-    create_tag_with_signing(repo, name, message, target, GitSigningMode::Default)
-}
-
-pub fn create_tag_with_signing(
-    repo: &Repository,
-    name: &str,
-    message: Option<&str>,
-    target: Option<&str>,
-    signing: GitSigningMode,
-) -> AppResult<()> {
     let name = name.trim();
     if name.is_empty() {
         return Err(AppError::msg("Tag name cannot be empty"));
@@ -235,16 +225,10 @@ pub fn create_tag_with_signing(
                 ));
             }
             let mut args = vec!["tag", "--annotate", "--file=-"];
-            if let Some(flag) = signing.tag_flag() {
-                args.push(flag);
-            }
             args.extend(["--", name, &target]);
             run_git_input(root, &args, message.as_bytes())?;
         }
         None => {
-            if matches!(signing, GitSigningMode::Sign) {
-                return Err(AppError::msg("Enter an annotation to create a signed tag."));
-            }
             // An empty annotation explicitly requests a lightweight tag, even
             // when tag.gpgSign would otherwise invoke an editor for a signed tag.
             run_git_stdout(root, &["tag", "--no-sign", "--", name, &target])?;

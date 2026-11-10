@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { chooseChoice } from "@/test/choose-choice";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -36,8 +37,8 @@ it("shows missing Git LFS without exposing mutation actions",async()=>{
 it("pins local setup and transfers to the exact repository and current fingerprint",async()=>{
   await show();await click("Set up locally");expect(model.change).toHaveBeenLastCalledWith("/work/project",{kind:"install"},"current-lfs");
   await input("lfs-include","*.bin,*.psd");await input("lfs-exclude","archive/**");await check("Fetch recent refs too");
-  const remote=document.getElementById("lfs-remote") as HTMLSelectElement;
-  await act(async()=>{remote.value="upstream";remote.dispatchEvent(new Event("change",{bubbles:true}));});
+  const remote=document.getElementById("lfs-remote") as HTMLButtonElement;
+  await chooseChoice(remote,"upstream");
   await click("Fetch objects");expect(model.change).toHaveBeenLastCalledWith("/work/project",{kind:"fetch",remote:"upstream",include:"*.bin,*.psd",exclude:"archive/**",recent:true},"current-lfs");
   await click("Download and checkout");expect(model.change).toHaveBeenLastCalledWith("/work/project",{kind:"pull",remote:"upstream",include:"*.bin,*.psd",exclude:"archive/**"},"current-lfs");
   await click("Upload objects");expect(model.change).toHaveBeenLastCalledWith("/work/project",{kind:"push",remote:"upstream"},"current-lfs");
@@ -97,7 +98,7 @@ it("requires an exact path confirmation and a reviewed lock fingerprint for forc
 
 it("invalidates lock lists and forced confirmations when the remote changes or an action fails",async()=>{
   await lockPanel();await click("Refresh locks");await click("Force unlock media/shared.psd");await confirmation("media/shared.psd");
-  const remote=document.getElementById("lfs-lock-remote") as HTMLSelectElement;await act(async()=>{remote.value="upstream";remote.dispatchEvent(new Event("change",{bubbles:true}));});
+  const remote=document.getElementById("lfs-lock-remote") as HTMLButtonElement;await chooseChoice(remote,"upstream");
   expect(document.querySelector('[aria-label="Locked path confirmation"]')).toBeNull();expect(document.body.textContent).not.toContain("Bob");await click("Refresh locks");expect(model.change).toHaveBeenLastCalledWith("/work/project",{kind:"locks",remote:"upstream"},"current-lfs");
   model.change.mockResolvedValue(null);await click("Force unlock media/shared.psd");await confirmation("media/shared.psd");await click("Force unlock");expect(document.body.textContent).not.toContain("Bob");expect(document.body.textContent).toContain("Current data was refreshed");
   model.change.mockResolvedValue({state:state(),report:"",locks:locks("upstream")});await click("Refresh locks");expect(document.body.textContent).toContain("Bob");expect(document.querySelector('[aria-label="Locked path confirmation"]')).toBeNull();

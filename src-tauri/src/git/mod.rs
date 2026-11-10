@@ -13,7 +13,6 @@ use serde::Serialize;
 use crate::error::{AppError, AppResult};
 
 // Submodules share this module's imports and helpers through `use super::*`.
-mod bisect;
 mod changes;
 mod cli;
 mod conflicts;
@@ -34,8 +33,6 @@ mod refs;
 mod remote;
 mod repo;
 mod repository_settings;
-mod signature_verification;
-mod signing;
 mod sparse;
 mod stash;
 mod status;
@@ -49,7 +46,6 @@ mod submodules;
 mod tests;
 mod tools;
 
-pub use bisect::*;
 pub use changes::*;
 use cli::*;
 pub use cli::{
@@ -73,8 +69,6 @@ pub use reflog::*;
 pub use refs::*;
 pub use remote::*;
 pub use repository_settings::*;
-pub use signature_verification::*;
-pub use signing::*;
 pub use sparse::*;
 pub use stash::*;
 pub use status::*;
@@ -133,6 +127,7 @@ pub struct RebaseProgress {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RebaseCommit {
+    pub message: String,
     pub id: String,
     pub short_id: String,
     pub summary: String,

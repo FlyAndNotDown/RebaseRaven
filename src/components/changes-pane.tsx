@@ -22,13 +22,11 @@ import {
   ListIcon,
   MinusIcon,
   PlusIcon,
-  ShieldCheckIcon,
   Trash2Icon,
   Undo2Icon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { GitSigningMenu } from "@/components/git-signing";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { HoverTip } from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -37,7 +35,6 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -161,8 +158,7 @@ export function ChangesPane() {
     "runMergetool",
     "updatePrefs",
   ]);
-  const bisecting = snapshot?.repo.operation?.kind === "bisect";
-  const operation = bisecting ? null : snapshot?.repo.operation ?? null;
+  const operation = snapshot?.repo.operation ?? null;
   const editor = resolveCommitEditor({ snapshot, commitDraft, commitEditor });
   const { text: message, amend, preparedMessage } = editor;
   function setMessage(text: string) {
@@ -244,12 +240,12 @@ export function ChangesPane() {
     return selected.length > 1 && selected.includes(path) ? selected : [path];
   };
 
-  const canAmend = Boolean(snapshot?.headCommit) && !operation && !bisecting;
-  const canCommit = !bisecting && (operation
+  const canAmend = Boolean(snapshot?.headCommit) && !operation;
+  const canCommit = (operation
     ? !committing && !conflicted
     : !committing && message.trim().length > 0 && (amend ? canAmend : files.staged.length > 0));
   const canCommitAndPush = !operation && canCommit && Boolean(snapshot?.repo.currentBranch && snapshot.remotes.length);
-  const canOpenCommitMenu = !operation && !bisecting && !committing;
+  const canOpenCommitMenu = !operation && !committing;
   const primaryLabel = operation
     ? t(CONTINUE_LABEL[operation.kind] ?? "git.ui.continue")
     : amend
@@ -723,10 +719,6 @@ export function ChangesPane() {
             }
           }}
         />
-        {!operation && (editor.signoff || editor.signing !== "default") ? <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-          {editor.signing !== "default" ? <HoverTip label={t("git.signing.hint")}><span className="inline-flex items-center gap-1"><ShieldCheckIcon className="size-3" />{t(`git.signing.modes.${editor.signing}`)}</span></HoverTip> : null}
-          {editor.signoff ? <HoverTip label={t("git.signing.signoffHint")}><span>{t("git.signing.signoffTrailer")}</span></HoverTip> : null}
-        </div> : null}
         <div className="mt-2 flex items-center justify-between gap-2">
           <Button
             type="button"
@@ -737,7 +729,7 @@ export function ChangesPane() {
           >
             <Undo2Icon data-icon="inline-start" />{t("git.ui.discard_all")}</Button>
           <div className="inline-flex overflow-hidden rounded-lg">
-            <HoverTip label={bisecting ? t("git.bisect.finishBeforeCommit") : operation && conflicted ? t("git.ui.resolve_every_conflict_first") : undefined}>
+            <HoverTip label={operation && conflicted ? t("git.ui.resolve_every_conflict_first") : undefined}>
               <span className="inline-flex">
                 <Button type="submit" disabled={!canCommit} className="rounded-none">
                   {primaryLabel}
@@ -768,11 +760,6 @@ export function ChangesPane() {
                     className="whitespace-nowrap"
                     onCheckedChange={(checked) => toggleAmend(checked === true)}
                   ><FilePenLineIcon />{t("git.ui.amend_last_commit")}</DropdownMenuCheckboxItem>
-                  <DropdownMenuSeparator />
-                  <GitSigningMenu value={editor.signing} disabled={committing} onChange={signing => setCommitEditor(activeTabId, {...editor, signing})} />
-                  <DropdownMenuCheckboxItem checked={editor.signoff} disabled={committing} onCheckedChange={checked => setCommitEditor(activeTabId, {...editor, signoff:checked === true})}>
-                    <HoverTip label={t("git.signing.signoffHint")}><span>{t("git.signing.signoff")}</span></HoverTip>
-                  </DropdownMenuCheckboxItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             )}

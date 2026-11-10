@@ -22,7 +22,8 @@ import type { LfsAction, LfsOutcome, LfsUpdate } from "@/types/lfs";
 import { normalizeRepoPath, sameRepoPath } from "@/lib/format";
 import { DEFAULT_HISTORY_EXPANDED, renamedRemoteViews } from "@/lib/remote-refs";
 import { repositoryUndoAction } from "@/state/repository-actions";
-import { canClearCommitEditor, commitEditorSubmission, editCommitEditor, resolveCommitEditor, reuseCommitEditor, type CommitDraftReview, type CommitMessageMode, type CommitEditorState } from "@/state/commit-editor";
+import { canClearCommitEditor, commitEditorSubmission, editCommitEditor, type CommitEditorState } from "@/state/commit-editor";
+import type { BranchDeletionOwner } from "@/lib/branch-deletion";
 import { defaultPrefs, normalizePrefs, sameLayout } from "@/lib/prefs";
 import {
   COMMIT_PAGE,
@@ -68,15 +69,11 @@ import {
 } from "@/state/snapshot-compare";
 import type {
   Activity,
-  BisectAction,
-  BisectOutcome,
-  BisectUpdate,
   AppPrefs,
   AppSession,
   PanelLayout,
   PanelLayoutId,
   CommitDetails,
-  GitSigningMode,
   CommitSummary,
   CompareRevision,
   RevisionComparison,
@@ -98,7 +95,7 @@ import type {
 } from "@/types/git";
 
 export { COMMIT_PAGE, WELCOME_TAB_ID, defaultFetchRemote, primaryRemote };
-export type Panel = "lfs" | "sparse-checkout" | "reflog" | "bisect" | "add-submodule" | "palette" | "settings" | "settings-about" | "new-branch";
+export type Panel = "lfs" | "sparse-checkout" | "reflog" | "add-submodule" | "palette" | "settings" | "settings-about" | "new-branch";
 export type RepoKindPrompt = {
   path: string;
   gitPath: string;
@@ -220,7 +217,6 @@ interface GitContextValue {
   unstage: (paths: string[]) => Promise<void>;
   discard: (paths: string[]) => Promise<void>;
   applyLines: (path: string, staged: boolean, action: LineAction, lines: LineRef[]) => Promise<boolean>;
-  reuseCommitMessage: (tabId: string, path: string, review: CommitDraftReview, message: string, mode: CommitMessageMode) => boolean;
   commit: (message: string, amend?: boolean) => Promise<boolean>;
   commitAndPush: (message: string, amend?: boolean) => Promise<boolean>;
   undoLastCommit: (tabId?: string) => Promise<boolean>;
@@ -238,11 +234,11 @@ interface GitContextValue {
   createBranch: (name: string, switchTo: boolean, start?: string) => Promise<boolean>;
   renameBranch: (name: string, newName: string) => Promise<boolean>;
   setBranchUpstream: (name: string, upstream: string | null) => Promise<boolean>;
-  createTag: (name: string, message?: string, target?: string, signing?: GitSigningMode) => Promise<boolean>;
+  createTag: (name: string, message?: string, target?: string) => Promise<boolean>;
   deleteTag: (name: string) => Promise<boolean>;
   pushTag: (remote: string, name: string) => Promise<boolean>;
   deleteRemoteTag: (remote: string, name: string) => Promise<boolean>;
-  deleteBranch: (name: string, force?: boolean) => Promise<boolean | "unmerged">;
+  deleteBranch: (name: string, force?: boolean, owner?: BranchDeletionOwner) => Promise<boolean | "unmerged">;
   revertCommit: (oid: string, tabId?: string) => Promise<boolean>;
   cherryPickCommit: (oid: string, tabId?: string) => Promise<boolean>;
   rebaseOnto: (onto: string, label: string) => Promise<boolean>;
@@ -253,7 +249,6 @@ interface GitContextValue {
   mergeRef: (onto: string, label: string) => Promise<boolean>;
   operationContinue: (message?: string) => Promise<boolean>;
   operationAbort: () => Promise<boolean>;
-  bisectAction: (action: BisectAction, fingerprint: string) => Promise<BisectUpdate | null>;
   changeSparseCheckout: (repoPath: string, request: SparseCheckoutRequest, fingerprint: string, allowIgnoredRemoval: boolean) => Promise<SparseCheckoutUpdate | null>;
   changeLfs: (repoPath: string, action: LfsAction, fingerprint: string) => Promise<LfsUpdate | null>;
   resolveConflict: (path: string, side: "ours" | "theirs" | "both") => Promise<boolean>;
@@ -1958,25 +1953,14 @@ export function GitProvider({ children }: { children: ReactNode }) {
     return ok;
   }, [patchSession, runMutation]);
 
-  const reuseCommitMessage = useCallback((tabId: string, path: string, review: CommitDraftReview, message: string, mode: CommitMessageMode) => {
-    const current = sessionsRef.current[tabId];
-    if (!current || activeTabIdRef.current !== tabId || !sameRepoPath(current.path, path)) return false;
-    const editor = reuseCommitEditor(current, review, message, mode);
-    if (!editor) return false;
-    patchSession(tabId, {commitEditor:editor, view:"changes"});
-    return true;
-  }, [patchSession]);
-
   const commit = useCallback(
     async (message: string, amend = false) => {
       const tabId = activeTabIdRef.current;
       const submission = commitEditorSubmission(sessionsRef.current[tabId], message);
       const session = sessionsRef.current[tabId];
       if (!session) return false;
-      const editor = resolveCommitEditor(session);
-      const options = {signing: editor.signing, signoff: editor.signoff};
       const ok = await runMutation(amend ? t("operations.amending_commit") : t("operations.creating_commit"), (repoPath) =>
-        gitApi.commit(repoPath, message, amend, options),
+        gitApi.commit(repoPath, message, amend),
         undefined, { tabId },
       );
       if (ok) {
@@ -2318,10 +2302,10 @@ export function GitProvider({ children }: { children: ReactNode }) {
   );
 
   const createTag = useCallback(
-    async (name: string, message?: string, target?: string, signing?: GitSigningMode) => {
+    async (name: string, message?: string, target?: string) => {
       return runMutation(
         t("operations.creating_tag", { value: name }),
-        (repoPath) => gitApi.createTag(repoPath, name, message, target, signing),
+        (repoPath) => gitApi.createTag(repoPath, name, message, target),
         t("operations.created_tag", { value: name }),
       );
     },
@@ -2370,10 +2354,11 @@ export function GitProvider({ children }: { children: ReactNode }) {
   );
 
   const deleteBranch = useCallback(
-    async (name: string, force = false) => {
-      const repoPath = activeRepoPath();
-      const tabId = activeTabIdRef.current;
-      if (!repoPath) return false;
+    async (name: string, force = false, owner?: BranchDeletionOwner) => {
+      const tabId = owner?.tabId ?? activeTabIdRef.current;
+      const tab = tabsRef.current.find(item => item.id === tabId);
+      const repoPath = tab?.kind === "repo" ? tab.path : null;
+      if (!repoPath || (owner && !sameRepoPath(repoPath, owner.repoPath))) return false;
       const current = sessionsRef.current[tabId];
       const wasRemote = current?.snapshot?.branches.remote.some((branch) => branch.name === name) ?? false;
       try {
@@ -2391,6 +2376,8 @@ export function GitProvider({ children }: { children: ReactNode }) {
         const next = sessionsRef.current[tabId];
         if (next?.historyRevs.includes(name)) {
           setHistoryRevs(next.historyRevs.filter((rev) => rev !== name), tabId);
+        } else {
+          invalidateHistory(tabId, next?.view === "history");
         }
         if (wasRemote) await ensureBranches(true, tabId);
         toast.success(t("operations.deleted", { value: name }));
@@ -2403,7 +2390,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
         return false;
       }
     },
-    [activeRepoPath, ensureBranches, patchSession, runActivity, setHistoryRevs],
+    [ensureBranches, invalidateHistory, patchSession, runActivity, setHistoryRevs],
   );
 
   const refreshAfterReplay = useCallback(async (tabId = activeTabIdRef.current) => {
@@ -2613,22 +2600,6 @@ export function GitProvider({ children }: { children: ReactNode }) {
     }, undefined, {tabId, cancellable:true});
     if (!ok) await refreshAfterReplay(tabId);
     return ok && received.value ? {state:received.value.state, report:received.value.report, locks:received.value.locks} : null;
-  }, [refreshAfterReplay, runMutation]);
-
-  const bisectAction = useCallback(async (action: BisectAction, fingerprint: string): Promise<BisectUpdate | null> => {
-    const tabId = activeTabIdRef.current;
-    const received: { value: BisectOutcome | null } = { value: null };
-    const ok = await runMutation(
-      t(`git.bisect.${action.kind}Activity`),
-      async (repoPath) => {
-        received.value = await gitApi.bisectAction(repoPath, action, fingerprint);
-        return received.value.snapshot;
-      },
-      undefined,
-      { tabId },
-    );
-    if (!ok) await refreshAfterReplay(tabId);
-    return ok && received.value ? { state: received.value.state, report: received.value.report } : null;
   }, [refreshAfterReplay, runMutation]);
 
   const resolveConflict = useCallback(
@@ -3181,7 +3152,6 @@ export function GitProvider({ children }: { children: ReactNode }) {
       discard,
       applyLines,
       commit,
-      reuseCommitMessage,
       commitAndPush,
       undoLastCommit,
       checkoutDetached,
@@ -3212,7 +3182,6 @@ export function GitProvider({ children }: { children: ReactNode }) {
       mergeRef,
       operationContinue,
       operationAbort,
-      bisectAction,
       changeSparseCheckout,
       changeLfs,
       resolveConflict,
@@ -3287,7 +3256,6 @@ export function GitProvider({ children }: { children: ReactNode }) {
       discard,
       applyLines,
       commit,
-      reuseCommitMessage,
       commitAndPush,
       undoLastCommit,
       checkoutDetached,
@@ -3318,7 +3286,6 @@ export function GitProvider({ children }: { children: ReactNode }) {
       mergeRef,
       operationContinue,
       operationAbort,
-      bisectAction,
       changeSparseCheckout,
       changeLfs,
       resolveConflict,

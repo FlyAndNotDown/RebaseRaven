@@ -755,6 +755,7 @@ function mergeListingStatus(entries: FileTreeEntry[], statuses: P4EntryStatus[],
     const detail = found?.detail || (found ? "" : "Not in the depot");
     return {
       ...entry,
+      ignored: found ? false : entry.ignored,
       icon: <FileStatusIcon status={status} />,
       iconTitle: detail ? <FileStatusTip text={detail} /> : undefined,
     };
@@ -766,6 +767,7 @@ function presentFile(entry: P4DirEntry): FileTreeEntry {
     path: entry.path,
     name: entry.name,
     dir: entry.dir,
+    ignored: entry.ignored,
     icon: entry.dir ? undefined : <FileStatusIcon status={entry.status} />,
     iconTitle: entry.detail ? <FileStatusTip text={entry.detail} /> : undefined,
   };

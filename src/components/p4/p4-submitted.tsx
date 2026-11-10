@@ -1,9 +1,10 @@
+import { P4FilterMenu as FilterMenu, withCurrent } from "@/components/p4/p4-filter-menu";
 import { CommitMessage } from "@/components/commit-message";
 import { P4StreamDiffDialog } from "@/components/p4/p4-stream-work";
 import type { P4StreamDiffRequest } from "@/types/p4-stream-specs";
 import { t, useTranslation } from "@/i18n";
 import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
-import { GitBranchIcon, CheckIcon, ChevronDownIcon, DownloadIcon, HistoryIcon } from "lucide-react";
+import { GitBranchIcon, DownloadIcon, HistoryIcon } from "lucide-react";
 import { toast } from "sonner";
 import { AuthorAvatar } from "@/components/author-avatar";
 import { AuthorName, ExactTime, RevisionDot } from "@/components/revision-meta";
@@ -12,13 +13,6 @@ import { FileStatusIcon } from "@/components/p4/file-status-icon";
 import { P4Diff } from "@/components/p4/p4-diff";
 import { P4GetRevisionDialog, type P4RevisionTarget } from "@/components/p4/p4-get-revision-dialog";
 import { FileRowsSkeleton, HistorySkeleton } from "@/components/skeletons";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -488,93 +482,4 @@ function mergeById(remote: P4Changelist[], local: P4Changelist[]) {
 function appendChanges(current: P4Changelist[], next: P4Changelist[]) {
   const seen = new Set(current.map((change) => change.id));
   return [...current, ...next.filter((change) => !seen.has(change.id))];
-}
-
-function withCurrent(options: string[], current: string) {
-  if (!current || options.includes(current)) return options;
-  return [current, ...options];
-}
-
-function FilterMenu({
-  label,
-  value,
-  emptyLabel,
-  pinned,
-  options,
-  onOpen,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  emptyLabel: string;
-  pinned?: { label: string; value: string };
-  options: string[];
-  onOpen: () => void;
-  onChange: (value: string) => void;
-}) {
-  useTranslation();
-  const [query, setQuery] = useState("");
-  const needle = query.trim().toLowerCase();
-  const listed = pinned ? options.filter((option) => option !== pinned.value) : options;
-  const shown = (needle ? listed.filter((option) => option.toLowerCase().includes(needle)) : listed).slice(0, 80);
-  const typed = query.trim();
-  const canUseTyped = typed.length > 0 && !options.some((option) => option.toLowerCase() === typed.toLowerCase());
-  const showPinned =
-    pinned != null &&
-    pinned.value.length > 0 &&
-    (!needle || pinned.label.toLowerCase().includes(needle) || pinned.value.toLowerCase().includes(needle));
-  const buttonLabel = pinned && value === pinned.value ? pinned.label : value || emptyLabel;
-  return (
-    <DropdownMenu
-      onOpenChange={(open) => {
-        if (open) onOpen();
-        else setQuery("");
-      }}
-    >
-      <DropdownMenuTrigger asChild>
-        <Button type="button" variant="outline" size="sm" className="w-full justify-between px-2 font-normal">
-          <span className={cn("min-w-0 truncate text-xs", value && value !== pinned?.value && "font-mono")}>
-            {buttonLabel}
-          </span>
-          <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-64">
-        <div className="px-1.5 pb-1.5" onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t("p4.filterField", { field: label })}
-            className="h-7"
-          />
-        </div>
-        <div className="max-h-64 overflow-auto">
-          {!needle ? (
-            <DropdownMenuItem onClick={() => onChange("")}>
-              <span className="min-w-4">{value === "" ? <CheckIcon className="size-3.5" /> : null}</span>
-              {emptyLabel}
-            </DropdownMenuItem>
-          ) : null}
-          {showPinned && pinned ? (
-            <DropdownMenuItem onClick={() => onChange(pinned.value)}>
-              <span className="min-w-4">{value === pinned.value ? <CheckIcon className="size-3.5" /> : null}</span>
-              {pinned.label}
-            </DropdownMenuItem>
-          ) : null}
-          {shown.map((option) => (
-            <DropdownMenuItem key={option} onClick={() => onChange(option)}>
-              <span className="min-w-4">{option === value ? <CheckIcon className="size-3.5" /> : null}</span>
-              <span className="truncate font-mono">{option}</span>
-            </DropdownMenuItem>
-          ))}
-          {canUseTyped ? (
-            <DropdownMenuItem onClick={() => onChange(typed)}>
-              <span className="min-w-4" />
-              <span className="truncate font-mono">{t("p4.useValue", { value: typed })}</span>
-            </DropdownMenuItem>
-          ) : null}
-        </div>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
 }

@@ -375,6 +375,8 @@
   },
   "shelves": {
     "title": "团队 Shelf",
+    "restoreAction": "恢复…",
+    "restoreTitle": "恢复 Shelf #{{id}}",
     "description": "查找不同用户和工作区中的搁置修改。",
     "user": "用户 · 可选",
     "number": "变更列表编号 · 可选",

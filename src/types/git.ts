@@ -42,6 +42,7 @@ export interface RebaseProgress {
 export type RebaseAction = "pick" | "reword" | "squash" | "fixup" | "drop";
 
 export interface RebaseCommit {
+  message: string;
   id: string;
   shortId: string;
   summary: string;
@@ -153,46 +154,6 @@ export interface CompareRevision {
   label: string;
 }
 
-export interface BisectRevision {
-  id: string;
-  shortId: string;
-  summary: string;
-}
-
-export interface BisectState {
-  active: boolean;
-  original: string | null;
-  current: BisectRevision | null;
-  bad: BisectRevision | null;
-  goodTerm: string;
-  badTerm: string;
-  goodCount: number;
-  skippedCount: number;
-  remainingCount: number | null;
-  truncated: boolean;
-  found: boolean;
-  firstBad: BisectRevision | null;
-  ambiguous: boolean;
-  candidates: BisectRevision[];
-  noCheckout: boolean;
-  firstParent: boolean;
-  fingerprint: string;
-}
-
-export type BisectVerdict = "good" | "bad" | "skip";
-export type BisectAction =
-  | { kind: "start"; bad: string; good: string[]; paths: string[]; firstParent: boolean }
-  | { kind: "mark"; verdict: BisectVerdict; revision?: string }
-  | { kind: "checkout"; revision: string }
-  | { kind: "reset" };
-export interface BisectUpdate {
-  state: BisectState;
-  report: string;
-}
-export interface BisectOutcome extends BisectUpdate {
-  snapshot: WorkspaceSnapshot;
-}
-
 export interface RevisionComparison {
   base: CompareRevision;
   head: CompareRevision;
@@ -224,8 +185,7 @@ export interface GitIdentity {
   email: string;
 }
 
-export type GitSigningMode = "default" | "sign" | "unsigned";
-export type GitRepositoryKey = "user.name" | "user.email" | "gpg.format" | "user.signingkey" | "commit.gpgsign" | "tag.gpgsign" | "gpg.ssh.allowedsignersfile" | "gpg.ssh.revocationfile";
+export type GitRepositoryKey = "user.name" | "user.email";
 export interface GitRepositoryField {
   key: GitRepositoryKey;
   value: string | null;
@@ -241,19 +201,6 @@ export interface GitRepositorySettings {
   fingerprint: string;
 }
 export interface GitRepositoryChange {key: GitRepositoryKey; value: string | null}
-export type GitSignatureTarget = {kind: "commit" | "tag"; value: string};
-export type GitSignatureStatus = "verified" | "untrusted" | "expiredSignature" | "expiredKey" | "revoked" | "invalid" | "failed" | "unsigned" | "lightweight" | "changed";
-export interface GitSignatureVerification {
-  oid: string;
-  status: GitSignatureStatus;
-  output: string;
-  truncated: boolean;
-}
-export interface CommitOptions {
-  signing: GitSigningMode;
-  signoff: boolean;
-}
-
 export interface TerminalOption {
   id: string;
   name: string;
@@ -283,7 +230,10 @@ export interface PanelLayouts {
   fileHistory: PanelLayout;
 }
 
+export type GitFileKind = "regular" | "submodule" | "lfs";
+
 export interface DirEntry {
+  kind: GitFileKind;
   name: string;
   path: string;
   dir: boolean;
@@ -291,6 +241,7 @@ export interface DirEntry {
 }
 
 export interface FileSearchHit {
+  kind: GitFileKind;
   path: string;
   dir: boolean;
 }
@@ -382,6 +333,7 @@ export interface AppPrefs {
   /** "system", or an id from `list_editors`. */
   editorId: string;
   sidebarOrder: string[];
+  p4SidebarOrder: string[];
   panelLayouts: PanelLayouts;
   pullRebase: boolean;
   /** Group changed files by folder instead of listing them flat. */

@@ -183,6 +183,7 @@ pub struct P4Revision {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct P4DirEntry {
+    pub ignored: bool,
     pub name: String,
     pub path: String,
     pub dir: bool,
@@ -710,6 +711,7 @@ pub fn list_dir(connection: &P4Connection, relative: &str) -> AppResult<Vec<P4Di
             continue;
         }
         entries.push(P4DirEntry {
+            ignored: false,
             name,
             path: entry.path().to_string_lossy().into_owned(),
             dir: file_type.is_dir(),
@@ -723,8 +725,47 @@ pub fn list_dir(connection: &P4Connection, relative: &str) -> AppResult<Vec<P4Di
             .cmp(&left.dir)
             .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
     });
+    annotate_ignored(&env_for(connection), &mut entries);
     // Icons come from a later fstat so the names can paint without a server round trip.
     Ok(entries)
+}
+
+/// Query the native client so nested ignore files, exclusions and P4IGNORE settings agree with P4.
+fn annotate_ignored(env: &P4Env, entries: &mut [P4DirEntry]) {
+    annotate_ignored_with(entries, &mut |args| run_ok(env, args, None));
+}
+
+fn annotate_ignored_with(
+    entries: &mut [P4DirEntry],
+    run: &mut impl FnMut(&[&str]) -> AppResult<String>,
+) {
+    for chunk in entries.chunks_mut(40) {
+        let paths = chunk
+            .iter()
+            .map(|entry| {
+                if entry.dir {
+                    format!("{}/", entry.path.trim_end_matches(['/', '\\']))
+                } else {
+                    entry.path.clone()
+                }
+            })
+            .collect::<Vec<_>>();
+        let args = ["ignores", "-i"]
+            .into_iter()
+            .chain(paths.iter().map(String::as_str))
+            .collect::<Vec<_>>();
+        let Ok(output) = run(&args) else {
+            continue;
+        };
+        let ignored = output
+            .lines()
+            .filter_map(|line| line.strip_suffix(" ignored"))
+            .map(|path| local_path_key(path.trim_end_matches(['/', '\\'])))
+            .collect::<BTreeSet<_>>();
+        for entry in chunk {
+            entry.ignored = ignored.contains(&local_path_key(&entry.path));
+        }
+    }
 }
 
 fn workspace_directory(root: &Path, directory: &str) -> AppResult<PathBuf> {
@@ -765,6 +806,7 @@ pub fn list_depot(connection: &P4Connection, path: &str) -> AppResult<Vec<P4DirE
                 continue;
             }
             entries.push(P4DirEntry {
+                ignored: false,
                 name: name.clone(),
                 path: format!("//{name}"),
                 dir: true,
@@ -797,6 +839,7 @@ pub fn list_depot(connection: &P4Connection, path: &str) -> AppResult<Vec<P4DirE
             continue;
         }
         entries.push(P4DirEntry {
+            ignored: false,
             name: depot_base(&dir),
             path: dir,
             dir: true,
@@ -810,6 +853,7 @@ pub fn list_depot(connection: &P4Connection, path: &str) -> AppResult<Vec<P4DirE
             continue;
         }
         entries.push(P4DirEntry {
+            ignored: false,
             name: depot_base(&file),
             path: file,
             dir: false,
@@ -864,6 +908,7 @@ pub fn search_depot(connection: &P4Connection, query: &str) -> AppResult<P4FileS
                 continue;
             }
             hits.push(P4DirEntry {
+                ignored: false,
                 name: depot_base(&file),
                 path: file,
                 dir: false,
@@ -1239,6 +1284,7 @@ pub fn search_files(connection: &P4Connection, query: &str) -> AppResult<P4FileS
         return Err(AppError::msg("Workspace folder was not found."));
     }
     let mut hits = match_workspace_files(&root, &needle);
+    annotate_ignored(&env_for(connection), &mut hits);
     let files: Vec<String> = hits
         .iter()
         .filter(|entry| !entry.dir)
@@ -1247,6 +1293,7 @@ pub fn search_files(connection: &P4Connection, query: &str) -> AppResult<P4FileS
     let mut annotated = files
         .iter()
         .map(|path| P4DirEntry {
+            ignored: false,
             name: Path::new(path)
                 .file_name()
                 .map(|name| name.to_string_lossy().into_owned())
@@ -1266,6 +1313,9 @@ pub fn search_files(connection: &P4Connection, query: &str) -> AppResult<P4FileS
         if let Some(file) = annotated.get(files_done) {
             hit.status.clone_from(&file.status);
             hit.detail.clone_from(&file.detail);
+            if file.status != "local" && !file.status.is_empty() {
+                hit.ignored = false;
+            }
         }
         files_done += 1;
     }
@@ -1324,6 +1374,7 @@ fn match_workspace_files(root: &Path, needle: &str) -> Vec<P4DirEntry> {
                 continue;
             }
             hits.push(P4DirEntry {
+                ignored: false,
                 name,
                 path: path.to_string_lossy().into_owned(),
                 dir: false,
@@ -1337,6 +1388,7 @@ fn match_workspace_files(root: &Path, needle: &str) -> Vec<P4DirEntry> {
 
 fn plain_dir(name: &str, path: &Path) -> P4DirEntry {
     P4DirEntry {
+        ignored: false,
         name: name.to_string(),
         path: path.to_string_lossy().into_owned(),
         dir: true,
@@ -1396,6 +1448,7 @@ fn annotate_paths(connection: &P4Connection, files: &mut [P4DirEntry]) {
             file.detail = "Not in the depot".to_string();
             continue;
         };
+        file.ignored = false;
         file.status.clone_from(status);
         file.detail.clone_from(detail);
         let depot = depot_of.get(&key).map(String::as_str).unwrap_or("");
@@ -3715,6 +3768,9 @@ fn load_pending(connection: &P4Connection) -> AppResult<Vec<P4Changelist>> {
     numbered.sort_by_key(|change| std::cmp::Reverse(change_number(&change.id)));
     changes.extend(numbered);
     for change in &mut changes {
+        change
+            .files
+            .sort_by_cached_key(|file| file.depot_path.to_lowercase());
         change.stream = open_stream
             .as_ref()
             .filter(|(id, _)| id == &change.id)
@@ -4377,6 +4433,41 @@ fn first_text(preferred: Option<&String>, fallback: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn ignored_entries_follow_native_results_and_keep_directory_rules() {
+        let root = PathBuf::from("workspace");
+        let mut entries = vec![
+            plain_dir("build", &root.join("build")),
+            plain_dir("source", &root.join("source")),
+            plain_dir("space ignored", &root.join("space ignored")),
+        ];
+        entries[1].dir = false;
+        annotate_ignored_with(&mut entries, &mut |args| {
+            assert_eq!(&args[..2], ["ignores", "-i"]);
+            assert!(args[2].ends_with("build/"));
+            assert!(!args[3].ends_with('/'));
+            Ok(format!("{} ignored\n{} ignored\n", args[2], args[4]))
+        });
+        assert!(entries[0].ignored);
+        assert!(!entries[1].ignored);
+        assert!(entries[2].ignored);
+    }
+
+    #[test]
+    fn ignore_queries_are_bounded_and_never_invent_matches_on_failure() {
+        let mut entries = (0..81)
+            .map(|index| plain_dir(&index.to_string(), &PathBuf::from(index.to_string())))
+            .collect::<Vec<_>>();
+        let mut calls = 0;
+        annotate_ignored_with(&mut entries, &mut |args| {
+            calls += 1;
+            assert!(args.len() <= 42);
+            Err(AppError::msg("Ignore rules unavailable"))
+        });
+        assert_eq!(calls, 3);
+        assert!(entries.iter().all(|entry| !entry.ignored));
+    }
+
     #[test]
     fn file_history_pages_across_renames_using_the_first_unseen_revision() {
         let mut text = "... depotFile //depot/new.txt\n".to_string();

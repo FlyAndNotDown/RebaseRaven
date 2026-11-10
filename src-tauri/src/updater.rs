@@ -337,8 +337,8 @@ pub async fn install_update(version: String, app: AppHandle) -> AppResult<Update
             return Ok(manager.fail(&app, &error.to_string()));
         }
     }
-    // Windows installation closes the app; the explicit Update action starts it.
-    let mut update = pending.update.restart_after_install(false);
+    // The Windows installer owns relaunch; other platforms restart after install returns.
+    let mut update = pending.update.restart_after_install(true);
     let mut download = download_update(&update, &manager, &app).await;
     if download.as_ref().is_err_and(release::retryable) {
         let policy = pending
@@ -459,6 +459,7 @@ pub fn restart_after_update(app: AppHandle) -> AppResult<()> {
         ));
     }
     diagnostics::record(Code::UpdateRestart, Status::Success, None);
+    // Tauri retains the original install path and reopens the macOS bundle through LaunchServices.
     app.restart();
 }
 

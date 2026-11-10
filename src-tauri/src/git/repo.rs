@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::error::{AppError, AppResult};
 
@@ -383,13 +382,9 @@ fn config_output(root: &Path, args: &[&str]) -> Option<String> {
     }
 }
 
-/// Paths git's exclude rules ignore.
-///
-/// `--no-index` keeps a directory ignored when a file inside it was force-added.
-/// Plain `check-ignore` hides that directory. Tracked paths are removed
-/// afterwards, because a pattern does not hide a file git already tracks.
-/// Exit code 1 (nothing ignored) is an empty set. A query matches when git
-/// echoes it back, with or without a trailing slash.
+/// Ask Git to apply exclude rules and index semantics together. Tracked files
+/// and directories containing tracked files are not ignored, even if a rule
+/// matches their names. Git preserves its native index and ignore semantics.
 pub fn ignored_queries(repo: &Repository, queries: &[String]) -> AppResult<HashSet<String>> {
     if queries.is_empty() {
         return Ok(HashSet::new());
@@ -399,85 +394,26 @@ pub fn ignored_queries(repo: &Repository, queries: &[String]) -> AppResult<HashS
         input.extend_from_slice(query.replace('\\', "/").as_bytes());
         input.push(0);
     }
-    let output = run_git_input_output(
-        repo.workdir(),
-        &["check-ignore", "--no-index", "-z", "--stdin"],
-        &input,
-    )?;
+    let output = run_git_input_output(repo.workdir(), &["check-ignore", "-z", "--stdin"], &input)?;
     match output.status.code() {
         Some(0) => {}
         Some(1) => return Ok(HashSet::new()),
         _ => return Err(git_output_error(output)),
     }
-    let mut reported = HashSet::new();
-    for part in output.stdout.split(|byte| *byte == 0) {
-        if part.is_empty() {
-            continue;
-        }
-        reported.insert(String::from_utf8_lossy(part).replace('\\', "/"));
-    }
-    let tracked = tracked_paths(repo)?;
-    let mut ignored = HashSet::new();
-    for query in queries {
-        let norm = query.replace('\\', "/");
-        let trimmed = norm.trim_end_matches('/');
-        if tracked.contains(&norm) || tracked.contains(trimmed) {
-            continue;
-        }
-        if reported.contains(&norm)
-            || reported.contains(trimmed)
-            || reported.contains(&format!("{trimmed}/"))
-        {
-            ignored.insert(query.clone());
-        }
-    }
-    Ok(ignored)
-}
-
-fn tracked_paths(repo: &Repository) -> AppResult<Arc<HashSet<String>>> {
-    struct Cached {
-        git_dir: PathBuf,
-        stamp: u128,
-        paths: Arc<HashSet<String>>,
-    }
-    fn index_stamp(path: &Path) -> u128 {
-        std::fs::metadata(path)
-            .and_then(|meta| meta.modified())
-            .ok()
-            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|duration| duration.as_nanos())
-            .unwrap_or(0)
-    }
-
-    let git_dir = repo.path().to_path_buf();
-    let stamp = index_stamp(&git_dir.join("index"));
-    static CACHE: OnceLock<Mutex<Option<Cached>>> = OnceLock::new();
-    let cache = CACHE.get_or_init(|| Mutex::new(None));
-    if let Ok(guard) = cache.lock() {
-        if let Some(hit) = guard.as_ref() {
-            if hit.git_dir == git_dir && hit.stamp == stamp {
-                return Ok(Arc::clone(&hit.paths));
-            }
-        }
-    }
-
-    // `ls-files` has no `--pathspec-from-file` on the Git versions we still
-    // meet, so the whole index is read once and reused until it changes.
-    let stdout = run_git_stdout(repo.workdir(), &["ls-files", "-z", "--full-name"])?;
-    let mut paths = HashSet::new();
-    for part in stdout.split(|byte| *byte == 0) {
-        if part.is_empty() {
-            continue;
-        }
-        paths.insert(String::from_utf8_lossy(part).replace('\\', "/"));
-    }
-    let paths = Arc::new(paths);
-    if let Ok(mut guard) = cache.lock() {
-        *guard = Some(Cached {
-            git_dir,
-            stamp,
-            paths: Arc::clone(&paths),
-        });
-    }
-    Ok(paths)
+    let reported: HashSet<_> = output
+        .stdout
+        .split(|byte| *byte == 0)
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            String::from_utf8_lossy(part)
+                .replace('\\', "/")
+                .trim_end_matches('/')
+                .to_string()
+        })
+        .collect();
+    Ok(queries
+        .iter()
+        .filter(|query| reported.contains(query.replace('\\', "/").trim_end_matches('/')))
+        .cloned()
+        .collect())
 }

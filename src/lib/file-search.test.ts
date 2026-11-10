@@ -65,3 +65,12 @@ describe("joinRoot", () => {
     expect(joinRoot("E:\\work\\client", "")).toBe("E:\\work\\client");
   });
 });
+
+it("preserves repository file kinds while constructing ancestor folders", () => {
+  const tree=nestSearchNodes([
+    {relative:"vendor/tool",dir:true,kind:"submodule"},
+    {relative:"vendor/tool/media.bin",dir:false,kind:"lfs"},
+  ]);
+  expect(tree.entries.vendor.find(node => node.relative === "vendor/tool")?.kind).toBe("submodule");
+  expect(tree.entries["vendor/tool"].find(node => node.relative.endsWith("media.bin"))?.kind).toBe("lfs");
+});
