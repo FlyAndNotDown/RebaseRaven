@@ -113,7 +113,7 @@ interface P4ContextValue {
   createChange: (description: string) => Promise<boolean>;
   deleteChange: (changeId: string) => Promise<boolean>;
   renameFile: (source: string, destination: string) => Promise<boolean>;
-  listShelves: (user: string, before: number | null) => Promise<P4ChangePage>;
+  listShelves: (user: string, client: string, before: number | null) => Promise<P4ChangePage>;
   shelfDetail: (changeId: string) => Promise<P4Changelist>;
   shelfDiff: (path: string, changeId: string) => Promise<FileDiff>;
   previewUnshelve: (request: P4UnshelveRequest) => Promise<P4OperationPreview>;
@@ -750,10 +750,10 @@ export function P4Provider({ children }: { children: ReactNode }) {
     } finally { endActivity(activity); release(); }
   }, [lockMutation, beginActivity, endActivity, guard, showFileOperation, reloadPending, bumpFiles]);
 
-  const listShelves = useCallback(async (user: string, before: number | null) => {
+  const listShelves = useCallback(async (user: string, client: string, before: number | null) => {
     const current = sessionRef.current;
     if (!current) throw new Error(t("p4-operations.connectionRequired"));
-    return guard(current.connection, () => p4Api.listShelves(current.connection, user, before));
+    return guard(current.connection, () => p4Api.listShelves(current.connection, user, client, before));
   }, [guard]);
 
   const shelfDetail = useCallback(async (changeId: string) => {

@@ -2031,9 +2031,10 @@ async fn p4_apply_reconcile(
 async fn p4_list_shelves(
     connection: p4::P4Connection,
     user: String,
+    client: String,
     before: Option<u64>,
 ) -> AppResult<p4::P4ChangePage> {
-    blocking(move || p4::list_shelves(&connection, &user, before)).await
+    blocking(move || p4::list_shelves(&connection, &user, &client, before)).await
 }
 
 #[tauri::command]

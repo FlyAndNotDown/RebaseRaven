@@ -375,6 +375,8 @@
   },
   "shelves": {
     "title": "Team shelves",
+    "restoreAction": "Restore…",
+    "restoreTitle": "Restore shelf #{{id}}",
     "description": "Find shelved changes across users and workspaces.",
     "user": "User · optional",
     "number": "Changelist # · optional",
