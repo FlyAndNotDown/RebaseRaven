@@ -665,3 +665,11 @@ it("keeps reviewed branch deletions scoped to their repository after switching t
   await act(async()=>{result=await model.deleteBranch("reviewed",false,{...owner,repoPath:B});});
   expect(result).toBe(false);expect(remove).toHaveBeenCalledOnce();
 });
+
+it("reloads visible history after deleting an unfiltered branch", async () => {
+  vi.spyOn(gitApi,"deleteBranch").mockImplementation(async path=>snapshots[path]);
+  await act(async () => {model.setView("history");});
+  vi.mocked(gitApi.getCommits).mockClear();
+  await act(async () => {expect(await model.deleteBranch("reviewed")).toBe(true);});
+  expect(gitApi.getCommits).toHaveBeenCalledWith(A,expect.any(Number),0,undefined,[]);
+});

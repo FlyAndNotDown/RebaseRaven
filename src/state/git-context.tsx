@@ -2376,6 +2376,8 @@ export function GitProvider({ children }: { children: ReactNode }) {
         const next = sessionsRef.current[tabId];
         if (next?.historyRevs.includes(name)) {
           setHistoryRevs(next.historyRevs.filter((rev) => rev !== name), tabId);
+        } else {
+          invalidateHistory(tabId, next?.view === "history");
         }
         if (wasRemote) await ensureBranches(true, tabId);
         toast.success(t("operations.deleted", { value: name }));
@@ -2388,7 +2390,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
         return false;
       }
     },
-    [ensureBranches, patchSession, runActivity, setHistoryRevs],
+    [ensureBranches, invalidateHistory, patchSession, runActivity, setHistoryRevs],
   );
 
   const refreshAfterReplay = useCallback(async (tabId = activeTabIdRef.current) => {
