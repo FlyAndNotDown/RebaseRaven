@@ -209,24 +209,6 @@
     "tagLabel": "Tag {{name}}",
     "branchLabel": "Branch {{name}}"
   },
-  "reuseMessage": {
-    "title": "Reuse commit message",
-    "description": "Load this message into a new commit draft.",
-    "current": "Current draft",
-    "mode": "Message reuse mode",
-    "replace": "Replace",
-    "append": "Append",
-    "proposed": "Resulting message",
-    "hint": "Copies the message using your current identity. Amend is turned off.",
-    "use": "Use message",
-    "replaceAction": "Replace draft",
-    "appendAction": "Append to draft",
-    "reviewAgain": "Review current draft",
-    "ownerChanged": "The repository changed. Open this action again from its history.",
-    "operation": "Finish the current Git operation before loading a new commit draft.",
-    "stale": "The draft or checked-out revision changed. Review the current draft again.",
-    "empty": "This commit has no message."
-  },
   "ui": {
     "continue": "Continue",
     "amend": "Amend",

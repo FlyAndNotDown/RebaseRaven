@@ -209,24 +209,6 @@
     "tagLabel": "标签 {{name}}",
     "branchLabel": "分支 {{name}}"
   },
-  "reuseMessage": {
-    "title": "复用提交说明",
-    "description": "将此说明带入新的提交草稿。",
-    "current": "当前草稿",
-    "mode": "说明复用方式",
-    "replace": "替换",
-    "append": "追加",
-    "proposed": "最终说明",
-    "hint": "复制说明，沿用当前身份，并关闭修订最后一次提交。",
-    "use": "使用说明",
-    "replaceAction": "替换草稿",
-    "appendAction": "追加到草稿",
-    "reviewAgain": "重新审阅当前草稿",
-    "ownerChanged": "仓库已切换，请从对应仓库的历史重新打开此操作。",
-    "operation": "请先完成当前 Git 操作，再载入新的提交草稿。",
-    "stale": "草稿或检出的版本已变化，请重新审阅当前草稿。",
-    "empty": "此提交没有说明。"
-  },
   "ui": {
     "continue": "继续",
     "amend": "修订",
