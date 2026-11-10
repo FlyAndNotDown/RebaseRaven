@@ -3768,6 +3768,9 @@ fn load_pending(connection: &P4Connection) -> AppResult<Vec<P4Changelist>> {
     numbered.sort_by_key(|change| std::cmp::Reverse(change_number(&change.id)));
     changes.extend(numbered);
     for change in &mut changes {
+        change
+            .files
+            .sort_by_cached_key(|file| file.depot_path.to_lowercase());
         change.stream = open_stream
             .as_ref()
             .filter(|(id, _)| id == &change.id)
