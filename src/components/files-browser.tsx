@@ -7,7 +7,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { FolderOpenIcon, SquarePenIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 import { AuthorName, ExactTime } from "@/components/revision-meta";
-import { avatarColor, avatarInitial, avatarSeed } from "@/lib/avatar";
+import { BuiltinAvatar } from "@/components/builtin-avatar";
 import { DiffLines } from "@/components/diff-viewer";
 import { FileTreeFilter, FilteredFileTree, VirtualFileTree, type FileTreeEntry } from "@/components/file-tree";
 import { ImageDiff, isImagePath } from "@/components/image-diff";
@@ -575,19 +575,6 @@ function blameRows(lines: string[], hunks: BlameHunk[] | null, blameLoading: boo
   });
 }
 
-function BlameAvatar({ name }: { name: string }) {
-  const seed = avatarSeed(name, "");
-  return (
-    <span
-      aria-hidden
-      className="flex size-3.5 shrink-0 items-center justify-center rounded-full text-[9px] leading-none font-medium text-white ring-1 ring-white/15"
-      style={{ backgroundColor: avatarColor(seed) }}
-    >
-      {avatarInitial(seed)}
-    </span>
-  );
-}
-
 function BlameMargin({
   row,
   divided,
@@ -617,7 +604,7 @@ function BlameMargin({
       ) : null}
       {label && hunk ? (
         <>
-          <BlameAvatar name={hunk.author} />
+          <BuiltinAvatar name={hunk.author} className="size-3.5" />
           <span className={cn("min-w-0 flex-1 truncate text-[11px]", hot ? "text-foreground" : "text-foreground/80")}>
             {hunk.author}
           </span>
