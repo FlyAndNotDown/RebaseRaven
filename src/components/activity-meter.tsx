@@ -52,7 +52,7 @@ export function ActivityMeter() {
           ) : null}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-96">
+      <DropdownMenuContent align="end" className="w-[36rem] max-w-[min(36rem,calc(100vw-2rem),var(--radix-dropdown-menu-content-available-width,100vw))]">
         <DropdownMenuLabel>
           {activities.length === 1 ? t("desktop.activityMeter.running") : t("desktop.activityMeter.running", { count: activities.length })}
         </DropdownMenuLabel>
@@ -60,16 +60,17 @@ export function ActivityMeter() {
           const expanded = expandedId === activity.id;
           const stopping = cancelling.has(activity.id);
           return (
-            <div key={activity.id} className="flex items-start gap-1 hover:bg-muted/60">
+            <div key={activity.id} className="flex items-start gap-2 hover:bg-muted/60">
               <button
                 type="button"
-                className="min-w-0 flex-1 px-2 py-1.5 text-left"
+                className="min-w-0 flex-1 px-3 py-2 text-left"
+                aria-expanded={expanded}
                 onClick={() =>
                   setExpandedId((current) => (current === activity.id ? null : activity.id))
                 }
               >
                 <div className="flex items-center gap-2">
-                  <div className={cn("min-w-0 flex-1 text-sm", expanded ? "whitespace-pre-wrap break-words" : "truncate")}>
+                  <div className={cn("min-w-0 flex-1 text-sm", expanded ? "whitespace-pre-wrap [overflow-wrap:anywhere]" : "truncate")}>
                     {stopping ? t("desktop.activityMeter.cancelling", { name: activity.label }) : activity.label}
                   </div>
                   {activity.progress != null ? (
