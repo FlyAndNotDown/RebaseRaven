@@ -94,6 +94,7 @@ function useModel() {
     "setView",
     "setCommitEditor",
     "commit",
+    "deleteBranch",
     "reuseCommitMessage",
     "commitAndPush",
     "pushRemote",
@@ -670,4 +671,14 @@ it("does not create a commit for an unavailable push destination or detached HEA
   expect(await operation.result).toBe(false);
   expect(gitApi.commit).not.toHaveBeenCalled();
   expect(input().value).toBe("Keep this message");
+});
+
+it("keeps reviewed branch deletions scoped to their repository after switching tabs", async () => {
+  const remove=vi.spyOn(gitApi,"deleteBranch").mockImplementation(async path=>snapshots[path]);
+  const owner={tabId:model.activeTabId,repoPath:A};await open(B);
+  let result:boolean|"unmerged"=false;
+  await act(async()=>{result=await model.deleteBranch("reviewed",false,owner);});
+  expect(result).toBe(true);expect(remove).toHaveBeenCalledWith(A,"reviewed",expect.any(String),false);expect(model.snapshot?.repo.path).toBe(B);
+  await act(async()=>{result=await model.deleteBranch("reviewed",false,{...owner,repoPath:B});});
+  expect(result).toBe(false);expect(remove).toHaveBeenCalledOnce();
 });

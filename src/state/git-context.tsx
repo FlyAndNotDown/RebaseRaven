@@ -23,6 +23,7 @@ import { normalizeRepoPath, sameRepoPath } from "@/lib/format";
 import { DEFAULT_HISTORY_EXPANDED, renamedRemoteViews } from "@/lib/remote-refs";
 import { repositoryUndoAction } from "@/state/repository-actions";
 import { canClearCommitEditor, commitEditorSubmission, editCommitEditor, reuseCommitEditor, type CommitDraftReview, type CommitMessageMode, type CommitEditorState } from "@/state/commit-editor";
+import type { BranchDeletionOwner } from "@/lib/branch-deletion";
 import { defaultPrefs, normalizePrefs, sameLayout } from "@/lib/prefs";
 import {
   COMMIT_PAGE,
@@ -241,7 +242,7 @@ interface GitContextValue {
   deleteTag: (name: string) => Promise<boolean>;
   pushTag: (remote: string, name: string) => Promise<boolean>;
   deleteRemoteTag: (remote: string, name: string) => Promise<boolean>;
-  deleteBranch: (name: string, force?: boolean) => Promise<boolean | "unmerged">;
+  deleteBranch: (name: string, force?: boolean, owner?: BranchDeletionOwner) => Promise<boolean | "unmerged">;
   revertCommit: (oid: string, tabId?: string) => Promise<boolean>;
   cherryPickCommit: (oid: string, tabId?: string) => Promise<boolean>;
   rebaseOnto: (onto: string, label: string) => Promise<boolean>;
@@ -2367,10 +2368,11 @@ export function GitProvider({ children }: { children: ReactNode }) {
   );
 
   const deleteBranch = useCallback(
-    async (name: string, force = false) => {
-      const repoPath = activeRepoPath();
-      const tabId = activeTabIdRef.current;
-      if (!repoPath) return false;
+    async (name: string, force = false, owner?: BranchDeletionOwner) => {
+      const tabId = owner?.tabId ?? activeTabIdRef.current;
+      const tab = tabsRef.current.find(item => item.id === tabId);
+      const repoPath = tab?.kind === "repo" ? tab.path : null;
+      if (!repoPath || (owner && !sameRepoPath(repoPath, owner.repoPath))) return false;
       const current = sessionsRef.current[tabId];
       const wasRemote = current?.snapshot?.branches.remote.some((branch) => branch.name === name) ?? false;
       try {
@@ -2400,7 +2402,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
         return false;
       }
     },
-    [activeRepoPath, ensureBranches, patchSession, runActivity, setHistoryRevs],
+    [ensureBranches, patchSession, runActivity, setHistoryRevs],
   );
 
   const refreshAfterReplay = useCallback(async (tabId = activeTabIdRef.current) => {
