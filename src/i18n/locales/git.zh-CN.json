@@ -162,6 +162,7 @@
     "branchLabel": "分支 {{name}}"
   },
   "rebasePlan": {
+    "drop": "丢弃提交",
     "onto": "重放到 {{target}}",
     "commits_one": "{{count}} 个提交",
     "commits_other": "{{count}} 个提交",

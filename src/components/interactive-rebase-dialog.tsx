@@ -17,7 +17,7 @@ const ACTIONS: { id: RebaseAction; labelKey: string; icon: typeof GitCommitHoriz
   {id:"reword",labelKey:"git.ui.reword",icon:PencilLineIcon},
   {id:"squash",labelKey:"git.ui.squash",icon:CombineIcon},
   {id:"fixup",labelKey:"git.ui.fixup",icon:CombineIcon},
-  {id:"drop",labelKey:"git.ui.drop",icon:Trash2Icon},
+  {id:"drop",labelKey:"git.rebasePlan.drop",icon:Trash2Icon},
 ];
 
 function initialSteps(commits: RebaseCommit[]): RebasePlanStep[] {
@@ -95,6 +95,6 @@ function InteractiveRebaseForm({onto,onOpenChange}: {onto:{id:string;label:strin
         {selected ? editable ? <Textarea className="min-h-0 flex-1 resize-none font-mono text-xs leading-5 [field-sizing:fixed]" aria-label={t(selected.action === "reword" ? "git.ui.new_message" : "git.ui.squash_message")} value={selected.message} onChange={event => update(selected.id,{message:event.target.value})} /> : <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/15 p-3 font-mono text-xs leading-5 [overflow-wrap:anywhere]">{selected.message || t("git.ui.no_message")}</pre> : null}
       </div>
     </div>}
-    <DialogFooter className="shrink-0 items-center border-t px-5 py-3 sm:justify-between"><div className="min-w-0 flex-1 text-xs text-destructive" role={stale || problem ? "alert" : undefined}>{stale ? <span>{t("git.rebasePlan.stale")} <Button size="xs" variant="link" onClick={reload}>{t("git.rebasePlan.reload")}</Button></span> : problem ? t(`git.rebasePlan.${problem.key}`) : null}</div><div className="flex shrink-0 gap-2"><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("git.ui.cancel")}</Button><Button type="button" disabled={!steps.length || loading || Boolean(error) || Boolean(problem) || stale} onClick={() => {if (starting.current) return;starting.current=true;onOpenChange(false);void rebaseInteractive(onto.id,steps.map(({id,action,message}) => ({id,action,message})));}}>{t("git.ui.start_rebase")}</Button></div></DialogFooter>
+    <DialogFooter className="mx-0 mb-0 shrink-0 items-center border-t px-5 py-3 sm:justify-between"><div className="min-w-0 flex-1 text-xs text-destructive" role={stale || problem ? "alert" : undefined}>{stale ? <span>{t("git.rebasePlan.stale")} <Button size="xs" variant="link" onClick={reload}>{t("git.rebasePlan.reload")}</Button></span> : problem ? t(`git.rebasePlan.${problem.key}`) : null}</div><div className="flex shrink-0 gap-2"><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("git.ui.cancel")}</Button><Button type="button" disabled={!steps.length || loading || Boolean(error) || Boolean(problem) || stale} onClick={() => {if (starting.current) return;starting.current=true;onOpenChange(false);void rebaseInteractive(onto.id,steps.map(({id,action,message}) => ({id,action,message})));}}>{t("git.ui.start_rebase")}</Button></div></DialogFooter>
   </>;
 }

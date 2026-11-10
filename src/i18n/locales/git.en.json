@@ -162,6 +162,7 @@
     "branchLabel": "Branch {{name}}"
   },
   "rebasePlan": {
+    "drop": "Drop",
     "onto": "Replay onto {{target}}",
     "commits_one": "{{count}} commit",
     "commits_other": "{{count}} commits",
