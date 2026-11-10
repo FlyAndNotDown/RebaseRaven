@@ -1,4 +1,5 @@
 {
+  "submodule": "子模块",
   "files": "文件",
   "selectFile": "选择一个文件",
   "openEditor": "在编辑器中打开",

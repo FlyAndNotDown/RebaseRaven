@@ -1,10 +1,20 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use super::*;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GitFileKind {
+    #[default]
+    Regular,
+    Submodule,
+    Lfs,
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DirEntry {
+    pub kind: GitFileKind,
     pub name: String,
     pub path: String,
     pub dir: bool,
@@ -64,11 +74,20 @@ pub fn list_directory(repo: &Repository, path: &str) -> AppResult<Vec<DirEntry>>
     let mut entries = Vec::new();
     for (name, path, dir, query) in pending {
         entries.push(DirEntry {
+            kind: GitFileKind::Regular,
             ignored: ignored.contains(&query),
             name,
             path,
             dir,
         });
+    }
+    let paths = entries
+        .iter()
+        .map(|entry| (entry.path.as_str(), entry.dir))
+        .collect::<Vec<_>>();
+    let kinds = file_kinds(repo, &paths).unwrap_or_default();
+    for entry in &mut entries {
+        entry.kind = kinds.get(&entry.path).copied().unwrap_or_default();
     }
     // Folding a filename in every comparison allocates O(n log n) strings for
     // large directories. Keep the same ordering with one key per entry.
@@ -79,6 +98,7 @@ pub fn list_directory(repo: &Repository, path: &str) -> AppResult<Vec<DirEntry>>
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileSearchHit {
+    pub kind: GitFileKind,
     pub path: String,
     pub dir: bool,
 }
@@ -104,7 +124,97 @@ pub fn search_files(repo: &Repository, query: &str) -> AppResult<FileSearch> {
         .split(|byte| *byte == 0)
         .filter(|raw| !raw.is_empty())
         .map(|raw| String::from_utf8_lossy(raw).replace('\\', "/"));
-    Ok(hits_from_paths(paths, &needle))
+    let mut result = hits_from_paths(paths, &needle);
+    let paths = result
+        .hits
+        .iter()
+        .map(|hit| (hit.path.as_str(), hit.dir))
+        .collect::<Vec<_>>();
+    let kinds = file_kinds(repo, &paths).unwrap_or_default();
+    for hit in &mut result.hits {
+        hit.kind = kinds.get(&hit.path).copied().unwrap_or_default();
+        if hit.kind == GitFileKind::Submodule {
+            hit.dir = true;
+        }
+    }
+    Ok(result)
+}
+
+fn file_kinds(
+    repo: &Repository,
+    paths: &[(&str, bool)],
+) -> AppResult<HashMap<String, GitFileKind>> {
+    let mut kinds = HashMap::new();
+    if paths.is_empty() {
+        return Ok(kinds);
+    }
+    let parents = paths
+        .iter()
+        .map(|(path, _)| path.rsplit_once('/').map_or("", |(parent, _)| parent))
+        .collect::<BTreeSet<_>>();
+    let patterns = parents
+        .into_iter()
+        .map(|parent| {
+            let escaped = parent
+                .chars()
+                .flat_map(|ch| {
+                    if matches!(ch, '\\' | '[' | ']' | '*' | '?') {
+                        vec!['\\', ch]
+                    } else {
+                        vec![ch]
+                    }
+                })
+                .collect::<String>();
+            if parent.is_empty() {
+                ":(top,glob)*".to_string()
+            } else {
+                format!(":(top,glob){escaped}/*")
+            }
+        })
+        .collect::<Vec<_>>();
+    // Glob pathspecs restrict output to the visible directory levels, rather than exporting the full index.
+    for chunk in patterns.chunks(40) {
+        let args = ["ls-files", "--stage", "-z", "--"]
+            .into_iter()
+            .chain(chunk.iter().map(String::as_str))
+            .collect::<Vec<_>>();
+        let output = run_git_stdout(repo.workdir(), &args)?;
+        for record in output.split(|byte| *byte == 0) {
+            if !record.starts_with(b"160000 ") {
+                continue;
+            }
+            if let Some(tab) = record.iter().position(|byte| *byte == b'\t') {
+                kinds.insert(
+                    String::from_utf8_lossy(&record[tab + 1..]).into_owned(),
+                    GitFileKind::Submodule,
+                );
+            }
+        }
+    }
+    let mut input = Vec::new();
+    for (path, dir) in paths {
+        if !dir && !kinds.contains_key(*path) {
+            input.extend_from_slice(path.as_bytes());
+            input.push(0);
+        }
+    }
+    if !input.is_empty() {
+        let output = run_git_input(
+            repo.workdir(),
+            &["check-attr", "-z", "--stdin", "filter"],
+            &input,
+        )?;
+        let fields = output.split(|byte| *byte == 0).collect::<Vec<_>>();
+        for record in fields.as_chunks::<3>().0 {
+            if record[1] == b"filter" && record[2] == b"lfs" {
+                kinds.insert(
+                    String::from_utf8_lossy(record[0]).into_owned(),
+                    GitFileKind::Lfs,
+                );
+            }
+        }
+    }
+    Ok(kinds)
 }
 
 fn hits_from_paths(paths: impl Iterator<Item = String>, needle: &str) -> FileSearch {
@@ -117,6 +227,7 @@ fn hits_from_paths(paths: impl Iterator<Item = String>, needle: &str) -> FileSea
         let name = path.rsplit('/').next().unwrap_or(&path);
         if name.to_lowercase().contains(needle) {
             files.push(FileSearchHit {
+                kind: GitFileKind::Regular,
                 path: path.clone(),
                 dir: false,
             });
@@ -126,6 +237,7 @@ fn hits_from_paths(paths: impl Iterator<Item = String>, needle: &str) -> FileSea
     let mut hits = files;
     for dir in dirs {
         hits.push(FileSearchHit {
+            kind: GitFileKind::Regular,
             path: dir,
             dir: true,
         });

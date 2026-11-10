@@ -230,7 +230,10 @@ export interface PanelLayouts {
   fileHistory: PanelLayout;
 }
 
+export type GitFileKind = "regular" | "submodule" | "lfs";
+
 export interface DirEntry {
+  kind: GitFileKind;
   name: string;
   path: string;
   dir: boolean;
@@ -238,6 +241,7 @@ export interface DirEntry {
 }
 
 export interface FileSearchHit {
+  kind: GitFileKind;
   path: string;
   dir: boolean;
 }

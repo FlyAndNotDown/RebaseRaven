@@ -63,7 +63,7 @@ export function FilesBrowser() {
   );
   const fileQuery = useFileQuery(repoPath, query, searchFiles);
   const searchNodes = useMemo<SearchNode[]>(
-    () => (fileQuery.result?.hits ?? []).map((hit) => ({ relative: hit.path, dir: hit.dir })),
+    () => (fileQuery.result?.hits ?? []).map((hit) => ({ relative: hit.path, dir: hit.dir, kind: hit.kind })),
     [fileQuery.result],
   );
   const [mode, setMode] = useState<"browse" | "history">(fileFocus?.mode ?? "browse");
@@ -232,6 +232,7 @@ export function FilesBrowser() {
                         name: item.name,
                         dir: item.dir,
                         ignored: item.ignored,
+                        kind: item.kind,
                       }));
                     } catch (error) {
                       toast.error(errorMessage(error));

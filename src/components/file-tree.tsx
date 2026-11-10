@@ -1,6 +1,7 @@
+import type { GitFileKind } from "@/types/git";
 import { t, useTranslation } from "@/i18n";
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronRightIcon, FileIcon, FolderIcon, FolderOpenIcon, LoaderCircleIcon, SearchIcon } from "lucide-react";
+import { FileBoxIcon, FolderGit2Icon, ChevronRightIcon, FileIcon, FolderIcon, FolderOpenIcon, LoaderCircleIcon, SearchIcon } from "lucide-react";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -11,6 +12,7 @@ import { useWindowedRows } from "@/lib/use-windowed-rows";
 import { cn } from "@/lib/utils";
 
 export interface FileTreeEntry {
+  kind?: GitFileKind;
   path: string;
   name: string;
   dir: boolean;
@@ -99,7 +101,8 @@ function TreeRow({
 }) {
   useTranslation();
   const busy = loading?.has(item.path) ?? false;
-  const tip = item.iconTitle || (item.ignored ? t("git-files.ignored") : item.name);
+  const kind = item.kind === "submodule" ? t("git-files.submodule") : item.kind === "lfs" ? t("git.lfs.title") : "";
+  const tip = item.iconTitle || [item.name, kind, item.ignored ? t("git-files.ignored") : ""].filter(Boolean).join(" · ");
   const row = (
     <button
       type="button"
@@ -126,7 +129,7 @@ function TreeRow({
           ) : (
             <span className="size-3.5 shrink-0" />
           )}
-          {item.dir ? (
+          {item.kind === "submodule" ? <FolderGit2Icon className="size-3.5 shrink-0 text-muted-foreground" aria-label={t("git-files.submodule")} /> : item.kind === "lfs" ? <FileBoxIcon className="size-3.5 shrink-0 text-muted-foreground" aria-label={t("git.lfs.title")} /> : item.dir ? (
             expanded ? (
               <FolderOpenIcon className="size-3.5 shrink-0" />
             ) : (
@@ -191,6 +194,7 @@ export function FileTreeFilter({
 
 function treeEntry(node: SearchNode, toPath: (relative: string) => string): FileTreeEntry {
   return {
+    kind: node.kind,
     path: toPath(node.relative),
     name: node.relative.split("/").pop() ?? node.relative,
     dir: node.dir,

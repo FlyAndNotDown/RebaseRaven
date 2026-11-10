@@ -17,6 +17,55 @@ fn temp_repo() -> (PathBuf, Repository) {
     (root, repo)
 }
 
+#[test]
+fn file_browser_marks_gitlinks_and_effective_lfs_attributes_without_reading_file_contents() {
+    let (root, repo) = temp_repo();
+    commit_file(&repo, &root, "README.md", "Project\n", "Initial commit");
+    fs::create_dir_all(root.join("modules[shared]/tool")).unwrap();
+    fs::create_dir_all(root.join("assets/nested")).unwrap();
+    fs::write(root.join(".gitattributes"), "*.bin filter=lfs\n").unwrap();
+    fs::write(root.join("assets/sample file.bin"), "content\n").unwrap();
+    fs::write(root.join("assets/nested/.gitattributes"), "*.bin -filter\n").unwrap();
+    fs::write(root.join("assets/nested/plain.bin"), "content\n").unwrap();
+    run_git_stdout(
+        &root,
+        &[
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            "160000",
+            &head_id(&repo),
+            "modules[shared]/tool",
+        ],
+    )
+    .unwrap();
+    let modules = list_directory(&repo, "modules[shared]").unwrap();
+    assert!(modules
+        .iter()
+        .any(|entry| entry.name == "tool" && entry.dir && entry.kind == GitFileKind::Submodule));
+    let assets = list_directory(&repo, "assets").unwrap();
+    assert!(assets
+        .iter()
+        .any(|entry| entry.name == "sample file.bin" && entry.kind == GitFileKind::Lfs));
+    let nested = list_directory(&repo, "assets/nested").unwrap();
+    assert!(nested
+        .iter()
+        .any(|entry| entry.name == "plain.bin" && entry.kind == GitFileKind::Regular));
+    let hits = search_files(&repo, "tool").unwrap();
+    assert!(hits
+        .hits
+        .iter()
+        .any(|hit| hit.path == "modules[shared]/tool"
+            && hit.dir
+            && hit.kind == GitFileKind::Submodule));
+    let hits = search_files(&repo, "sample").unwrap();
+    assert!(hits
+        .hits
+        .iter()
+        .any(|hit| hit.path == "assets/sample file.bin" && hit.kind == GitFileKind::Lfs));
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn head_id(repo: &Repository) -> String {
     head_oid(repo).unwrap()
 }
