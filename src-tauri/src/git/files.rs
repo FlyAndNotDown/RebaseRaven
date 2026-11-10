@@ -8,8 +8,7 @@ pub struct DirEntry {
     pub name: String,
     pub path: String,
     pub dir: bool,
-    /// Matches a git ignore rule and is not in the index. Tracked paths stay
-    /// unmarked: a pattern does not ignore a file git already tracks.
+    /// Excluded according to Git, including its tracked-path semantics.
     pub ignored: bool,
 }
 

@@ -2924,7 +2924,7 @@ fn unreal_style_ignore_recurses_into_excluded_directories() {
             .unwrap()
             .ignored
     };
-    assert!(flag(&root_entries, ".vs"), "{root_entries:?}");
+    assert!(!flag(&root_entries, ".vs"), "{root_entries:?}");
     assert!(!flag(&root_entries, "Engine"), "{root_entries:?}");
     assert!(flag(&root_entries, "notes.txt"));
 
@@ -2938,4 +2938,30 @@ fn unreal_style_ignore_recurses_into_excluded_directories() {
     let engine = list_directory(&repo, "Engine").unwrap();
     assert!(!flag(&engine, "Game.cpp"), "{engine:?}");
     let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn directory_listing_applies_case_insensitive_rules_and_reloads_index_changes() {
+    let (root, repo) = temp_repo();
+    commit_file(&repo, &root, "Keep.TXT", "tracked\n", "track case");
+    config_set_local(&repo, "core.ignorecase", "true").unwrap();
+    fs::write(root.join(".gitignore"), "*\n!*/\n!*.cpp\n!ALLOWED.TXT\n").unwrap();
+    fs::create_dir_all(root.join("Engine")).unwrap();
+    fs::write(root.join("Engine").join("Main.cpp"), "code\n").unwrap();
+    fs::write(root.join("allowed.txt"), "included\n").unwrap();
+    fs::write(root.join("new.txt"), "new\n").unwrap();
+    assert!(ignored_queries(
+        &repo,
+        &["Keep.TXT".into(), "Engine/".into(), "allowed.txt".into()]
+    )
+    .unwrap()
+    .is_empty());
+    assert!(ignored_queries(&repo, &["new.txt".into()])
+        .unwrap()
+        .contains("new.txt"));
+    run_git_stdout(&root, &["add", "-f", "--", "new.txt"]).unwrap();
+    assert!(ignored_queries(&repo, &["new.txt".into()])
+        .unwrap()
+        .is_empty());
+    let _ = fs::remove_dir_all(root);
 }
