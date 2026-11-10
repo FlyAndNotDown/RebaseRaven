@@ -20,6 +20,13 @@ it("supports an empty selection through the styled menu without submitting its f
   await chooseChoice(trigger,"origin");expect(change).toHaveBeenLastCalledWith("origin");expect(trigger.textContent).toContain("Origin");
 });
 
+it("opens through accessibility activation without toggling a normal pointer click twice", async () => {
+  await act(async () => root.render(<Field />));const trigger=document.getElementById("remote")!;
+  await act(async () => trigger.click());expect(document.querySelector('[role="menu"]')).not.toBeNull();
+  await act(async () => trigger.dispatchEvent(new MouseEvent("click",{bubbles:true,detail:1})));expect(document.querySelector('[role="menu"]')).not.toBeNull();
+  await act(async () => trigger.click());expect(document.querySelector('[role="menu"]')).toBeNull();
+});
+
 it("respects disabled options and disables the field as a whole", async () => {
   await act(async () => root.render(<Field />));const trigger=document.getElementById("remote")!;
   await chooseChoice(trigger,"blocked");expect(change).not.toHaveBeenCalled();
