@@ -95,10 +95,10 @@ export function createUpdateStore(client: UpdateClient) {
         await action();
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        publish({ ...snapshot, status: request === "restart" ? "installed" : "error", error: message.slice(0, 1_000) });
+        publish({ ...snapshot, status: snapshot.request === "restart" ? "installed" : "error", error: message.slice(0, 1_000) });
       } finally {
         operation = null;
-        publish({ ...snapshot, request: null, notice: notification(request, interactive) });
+        publish({ ...snapshot, request: null, notice: notification(snapshot.lastRequest, interactive) });
       }
     })();
     return operation;
@@ -123,7 +123,12 @@ export function createUpdateStore(client: UpdateClient) {
     },
     install(version: string) {
       if (operation || updateBusy(snapshot) || !["available", "error"].includes(snapshot.status) || snapshot.update?.version !== version) return Promise.resolve();
-      return run("install", async () => { receive(await client.install(version)); });
+      return run("install", async () => {
+        receive(await client.install(version));
+        if (snapshot.status !== "installed" || snapshot.error) return;
+        publish({ ...snapshot, request: "restart", lastRequest: "restart" });
+        await client.restart();
+      });
     },
     restart: () => snapshot.status === "installed" && !updateBusy(snapshot)
       ? run("restart", () => client.restart())

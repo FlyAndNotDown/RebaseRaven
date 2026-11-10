@@ -400,7 +400,7 @@
     "appUpdates": {
       "check_failed": "Update check failed",
       "manual_download": "Download manually",
-      "update": "Update",
+      "update": "Update and restart",
       "later": "Later",
       "update_installed": "Update installed",
       "restart_when_your_work_is_saved": "Restart when your work is saved.",

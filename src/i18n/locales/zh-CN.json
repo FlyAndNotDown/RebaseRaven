@@ -400,7 +400,7 @@
     "appUpdates": {
       "check_failed": "检查更新失败",
       "manual_download": "手动下载",
-      "update": "更新",
+      "update": "更新并重启",
       "later": "稍后",
       "update_installed": "更新已安装",
       "restart_when_your_work_is_saved": "保存工作后重启应用。",
