@@ -240,6 +240,7 @@ pub(super) fn commits_to_replay(repo: &Repository, onto: &str) -> AppResult<Vec<
         let commit = peel_commit(repo, id)?;
         let summary = commit.summary().unwrap_or("").trim().to_string();
         commits.push(RebaseCommit {
+            message: commit.message.clone(),
             id: commit.id().to_string(),
             short_id: short_id(commit.id()),
             summary,

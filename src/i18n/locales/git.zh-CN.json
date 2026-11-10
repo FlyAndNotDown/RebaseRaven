@@ -161,6 +161,24 @@
     "tagLabel": "标签 {{name}}",
     "branchLabel": "分支 {{name}}"
   },
+  "rebasePlan": {
+    "onto": "重放到 {{target}}",
+    "commits_one": "{{count}} 个提交",
+    "commits_other": "{{count}} 个提交",
+    "oldestFirst": "从早到晚",
+    "sequence": "Rebase 执行顺序",
+    "reset": "重置计划",
+    "reload": "重新加载",
+    "stale": "当前检出的修订已变化，请重新加载计划。",
+    "allDropped": "至少保留一个提交。",
+    "needsPrevious": "Squash 和 Fixup 前面需要一个保留的提交。",
+    "needsMessage": "请输入提交信息。",
+    "pickHint": "保留此提交及其信息。",
+    "rewordHint": "保留修改，编辑完整的提交信息。",
+    "squashHint": "合并到前一个保留的提交，并将此信息用于合并后的提交。",
+    "fixupHint": "合并到前一个保留的提交，沿用前一个提交的信息。",
+    "dropHint": "从新的历史中移除此提交。"
+  },
   "ui": {
     "continue": "继续",
     "amend": "修订",

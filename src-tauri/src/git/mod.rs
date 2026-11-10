@@ -127,6 +127,7 @@ pub struct RebaseProgress {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RebaseCommit {
+    pub message: String,
     pub id: String,
     pub short_id: String,
     pub summary: String,

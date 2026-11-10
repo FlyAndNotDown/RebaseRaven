@@ -161,6 +161,24 @@
     "tagLabel": "Tag {{name}}",
     "branchLabel": "Branch {{name}}"
   },
+  "rebasePlan": {
+    "onto": "Replay onto {{target}}",
+    "commits_one": "{{count}} commit",
+    "commits_other": "{{count}} commits",
+    "oldestFirst": "Oldest first",
+    "sequence": "Rebase sequence",
+    "reset": "Reset plan",
+    "reload": "Reload plan",
+    "stale": "The checked-out revision changed. Reload the plan before starting.",
+    "allDropped": "Keep at least one commit.",
+    "needsPrevious": "Squash and fixup need a preceding commit that is kept.",
+    "needsMessage": "Enter a commit message.",
+    "pickHint": "Keep this commit and its message.",
+    "rewordHint": "Keep the changes and edit the full commit message.",
+    "squashHint": "Combine with the preceding kept commit and use this message for the combined commit.",
+    "fixupHint": "Combine with the preceding kept commit and keep its message.",
+    "dropHint": "Remove this commit from the new history."
+  },
   "ui": {
     "continue": "Continue",
     "amend": "Amend",

@@ -42,6 +42,7 @@ export interface RebaseProgress {
 export type RebaseAction = "pick" | "reword" | "squash" | "fixup" | "drop";
 
 export interface RebaseCommit {
+  message: string;
   id: string;
   shortId: string;
   summary: string;
