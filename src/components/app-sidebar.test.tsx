@@ -35,7 +35,7 @@ afterEach(async () => {await act(async () => root.unmount());container.remove();
 
 it("saves a dragged Perforce view and restores its order after reopening", async () => {
   await render();await press("pending");await move(1000);await release();
-  const expected=["submitted","shelves","workspace","specs","streams","pending"];
+  const expected=["submitted","shelves","workspace","pending"];
   expect(order()).toEqual(expected);expect(calls.updatePrefs).toHaveBeenCalledOnce();expect(prefs.p4SidebarOrder).toEqual(expected);expect(prefs.sidebarOrder).toEqual(defaultPrefs.sidebarOrder);
   await act(async () => root.unmount());root=createRoot(container);await render();expect(order()).toEqual(expected);
 });
@@ -47,8 +47,8 @@ it("retains Git dragging and keeps its saved order separate from Perforce", asyn
 });
 
 it("saves the final drop even when movement and release occur before the next render", async () => {
-  await render();await press("streams");await act(async () => {pointer(window,"pointermove",-10);pointer(window,"pointerup",-10);});
-  expect(prefs.p4SidebarOrder).toEqual(["streams","pending","submitted","shelves","workspace","specs"]);
+  await render();await press("workspace");await act(async () => {pointer(window,"pointermove",-10);pointer(window,"pointerup",-10);});
+  expect(prefs.p4SidebarOrder).toEqual(["workspace","pending","submitted","shelves"]);
 });
 
 it("restores the original order without saving when a drag is cancelled", async () => {
@@ -63,6 +63,6 @@ it("does not save an unfinished drag into another repository type", async () => 
 
 it("keeps pointer and keyboard navigation and ignores small movements", async () => {
   await render();await press("workspace");await move(24);await release();expect(calls.setP4View).toHaveBeenCalledWith("workspace");expect(calls.updatePrefs).not.toHaveBeenCalled();
-  await act(async () => row("streams").dispatchEvent(new MouseEvent("click",{bubbles:true,detail:0})));expect(calls.setP4View).toHaveBeenLastCalledWith("streams");
+  await act(async () => row("shelves").dispatchEvent(new MouseEvent("click",{bubbles:true,detail:0})));expect(calls.setP4View).toHaveBeenLastCalledWith("shelves");
   calls.setP4View.mockClear();await act(async () => pointer(row("pending"),"pointerdown",20,2));expect(calls.setP4View).not.toHaveBeenCalled();
 });

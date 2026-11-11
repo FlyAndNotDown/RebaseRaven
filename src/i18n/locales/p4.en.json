@@ -471,36 +471,7 @@
     },
     "limitView": "LimitView"
   },
-  "streamTree": {
-    "title": "Streams",
-    "locate": "Locate current stream",
-    "current": "Current stream",
-    "workspace": "Workspace: {{client}}",
-    "parent": "Parent",
-    "children": "Children · {{count}}",
-    "noParent": "No parent",
-    "noChildren": "No child streams",
-    "select": "Select a stream",
-    "merge": "Merge from parent into current",
-    "copy": "Copy child into current",
-    "expand": "Expand {{stream}}",
-    "collapse": "Collapse {{stream}}",
-    "limit": "Showing up to 2,000 accessible streams.",
-    "kinds": {
-      "mainline": "Mainline",
-      "development": "Development",
-      "release": "Release",
-      "virtual": "Virtual",
-      "task": "Task",
-      "sparsedev": "Sparse development",
-      "sparserel": "Sparse release"
-    },
-    "mergeShort": "Merge from parent",
-    "copyShort": "Copy into workspace",
-    "actions": "Stream actions"
-  },
   "specs": {
-    "title": "Labels & branch mappings",
     "labels": "Labels",
     "branches": "Branch mappings",
     "filter": "Filter by name",
@@ -617,7 +588,17 @@
       "ignored": "File or folder patterns that cannot be submitted, one per line."
     },
     "reload": "Reload definition",
-    "discardReload": "Discard draft and reload"
+    "discardReload": "Discard draft and reload",
+    "parent": "Parent",
+    "kinds": {
+      "mainline": "Mainline",
+      "development": "Development",
+      "release": "Release",
+      "virtual": "Virtual",
+      "task": "Task",
+      "sparsedev": "Sparse development",
+      "sparserel": "Sparse release"
+    }
   },
   "streamWork": {
     "title": "Stream definition",

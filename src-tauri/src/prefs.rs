@@ -159,17 +159,10 @@ fn default_sidebar_order() -> Vec<String> {
 }
 
 fn default_p4_sidebar_order() -> Vec<String> {
-    [
-        "pending",
-        "submitted",
-        "shelves",
-        "workspace",
-        "specs",
-        "streams",
-    ]
-    .into_iter()
-    .map(String::from)
-    .collect()
+    ["pending", "submitted", "shelves", "workspace"]
+        .into_iter()
+        .map(String::from)
+        .collect()
 }
 
 impl Default for AppPrefs {
