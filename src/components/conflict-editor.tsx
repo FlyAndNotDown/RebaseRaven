@@ -50,7 +50,7 @@ export function ConflictTextEditor({ path = "", initialText, current, incoming, 
   initialText: string;
   current: string;
   incoming: string;
-  onSave: (text: string) => Promise<void>;
+  onSave?: (text: string) => Promise<void>;
   onExternal: (text: string) => Promise<string | void>;
   disabled?: boolean;
   saveLabel?: string;
@@ -78,7 +78,7 @@ export function ConflictTextEditor({ path = "", initialText, current, incoming, 
     catch (caught) { setError(displayError(caught)); }
     finally { busyRef.current = false; setBusy(false); }
   }
-  const save = () => perform(() => onSave(textRef.current));
+  const save = () => perform(async () => { await onSave?.(textRef.current); });
   const runExternal = () => perform(async () => {
     const next = await onExternal(textRef.current);
     if (typeof next === "string") replaceText(next.replace(/\r\n/g, "\n"), true);
@@ -220,14 +220,14 @@ export function ConflictTextEditor({ path = "", initialText, current, incoming, 
         <Button type="button" size="xs" variant="ghost" disabled={blocked} onClick={() => setWhole((value) => !value)}>{t(whole ? "git-files.blockEditing" : "git-files.fullEditing")}</Button>
         <Tooltip><TooltipTrigger asChild><Button type="button" size="icon-xs" variant={split ? "secondary" : "ghost"} disabled={blocked} aria-label={t("git-files.sideBySide")} aria-pressed={split} onClick={() => setDiffOptions({ split: !split })}><Columns2Icon /></Button></TooltipTrigger><TooltipContent>{t("git-files.sideBySide")}</TooltipContent></Tooltip>
         <IconButton label={t("git-files.openMergeTool")} disabled={blocked} onClick={() => void runExternal()}><ExternalLinkIcon /></IconButton>
-        <Button
+        {onSave ? <Button
           type="button"
           size="xs"
           disabled={blocked || hasConflictMarkers(text)}
           onClick={() => void save()}
         >
           {saveLabel ?? t("git-files.markResolved")}
-        </Button>
+        </Button> : null}
       </div>
       <DiffSearchBar />
       <DiffSearchSelection editor={editor} text={text} />
