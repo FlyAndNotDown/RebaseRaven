@@ -29,7 +29,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { SyncPopover, ToolbarButton } from "@/components/sync-popover";
+import { SyncPopover } from "@/components/sync-popover";
+import { RepositoryActions, ToolbarButton } from "@/components/repository-toolbar";
 import { defaultFetchRemote, primaryRemote, useGitPick } from "@/state/git-context";
 
 type SyncAction = "fetch" | "pull" | "push" | null;
@@ -75,7 +76,7 @@ export function AppToolbar() {
 
   return (
     <>
-      <div className="flex h-7 shrink-0 items-center gap-1.5 rounded-[min(var(--radius-md),12px)] border border-input bg-secondary px-0.5">
+      <RepositoryActions>
         <ToolbarAction label={t("common.refresh")} onClick={() => void refreshRepository()}>
           <RefreshCwIcon className="size-4" />
         </ToolbarAction>
@@ -155,7 +156,7 @@ export function AppToolbar() {
         <ToolbarAction label={t("desktop.appToolbar.repository_settings")} onClick={() => setRepoSettingsOpen(true)}>
           <Settings2Icon className="size-4" />
         </ToolbarAction>
-      </div>
+      </RepositoryActions>
       <RepoSettingsDialog open={repoSettingsOpen} onOpenChange={setRepoSettingsOpen} />
       <Dialog
         open={!!publishPrompt}

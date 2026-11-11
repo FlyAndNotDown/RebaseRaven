@@ -52,9 +52,12 @@ interface SubmittedSearch {
   scannedThrough: number | null;
 }
 
-export function P4Submitted() {
+export type SubmittedHistoryModel = Pick<ReturnType<typeof useP4>, "submitted" | "submittedHasMore" | "submittedUser" | "submittedClient" | "selectedSubmitted" | "submittedDetail" | "submittedLoading" | "loadSubmitted" | "selectSubmitted" | "setSubmittedFilter" | "searchSubmitted">;
+
+export function P4Submitted({history, historyScope}: {history?: SubmittedHistoryModel; historyScope?: string} = {}) {
   useTranslation();
-  const p4 = useP4();
+  const context = useP4();
+  const p4 = history ? {...context, ...history} : context;
   const [streamDiff, setStreamDiff] = useState<P4StreamDiffRequest | null>(null);
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
@@ -113,10 +116,11 @@ export function P4Submitted() {
   const loaded = useRef({ scope: "", users: false, clientsFor: "" });
 
   useEffect(() => {
+    if (history) return;
     if (!connection || loaded.current.scope === scope) return;
     loaded.current = { scope, users: false, clientsFor: "" };
     void loadSubmitted(false);
-  }, [connection, loadSubmitted, scope]);
+  }, [connection, history, loadSubmitted, scope]);
 
   useEffect(() => {
     if (selectedSubmitted || submittedLoading || submitted.length === 0) return;
@@ -342,7 +346,7 @@ export function P4Submitted() {
                         <ContextMenuItem disabled={p4.busy} onSelect={() => {
                           void p4.getRevision({
                             paths: [],
-                            changeId: change.id,
+                            ...(historyScope ? {targets:[{path:historyScope,recursive:true}]} : {changeId:change.id}),
                             mode: "latest",
                             value: "",
                             force: false,
@@ -354,7 +358,7 @@ export function P4Submitted() {
                         }}>
                           <DownloadIcon />{t("p4.getLatest")}
                         </ContextMenuItem>
-                        <ContextMenuItem disabled={p4.busy} onSelect={() => setRevisionTarget({changeId:change.id,revision:change.id})}><HistoryIcon />{t("p4.getRevision")}</ContextMenuItem>
+                        <ContextMenuItem disabled={p4.busy} onSelect={() => setRevisionTarget(historyScope ? {path:historyScope,recursive:true,revision:change.id} : {changeId:change.id,revision:change.id})}><HistoryIcon />{t("p4.getRevision")}</ContextMenuItem>
                       </ContextMenuContent>
                     </ContextMenu>
                   );

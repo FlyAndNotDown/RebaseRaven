@@ -33,6 +33,17 @@ describe("nestSearchNodes", () => {
     expect(tree.open).toEqual(["src"]);
   });
 
+  it("preserves native ignore matches for files and explicit parent folders", () => {
+    const tree=nestSearchNodes([
+      {relative:"cache/output.tmp",dir:false,ignored:true},
+      {relative:"cache",dir:true,ignored:true},
+      {relative:"cache/keep.txt",dir:false,ignored:false},
+    ]);
+    expect(tree.entries[""][0].ignored).toBe(true);
+    expect(tree.entries.cache.find(node=>node.relative.endsWith("output.tmp"))?.ignored).toBe(true);
+    expect(tree.entries.cache.find(node=>node.relative.endsWith("keep.txt"))?.ignored).toBe(false);
+  });
+
   it("lists folders before files", () => {
     const tree = nestSearchNodes([
       { relative: "zeta.txt", dir: false },

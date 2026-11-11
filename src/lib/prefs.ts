@@ -4,7 +4,7 @@ import { normalizeHttpProxy } from "@/lib/network";
 import { normalizeLanguage } from "@/i18n/language";
 
 export const SIDEBAR_VIEWS = ["changes", "history", "stash", "files"] as const;
-export const P4_SIDEBAR_VIEWS = ["pending", "submitted", "shelves", "workspace", "specs", "streams"] as const;
+export const P4_SIDEBAR_VIEWS = ["pending", "submitted", "shelves", "workspace"] as const;
 
 export const DEFAULT_PANEL_LAYOUTS: PanelLayouts = {
   historyShell: { "history-branches": 15, "history-main": 85 },

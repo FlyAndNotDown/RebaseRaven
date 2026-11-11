@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { LoaderCircleIcon } from "lucide-react";
+import { GitMergeIcon, LoaderCircleIcon } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { ConflictTextEditor } from "@/components/conflict-editor";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { depotBase } from "@/lib/p4";
 import { errorMessage } from "@/lib/git";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
-import { threeWayText } from "@/lib/three-way-text";
+import { hasConflictMarkers, threeWayText } from "@/lib/three-way-text";
 import { useP4 } from "@/state/p4-context";
 import type { P4ManualResolve } from "@/types/p4";
 
@@ -25,25 +25,44 @@ export function P4ManualResolve({ path, onClose, onBack, external = false }: { p
   const [busy, setBusy] = useState(false);
   const [discard, setDiscard] = useState<"close" | "back" | null>(null);
   const running = useRef(false);
-  const initial = useMemo(() => view ? externalResult ?? threeWayText(view.base, view.yours, view.theirs) : "", [view, externalResult]);
-  const dirty = edited !== null && edited !== initial;
+  const mounted = useRef(false);
+  const externalStarted = useRef(false);
+  const initial = useMemo(() => view ? threeWayText(view.base, view.yours, view.theirs).replace(/\r\n/g, "\n") : "", [view]);
+  const text = edited ?? externalResult ?? initial;
+  const dirty = text !== initial;
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
   useEffect(() => {
     let live = true;
     void (async () => {
       try {
         const next = await manualResolveView(path);
-        if (external) {
-          running.current = true; if (live) setBusy(true);
-          const result = await manualResolveExternal(path, threeWayText(next.base, next.yours, next.theirs), next.fingerprint);
-          if (live) { setExternalResult(result.replace(/\r\n/g, "\n")); setExternalUsed(true); }
-        }
         if (live) setView(next);
       } catch (caught) { if (live) setError(displayError(caught)); }
-      finally { running.current = false; if (live) setBusy(false); }
     })();
     return () => { live = false; };
-  }, [path, manualResolveView, manualResolveExternal, external, attempt]);
+  }, [path, manualResolveView, attempt]);
+
+  useEffect(() => {
+    if (!view || !external || externalStarted.current) return;
+    externalStarted.current = true;
+    running.current = true;
+    setBusy(true);
+    void manualResolveExternal(path, initial, view.fingerprint)
+      .then((result) => {
+        if (!mounted.current) return;
+        const next = result.replace(/\r\n/g, "\n");
+        setExternalResult(next);
+        setEdited(next);
+        setExternalUsed(true);
+      })
+      .catch((caught: unknown) => { if (mounted.current) setError(displayError(caught)); })
+      .finally(() => { running.current = false; if (mounted.current) setBusy(false); });
+  }, [view, external, path, initial, manualResolveExternal]);
 
   function close(destination: "close" | "back") {
     if (running.current || workspaceBusy) return;
@@ -52,18 +71,19 @@ export function P4ManualResolve({ path, onClose, onBack, external = false }: { p
     else onClose();
   }
 
-  async function save(text: string) {
-    if (!view || running.current || workspaceBusy) return;
-    running.current = true; setBusy(true);
+  async function save() {
+    if (!view || hasConflictMarkers(text) || running.current || workspaceBusy) return;
+    running.current = true; setBusy(true); setError(null);
     try {
       await manualResolveApply(path, view.yours.includes("\r\n") ? text.replace(/\r?\n/g, "\r\n") : text, view.fingerprint);
       onClose();
-    } finally { running.current = false; setBusy(false); }
+    } catch (caught) { setError(displayError(caught)); }
+    finally { running.current = false; setBusy(false); }
   }
 
   async function runExternal(text: string) {
     if (!view || running.current || workspaceBusy) return;
-    running.current = true; setBusy(true);
+    running.current = true; setBusy(true); setError(null);
     try { const result = await manualResolveExternal(path, text, view.fingerprint); setExternalUsed(true); return result; }
     finally { running.current = false; setBusy(false); }
   }
@@ -76,14 +96,19 @@ export function P4ManualResolve({ path, onClose, onBack, external = false }: { p
           <DialogDescription className="truncate font-mono text-xs" title={path}>{path}</DialogDescription>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border">
-          {view ? <ConflictTextEditor path={path} key={view.fingerprint} initialText={initial} current={t("p4.manual.yours")} incoming={t("p4.manual.theirs")} onSave={save} onExternal={runExternal} disabled={busy || workspaceBusy} saveLabel={t(externalUsed ? "p4.manual.confirmExternal" : "p4.manual.apply")} onTextChange={setEdited} displayError={displayError} />
+          {view ? <ConflictTextEditor path={path} key={`${view.fingerprint}:${externalResult !== null}`} initialText={externalResult ?? initial} current={t("p4.manual.yours")} incoming={t("p4.manual.theirs")} onExternal={runExternal} disabled={busy || workspaceBusy} onTextChange={setEdited} displayError={displayError} />
             : !error ? <div role="status" className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"><LoaderCircleIcon className="size-4 animate-spin" />{t(busy ? "p4.manual.externalWaiting" : "p4.loadingResolve")}</div> : <p role="alert" className="p-4 text-sm text-destructive">{error}</p>}
         </div>
+        {view && error ? <p role="alert" className="shrink-0 text-sm text-destructive">{error}</p> : null}
         <p className="shrink-0 text-xs text-muted-foreground">{t(externalUsed ? "p4.manual.externalConfirmHint" : "p4.manual.hint")}</p>
         <DialogFooter>
           <Button variant="ghost" className="mr-auto" disabled={busy || workspaceBusy} onClick={() => close("back")}>{t("p4.manual.back")}</Button>
           {!view && error ? <Button variant="outline" disabled={busy || workspaceBusy} onClick={() => { setError(null); setAttempt((value) => value + 1); }}>{t("common.retry")}</Button> : null}
           <Button variant="outline" disabled={busy || workspaceBusy} onClick={() => close("close")}>{t("common.cancel")}</Button>
+          <Button disabled={!view || busy || workspaceBusy || hasConflictMarkers(text)} onClick={() => void save()}>
+            {busy ? <LoaderCircleIcon className="animate-spin" /> : <GitMergeIcon />}
+            {t(externalUsed ? "p4.manual.confirmExternal" : "p4.manual.apply")}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

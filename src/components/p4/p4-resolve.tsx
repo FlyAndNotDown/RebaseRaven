@@ -60,7 +60,7 @@ export function P4Resolve({ path, onClose }: { path: string; onClose: () => void
     }
   }
 
-  if (manual) return <P4ManualResolve external={external} path={path} onClose={onClose} onBack={() => { setExternal(false); setManual(false); }} />;
+  if (manual) return <P4ManualResolve external={external} path={path} onClose={onClose} onBack={() => { setExternal(false); setManual(false); setView(null); setError(null); setMode(null); setAttempt((value) => value + 1); }} />;
 
   return (
     <Dialog open onOpenChange={(open) => !open && !running.current && onClose()}>

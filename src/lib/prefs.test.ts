@@ -36,11 +36,11 @@ describe("normalizeSidebarOrder", () => {
     ]);
   });
 
-  it("restores Perforce views independently and includes newly available views", () => {
-    expect(normalizeP4SidebarOrder(null)).toEqual(["pending", "submitted", "shelves", "workspace", "specs", "streams"]);
-    expect(normalizePrefs({sidebarOrder:["files", "history"], p4SidebarOrder:["streams", "streams", "jobs", "shelves"]})).toMatchObject({
+  it("restores Perforce views independently and drops removed views", () => {
+    expect(normalizeP4SidebarOrder(null)).toEqual(["pending", "submitted", "shelves", "workspace"]);
+    expect(normalizePrefs({sidebarOrder:["files", "history"], p4SidebarOrder:["streams", "specs", "jobs", "shelves"]})).toMatchObject({
       sidebarOrder:["files", "history", "changes", "stash"],
-      p4SidebarOrder:["streams", "shelves", "pending", "submitted", "workspace", "specs"],
+      p4SidebarOrder:["shelves", "pending", "submitted", "workspace"],
     });
   });
 });

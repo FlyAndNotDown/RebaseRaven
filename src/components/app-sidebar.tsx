@@ -1,6 +1,6 @@
 import { t, useTranslation } from "@/i18n";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArchiveRestoreIcon, TagsIcon, NetworkIcon, ArchiveIcon, CircleDotIcon, FolderTreeIcon, HistoryIcon, SettingsIcon } from "lucide-react";
+import { ArchiveRestoreIcon, ArchiveIcon, CircleDotIcon, FolderTreeIcon, HistoryIcon, SettingsIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SettingsDialog } from "@/components/lazy-dialogs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -21,8 +21,6 @@ const perforceMeta: Record<P4View, SidebarItemMeta> = {
   submitted: { get label() { return t("desktop.appSidebar.history"); }, icon: HistoryIcon },
   shelves: { get label() { return t("p4.shelves.title"); }, icon: ArchiveRestoreIcon },
   workspace: { get label() { return t("desktop.appSidebar.workspace"); }, icon: FolderTreeIcon },
-  specs: { get label() { return t("p4.specs.title"); }, icon: TagsIcon },
-  streams: { get label() { return t("p4.streamTree.title"); }, icon: NetworkIcon },
 };
 
 export function AppSidebar() {

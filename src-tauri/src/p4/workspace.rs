@@ -152,6 +152,17 @@ pub struct P4ChangePage {
     pub scanned_through: Option<i64>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct P4PathHistoryRequest {
+    pub user: String,
+    pub client: String,
+    pub query: String,
+    pub before: Option<i64>,
+    pub limit: usize,
+    pub scan_limit: usize,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct P4FileSearch {
@@ -324,8 +335,12 @@ pub fn submitted(
     // every server, and depot-path filters depend on mapped file revisions.
     push_history_range(&mut args, before);
     let stdout = run_owned(&env, &args, None)?;
+    Ok(change_page(&stdout, limit))
+}
+
+fn change_page(stdout: &str, limit: usize) -> P4ChangePage {
     let mut changes = Vec::new();
-    for record in parse_ztag(&stdout) {
+    for record in parse_ztag(stdout) {
         changes.push(change_from_record(&record, Vec::new(), false));
     }
     let has_more = changes.len() >= limit;
@@ -333,11 +348,89 @@ pub fn submitted(
         .iter()
         .rev()
         .find_map(|change| change.id.parse::<i64>().ok());
-    Ok(P4ChangePage {
+    P4ChangePage {
         changes,
         has_more,
         scanned_through,
+    }
+}
+
+fn directory_history_spec(connection: &P4Connection, path: &str) -> AppResult<String> {
+    let path = workspace_cli_path(&connection.root, path);
+    if path.starts_with("//") {
+        if !valid_depot_path(&path)
+            || path.contains("...")
+            || path.split('/').any(|part| matches!(part, "." | ".."))
+        {
+            return Err(AppError::msg("Choose one depot directory."));
+        }
+    } else {
+        workspace_directory(Path::new(&connection.root), &path)?;
+    }
+    revision_file_spec(&connection.root, &path, true, "")
+}
+
+pub fn path_history(
+    connection: &P4Connection,
+    path: &str,
+    request: &P4PathHistoryRequest,
+) -> AppResult<P4ChangePage> {
+    path_history_with(connection, path, request, |env, args| {
+        run_owned(env, args, None)
     })
+}
+
+fn path_history_with(
+    connection: &P4Connection,
+    path: &str,
+    request: &P4PathHistoryRequest,
+    mut run: impl FnMut(&P4Env, &[String]) -> AppResult<String>,
+) -> AppResult<P4ChangePage> {
+    let scope = directory_history_spec(connection, path)?;
+    let user = optional_name(&request.user)?;
+    let client = optional_name(&request.client)?;
+    let env = env_for(connection);
+    let mut load = |limit: usize, before: Option<i64>| {
+        if before.is_some_and(|number| number <= 1) {
+            return Ok(change_page("", limit));
+        }
+        let mut args = vec![
+            "-ztag".into(),
+            "changes".into(),
+            "-s".into(),
+            "submitted".into(),
+            "-m".into(),
+            limit.to_string(),
+            "-L".into(),
+        ];
+        for (flag, value) in [("-u", &user), ("-c", &client)] {
+            if let Some(value) = value {
+                args.extend([flag.into(), value.clone()]);
+            }
+        }
+        args.push(match before {
+            Some(number) => format!("{scope}@1,@{}", number - 1),
+            None => scope.clone(),
+        });
+        let output = match run(&env, &args) {
+            Err(error) if error.to_string().to_lowercase().contains("no such file") => {
+                String::new()
+            }
+            other => other?,
+        };
+        Ok(change_page(&output, limit))
+    };
+    if request.query.trim().is_empty() {
+        return load(request.limit.clamp(1, 200), request.before);
+    }
+    scan_submitted(
+        &request.query,
+        request.before,
+        request.limit,
+        request.scan_limit,
+        Vec::new(),
+        load,
+    )
 }
 
 pub fn search_submitted(
@@ -353,8 +446,6 @@ pub fn search_submitted(
     if needle.is_empty() {
         return submitted(connection, user, client, match_limit, before);
     }
-    let match_limit = match_limit.clamp(1, 100);
-    let scan_limit = scan_limit.clamp(1, 2_000);
     let mut matches = Vec::new();
     if before.is_none()
         && needle.chars().all(|ch| ch.is_ascii_digit())
@@ -368,6 +459,27 @@ pub fn search_submitted(
             }
         }
     }
+    scan_submitted(
+        &needle,
+        before,
+        match_limit,
+        scan_limit,
+        matches,
+        |limit, cursor| submitted(connection, user, client, limit, cursor),
+    )
+}
+
+fn scan_submitted(
+    query: &str,
+    before: Option<i64>,
+    match_limit: usize,
+    scan_limit: usize,
+    mut matches: Vec<P4Changelist>,
+    mut load: impl FnMut(usize, Option<i64>) -> AppResult<P4ChangePage>,
+) -> AppResult<P4ChangePage> {
+    let needle = query.trim().to_lowercase();
+    let match_limit = match_limit.clamp(1, 100);
+    let scan_limit = scan_limit.clamp(1, 2_000);
     let mut cursor = before;
     let mut scanned = 0usize;
     let mut has_more = false;
@@ -376,7 +488,7 @@ pub fn search_submitted(
             has_more = true;
             break;
         }
-        let batch = submitted(connection, user, client, 80, cursor)?;
+        let batch = load(80, cursor)?;
         if batch.changes.is_empty() {
             break;
         }
@@ -1284,6 +1396,7 @@ pub fn search_files(connection: &P4Connection, query: &str) -> AppResult<P4FileS
         return Err(AppError::msg("Workspace folder was not found."));
     }
     let mut hits = match_workspace_files(&root, &needle);
+    include_search_parents(&root, &mut hits);
     annotate_ignored(&env_for(connection), &mut hits);
     let files: Vec<String> = hits
         .iter()
@@ -1313,9 +1426,6 @@ pub fn search_files(connection: &P4Connection, query: &str) -> AppResult<P4FileS
         if let Some(file) = annotated.get(files_done) {
             hit.status.clone_from(&file.status);
             hit.detail.clone_from(&file.detail);
-            if file.status != "local" && !file.status.is_empty() {
-                hit.ignored = false;
-            }
         }
         files_done += 1;
     }
@@ -1324,6 +1434,30 @@ pub fn search_files(connection: &P4Connection, query: &str) -> AppResult<P4FileS
         truncated: false,
         scope: String::new(),
     })
+}
+
+fn include_search_parents(root: &Path, hits: &mut Vec<P4DirEntry>) {
+    let mut known = hits
+        .iter()
+        .map(|entry| local_path_key(&entry.path))
+        .collect::<BTreeSet<_>>();
+    let parents = hits
+        .iter()
+        .flat_map(|entry| {
+            Path::new(&entry.path)
+                .ancestors()
+                .skip(1)
+                .take_while(|parent| *parent != root && parent.starts_with(root))
+                .map(Path::to_path_buf)
+        })
+        .collect::<BTreeSet<_>>();
+    for directory in parents {
+        if known.insert(local_path_key(&directory.to_string_lossy())) {
+            if let Some(name) = directory.file_name() {
+                hits.push(plain_dir(&name.to_string_lossy(), &directory));
+            }
+        }
+    }
 }
 
 fn match_workspace_files(root: &Path, needle: &str) -> Vec<P4DirEntry> {
@@ -1448,7 +1582,6 @@ fn annotate_paths(connection: &P4Connection, files: &mut [P4DirEntry]) {
             file.detail = "Not in the depot".to_string();
             continue;
         };
-        file.ignored = false;
         file.status.clone_from(status);
         file.detail.clone_from(detail);
         let depot = depot_of.get(&key).map(String::as_str).unwrap_or("");
@@ -4433,6 +4566,87 @@ fn first_text(preferred: Option<&String>, fallback: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn search_ancestors_keep_ignore_rules_without_changing_an_excluded_child() {
+        let root = PathBuf::from("workspace");
+        let mut file = plain_dir("keep.txt", &root.join("cache/nested/keep.txt"));
+        file.dir = false;
+        let mut hits = vec![file, plain_dir("nested", &root.join("cache/nested"))];
+        include_search_parents(&root, &mut hits);
+        assert_eq!(hits.len(), 3);
+        annotate_ignored_with(&mut hits, &mut |args| {
+            Ok(args
+                .iter()
+                .skip(2)
+                .filter(|path| path.ends_with('/'))
+                .map(|path| format!("{path} ignored\n"))
+                .collect::<String>())
+        });
+        assert!(hits
+            .iter()
+            .filter(|entry| entry.dir)
+            .all(|entry| entry.ignored));
+        assert!(!hits[0].ignored);
+    }
+
+    #[test]
+    fn directory_history_scopes_pages_and_search_to_the_selected_subtree() {
+        let root = tempfile::tempdir().unwrap();
+        let connection = mutation_connection(root.path());
+        let request = P4PathHistoryRequest {
+            user: "alice".into(),
+            client: "work".into(),
+            query: "42".into(),
+            before: Some(100),
+            limit: 50,
+            scan_limit: 100,
+        };
+        let page = path_history_with(&connection,"//depot/project/docs",&request, |_: &P4Env,args:&[String]| {
+            assert_eq!(args.last().unwrap(),"//depot/project/docs/...@1,@99");
+            assert!(args.windows(2).any(|pair| pair == ["-u","alice"]));
+            assert!(args.windows(2).any(|pair| pair == ["-c","work"]));
+            Ok("... change 52\n... desc Other change\n\n... change 42\n... desc Matching change\n".into())
+        }).unwrap();
+        assert_eq!(page.changes.len(), 1);
+        assert_eq!(page.changes[0].id, "42");
+        assert_eq!(page.scanned_through, Some(42));
+    }
+
+    #[test]
+    fn directory_history_escapes_local_folders_and_rejects_paths_outside_the_workspace() {
+        let root = tempfile::tempdir().unwrap();
+        let connection = mutation_connection(root.path());
+        let directory = root.path().join("notes #1@review");
+        fs::create_dir(&directory).unwrap();
+        let scope = directory_history_spec(&connection, &directory.to_string_lossy()).unwrap();
+        assert!(scope
+            .replace('\\', "/")
+            .ends_with("notes %231%40review/..."));
+        assert!(directory_history_spec(&connection, "../outside").is_err());
+        assert!(directory_history_spec(&connection, "//depot/project/../other").is_err());
+        assert!(directory_history_spec(&connection, "//depot/project/...").is_err());
+    }
+
+    #[test]
+    fn directory_history_finishes_paging_at_the_first_changelist() {
+        let root = tempfile::tempdir().unwrap();
+        let connection = mutation_connection(root.path());
+        let request = P4PathHistoryRequest {
+            user: String::new(),
+            client: String::new(),
+            query: String::new(),
+            before: Some(1),
+            limit: 50,
+            scan_limit: 500,
+        };
+        let page = path_history_with(&connection, "//depot/project", &request, |_, _| {
+            panic!("No command should run after the oldest changelist")
+        })
+        .unwrap();
+        assert!(page.changes.is_empty());
+        assert!(!page.has_more);
+    }
+
     #[test]
     fn ignored_entries_follow_native_results_and_keep_directory_rules() {
         let root = PathBuf::from("workspace");

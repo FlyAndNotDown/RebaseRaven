@@ -107,5 +107,7 @@
     "showLess": "Collapse message"
   },
   "beforeEdits": "Before edits",
-  "mergedResult": "Merged result"
+  "mergedResult": "Merged result",
+  "expandFolder": "Expand {{name}}",
+  "collapseFolder": "Collapse {{name}}"
 }

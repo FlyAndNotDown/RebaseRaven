@@ -33,7 +33,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::error::{AppError, AppResult};
 
-const FILE_BYTES: usize = 5 * 1024 * 1024;
+const FILE_BYTES: usize = 20 * 1024 * 1024;
 const RETENTION_DAYS: u64 = 7;
 const PRUNE_INTERVAL: Duration = Duration::from_secs(3600);
 const LOG_NAMES: [&str; 10] = [
@@ -735,7 +735,7 @@ mod tests {
     }
 
     #[test]
-    fn rotation_bounds_retained_logs_to_fifty_mebibytes() {
+    fn rotation_bounds_retained_logs_to_two_hundred_mebibytes() {
         let temp = tempfile::tempdir().unwrap();
         let store = Store::new(&temp.path().join("logs")).unwrap();
         let contents = vec![b'\n'; FILE_BYTES];
@@ -743,7 +743,7 @@ mod tests {
             fs::write(store.directory.join(name), &contents).unwrap();
         }
         let full = store.summary().unwrap();
-        assert_eq!(full.max_bytes, 50 * 1024 * 1024);
+        assert_eq!(full.max_bytes, 200 * 1024 * 1024);
         assert_eq!(full.total_bytes, full.max_bytes as u64);
         let entry = event();
         store.append(&entry).unwrap();
@@ -890,7 +890,7 @@ mod tests {
         store.append(&event()).unwrap();
         let summary = store.summary().unwrap();
         assert_eq!(summary.file_count, LOG_NAMES.len());
-        assert_eq!(summary.max_bytes, 50 * 1024 * 1024);
+        assert_eq!(summary.max_bytes, 200 * 1024 * 1024);
         assert!(summary.total_bytes <= summary.max_bytes as u64);
         assert!(store.read(LOG_NAMES[0]).unwrap().unwrap().len() < 1024);
         assert_eq!(store.read(LOG_NAMES[1]).unwrap().unwrap(), full);

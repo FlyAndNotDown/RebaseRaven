@@ -471,36 +471,7 @@
     },
     "limitView": "LimitView 过滤"
   },
-  "streamTree": {
-    "title": "Stream 关系",
-    "locate": "定位当前 Stream",
-    "current": "当前 Stream",
-    "workspace": "工作区：{{client}}",
-    "parent": "父 Stream",
-    "children": "子 Stream · {{count}}",
-    "noParent": "没有父 Stream",
-    "noChildren": "没有子 Stream",
-    "select": "选择 Stream",
-    "merge": "从父 Stream 合入当前",
-    "copy": "将子 Stream 复制到当前",
-    "expand": "展开 {{stream}}",
-    "collapse": "折叠 {{stream}}",
-    "limit": "最多展示 2,000 个有权限访问的 Stream。",
-    "kinds": {
-      "mainline": "主线",
-      "development": "开发",
-      "release": "发布",
-      "virtual": "虚拟",
-      "task": "任务",
-      "sparsedev": "稀疏开发流",
-      "sparserel": "稀疏发布流"
-    },
-    "mergeShort": "从父级合并",
-    "copyShort": "复制到工作区",
-    "actions": "Stream 操作"
-  },
   "specs": {
-    "title": "标签与分支映射",
     "labels": "标签",
     "branches": "分支映射",
     "filter": "按名称筛选",
@@ -617,7 +588,17 @@
       "ignored": "禁止提交的文件或文件夹模式，每行一条。"
     },
     "reload": "重新读取定义",
-    "discardReload": "丢弃草稿并重新读取"
+    "discardReload": "丢弃草稿并重新读取",
+    "parent": "父 Stream",
+    "kinds": {
+      "mainline": "主线",
+      "development": "开发",
+      "release": "发布",
+      "virtual": "虚拟",
+      "task": "任务",
+      "sparsedev": "稀疏开发流",
+      "sparserel": "稀疏发布流"
+    }
   },
   "streamWork": {
     "title": "Stream 定义",
@@ -686,5 +667,7 @@
   "autoMergeUnavailable": "无法自动合并，请手动合并此文件。",
   "autoResolveAfterSync": "尝试自动解决冲突",
   "autoResolveAfterSyncHint": "更新后安全合并所有已打开更改列表中可自动合并的文件。有冲突的文件会保留为未解决状态。",
-  "autoResolveSummary": "已自动解决 {{resolved}} 个文件 · {{remaining}} 个仍需解决"
+  "autoResolveSummary": "已自动解决 {{resolved}} 个文件 · {{remaining}} 个仍需解决",
+  "selectAFileOrFolder": "选择文件或文件夹",
+  "openAFileOrFolderToSeeItsHistory": "选择文件或文件夹查看历史"
 }

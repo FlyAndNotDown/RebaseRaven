@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { SyncPopover } from "@/components/sync-popover";
+import { RepositoryActions, RepositoryRefButton, ToolbarButton } from "@/components/repository-toolbar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useGitPick } from "@/state/git-context";
 import { errorMessage } from "@/lib/git";
@@ -12,8 +13,6 @@ import { HoverTip } from "@/components/ui/tooltip";
 import { useP4 } from "@/state/p4-context";
 
 const syncAction = "sync" as const;
-
-const actionClass = "h-[calc(1.75rem-2px)]! w-[calc(1.75rem-2px)]! rounded-[6px] text-foreground hover:bg-background dark:hover:bg-background";
 
 export function P4Header() {
   useTranslation();
@@ -31,10 +30,10 @@ export function P4Header() {
   }
   return <div className="flex min-w-0 items-center gap-1.5">
     {connection?.client ? <HoverTip label={t("p4.editWorkspace")}>
-      <Button variant="outline" size="sm" className="max-w-44 shrink-0 font-mono" disabled={busy} onClick={() => p4.setWorkspaceOpen(true)}><span className="truncate">{connection.client}</span></Button>
+      <RepositoryRefButton disabled={busy} onClick={() => p4.setWorkspaceOpen(true)}>{connection.client}</RepositoryRefButton>
     </HoverTip> : null}
-    <div className="flex h-7 shrink-0 items-center gap-1 rounded-[min(var(--radius-md),12px)] border border-input bg-secondary px-0.5">
-      <HoverTip label={t("p4.refresh")}><Button type="button" variant="ghost" size="icon-xs" className={actionClass} aria-label={t("p4.refresh")} disabled={busy} onClick={() => void p4.refresh()}><RefreshCwIcon /></Button></HoverTip>
+    <RepositoryActions>
+      <HoverTip label={t("p4.refresh")}><ToolbarButton label={t("p4.refresh")} disabled={busy} onClick={() => void p4.refresh()}><RefreshCwIcon /></ToolbarButton></HoverTip>
       <SyncPopover action={syncAction} openAction={openAction} onOpenAction={setOpenAction} label={t("p4.getLatest")} hint={t("p4.getLatest")} icon={<DownloadIcon />} disabled={busy}>
         <div className="grid gap-3">
           <h3 className="text-sm font-medium">{t("p4.getLatest")}</h3>
@@ -46,7 +45,7 @@ export function P4Header() {
       </SyncPopover>
       <span className="h-3.5 w-px self-center bg-foreground/20" />
       <DropdownMenu>
-        <HoverTip label={t("p4.workspaceActions")}><DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon-xs" className={actionClass} aria-label={t("p4.workspaceActions")} disabled={busy}><EllipsisIcon /></Button></DropdownMenuTrigger></HoverTip>
+        <HoverTip label={t("p4.workspaceActions")}><DropdownMenuTrigger asChild><ToolbarButton label={t("p4.workspaceActions")} disabled={busy}><EllipsisIcon /></ToolbarButton></DropdownMenuTrigger></HoverTip>
         <DropdownMenuContent align="start">
           <DropdownMenuItem onClick={() => void p4.reconcile()}><ListChecksIcon />{t("p4.reconcileReview.title")}</DropdownMenuItem>
           <DropdownMenuItem onClick={() => p4.openClean()}><BrushCleaningIcon />{t("p4.clean.title")}</DropdownMenuItem>
@@ -56,6 +55,6 @@ export function P4Header() {
           <DropdownMenuItem onClick={() => p4.setConnectionOpen(true)}><CableIcon />{t("p4.editConnection")}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-    </div>
+    </RepositoryActions>
   </div>;
 }

@@ -107,5 +107,7 @@
     "showLess": "收起消息"
   },
   "beforeEdits": "编辑前",
-  "mergedResult": "合并结果"
+  "mergedResult": "合并结果",
+  "expandFolder": "展开 {{name}}",
+  "collapseFolder": "收起 {{name}}"
 }
