@@ -29,6 +29,7 @@ interface FileTreeProps {
   selected: string | null;
   onToggle: (dir: string) => void;
   onOpenFile: (path: string) => void;
+  onOpenDirectory?: (path: string) => void;
   trailing?: (entry: FileTreeEntry) => ReactNode;
   menu?: (entry: FileTreeEntry) => ReactNode;
   loading?: ReadonlySet<string>;
@@ -94,13 +95,14 @@ export function VirtualFileTree(props: FileTreeProps) {
 }
 
 function TreeRow({
-  item, depth, expanded, selected, onToggle, onOpenFile, trailing, menu, loading,
-}: Pick<FileTreeProps, "depth" | "selected" | "onToggle" | "onOpenFile" | "trailing" | "menu" | "loading"> & {
+  item, depth, expanded, selected, onToggle, onOpenFile, onOpenDirectory, trailing, menu, loading,
+}: Pick<FileTreeProps, "depth" | "selected" | "onToggle" | "onOpenFile" | "onOpenDirectory" | "trailing" | "menu" | "loading"> & {
   item: FileTreeEntry;
   expanded: boolean;
 }) {
   useTranslation();
   const busy = loading?.has(item.path) ?? false;
+  const selectableDirectory = item.dir && !!onOpenDirectory;
   const kind = item.kind === "submodule" ? t("git-files.submodule") : item.kind === "lfs" ? t("git.lfs.title") : "";
   const tip = item.iconTitle || [item.name, kind, item.ignored ? t("git-files.ignored") : ""].filter(Boolean).join(" · ");
   const row = (
@@ -113,16 +115,19 @@ function TreeRow({
         "flex h-7 w-full items-center pr-2 text-left text-xs hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
         selected === item.path && "bg-muted",
         item.ignored && "text-muted-foreground",
+        selectableDirectory && "select-none",
       )}
       style={{ paddingLeft: 8 + depth * 12 }}
-      onClick={() => (item.dir ? onToggle(item.path) : onOpenFile(item.path))}
+      onClick={() => (item.dir ? (onOpenDirectory ?? onToggle)(item.path) : onOpenFile(item.path))}
+      onDoubleClick={selectableDirectory ? () => onToggle(item.path) : undefined}
       onContextMenu={() => {
         if (!item.dir) onOpenFile(item.path);
+        else onOpenDirectory?.(item.path);
       }}
     >
       <HoverTip label={tip} className="max-w-lg">
         <span className="inline-flex w-fit min-w-0 max-w-full items-center gap-1.5 overflow-hidden">
-          {busy ? (
+          {selectableDirectory ? <span className="size-3.5 shrink-0" /> : busy ? (
             <LoaderCircleIcon className="size-3.5 shrink-0 motion-safe:animate-spin" aria-hidden="true" />
           ) : item.dir ? (
             <ChevronRightIcon className={cn("size-3.5 shrink-0 motion-safe:transition-transform", expanded && "rotate-90")} />
@@ -146,12 +151,21 @@ function TreeRow({
       {trailing ? <span className="ml-auto pl-2">{trailing(item)}</span> : null}
     </button>
   );
+  const target = selectableDirectory ? <div className="relative">
+    {row}
+    <button type="button" disabled={busy} aria-expanded={expanded} aria-label={t(expanded ? "git-files.collapseFolder" : "git-files.expandFolder", {name:item.name})}
+      className="absolute top-0 flex h-7 w-5 items-center rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+      style={{left:8 + depth * 12}}
+      onClick={event=>{event.stopPropagation();if (event.detail < 2) onToggle(item.path);}}
+      onDoubleClick={event=>event.stopPropagation()}
+    >{busy ? <LoaderCircleIcon className="size-3.5 shrink-0 motion-safe:animate-spin"/> : <ChevronRightIcon className={cn("size-3.5 shrink-0 motion-safe:transition-transform", expanded && "rotate-90", item.ignored && "text-muted-foreground")}/>}</button>
+  </div> : row;
   return menu ? (
     <ContextMenu>
-      <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+      <ContextMenuTrigger asChild>{target}</ContextMenuTrigger>
       {menu(item)}
     </ContextMenu>
-  ) : row;
+  ) : target;
 }
 
 export function FileTreeFilter({
@@ -226,6 +240,7 @@ export function FilteredFileTree({
   toPath,
   selected,
   onOpenFile,
+  onOpenDirectory,
   onLoadDir,
   menu,
   decorate,
@@ -235,6 +250,7 @@ export function FilteredFileTree({
   toPath: (relative: string) => string;
   selected: string | null;
   onOpenFile: (path: string) => void;
+  onOpenDirectory?: (path: string) => void;
   onLoadDir?: (path: string) => Promise<FileTreeEntry[] | null>;
   menu?: (entry: FileTreeEntry) => ReactNode;
   decorate?: (node: SearchNode, entry: FileTreeEntry) => FileTreeEntry;
@@ -305,6 +321,7 @@ export function FilteredFileTree({
       selected={selected}
       onToggle={(path) => void toggle(path)}
       onOpenFile={onOpenFile}
+      onOpenDirectory={onOpenDirectory}
       menu={menu}
       loading={loading}
     />

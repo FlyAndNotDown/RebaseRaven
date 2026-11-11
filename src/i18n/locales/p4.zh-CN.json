@@ -667,5 +667,7 @@
   "autoMergeUnavailable": "无法自动合并，请手动合并此文件。",
   "autoResolveAfterSync": "尝试自动解决冲突",
   "autoResolveAfterSyncHint": "更新后安全合并所有已打开更改列表中可自动合并的文件。有冲突的文件会保留为未解决状态。",
-  "autoResolveSummary": "已自动解决 {{resolved}} 个文件 · {{remaining}} 个仍需解决"
+  "autoResolveSummary": "已自动解决 {{resolved}} 个文件 · {{remaining}} 个仍需解决",
+  "selectAFileOrFolder": "选择文件或文件夹",
+  "openAFileOrFolderToSeeItsHistory": "选择文件或文件夹查看历史"
 }

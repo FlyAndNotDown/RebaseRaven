@@ -10,6 +10,7 @@ import { P4OperationDialog } from "@/components/p4/p4-operation-dialog";
 import type { P4OperationKind } from "@/lib/p4-operation-preview";
 import { t, useTranslation } from "@/i18n";
 import { P4FileHistory } from "@/components/p4/p4-file-history";
+import { P4DirectoryHistory } from "@/components/p4/p4-directory-history";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import {
   ContextMenuContent,
@@ -85,6 +86,7 @@ export function P4Files() {
   const [reveal, setReveal] = useState<TreeReveal | null>(null);
 
   function choose(path: string) { setSelected(path); setSelectedIsFile(true); }
+  function chooseDirectory(path: string) { setSelected(path); setSelectedIsFile(false); }
 
   async function revealLocation(entry: FileTreeEntry, target: "workspace" | "depot") {
     if (!connection) return;
@@ -206,6 +208,7 @@ export function P4Files() {
                       key={root}
                       selected={selected}
                       onSelect={choose}
+                      onSelectDirectory={chooseDirectory}
                       onResolved={setSelected}
                       reveal={reveal?.mode === "workspace" ? reveal : null}
                       menu={fileMenu}
@@ -218,6 +221,7 @@ export function P4Files() {
                       key={`${connection?.port ?? ""}:${connection?.client ?? ""}`}
                       selected={selected}
                       onSelect={choose}
+                      onSelectDirectory={chooseDirectory}
                       onResolved={setSelected}
                       reveal={reveal?.mode === "depot" ? reveal : null}
                       menu={fileMenu}
@@ -245,6 +249,7 @@ export function P4Files() {
                         toPath={(relative) => (mode === "depot" ? depotPath(relative) : joinRoot(root, relative))}
                         selected={selected}
                         onOpenFile={choose}
+                        onOpenDirectory={chooseDirectory}
                         decorate={(node, entry) => ({
                           ...entry,
                           icon: node.dir ? undefined : <FileStatusIcon status={node.status} />,
@@ -287,14 +292,14 @@ export function P4Files() {
           <div className="flex h-10 shrink-0 items-center border-b px-3">
             <HoverTip label={selected ? shownPath(mode, root, selected) : ""}>
               <div className="min-w-0 flex-1 truncate font-mono text-xs">
-                {selected ? shownPath(mode, root, selected) : t("p4.selectAFile")}
+                {selected ? shownPath(mode, root, selected) : t("p4.selectAFileOrFolder")}
               </div>
             </HoverTip>
           </div>
-          {selected && selectedIsFile ? (
-            <P4FileHistory key={`${connectionKey}:${selected}:${p4.filesEpoch}`} path={selected} />
+          {selected ? (
+            selectedIsFile ? <P4FileHistory key={`${connectionKey}:${selected}:${p4.filesEpoch}`} path={selected} /> : <P4DirectoryHistory key={`${connectionKey}:${selected}:${p4.filesEpoch}`} path={selected} />
           ) : (
-            <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">{t("p4.openAFileToSeeItsHistory")}</div>
+            <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">{t("p4.openAFileOrFolderToSeeItsHistory")}</div>
           )}
         </div>
       </ResizablePanel>
@@ -307,12 +312,14 @@ export function P4Files() {
 function WorkspaceTree({
   selected,
   onSelect,
+  onSelectDirectory,
   onResolved,
   reveal,
   menu,
 }: {
   selected: string | null;
   onSelect: (path: string) => void;
+  onSelectDirectory: (path: string) => void;
   onResolved: (path: string) => void;
   reveal: TreeReveal | null;
   menu: (entry: FileTreeEntry) => ReactNode;
@@ -325,6 +332,8 @@ function WorkspaceTree({
   const [entries, setEntries] = useState<Record<string, FileTreeEntry[]>>(() => cached?.entries ?? {});
   const [open, setOpen] = useState<Set<string>>(() => new Set(cached?.open ?? []));
   const [failed, setFailed] = useState(false);
+  const [loading, setLoading] = useState<ReadonlySet<string>>(() => new Set());
+  const pending = useRef(new Set<string>());
   const openRef = useRef(open);
   const epochRef = useRef(filesEpoch);
   const liveRef = useRef(true);
@@ -385,6 +394,7 @@ function WorkspaceTree({
   });
 
   async function toggle(path: string) {
+    if (pending.current.has(path)) return;
     if (open.has(path)) {
       setOpen((current) => {
         const next = new Set(current);
@@ -394,6 +404,7 @@ function WorkspaceTree({
       return;
     }
     if (!entries[path]) {
+      pending.current.add(path);setLoading(current => new Set(current).add(path));
       try {
         await publishDirectory(
           path,
@@ -405,9 +416,12 @@ function WorkspaceTree({
         );
       } catch {
         return;
+      } finally {
+        pending.current.delete(path);
+        if (liveRef.current) setLoading(current => {const next=new Set(current);next.delete(path);return next;});
       }
     }
-    setOpen((current) => new Set(current).add(path));
+    if (liveRef.current) setOpen((current) => new Set(current).add(path));
   }
 
   if (!entries[""]) {
@@ -425,6 +439,8 @@ function WorkspaceTree({
       selected={selected}
       onToggle={(path) => void toggle(path)}
       onOpenFile={onSelect}
+      onOpenDirectory={onSelectDirectory}
+      loading={loading}
       menu={menu}
     />
   );
@@ -433,12 +449,14 @@ function WorkspaceTree({
 function DepotTree({
   selected,
   onSelect,
+  onSelectDirectory,
   onResolved,
   reveal,
   menu,
 }: {
   selected: string | null;
   onSelect: (path: string) => void;
+  onSelectDirectory: (path: string) => void;
   onResolved: (path: string) => void;
   reveal: TreeReveal | null;
   menu: (entry: FileTreeEntry) => ReactNode;
@@ -450,6 +468,8 @@ function DepotTree({
   const [entries, setEntries] = useState<Record<string, FileTreeEntry[]>>(() => cached?.entries ?? {});
   const [open, setOpen] = useState<Set<string>>(() => new Set(cached?.open ?? []));
   const [failed, setFailed] = useState(false);
+  const [loading, setLoading] = useState<ReadonlySet<string>>(() => new Set());
+  const pending = useRef(new Set<string>());
   const openRef = useRef(open);
   const epochRef = useRef(filesEpoch);
   const liveRef = useRef(true);
@@ -501,6 +521,7 @@ function DepotTree({
   });
 
   async function toggle(path: string) {
+    if (pending.current.has(path)) return;
     if (open.has(path)) {
       setOpen((current) => {
         const next = new Set(current);
@@ -510,13 +531,17 @@ function DepotTree({
       return;
     }
     if (!entries[path]) {
+      pending.current.add(path);setLoading(current => new Set(current).add(path));
       try {
         await publishDirectory(path, true, connection, () => listDepot(path), setEntries, () => liveRef.current);
       } catch {
         return;
+      } finally {
+        pending.current.delete(path);
+        if (liveRef.current) setLoading(current => {const next=new Set(current);next.delete(path);return next;});
       }
     }
-    setOpen((current) => new Set(current).add(path));
+    if (liveRef.current) setOpen((current) => new Set(current).add(path));
   }
 
   if (!entries[""]) {
@@ -534,6 +559,8 @@ function DepotTree({
       selected={selected}
       onToggle={(path) => void toggle(path)}
       onOpenFile={onSelect}
+      onOpenDirectory={onSelectDirectory}
+      loading={loading}
       menu={menu}
     />
   );

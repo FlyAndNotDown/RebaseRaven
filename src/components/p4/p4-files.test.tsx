@@ -11,6 +11,7 @@ const actions=vi.hoisted(()=>({listDir:vi.fn(),status:vi.fn(),search:vi.fn(),can
 vi.mock("@/state/p4-context",()=>({useP4:()=>({connection:actions.connection,listDir:actions.listDir,filesEpoch:0,busy:false})}));
 vi.mock("@/lib/p4",async importOriginal=>({...await importOriginal<typeof import("@/lib/p4")>(),p4Api:{listingStatus:actions.status,searchFiles:actions.search,cancelDepotSearch:actions.cancel}}));
 vi.mock("@/components/p4/p4-file-history",()=>({P4FileHistory:({path}:{path:string})=><div data-file-history={path}/> }));
+vi.mock("@/components/p4/p4-directory-history",()=>({P4DirectoryHistory:({path}:{path:string})=><div data-directory-history={path}/> }));
 vi.mock("@/components/ui/resizable",()=>({ResizablePanelGroup:({children}:{children:ReactNode})=><div>{children}</div>,ResizablePanel:({children}:{children:ReactNode})=><div>{children}</div>,ResizableHandle:()=>null}));
 let root:Root,container:HTMLDivElement,sequence=0;
 function entry(name:string,dir=false,ignored=false):P4DirEntry {return {name:name.split("/").at(-1)!,path:`/workspace/${name}`,dir,ignored,status:"",detail:""};}
@@ -18,7 +19,7 @@ function rows(path:string) {return [...container.querySelectorAll<HTMLButtonElem
 async function render() {await act(async()=>root.render(<TooltipProvider><P4Files/></TooltipProvider>));}
 beforeEach(()=>{
   Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});setLanguagePreference("en");vi.resetAllMocks();actions.connection={...actions.connection,root:"/workspace",client:`client-${++sequence}`};
-  actions.listDir.mockResolvedValue([entry("cache",true,true),entry("output.tmp",false,true)]);actions.status.mockResolvedValue([]);actions.cancel.mockResolvedValue(undefined);
+  actions.listDir.mockImplementation(async (relative:string)=>relative ? [entry(`${relative}/child.txt`)] : [entry("cache",true,true),entry("output.tmp",false,true)]);actions.status.mockResolvedValue([]);actions.cancel.mockResolvedValue(undefined);
   container=document.createElement("div");document.body.append(container);root=createRoot(container);
 });
 afterEach(async()=>{await act(async()=>root.unmount());container.remove();vi.useRealTimers();vi.restoreAllMocks();});
@@ -46,4 +47,24 @@ it("preserves ignore styling when Windows status paths use different casing and 
   actions.listDir.mockResolvedValue([{...entry("output.tmp",false,true),path:"C:\\workspace\\output.tmp"}]);
   actions.status.mockResolvedValue([{path:"c:/WORKSPACE/OUTPUT.tmp",status:"current",detail:"Up to date"}]);
   await render();expect(rows("C:\\workspace\\output.tmp")[0].classList.contains("text-muted-foreground")).toBe(true);
+});
+
+it("selects folder history on a single click and expands only with an arrow or double click",async()=>{
+  await render();await act(async()=>rows("/workspace/output.tmp")[0].click());
+  const arrow=()=>container.querySelector<HTMLButtonElement>('button[aria-label="Expand cache"],button[aria-label="Collapse cache"]')!;
+  await act(async()=>arrow().click());
+  expect(container.querySelector('[data-file-history="/workspace/output.tmp"]')).not.toBeNull();
+  expect(rows("/workspace/cache")[0].getAttribute("aria-expanded")).toBe("true");
+  await act(async()=>rows("/workspace/cache")[0].click());
+  expect(container.querySelector('[data-directory-history="/workspace/cache"]')).not.toBeNull();
+  expect(rows("/workspace/cache")[0].getAttribute("aria-expanded")).toBe("true");
+  await act(async()=>{
+    const folder=rows("/workspace/cache")[0];
+    folder.dispatchEvent(new MouseEvent("click",{bubbles:true,detail:1}));
+    folder.dispatchEvent(new MouseEvent("click",{bubbles:true,detail:2}));
+    folder.dispatchEvent(new MouseEvent("dblclick",{bubbles:true,detail:2}));
+  });
+  expect(rows("/workspace/cache")[0].getAttribute("aria-expanded")).toBe("false");
+  expect(container.querySelector('[data-directory-history="/workspace/cache"]')).not.toBeNull();
+  expect(actions.listDir.mock.calls.filter(([path])=>path==="cache")).toHaveLength(1);
 });

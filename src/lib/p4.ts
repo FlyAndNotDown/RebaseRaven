@@ -40,6 +40,7 @@ import type {
   P4FileSource,
   P4RevisionPage,
   P4HistoryCursor,
+  P4PathHistoryRequest,
   RepoDetection,
 } from "@/types/p4";
 import type { FileDiff, ImagePair } from "@/types/git";
@@ -148,6 +149,8 @@ export const p4Api = {
     call<FileDiff>("p4_revision_diff", { connection, depotPath, rev }),
   filelog: (connection: P4Connection, path: string, cursor: P4HistoryCursor | null = null) =>
     call<P4RevisionPage>("p4_filelog", { connection, path, cursor }),
+  pathHistory: (connection: P4Connection, path: string, request: P4PathHistoryRequest) =>
+    call<P4ChangePage>("p4_path_history", {connection, path, request}),
   locate: (connection: P4Connection, path: string) =>
     call<P4Location>("p4_locate", { connection, path }),
   listDir: (connection: P4Connection, relative: string) =>

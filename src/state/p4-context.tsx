@@ -58,6 +58,7 @@ import type {
   P4BlameLine,
   P4RevisionPage,
   P4HistoryCursor,
+  P4PathHistoryRequest,
   P4StreamOption,
 } from "@/types/p4";
 
@@ -168,6 +169,8 @@ interface P4ContextValue {
   listDepot: (path: string) => Promise<P4DirEntry[]>;
   searchDepot: (query: string) => Promise<P4FileSearch | null>;
   filelog: (path: string, cursor?: P4HistoryCursor | null) => Promise<P4RevisionPage>;
+  pathHistory: (path: string, request: P4PathHistoryRequest) => Promise<P4ChangePage>;
+  describeSubmitted: (id: string) => Promise<P4Changelist>;
   annotate: (depotPath: string, revision: string) => Promise<P4BlameLine[]>;
   compareFiles: (request: P4CompareRequest) => Promise<FileDiff>;
   revisionDiff: (depotPath: string, rev: string) => Promise<FileDiff | null>;
@@ -1372,6 +1375,19 @@ export function P4Provider({ children }: { children: ReactNode }) {
     );
   }, [guard]);
 
+  const pathHistory = useCallback((path: string, request: P4PathHistoryRequest) => {
+    const current = sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    return guard(current.connection, () => p4Api.pathHistory(current.connection, path, request));
+  }, [guard]);
+
+  const describeSubmitted = useCallback(async (id: string) => {
+    const current = sessionRef.current;
+    if (!current) throw new Error(t("p4-operations.connectionRequired"));
+    const described = await guard(current.connection, () => p4Api.describe(current.connection, id));
+    return described.change;
+  }, [guard]);
+
   const selectSubmitted = useCallback(
     async (id: string) => {
       const current = sessionRef.current;
@@ -1710,6 +1726,8 @@ export function P4Provider({ children }: { children: ReactNode }) {
       listDepot,
       searchDepot,
       filelog,
+      pathHistory,
+      describeSubmitted,
       compareFiles,
       annotate,
       revisionDiff,
@@ -1765,6 +1783,8 @@ export function P4Provider({ children }: { children: ReactNode }) {
       fileAction,
       filesEpoch,
       filelog,
+      pathHistory,
+      describeSubmitted,
       getRevision,
       listClients,
       listDir,

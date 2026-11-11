@@ -667,5 +667,7 @@
   "autoMergeUnavailable": "Cannot auto-merge. Merge this file manually.",
   "autoResolveAfterSync": "Try auto-resolving conflicts",
   "autoResolveAfterSyncHint": "After updating, safely merge eligible files across all opened changelists. Conflicting files remain unresolved.",
-  "autoResolveSummary": "Auto-resolved {{resolved}} files · {{remaining}} still need resolve"
+  "autoResolveSummary": "Auto-resolved {{resolved}} files · {{remaining}} still need resolve",
+  "selectAFileOrFolder": "Select a file or folder",
+  "openAFileOrFolderToSeeItsHistory": "Select a file or folder to view its history"
 }
