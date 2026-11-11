@@ -12,7 +12,7 @@ vi.mock("@/lib/diagnostics",()=>({diagnosticsApi:{summary:mocks.summary,export:m
 let root:Root,container:HTMLDivElement;
 beforeEach(async()=>{
   Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});setLanguagePreference("en");vi.resetAllMocks();
-  mocks.summary.mockResolvedValue({totalBytes:1024,maxBytes:50*1024*1024,fileCount:1,retentionDays:7});
+  mocks.summary.mockResolvedValue({totalBytes:1024,maxBytes:200*1024*1024,fileCount:1,retentionDays:7});
   mocks.save.mockResolvedValue("/output/diagnostics.zip");mocks.export.mockResolvedValue({fileCount:1,skippedEntries:0});
   container=document.createElement("div");document.body.append(container);root=createRoot(container);
   await act(async()=>root.render(<TooltipProvider><DiagnosticsSettings /></TooltipProvider>));
