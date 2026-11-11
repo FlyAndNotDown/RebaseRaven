@@ -1396,6 +1396,7 @@ pub fn search_files(connection: &P4Connection, query: &str) -> AppResult<P4FileS
         return Err(AppError::msg("Workspace folder was not found."));
     }
     let mut hits = match_workspace_files(&root, &needle);
+    include_search_parents(&root, &mut hits);
     annotate_ignored(&env_for(connection), &mut hits);
     let files: Vec<String> = hits
         .iter()
@@ -1433,6 +1434,30 @@ pub fn search_files(connection: &P4Connection, query: &str) -> AppResult<P4FileS
         truncated: false,
         scope: String::new(),
     })
+}
+
+fn include_search_parents(root: &Path, hits: &mut Vec<P4DirEntry>) {
+    let mut known = hits
+        .iter()
+        .map(|entry| local_path_key(&entry.path))
+        .collect::<BTreeSet<_>>();
+    let parents = hits
+        .iter()
+        .flat_map(|entry| {
+            Path::new(&entry.path)
+                .ancestors()
+                .skip(1)
+                .take_while(|parent| *parent != root && parent.starts_with(root))
+                .map(Path::to_path_buf)
+        })
+        .collect::<BTreeSet<_>>();
+    for directory in parents {
+        if known.insert(local_path_key(&directory.to_string_lossy())) {
+            if let Some(name) = directory.file_name() {
+                hits.push(plain_dir(&name.to_string_lossy(), &directory));
+            }
+        }
+    }
 }
 
 fn match_workspace_files(root: &Path, needle: &str) -> Vec<P4DirEntry> {
@@ -4541,6 +4566,29 @@ fn first_text(preferred: Option<&String>, fallback: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn search_ancestors_keep_ignore_rules_without_changing_an_excluded_child() {
+        let root = PathBuf::from("workspace");
+        let mut file = plain_dir("keep.txt", &root.join("cache/nested/keep.txt"));
+        file.dir = false;
+        let mut hits = vec![file, plain_dir("nested", &root.join("cache/nested"))];
+        include_search_parents(&root, &mut hits);
+        assert_eq!(hits.len(), 3);
+        annotate_ignored_with(&mut hits, &mut |args| {
+            Ok(args
+                .iter()
+                .skip(2)
+                .filter(|path| path.ends_with('/'))
+                .map(|path| format!("{path} ignored\n"))
+                .collect::<String>())
+        });
+        assert!(hits
+            .iter()
+            .filter(|entry| entry.dir)
+            .all(|entry| entry.ignored));
+        assert!(!hits[0].ignored);
+    }
+
     #[test]
     fn directory_history_scopes_pages_and_search_to_the_selected_subtree() {
         let root = tempfile::tempdir().unwrap();
