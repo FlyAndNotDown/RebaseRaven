@@ -37,6 +37,7 @@ import { HoverTip, Tooltip, TooltipContent, TooltipTrigger } from "@/components/
 import { ActivityMeter } from "@/components/activity-meter";
 import { AppMenu } from "@/components/app-menu";
 import { AppToolbar } from "@/components/app-toolbar";
+import { RepositoryRefButton } from "@/components/repository-toolbar";
 import { P4Header } from "@/components/p4/p4-header";
 import { VcsIcon } from "@/components/vcs-icon";
 import { WindowControls } from "@/components/window-controls";
@@ -148,9 +149,7 @@ export function AppHeader() {
             }}
           >
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="max-w-44 shrink-0 font-mono">
-                <span className="truncate">{current}</span>
-              </Button>
+              <RepositoryRefButton>{current}</RepositoryRefButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-80">
               <div className="px-1.5 pb-1.5" onPointerDown={(event) => event.stopPropagation()}>
