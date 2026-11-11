@@ -198,6 +198,7 @@ function treeEntry(node: SearchNode, toPath: (relative: string) => string): File
     path: toPath(node.relative),
     name: node.relative.split("/").pop() ?? node.relative,
     dir: node.dir,
+    ignored: node.ignored,
   };
 }
 

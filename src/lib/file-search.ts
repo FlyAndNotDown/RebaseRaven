@@ -4,6 +4,7 @@ export interface SearchNode {
   kind?: GitFileKind;
   relative: string;
   dir: boolean;
+  ignored?: boolean;
   status?: string;
   detail?: string;
 }
@@ -48,10 +49,11 @@ export function nestSearchNodes(nodes: SearchNode[]): {
     if (!relative || relative.split("/").includes("..")) continue;
     if (node.dir) {
       addDir(relative, false);
-      if (node.kind) {
-        const slash = relative.lastIndexOf("/");
-        const existing = bucket(slash >= 0 ? relative.slice(0, slash) : "").get(relative);
-        if (existing) existing.kind = node.kind;
+      const slash = relative.lastIndexOf("/");
+      const existing = bucket(slash >= 0 ? relative.slice(0, slash) : "").get(relative);
+      if (existing) {
+        if (node.kind) existing.kind = node.kind;
+        if (node.ignored !== undefined) existing.ignored = node.ignored;
       }
       continue;
     }
@@ -62,6 +64,7 @@ export function nestSearchNodes(nodes: SearchNode[]): {
       relative,
       kind: node.kind,
       dir: false,
+      ignored: node.ignored,
       status: node.status ?? "",
       detail: node.detail ?? "",
     });

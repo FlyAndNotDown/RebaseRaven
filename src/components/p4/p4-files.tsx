@@ -70,6 +70,7 @@ export function P4Files() {
       .map((hit) => ({
         relative: mode === "depot" ? hit.path.replace(/^\/+/, "") : relativeToRoot(root, hit.path),
         dir: hit.dir,
+        ignored: hit.ignored,
         status: hit.status,
         detail: hit.detail,
       }))
@@ -755,7 +756,6 @@ function mergeListingStatus(entries: FileTreeEntry[], statuses: P4EntryStatus[],
     const detail = found?.detail || (found ? "" : "Not in the depot");
     return {
       ...entry,
-      ignored: found ? false : entry.ignored,
       icon: <FileStatusIcon status={status} />,
       iconTitle: detail ? <FileStatusTip text={detail} /> : undefined,
     };

@@ -1313,9 +1313,6 @@ pub fn search_files(connection: &P4Connection, query: &str) -> AppResult<P4FileS
         if let Some(file) = annotated.get(files_done) {
             hit.status.clone_from(&file.status);
             hit.detail.clone_from(&file.detail);
-            if file.status != "local" && !file.status.is_empty() {
-                hit.ignored = false;
-            }
         }
         files_done += 1;
     }
@@ -1448,7 +1445,6 @@ fn annotate_paths(connection: &P4Connection, files: &mut [P4DirEntry]) {
             file.detail = "Not in the depot".to_string();
             continue;
         };
-        file.ignored = false;
         file.status.clone_from(status);
         file.detail.clone_from(detail);
         let depot = depot_of.get(&key).map(String::as_str).unwrap_or("");
