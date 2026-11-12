@@ -4,6 +4,7 @@ fn main() {
     println!("cargo:rerun-if-changed=icons/32x32.png");
     println!("cargo:rerun-if-changed=icons/128x128.png");
     println!("cargo:rerun-if-changed=icons/128x128@2x.png");
+    println!("cargo:rerun-if-changed=icons/windows");
     println!("cargo:rerun-if-changed=windows-app-manifest.xml");
 
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();

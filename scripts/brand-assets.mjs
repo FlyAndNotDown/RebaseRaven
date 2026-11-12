@@ -89,6 +89,26 @@ async function generateMarketingAssets() {
   console.log("Generated RebaseRaven README and social assets.");
 }
 
+async function generateWindowsAssets() {
+  const source = await readFile(destination("assets", "brand", "app-icon-windows.svg"));
+  const directory = path.join(iconDirectory, "windows");
+  await mkdir(directory, { recursive: true });
+  const sizes = [16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 128, 256];
+  const images = [];
+  for (const size of sizes) {
+    const image = await sharp(source, { density: 384 }).resize(size, size)
+      .withIccProfile("srgb").png({ compressionLevel: 9 }).toBuffer();
+    images.push({ size, image });
+    if (size === 32 || size === 128) await writeFile(path.join(directory, `${size}x${size}.png`), image);
+    if (size === 256) {
+      await writeFile(path.join(directory, "128x128@2x.png"), image);
+      await writeFile(destination("public", "assets", "mark-windows.png"), image);
+    }
+  }
+  await writeFile(path.join(directory, "icon.ico"), iconFile(images));
+  console.log("Generated RebaseRaven Windows icons.");
+}
+
 async function generate() {
   const mark = await readFile(destination("assets", "brand", "raven.svg"), "utf8");
   const inner = mark.replace(/^<svg[^>]*>/, "").replace(/<\/svg>\s*$/, "");
@@ -120,9 +140,11 @@ async function generate() {
   await writeFile(destination("site", "public", "assets", "favicon.ico"), iconFile([16, 24, 32, 48, 64].map(size => ({ size, image:small[size] }))));
   await copyFile(path.join(brandDirectory, "favicon.svg"), destination("site", "public", "assets", "favicon.svg"));
   await copyFile(path.join(brandDirectory, "raven.svg"), destination("site", "public", "assets", "raven.svg"));
+  await generateWindowsAssets();
   await generateMarketingAssets();
   console.log("Generated RebaseRaven desktop, web, favicon, and social assets.");
 }
 
-if (process.argv.includes("--marketing-only")) await generateMarketingAssets();
+if (process.argv.includes("--windows-only")) await generateWindowsAssets();
+else if (process.argv.includes("--marketing-only")) await generateMarketingAssets();
 else await generate();

@@ -23,10 +23,12 @@ use std::path::Path;
 use std::sync::Once;
 
 use serde::Serialize;
+#[cfg(not(windows))]
 use tauri::image::Image;
 use tauri::webview::PageLoadEvent;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+#[cfg(not(windows))]
 const APP_ICON_PNG: &[u8] = include_bytes!("../icons/icon.png");
 
 use error::{AppError, AppResult};
@@ -2416,6 +2418,7 @@ pub fn run() {
             askpass::start(app.handle());
             if let Some(window) = app.get_webview_window("main") {
                 apply_window_chrome(&window, true);
+                #[cfg(not(windows))]
                 if let Ok(icon) = Image::from_bytes(APP_ICON_PNG) {
                     let _ = window.set_icon(icon);
                 }
