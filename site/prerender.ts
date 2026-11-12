@@ -24,13 +24,14 @@ function metadata(locale: SiteLocale, rootPage: boolean) {
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="RebaseRaven — Git + Perforce">
+    <meta property="og:image:alt" content="RebaseRaven — Rust-powered Git and Perforce client">
     <meta property="og:url" content="${url}">
     <meta property="og:locale" content="${locale === "en" ? "en_US" : "zh_CN"}">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="${title}">
     <meta name="twitter:description" content="${description}">
     <meta name="twitter:image" content="${SITE_URL}assets/social.png">
+    <meta name="twitter:image:alt" content="RebaseRaven — Rust-powered Git and Perforce client">
     <link rel="canonical" href="${url}">
     ${SITE_LOCALES.map((language) => `<link rel="alternate" hreflang="${language}" href="${SITE_URL}${language}/">`).join("\n    ")}
     <link rel="alternate" hreflang="x-default" href="${SITE_URL}">

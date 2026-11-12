@@ -1,6 +1,6 @@
 {
   "name": "rebaseraven",
-  "description": "A unified version control client",
+  "description": "A Rust-powered Git and Perforce desktop client",
   "license": "MIT",
   "private": true,
   "version": "0.1.14",
