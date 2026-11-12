@@ -414,8 +414,9 @@ export function P4Provider({ children }: { children: ReactNode }) {
     } finally {
       refreshing.current.delete(current.tabId);
       endActivity(id);
+      if (!quiet && activeTabRef.current.id === current.tabId) bumpFiles();
     }
-  }, [beginActivity, endActivity, reloadPending, report]);
+  }, [beginActivity, bumpFiles, endActivity, reloadPending, report]);
 
   useLayoutEffect(() => {
     if (!activePerforceId) return;

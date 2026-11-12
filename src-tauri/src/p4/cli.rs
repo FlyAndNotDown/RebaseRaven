@@ -866,7 +866,6 @@ fn prepared(program: PathBuf, env: &P4Env, args: &[&str]) -> Command {
         }
         command.arg(arg);
     }
-    command.env_remove("P4CONFIG");
     command.env_remove("P4PASSWD");
     command
 }
@@ -1115,6 +1114,7 @@ mod tests {
         let command = prepared("p4".into(), &env, &["reconcile", "-e", "-a", "-d"]);
         let args: Vec<_> = command.get_args().collect();
         assert_eq!(command.get_current_dir(), Some(temporary.path()));
+        assert!(!command.get_envs().any(|(key, _)| key == "P4CONFIG"));
         assert_eq!(args[0], "-d");
         assert_eq!(args[1], temporary.path());
         assert_eq!(

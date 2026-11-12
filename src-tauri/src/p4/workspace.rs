@@ -227,6 +227,7 @@ pub struct P4CreateRequest {
 
 struct ConfigFile {
     directory: PathBuf,
+    filename: String,
     values: BTreeMap<String, String>,
 }
 
@@ -844,7 +845,42 @@ pub fn list_dir(connection: &P4Connection, relative: &str) -> AppResult<Vec<P4Di
 
 /// Query the native client so nested ignore files, exclusions and P4IGNORE settings agree with P4.
 fn annotate_ignored(env: &P4Env, entries: &mut [P4DirEntry]) {
-    annotate_ignored_with(entries, &mut |args| run_ok(env, args, None));
+    if entries.is_empty() {
+        return;
+    }
+    let setting = run_ok(env, &["set", "P4IGNORE"], None).ok().map(|output| {
+        let values = parse_p4_set(&output);
+        ignore_file_setting(&env.cwd, values.get("P4IGNORE").map(String::as_str))
+    });
+    annotate_ignored_with(entries, &mut |args| {
+        let mut options = Vec::new();
+        let value;
+        if let Some(setting) = &setting {
+            value = format!("P4IGNORE={setting}");
+            options.extend(["-E", value.as_str()]);
+        }
+        options.extend_from_slice(args);
+        run_ok(env, &options, None)
+    });
+}
+
+fn ignore_file_setting(directory: &Path, native: Option<&str>) -> String {
+    if let Some(value) = native.filter(|value| !value.trim().is_empty()) {
+        return value.to_string();
+    }
+    // Repository discovery also accepts conventional config names without P4CONFIG.
+    if let Some(config) = find_config(directory) {
+        for parent in config.directory.ancestors() {
+            if let Some(value) = read_config(&parent.join(&config.filename))
+                .and_then(|values| values.get("P4IGNORE").cloned())
+                .filter(|value| !value.trim().is_empty())
+            {
+                return value;
+            }
+        }
+    }
+    // Older P4 clients do not supply the standard names automatically.
+    ".p4ignore;p4ignore.txt".to_string()
 }
 
 fn annotate_ignored_with(
@@ -4266,6 +4302,7 @@ fn find_config(start: &Path) -> Option<ConfigFile> {
             if let Some(values) = read_config(&file) {
                 return Some(ConfigFile {
                     directory: dir.to_path_buf(),
+                    filename: name.clone(),
                     values,
                 });
             }
@@ -4648,6 +4685,46 @@ mod tests {
     }
 
     #[test]
+    fn native_ignore_setting_keeps_custom_and_disabled_rule_files() {
+        let root = tempfile::tempdir().unwrap();
+        fs::write(
+            root.path().join("p4config.txt"),
+            "P4IGNORE=project.ignore\n",
+        )
+        .unwrap();
+        assert_eq!(
+            ignore_file_setting(root.path(), Some("custom.ignore;shared.ignore")),
+            "custom.ignore;shared.ignore"
+        );
+        assert_eq!(
+            ignore_file_setting(root.path(), Some("missing.ignore")),
+            "missing.ignore"
+        );
+        assert_eq!(ignore_file_setting(root.path(), None), "project.ignore");
+    }
+
+    #[test]
+    fn ignore_configuration_inherits_rules_from_the_same_config_name() {
+        let root = tempfile::tempdir().unwrap();
+        let child = root.path().join("project");
+        fs::create_dir(&child).unwrap();
+        fs::write(
+            root.path().join("p4config.txt"),
+            "P4IGNORE=shared.ignore\r\n",
+        )
+        .unwrap();
+        fs::write(child.join("p4config.txt"), "P4CLIENT=project\r\n").unwrap();
+        fs::write(child.join(".p4config.txt"), "P4IGNORE=unrelated.ignore\n").unwrap();
+        assert_eq!(ignore_file_setting(&child, None), "shared.ignore");
+        fs::write(
+            child.join("p4config.txt"),
+            "\u{feff}P4IGNORE=project.ignore\r\n",
+        )
+        .unwrap();
+        assert_eq!(ignore_file_setting(&child, None), "project.ignore");
+    }
+
+    #[test]
     fn ignored_entries_follow_native_results_and_keep_directory_rules() {
         let root = PathBuf::from("workspace");
         let mut entries = vec![
@@ -4744,6 +4821,7 @@ mod tests {
     fn discovery_config(root: &Path) -> ConfigFile {
         ConfigFile {
             directory: root.to_path_buf(),
+            filename: ".p4config".into(),
             values: BTreeMap::from([
                 ("P4PORT".into(), "ssl:perforce.example.com:1666".into()),
                 ("P4USER".into(), "alice".into()),
