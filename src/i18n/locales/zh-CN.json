@@ -3,7 +3,6 @@
     "title": "使用情况统计",
     "enabled": "分享使用情况统计",
     "saving": "正在保存…",
-    "disclosure": "默认开启。Google Analytics 会接收随机安装标识、基本设备信息和概括性的应用使用情况，不包含仓库内容、路径或凭据。你可以随时关闭。",
     "saveFailed": "无法保存你的选择。本次运行期间，统计保持关闭。"
   },
   "validation": {
