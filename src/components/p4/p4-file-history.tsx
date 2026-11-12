@@ -1,64 +1,56 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowDownToLineIcon, ArrowUpFromLineIcon, DownloadIcon, ArrowRightIcon, CheckIcon, ChevronDownIcon, ExternalLinkIcon, LoaderCircleIcon } from "lucide-react";
+import { DownloadIcon, ExternalLinkIcon, LoaderCircleIcon } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { AuthorName, ExactTime, RevisionDot } from "@/components/revision-meta";
 import { ChangeBadge } from "@/components/p4/change-badge";
 import { P4Blame } from "@/components/p4/p4-blame";
+import { P4ChangeFiles } from "@/components/p4/p4-change-files";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { P4Diff } from "@/components/p4/p4-diff";
 import { P4GetRevisionDialog, type P4RevisionTarget } from "@/components/p4/p4-get-revision-dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
-import { HoverTip } from "@/components/ui/tooltip";
 import { HistorySkeleton } from "@/components/skeletons";
-import { changeSummary, depotBase } from "@/lib/p4";
+import { changeSummary } from "@/lib/p4";
 import { errorMessage } from "@/lib/git";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import { useWindowedRows } from "@/lib/use-windowed-rows";
 import { cn } from "@/lib/utils";
 import { useP4 } from "@/state/p4-context";
-import type { P4CompareRequest, P4FileVersion, P4HistoryCursor, P4Revision } from "@/types/p4";
+import type { P4Changelist, P4File, P4HistoryCursor, P4Revision } from "@/types/p4";
 import type { FileDiff } from "@/types/git";
-
-const revisionVersion = (revision: P4Revision, number = revision.rev): P4FileVersion => ({ kind: "revision", depotPath: revision.depotPath, revision: number });
-const previous = (revision: P4Revision) => (BigInt(revision.rev) - 1n).toString();
-const validVersion = (value: P4FileVersion) => value.kind === "workspace" || /^\d+$/.test(value.revision);
 
 export function P4FileHistory({ path }: { path: string }) {
   const { t } = useTranslation();
-  const { filelog, revisionDiff, compareFiles, selectSubmitted, setView } = useP4();
+  const { filelog, revisionDiff, describeSubmitted, selectSubmitted, setView } = useP4();
   const [mode, setMode] = useState<"diff" | "blame">("diff");
   const [revisions, setRevisions] = useState<P4Revision[] | null>(null);
   const [next, setNext] = useState<P4HistoryCursor | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<P4Revision | null>(null);
-  const [base, setBase] = useState<P4FileVersion>({ kind: "revision", depotPath: "", revision: "0" });
-  const [head, setHead] = useState<P4FileVersion>({ kind: "revision", depotPath: "", revision: "" });
-  const [applied, setApplied] = useState<P4CompareRequest | null>(null);
-  const [diff, setDiff] = useState<FileDiff | null>(null);
-  const [diffLoading, setDiffLoading] = useState(false);
-  const [diffError, setDiffError] = useState<string | null>(null);
+  const [detail, setDetail] = useState<P4Changelist | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string | null>(null);
+  const [loadedDiff, setLoadedDiff] = useState<{ key: string; diff: FileDiff | null; error?: string } | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [revisionTarget, setRevisionTarget] = useState<P4RevisionTarget | null>(null);
   const mounted = useRef(false);
   const loadingRef = useRef(false);
-  const diffToken = useRef(0);
+  const detailToken = useRef(0);
   const { viewportRef, start, end, before, after } = useWindowedRows(revisions?.length ?? 0, 32);
 
   const showRevision = useCallback(async (revision: P4Revision) => {
-    const token = ++diffToken.current;
-    const range = { path, base: revisionVersion(revision, previous(revision)), head: revisionVersion(revision) };
-    setSelected(revision); setBase(range.base); setHead(range.head); setApplied(range);
-    setDiff(null); setDiffError(null); setDiffLoading(true);
+    const token = ++detailToken.current;
+    setSelected(revision); setPicked(revision.depotPath); setDetail(null); setDetailError(null); setDetailLoading(true);
     try {
-      const value = await revisionDiff(revision.depotPath, revision.rev);
-      if (mounted.current && token === diffToken.current) setDiff(value);
-    } catch (caught) { if (mounted.current && token === diffToken.current) setDiffError(p4DisplayError(errorMessage(caught))); }
-    finally { if (mounted.current && token === diffToken.current) setDiffLoading(false); }
-  }, [revisionDiff, path]);
+      const value = await describeSubmitted(revision.change);
+      if (mounted.current && token === detailToken.current) setDetail(value);
+    } catch (caught) { if (mounted.current && token === detailToken.current) setDetailError(p4DisplayError(errorMessage(caught))); }
+    finally { if (mounted.current && token === detailToken.current) setDetailLoading(false); }
+  }, [describeSubmitted]);
 
   const load = useCallback(async (cursor: P4HistoryCursor | null) => {
     if (!mounted.current || loadingRef.current) return;
@@ -79,41 +71,40 @@ export function P4FileHistory({ path }: { path: string }) {
     return () => { mounted.current = false; };
   }, [load]);
 
-  function edit(side: "base" | "head", version: P4FileVersion) {
-    ++diffToken.current; setDiffLoading(false); setDiff(null); setDiffError(null); setApplied(null);
-    if (side === "base") setBase(version); else setHead(version);
-  }
+  const focusDetail = detail?.files.find(file => file.depotPath === selected?.depotPath);
+  const focus: P4File | null = selected ? { depotPath: selected.depotPath, localPath: focusDetail?.localPath ?? "", rev: selected.rev, action: selected.action, shelved: false, binary: focusDetail?.binary ?? false, status: focusDetail?.status ?? "", detail: focusDetail?.detail ?? "" } : null;
+  const files = focus ? [focus, ...(detail?.files.filter(file => file.depotPath !== focus.depotPath) ?? [])] : [];
+  const change: P4Changelist | null = selected ? { ...(detail ?? { id: selected.change, user: selected.user, client: "", status: "submitted", description: selected.description, time: selected.time, shelved: false }), files } : null;
+  const file = files.find(item => item.depotPath === picked) ?? focus;
+  const diffPath = file?.depotPath ?? "", diffRev = file?.rev ?? "";
+  const diffKey = diffPath && diffRev ? `${diffPath}\0${diffRev}` : "";
+  const currentDiff = loadedDiff?.key === diffKey ? loadedDiff : null;
+  const diff = currentDiff?.diff ?? null;
+  const diffLoading = Boolean(diffKey && !currentDiff);
 
-  async function compare() {
-    if (!selected || !validVersion(base) || !validVersion(head)) return;
-    const request = { path, base, head }, token = ++diffToken.current;
-    setApplied(request); setDiff(null); setDiffError(null); setDiffLoading(true);
-    try {
-      const value = await compareFiles(request);
-      if (mounted.current && token === diffToken.current) setDiff(value);
-    } catch (caught) { if (mounted.current && token === diffToken.current) setDiffError(p4DisplayError(errorMessage(caught))); }
-    finally { if (mounted.current && token === diffToken.current) setDiffLoading(false); }
-  }
+  useEffect(() => {
+    if (!diffPath || !diffRev) return;
+    let live = true;
+    void revisionDiff(diffPath, diffRev)
+      .then(value => { if (live) setLoadedDiff({ key: diffKey, diff: value }); })
+      .catch((caught: unknown) => { if (live) setLoadedDiff({ key: diffKey, diff: null, error: p4DisplayError(errorMessage(caught)) }); });
+    return () => { live = false; };
+  }, [diffKey, diffPath, diffRev, revisionDiff, attempt]);
 
   function openChange(change: string) { setView("submitted"); void selectSubmitted(change); }
-  function label(value: P4FileVersion) {
-    return value.kind === "workspace" ? t("p4.workspaceFile") : `#${value.revision}${applied?.base.kind === "revision" && applied.head.kind === "revision" && applied.base.depotPath !== applied.head.depotPath ? ` · ${depotBase(value.depotPath)}` : ""}`;
-  }
 
   return <><ResizablePanelGroup orientation="vertical" className="min-h-0 min-w-0 flex-1">
-    <ResizablePanel id="p4-file-history" defaultSize="34%" minSize="16%">
+    <ResizablePanel id="p4-file-history" defaultSize="48%" minSize="22%" maxSize="75%">
       <div className="absolute inset-0 flex min-h-0 flex-col">
-        <div className="flex h-8 shrink-0 items-center gap-2 border-b px-3 text-xs text-muted-foreground"><span>{t("p4.history.revisions")}</span><span className="tabular-nums">{revisions?.length ?? 0}</span><span className="ml-auto truncate">{t("p4.history.selectionHint")}</span></div>
+        <div className="flex h-8 shrink-0 items-center gap-2 border-b px-3 text-xs text-muted-foreground"><span>{t("p4.history.revisions")}</span><span className="tabular-nums">{revisions?.length ?? 0}</span></div>
         <div ref={viewportRef} className="min-h-0 flex-1 overflow-auto p-1" onScroll={(event) => { const node = event.currentTarget; if (next && !error && node.scrollTop + node.clientHeight >= node.scrollHeight - 100) void load(next); }}>
           {loading && !revisions ? <HistorySkeleton fill label={t("p4.loadingHistory")} /> : revisions?.length === 0 ? <p className="p-3 text-xs text-muted-foreground">{t("p4.noRevisions")}</p> : <>
             <div aria-hidden style={{ height: before }} />
             {revisions?.slice(start, end).map((revision, index) => <ContextMenu key={`${revision.depotPath}#${revision.rev}`}><ContextMenuTrigger asChild>
-              <button type="button" title={revision.depotPath} className={cn("flex h-8 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted/70", selected?.rev === revision.rev && selected.depotPath === revision.depotPath && "bg-muted")} onClick={(event) => { if (event.shiftKey) edit("base", revisionVersion(revision)); else void showRevision(revision); }}>
+              <button type="button" title={revision.depotPath} aria-pressed={selected?.rev === revision.rev && selected.depotPath === revision.depotPath} className={cn("flex h-8 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted/70", selected?.rev === revision.rev && selected.depotPath === revision.depotPath && "bg-muted")} onClick={() => void showRevision(revision)}>
                 <RevisionDot before={start + index > 0} after={start + index < revisions.length - 1 || !!next} /><span className="w-10 shrink-0 font-mono text-xs">#{revision.rev}</span><ChangeBadge id={revision.change} /><span className="min-w-0 flex-1 truncate text-xs">{changeSummary(revision.description) || t("p4.noDescription")}</span><AuthorName vcs="perforce" name={revision.user} /><ExactTime time={revision.time} />
               </button></ContextMenuTrigger><ContextMenuContent>
-                <ContextMenuItem onClick={() => edit("base", revisionVersion(revision))}><ArrowDownToLineIcon />{t("p4.history.setBase")}</ContextMenuItem>
-                <ContextMenuItem onClick={() => edit("head", revisionVersion(revision))}><ArrowUpFromLineIcon />{t("p4.history.setHead")}</ContextMenuItem>
-                <ContextMenuSeparator /><ContextMenuItem onClick={() => setRevisionTarget({path:revision.depotPath,recursive:false,revision:revision.rev})}><DownloadIcon />{t("p4.getRevision")}</ContextMenuItem>
+                <ContextMenuItem onClick={() => setRevisionTarget({path:revision.depotPath,recursive:false,revision:revision.rev})}><DownloadIcon />{t("p4.getRevision")}</ContextMenuItem>
                 <ContextMenuSeparator /><ContextMenuItem onClick={() => openChange(revision.change)}><ExternalLinkIcon />{t("p4.history.openChange")}</ContextMenuItem>
               </ContextMenuContent></ContextMenu>)}
             <div aria-hidden style={{ height: after }} />
@@ -123,31 +114,25 @@ export function P4FileHistory({ path }: { path: string }) {
         </div>
       </div>
     </ResizablePanel>
-    <ResizableHandle />
-    <ResizablePanel id="p4-file-diff" defaultSize="66%" minSize="24%">
-      <div className="absolute inset-0 flex min-h-0 flex-col">
-        <div className="flex h-10 shrink-0 items-center gap-1.5 border-b px-2">
-          <SegmentedControl label={t("p4.history.view")} value={mode} onChange={setMode} options={[{value:"diff",label:t("p4.history.diff")},{value:"blame",label:t("p4.history.blame")}]} />
-          {mode === "diff" ? <>
-          <VersionPicker label={t("p4.history.base")} value={base} fallback={selected ? revisionVersion(selected, previous(selected)) : base} disabled={!selected} onChange={(value) => edit("base", value)} />
-          <ArrowRightIcon className="size-3.5 shrink-0 text-muted-foreground" />
-          <VersionPicker label={t("p4.history.head")} value={head} fallback={selected ? revisionVersion(selected) : head} disabled={!selected} onChange={(value) => edit("head", value)} />
-          <Button size="xs" variant="outline" className="ml-auto" disabled={!selected || !validVersion(base) || !validVersion(head) || diffLoading} onClick={() => void compare()}>{diffLoading ? <LoaderCircleIcon className="animate-spin" /> : null}{t("p4.history.compare")}</Button></> : null}
-        </div>
-        <div className="relative flex min-h-0 flex-1 flex-col">
-          {mode === "blame" && selected ? <P4Blame revision={selected} openChange={openChange} /> : diffError ? <p role="alert" className="p-3 text-xs text-destructive">{diffError}</p> : <P4Diff diff={diff} loading={diffLoading || (loading && !revisions)} empty={t(selected ? "p4.history.compareHint" : "p4.noRevisionToShow")} fileSource={applied ? {kind:"compare", request:applied} : selected ? {kind:"revision",path:selected.depotPath,revision:selected.rev} : undefined} captions={applied ? [label(applied.base), label(applied.head)] : undefined} />}
-        </div>
-      </div>
+    <ResizableHandle withHandle />
+    <ResizablePanel id="p4-file-detail" defaultSize="52%" minSize="25%">
+      <ResizablePanelGroup orientation="horizontal" className="min-h-0 min-w-0">
+        <ResizablePanel id="p4-file-change-files" defaultSize="34%" minSize="20%" maxSize="55%">
+          <div className="absolute inset-0 flex min-h-0 flex-col">
+            {detailError ? <div role="alert" className="flex shrink-0 items-center gap-2 border-b px-3 py-2 text-xs text-destructive"><span className="min-w-0 flex-1 break-words">{detailError}</span><Button size="xs" variant="outline" onClick={() => { if (selected) void showRevision(selected); }}>{t("common.retry")}</Button></div> : null}
+            <div className="relative min-h-0 flex-1"><P4ChangeFiles detail={change} file={file?.depotPath ?? null} loading={detailLoading} binaryPath={diff?.binary ? diff.path : undefined} onSelect={setPicked} /></div>
+          </div>
+        </ResizablePanel>
+        <ResizableHandle />
+        <ResizablePanel id="p4-file-diff" defaultSize="66%" minSize="30%">
+          <div className="absolute inset-0 flex min-h-0 flex-col">
+            <div className="flex h-9 shrink-0 items-center border-b px-2"><SegmentedControl label={t("p4.history.view")} value={mode} onChange={setMode} options={[{value:"diff",label:t("p4.history.diff")},{value:"blame",label:t("p4.history.blame")}]} /></div>
+            <div className="relative flex min-h-0 flex-1 flex-col">
+              {mode === "blame" && selected && file ? <P4Blame revision={{...selected, depotPath:file.depotPath, rev:file.rev}} openChange={openChange} /> : currentDiff?.error ? <div role="alert" className="p-3 text-xs text-destructive"><p>{currentDiff.error}</p><Button size="xs" variant="outline" className="mt-2" onClick={() => {setLoadedDiff(null);setAttempt(value => value + 1);}}>{t("common.retry")}</Button></div> : <P4Diff diff={diff} loading={diffLoading || (loading && !revisions)} empty={t("p4.noRevisionToShow")} fileSource={file ? {kind:"revision",path:file.depotPath,revision:file.rev} : undefined} />}
+            </div>
+          </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </ResizablePanel>
   </ResizablePanelGroup>{revisionTarget ? <P4GetRevisionDialog target={revisionTarget} onClose={() => setRevisionTarget(null)} /> : null}</>;
-}
-
-function VersionPicker({ label, value, fallback, disabled, onChange }: { label: string; value: P4FileVersion; fallback: P4FileVersion; disabled: boolean; onChange: (value: P4FileVersion) => void }) {
-  const { t } = useTranslation();
-  return <div className="flex min-w-0 items-center gap-1">
-    <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="xs" disabled={disabled} aria-label={label}><span>{label}</span><ChevronDownIcon className="size-3" /></Button></DropdownMenuTrigger>
-      <DropdownMenuContent><DropdownMenuItem onClick={() => onChange(value.kind === "revision" ? value : fallback)}><span className="min-w-4">{value.kind === "revision" ? <CheckIcon className="size-3.5" /> : null}</span>{t("p4.history.revision")}</DropdownMenuItem><DropdownMenuItem onClick={() => onChange({ kind: "workspace" })}><span className="min-w-4">{value.kind === "workspace" ? <CheckIcon className="size-3.5" /> : null}</span>{t("p4.workspaceFile")}</DropdownMenuItem></DropdownMenuContent>
-    </DropdownMenu>
-    {value.kind === "revision" ? <HoverTip label={value.depotPath}><Input className="h-7 w-20 font-mono text-xs" aria-label={t("p4.history.revisionInput", { side: label })} value={value.revision} inputMode="numeric" maxLength={10} disabled={disabled} onChange={(event) => onChange({ ...value, revision: event.target.value })} /></HoverTip> : <span className="truncate text-xs text-muted-foreground">{t("p4.workspaceFile")}</span>}
-  </div>;
 }

@@ -1,18 +1,16 @@
 import { P4FilterMenu as FilterMenu, withCurrent } from "@/components/p4/p4-filter-menu";
-import { CommitMessage } from "@/components/commit-message";
 import { P4StreamDiffDialog } from "@/components/p4/p4-stream-work";
 import type { P4StreamDiffRequest } from "@/types/p4-stream-specs";
 import { t, useTranslation } from "@/i18n";
 import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
-import { GitBranchIcon, DownloadIcon, HistoryIcon } from "lucide-react";
+import { DownloadIcon, HistoryIcon } from "lucide-react";
 import { toast } from "sonner";
-import { AuthorAvatar } from "@/components/author-avatar";
 import { AuthorName, ExactTime, RevisionDot } from "@/components/revision-meta";
 import { ChangeBadge } from "@/components/p4/change-badge";
-import { FileStatusIcon } from "@/components/p4/file-status-icon";
+import { P4ChangeFiles } from "@/components/p4/p4-change-files";
 import { P4Diff } from "@/components/p4/p4-diff";
 import { P4GetRevisionDialog, type P4RevisionTarget } from "@/components/p4/p4-get-revision-dialog";
-import { FileRowsSkeleton, HistorySkeleton } from "@/components/skeletons";
+import { HistorySkeleton } from "@/components/skeletons";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -21,27 +19,12 @@ import {
 } from "@/components/ui/context-menu";
 import { Input } from "@/components/ui/input";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
-import { formatAbsoluteTime, formatExactTime } from "@/lib/format";
 import { errorMessage } from "@/lib/git";
-import { HoverTip } from "@/components/ui/tooltip";
-import { changeSummary, depotBase, p4ActionStatus } from "@/lib/p4";
+import { changeSummary } from "@/lib/p4";
 import { cn } from "@/lib/utils";
 import { useP4 } from "@/state/p4-context";
 import type { FileDiff } from "@/types/git";
 import type { P4Changelist } from "@/types/p4";
-
-async function copyText(value: string, success: string) {
-  if (!value) {
-    toast.error(t("p4.nothingToCopy"));
-    return;
-  }
-  try {
-    await navigator.clipboard.writeText(value);
-    toast.success(success);
-  } catch {
-    toast.error(t("p4.couldNotCopy"));
-  }
-}
 
 interface SubmittedSearch {
   query: string;
@@ -54,7 +37,8 @@ interface SubmittedSearch {
 
 export type SubmittedHistoryModel = Pick<ReturnType<typeof useP4>, "submitted" | "submittedHasMore" | "submittedUser" | "submittedClient" | "selectedSubmitted" | "submittedDetail" | "submittedLoading" | "loadSubmitted" | "selectSubmitted" | "setSubmittedFilter" | "searchSubmitted">;
 
-export function P4Submitted({history, historyScope}: {history?: SubmittedHistoryModel; historyScope?: string} = {}) {
+export function P4Submitted({history, historyScope, layout = "columns"}: {history?: SubmittedHistoryModel; historyScope?: string; layout?: "columns" | "stacked"} = {}) {
+  const stacked = layout === "stacked";
   useTranslation();
   const context = useP4();
   const p4 = history ? {...context, ...history} : context;
@@ -91,11 +75,6 @@ export function P4Submitted({history, historyScope}: {history?: SubmittedHistory
   const submitted = p4.submitted;
   const submittedLoading = p4.submittedLoading;
   const selectedRow = submitted.find((change) => change.id === selectedSubmitted) ?? null;
-  const heading = detail
-    ? changeSummary(detail.description) || t("p4.changeNumber", { id: detail.id })
-    : selectedRow
-      ? changeSummary(selectedRow.description) || t("p4.changeNumber", { id: selectedRow.id })
-      : null;
   const meta = detail ?? selectedRow;
   const file =
     picked && detail?.files.some((item) => item.depotPath === picked)
@@ -271,11 +250,11 @@ export function P4Submitted({history, historyScope}: {history?: SubmittedHistory
   const listBusy = needle ? searching : submittedLoading && !describing;
 
   return (
-    <ResizablePanelGroup orientation="horizontal" className="min-h-0 min-w-0 flex-1">
-      <ResizablePanel id="p4-submitted-list" defaultSize="40%" minSize="28%" maxSize="56%">
+    <ResizablePanelGroup orientation={stacked ? "vertical" : "horizontal"} className="min-h-0 min-w-0 flex-1">
+      <ResizablePanel id="p4-submitted-list" defaultSize={stacked ? "48%" : "40%"} minSize={stacked ? "22%" : "28%"} maxSize={stacked ? "75%" : "56%"}>
         <div className="absolute inset-0 flex min-h-0 flex-col">
-          <div className="grid shrink-0 gap-1.5 border-b p-2">
-            <div className="grid grid-cols-2 gap-1.5">
+          <div className={cn("grid shrink-0 gap-1.5 border-b p-2", stacked && "grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)]")}>
+            <div className={stacked ? "contents" : "grid grid-cols-2 gap-1.5"}>
               <FilterMenu
                 label={t("p4.user")}
                 value={p4.submittedUser}
@@ -377,73 +356,13 @@ export function P4Submitted({history, historyScope}: {history?: SubmittedHistory
         {revisionTarget ? <P4GetRevisionDialog target={revisionTarget} onClose={() => setRevisionTarget(null)} /> : null}
       </ResizablePanel>
       <ResizableHandle />
-      <ResizablePanel id="p4-submitted-main" defaultSize="60%" minSize="36%">
-        <ResizablePanelGroup orientation="vertical" className="min-h-0 min-w-0">
-          <ResizablePanel id="p4-submitted-files" defaultSize="32%" minSize="16%">
-            <div className="absolute inset-0 flex min-h-0 flex-col">
-              <CommitMessage key={meta?.id ?? "empty"} className="border-b" message={meta?.description || heading || ""} metadata={<>
-                {meta ? (
-                  <div className="mt-1 flex items-center gap-x-2 text-[11px] text-muted-foreground">
-                    <HoverTip label={t("p4.copyUser")}>
-                    <button
-                      type="button"
-                      className="inline-flex min-w-0 items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-muted hover:text-foreground"
-                      onClick={() => void copyText(meta.user, t("p4.copiedUser"))}
-                    >
-                      <AuthorAvatar vcs="perforce" name={meta.user} email="" className="size-4" />
-                      <span className="truncate">{meta.user}</span>
-                    </button>
-                    </HoverTip>
-                    {meta.time ? (
-                      <HoverTip label={formatExactTime(meta.time)}>
-                      <button
-                        type="button"
-                        className="shrink-0 rounded-md px-1 py-0.5 tabular-nums hover:bg-muted hover:text-foreground"
-                        onClick={() => void copyText(formatExactTime(meta.time), t("p4.copiedTime"))}
-                      >
-                        {formatAbsoluteTime(meta.time)}
-                      </button>
-                      </HoverTip>
-                    ) : null}
-                    <HoverTip label={t("p4.copyChangelist")}>
-                    <button
-                      type="button"
-                      className="shrink-0 rounded-md px-1 py-0.5 font-mono hover:bg-muted hover:text-foreground"
-                      onClick={() => void copyText(meta.id, t("p4.copiedChangelist"))}
-                    >
-                      #{meta.id}
-                    </button>
-                    </HoverTip>
-                  </div>
-                ) : null}
-              </>} />
-              <div className="relative min-h-0 flex-1">
-                {p4.selectedSubmitted && !detail ? <FileRowsSkeleton fill /> : null}
-                <div className={cn("absolute inset-0 overflow-auto px-1 py-1", p4.selectedSubmitted && !detail && "hidden")}>
-                {detail?.stream ? <button type="button" className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted/70" onClick={() => setStreamDiff({kind:"submitted", path:detail.stream!.path, change:detail.id})}><GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 truncate">{t("p4.streamWork.title")}</span><span className="font-mono text-[11px] text-muted-foreground">{depotBase(detail.stream.path)}</span></button> : null}
-                {detail?.files.map((item) => (
-                  <button
-                    key={item.depotPath}
-                    type="button"
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs hover:bg-muted/70",
-                      file === item.depotPath && "bg-muted",
-                    )}
-                    onClick={() => setPicked(item.depotPath)}
-                  >
-                    <FileStatusIcon status={item.status || p4ActionStatus(item.action)} />
-                    <span className="min-w-0 flex-1 truncate font-mono">{depotBase(item.depotPath)}</span>
-                    {item.binary || (diff?.binary && diff.path === item.depotPath) ? (
-                      <span className="shrink-0 text-muted-foreground">{t("p4.binary")}</span>
-                    ) : null}
-                  </button>
-                ))}
-                </div>
-              </div>
-            </div>
+      <ResizablePanel id="p4-submitted-main" defaultSize={stacked ? "52%" : "60%"} minSize={stacked ? "25%" : "36%"}>
+        <ResizablePanelGroup orientation={stacked ? "horizontal" : "vertical"} className="min-h-0 min-w-0">
+          <ResizablePanel id="p4-submitted-files" defaultSize={stacked ? "34%" : "32%"} minSize={stacked ? "20%" : "16%"} maxSize={stacked ? "55%" : undefined}>
+            <P4ChangeFiles detail={detail} summary={meta} file={file} loading={Boolean(p4.selectedSubmitted && !detail)} binaryPath={diff?.binary ? diff.path : undefined} onSelect={setPicked} onStream={detail?.stream ? () => setStreamDiff({kind:"submitted", path:detail.stream!.path, change:detail.id}) : undefined} />
           </ResizablePanel>
           <ResizableHandle withHandle />
-          <ResizablePanel id="p4-submitted-diff" defaultSize="68%" minSize="24%">
+          <ResizablePanel id="p4-submitted-diff" defaultSize={stacked ? "66%" : "68%"} minSize={stacked ? "30%" : "24%"}>
             <P4Diff
               fileSource={file && detail?.files.find((entry) => entry.depotPath === file) ? {kind:"revision",path:file,revision:detail.files.find((entry) => entry.depotPath === file)!.rev} : undefined}
               diff={diff}

@@ -74,6 +74,6 @@ export function P4DirectoryHistory({path}: {path:string}) {
   const history:SubmittedHistoryModel={submitted:state.changes,submittedHasMore:state.hasMore,submittedUser:filters.user,submittedClient:filters.client,selectedSubmitted:state.selected,submittedDetail:state.detail,submittedLoading:state.loading || state.describing,loadSubmitted,selectSubmitted,setSubmittedFilter,searchSubmitted};
   return <div className="flex min-h-0 flex-1 flex-col">
     {error ? <div role="alert" className="flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-xs text-destructive"><span className="min-w-0 flex-1 break-words">{error}</span><Button size="xs" variant="outline" onClick={()=>{if (state.selected && !state.detail) void selectSubmitted(state.selected);else void loadSubmitted(false);}}>{t("common.retry")}</Button></div> : null}
-    <P4Submitted history={history} historyScope={path}/>
+    <P4Submitted layout="stacked" history={history} historyScope={path}/>
   </div>;
 }
