@@ -345,7 +345,7 @@ export function P4Pending() {
                               focusChange(change.id);
                             }}
                           >
-                            <ChangelistMarker opened={changeOpened.length > 0 || !!change.stream} />
+                            <ChangelistMarker opened={changeOpened.length > 0 || !!change.stream} shelved={change.shelved || changeShelved.length > 0 || !!change.shelvedStream} conflict={changeOpened.some(file => file.status === "conflict")} />
                             <ChangeBadge id={change.id} />
                             <span className="min-w-0 flex-1 truncate text-xs">{summary || t("p4.noDescription")}</span>
                           </button>

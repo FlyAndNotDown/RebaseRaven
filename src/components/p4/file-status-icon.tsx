@@ -12,6 +12,7 @@ import {
   TriangleAlertIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { IconBadge } from "@/components/icon-badge";
 
 export function FileStatusIcon({ status, className }: { status?: string; className?: string }) {
   const mark = statusMark(status ?? "");
@@ -19,7 +20,7 @@ export function FileStatusIcon({ status, className }: { status?: string; classNa
     <span className={cn("relative inline-flex size-3.5 shrink-0", className)}>
       <FileIcon className={cn("size-3.5", mark?.iconClass ?? "text-muted-foreground")} />
       {mark ? (
-        <span className="absolute -right-1 -bottom-1 rounded-full bg-background leading-none">{mark.badge}</span>
+        <IconBadge>{mark.badge}</IconBadge>
       ) : null}
     </span>
   );
