@@ -13,8 +13,10 @@ describe("website localization", () => {
     expect(localeFromPath("/RebaseRaven/zh-CN/")).toBe("zh-CN");
     expect(localeFromPath("/en/index.html")).toBe("en");
     expect(localeFromPath("/RebaseRaven/")).toBeNull();
-    expect(localeHref("en", false)).toBe("../en/");
+    expect(localeHref("en", false)).toBe("../");
+    expect(localeHref("en", true)).toBe("./");
     expect(localeHref("zh-CN", true)).toBe("./zh-CN/");
+    expect(localeHref("zh-CN", false)).toBe("../zh-CN/");
   });
 
   it("keeps resource keys and interpolation contracts aligned", () => {

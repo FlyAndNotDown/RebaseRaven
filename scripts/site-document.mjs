@@ -80,7 +80,7 @@ export function validateSiteDocument({ html, sitemap, files, filename = "index.h
   const expectedCanonical = new URL(filename.replace(/index\.html$/, ""), SITE_URL).href;
   if (canonical !== expectedCanonical) fail("canonical must identify this language page within the public project");
   const links = [...html.matchAll(/<link\b([^>]*)>/gi)].map((match) => attributes(match[1]));
-  for (const [language, url] of [["en", `${SITE_URL}en/`], ["zh-CN", `${SITE_URL}zh-CN/`], ["x-default", SITE_URL]]) {
+  for (const [language, url] of [["en", SITE_URL], ["zh-CN", `${SITE_URL}zh-CN/`], ["x-default", SITE_URL]]) {
     const alternates = links.filter((attrs) => attrs.get("rel") === "alternate" && attrs.get("hreflang") === language);
     if (alternates.length !== 1 || alternates[0].get("href") !== url) fail(`provide one reciprocal ${language} language alternate`);
   }
@@ -130,5 +130,27 @@ export function validateSiteDocument({ html, sitemap, files, filename = "index.h
       violations.push(`${filename}: Pages output must not contain server bundles, source files, or source maps`);
     }
   }
+  return violations;
+}
+
+export function validateSiteRedirect({ html, sitemap }) {
+  const violations = [];
+  const fail = (message) => violations.push(`en/index.html: ${message}`);
+  const links = [...html.matchAll(/<link\b([^>]*)>/gi)].map((match) => attributes(match[1]));
+  const canonicals = links.filter((attrs) => attrs.get("rel") === "canonical");
+  if (canonicals.length !== 1 || canonicals[0].get("href") !== SITE_URL) fail("canonical must point to the English homepage");
+  const refreshes = [...html.matchAll(/<meta\b([^>]*)>/gi)].map((match) => attributes(match[1]))
+    .filter((attrs) => attrs.get("http-equiv")?.toLowerCase() === "refresh");
+  const refresh = /^0;\s*url=(.+)$/i.exec(refreshes[0]?.get("content") ?? "");
+  try {
+    if (refreshes.length !== 1 || !refresh || new URL(refresh[1], `${SITE_URL}en/`).href !== SITE_URL) throw new Error();
+  } catch { fail("provide an immediate redirect to the English homepage without JavaScript"); }
+  if (!elements(html, "a").some((link) => {
+    try {
+      return new URL(link.attributes.get("href"), `${SITE_URL}en/`).href === SITE_URL && Boolean(readableText(link.content));
+    } catch { return false; }
+  })) fail("provide a readable fallback link to the English homepage");
+  if (elements(html, "script").some((script) => script.attributes.has("src"))) fail("redirect must not load an application bundle");
+  if (/<loc>\s*[^<]*\/en\/\s*<\/loc>/.test(sitemap ?? "")) fail("redirect must not be listed in the sitemap");
   return violations;
 }

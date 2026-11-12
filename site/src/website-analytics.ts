@@ -7,7 +7,8 @@ export type DownloadPlatform = "macos" | "windows";
 
 export function websiteAnalyticsLocale(location: Pick<Location, "origin" | "pathname">) {
   if (location.origin !== new URL(SITE_URL).origin) return null;
-  return /^\/(en|zh-CN)\/(?:index\.html)?$/.exec(location.pathname)?.[1] ?? null;
+  if (location.pathname === "/" || location.pathname === "/index.html") return "en";
+  return /^\/zh-CN\/(?:index\.html)?$/.test(location.pathname) ? "zh-CN" : null;
 }
 
 export function installerDownloadParameters(platform: DownloadPlatform, url: string, version: string) {
@@ -28,7 +29,7 @@ export function installerDownloadParameters(platform: DownloadPlatform, url: str
 
 export function createWebsiteAnalytics(host: Window, measurementId: string | undefined) {
   const locale = websiteAnalyticsLocale(host.location);
-  // Count only public locale pages. Redirects, previews and the desktop bridge
+  // Count only canonical product pages. Redirects, previews and the desktop bridge
   // must never create website visits or share the app's installation identity.
   if (!locale || host.parent !== host) return null;
   let tag;

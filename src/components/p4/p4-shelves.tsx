@@ -137,17 +137,24 @@ function ShelfBrowser() {
       <ResizableHandle />
       <ResizablePanel id="p4-shelves-detail" defaultSize="60%" minSize="35%">
         <div className="absolute inset-0 flex min-h-0 min-w-0 flex-col">
-          {detailLoading ? <p role="status" className="p-6 text-sm text-muted-foreground">{t("p4.shelves.loading")}</p> : detail ? <>
-            <div className="shrink-0 space-y-2 border-b px-3 py-2">
-              <div className="flex min-w-0 items-center gap-2"><ChangelistMarker opened={false} /><ChangeBadge id={detail.id} /><AuthorName name={detail.user} vcs="perforce" className="w-auto max-w-[35%]" /><span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground" title={detail.client}>{detail.client}</span><Button size="sm" variant="outline" disabled={!detail.files.length} onClick={() => setRestoring(true)}><ArchiveRestoreIcon />{t("p4.shelves.restoreAction")}</Button></div>
-              <CommitMessage key={detail.id} message={detail.description} className="px-0 py-0" />
-            </div>
-            <div className="max-h-[25vh] shrink-0 overflow-auto border-b">
-              {detail.shelvedStream ? <button type="button" className="flex h-8 w-full items-center gap-2 border-b px-3 text-left text-xs hover:bg-muted/50" onClick={() => setStreamDiff({kind:"shelf", path:detail.shelvedStream!.path, change:detail.id})}><GitBranchIcon className="size-3.5 text-muted-foreground" />{t("p4.streamWork.shelved")}</button> : null}
-              {detail.files.map(entry => <button key={entry.depotPath} type="button" onClick={() => setFile(entry.depotPath)} className={cn("flex h-7 w-full items-center gap-2 px-3 text-left text-xs hover:bg-muted/50", file === entry.depotPath && "bg-muted/60")}><FileStatusIcon status={p4ActionStatus(entry.action)} /><span className="min-w-0 flex-1 truncate font-mono text-[11px]" title={entry.depotPath}>{entry.depotPath}</span></button>)}
-            </div>
-            <P4Diff fileSource={file ? {kind:"shelf",path:file,changeId:detail.id} : undefined} diff={diff} loading={Boolean(diffKey && diffResult.key !== diffKey)} empty={t("p4.noTextDifferences")} />
-          </> : <p className="p-8 text-center text-sm text-muted-foreground">{t("p4.shelves.select")}</p>}
+          {detailLoading ? <p role="status" className="p-6 text-sm text-muted-foreground">{t("p4.shelves.loading")}</p> : detail ? <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
+            <ResizablePanel id="p4-shelf-files" defaultSize="32%" minSize="16%">
+              <div className="absolute inset-0 flex min-h-0 flex-col">
+                <div className="shrink-0 space-y-2 border-b px-3 py-2">
+                  <div className="flex min-w-0 items-center gap-2"><ChangelistMarker opened={false} /><ChangeBadge id={detail.id} /><AuthorName name={detail.user} vcs="perforce" className="w-auto max-w-[35%]" /><span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground" title={detail.client}>{detail.client}</span><Button size="sm" variant="outline" disabled={!detail.files.length} onClick={() => setRestoring(true)}><ArchiveRestoreIcon />{t("p4.shelves.restoreAction")}</Button></div>
+                  <CommitMessage key={detail.id} message={detail.description} className="px-0 py-0" />
+                </div>
+                <div className="min-h-0 flex-1 overflow-auto">
+                  {detail.shelvedStream ? <button type="button" className="flex h-8 w-full items-center gap-2 border-b px-3 text-left text-xs hover:bg-muted/50" onClick={() => setStreamDiff({kind:"shelf", path:detail.shelvedStream!.path, change:detail.id})}><GitBranchIcon className="size-3.5 text-muted-foreground" />{t("p4.streamWork.shelved")}</button> : null}
+                  {detail.files.map(entry => <button key={entry.depotPath} type="button" onClick={() => setFile(entry.depotPath)} className={cn("flex h-7 w-full items-center gap-2 px-3 text-left text-xs hover:bg-muted/50", file === entry.depotPath && "bg-muted/60")}><FileStatusIcon status={p4ActionStatus(entry.action)} /><span className="min-w-0 flex-1 truncate font-mono text-[11px]" title={entry.depotPath}>{entry.depotPath}</span></button>)}
+                </div>
+              </div>
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            <ResizablePanel id="p4-shelf-diff" defaultSize="68%" minSize="24%">
+              <P4Diff fileSource={file ? {kind:"shelf",path:file,changeId:detail.id} : undefined} diff={diff} loading={Boolean(diffKey && diffResult.key !== diffKey)} empty={t("p4.noTextDifferences")} />
+            </ResizablePanel>
+          </ResizablePanelGroup> : <p className="p-8 text-center text-sm text-muted-foreground">{t("p4.shelves.select")}</p>}
         </div>
       </ResizablePanel>
     </ResizablePanelGroup>

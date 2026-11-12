@@ -109,9 +109,9 @@ and `app_engagement`. The internal `pane_view` message becomes a Google-tag
 application's focus and visibility state; it does not measure physical input
 activity. Repository names, paths, file contents and credentials are excluded.
 
-The website tag runs only on public production locale pages. The root language
-redirect, previews, embedded pages and `/analytics/` are excluded. It uses normal
-web page views and acquisition information, plus `download_dialog_open`,
+The website tag runs only on the public production homepage and Chinese page.
+The `/en/` redirect, previews, embedded pages and `/analytics/` are excluded.
+It uses normal web page views and acquisition information, plus `download_dialog_open`,
 `file_download` and `demo_start`. Installer tracking accepts only published
 RebaseRaven release assets; fallback release-page links are not downloads.
 `file_download` measures a link click, not a completed installation.
@@ -130,10 +130,11 @@ Keep translated text in `src/i18n/locales/` for the application and
 `site/src/locales/` for the website. Reuse existing keys and interpolation for
 dynamic values; keep code, repository fixtures, and developer comments in English.
 
-The website prerenders a language-neutral entry page and separate `/en/` and
-`/zh-CN/` pages. Language pages must work without JavaScript and include matching
-canonical, alternate-language, and structured metadata. Browser preferences only
-select the initial homepage language; explicit locale links stay stable.
+The website prerenders English at `/` and Chinese at `/zh-CN/`. The `/en/` alias
+redirects immediately to `/`. Language pages work without JavaScript and include
+matching canonical, alternate-language, and structured metadata. The URL selects
+the language; browser preferences apply only when the visitor chooses the browser
+language action.
 
 ## Brand assets
 

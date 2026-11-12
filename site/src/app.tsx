@@ -24,7 +24,7 @@ import {
   SunIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { localeHref, rememberSiteLanguage, SITE_LOCALES, type SiteLocale } from "./i18n";
+import { browserLocale, localeHref, SITE_LOCALES, type SiteLocale } from "./i18n";
 import { useSiteTheme } from "./theme";
 import { BrandMark } from "@/components/brand-mark";
 import { GitHubMark } from "@/components/github-mark";
@@ -99,32 +99,39 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
       </div>
 
       <main id="main" className="site-container">
-        <section className="site-hero" aria-labelledby="hero-title">
-          <p className="site-eyebrow">{t("hero.eyebrow")}</p>
-          <h1 id="hero-title">{t("hero.title").split("\n").map((line, index) => <span key={line} className={index ? "site-hero-title-secondary" : undefined}>{index ? ` ${line}` : line}</span>)}</h1>
-          <p className="site-hero-description">{t("hero.description")}</p>
-          <div className="site-actions">
-            <Button size="lg" asChild><a href={LATEST_RELEASE_URL} data-download-source="hero" onClick={openDownload}><ArrowDownToLineIcon />{t("hero.download")}</a></Button>
-            <Button variant="outline" size="lg" asChild><a href="#features"><MousePointer2Icon />{t("hero.explore")}</a></Button>
+        <section className="site-product" aria-labelledby="hero-title">
+          <div className="site-hero">
+            <div className="site-hero-heading">
+              <p className="site-eyebrow">{t("hero.eyebrow")}</p>
+              <h1 id="hero-title">{t("hero.title").split("\n").map((line, index) => <span key={line} className={index ? "site-hero-title-secondary" : undefined}>{index ? ` ${line}` : line}</span>)}</h1>
+            </div>
+            <div className="site-hero-summary">
+              <p className="site-hero-description">{t("hero.description")}</p>
+              <div className="site-actions">
+                <Button size="lg" asChild><a href={LATEST_RELEASE_URL} data-download-source="hero" onClick={openDownload}><ArrowDownToLineIcon />{t("hero.download")}</a></Button>
+                <Button variant="outline" size="lg" asChild><a href="#features"><MousePointer2Icon />{t("hero.explore")}</a></Button>
+              </div>
+              <p className="site-platforms"><span className="site-supported-platforms">{t("hero.platforms")}</span></p>
+            </div>
           </div>
-          <p className="site-platforms"><span className="site-supported-platforms">{t("hero.platforms")}</span><span className="site-platform-separator" aria-hidden="true">·</span><span className="site-license-note">{t("hero.note")}</span></p>
+          <div id="features" className="site-workspace" role="region" aria-label={t("preview.title")}>
+            <div className="site-preview-label"><span>{t("preview.eyebrow")}</span><span>{t("preview.label")}</span></div>
+            <div className="site-preview-frame" onPointerDownCapture={startDemo} onKeyDownCapture={startDemo}>
+              <noscript className="site-preview-caption">{t("preview.noscript")}</noscript>
+              <WorkspacePreview />
+            </div>
+          </div>
         </section>
 
-        <section id="features" className="site-workspace" aria-labelledby="workspace-title">
-          <div className="site-preview-label">
-            <div><p className="site-eyebrow">{t("preview.eyebrow")}</p><h2 id="workspace-title">{t("preview.title")}</h2></div>
-            <p>{t("preview.label")}</p>
-          </div>
-          <div className="site-preview-frame" onPointerDownCapture={startDemo} onKeyDownCapture={startDemo}>
-            <noscript className="site-preview-caption">{t("preview.noscript")}</noscript>
-            <WorkspacePreview />
-          </div>
-          <p className="site-preview-caption">{t("preview.caption")}</p>
+        <section className="site-product-facts" aria-label={t("facts.label")}>
+          <dl>{(["core", "tools", "license"] as const).map(kind => <div key={kind}>
+            <dt>{t(`facts.${kind}.label`)}</dt>
+            <dd><strong>{t(`facts.${kind}.value`)}</strong><span>{t(`facts.${kind}.detail`)}</span></dd>
+          </div>)}</dl>
         </section>
 
         <section id="workflows" className="site-workflows site-section" aria-labelledby="workflows-title">
           <div className="site-section-intro">
-            <p className="site-eyebrow">{t("workflow.eyebrow")}</p>
             <h2 id="workflows-title">{t("workflow.title")}</h2>
             <p>{t("workflow.intro")}</p>
           </div>
@@ -136,11 +143,10 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
 
         <section className="site-capabilities site-section" aria-labelledby="capabilities-title">
           <div className="site-section-intro">
-            <p className="site-eyebrow">{t("capabilities.eyebrow")}</p>
             <h2 id="capabilities-title">{t("capabilities.title")}</h2>
             <p>{t("capabilities.intro")}</p>
           </div>
-          <details className="site-capability-details">
+          <details className="site-capability-details" open>
             <summary>{t("capabilities.toggle")}<ChevronDownIcon aria-hidden="true" /></summary>
             <div className="site-capability-content">
               <table className="site-capability-table">
@@ -157,7 +163,7 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
         </section>
 
         <section className="site-tooling site-section" aria-labelledby="tooling-title">
-          <div className="site-section-intro"><p className="site-eyebrow">{t("tooling.eyebrow")}</p><h2 id="tooling-title">{t("tooling.title")}</h2><p>{t("tooling.intro")}</p></div>
+          <div className="site-section-intro"><h2 id="tooling-title">{t("tooling.title")}</h2><p>{t("tooling.intro")}</p></div>
           <div className="site-tool-list">
             {([{ kind: "cli", Icon: TerminalIcon }, { kind: "editor", Icon: CodeXmlIcon }, { kind: "access", Icon: ShieldCheckIcon }, { kind: "comfort", Icon: CommandIcon }] as const).map(({ kind, Icon }) => <article key={kind}><Icon aria-hidden="true" /><div><h3>{t(`tooling.${kind}.title`)}</h3><p>{t(`tooling.${kind}.body`)}</p></div></article>)}
           </div>
@@ -165,13 +171,13 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
         </section>
 
         <section id="start" className="site-get-started site-section" aria-labelledby="start-title">
-          <div className="site-section-intro"><p className="site-eyebrow">{t("start.eyebrow")}</p><h2 id="start-title">{t("start.title")}</h2></div>
+          <div className="site-section-intro"><h2 id="start-title">{t("start.title")}</h2></div>
           <ol>{gettingStartedSteps.map(({ step, Icon }) => <li key={step}><span>0{step}</span><h3><Icon aria-hidden="true" />{t(`start.step${step}.title`)}</h3><p>{t(`start.step${step}.body`)}</p>{step === 2 ? <div className="site-tool-links"><a href="https://git-scm.com/downloads/">Git<ArrowUpRightIcon aria-hidden="true" /></a><a href="https://www.perforce.com/downloads/helix-command-line-client-p4">Perforce CLI<ArrowUpRightIcon aria-hidden="true" /></a></div> : null}</li>)}</ol>
         </section>
 
         <section className="site-faq site-section" aria-labelledby="faq-title">
-          <div className="site-section-intro"><p className="site-eyebrow">{t("faq.eyebrow")}</p><h2 id="faq-title">{t("faq.title")}</h2></div>
-          <div>{["systems", "tools", "accounts", "demo"].map((key) => <details key={key}><summary>{t(`faq.${key}.question`)}<ChevronRightIcon aria-hidden="true" /></summary><p>{t(`faq.${key}.answer`)}</p></details>)}</div>
+          <div className="site-section-intro"><h2 id="faq-title">{t("faq.title")}</h2></div>
+          <div>{["what", "rust", "systems", "tools", "gitServers", "bridge", "license", "accounts", "demo"].map((key) => <details key={key} open={key === "what"}><summary>{t(`faq.${key}.question`)}<ChevronRightIcon aria-hidden="true" /></summary><p>{t(`faq.${key}.answer`)}</p></details>)}</div>
         </section>
 
         <section className="site-download" aria-labelledby="download-title">
@@ -220,12 +226,17 @@ function LanguageMenu({ rootPage }: { rootPage: boolean }) {
         <DropdownMenuContent align="end">
           {links.map(({ locale, href, label, current }) => (
             <DropdownMenuItem key={locale} asChild>
-              <a href={href} hrefLang={locale} aria-current={current} onClick={() => rememberSiteLanguage(locale)}>{label}</a>
+              <a href={href} hrefLang={locale} aria-current={current}>{label}</a>
             </DropdownMenuItem>
           ))}
           <DropdownMenuSeparator />
-          <DropdownMenuItem asChild>
-            <a href={rootPage ? "./" : "../"} onClick={() => rememberSiteLanguage(null)}>{t("language.automatic")}</a>
+          <DropdownMenuItem onSelect={() => {
+            const target = new URL(localeHref(browserLocale(navigator.languages), rootPage), window.location.href);
+            target.search = window.location.search;
+            target.hash = window.location.hash;
+            window.location.assign(target.href);
+          }}>
+            <LanguagesIcon />{t("language.automatic")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

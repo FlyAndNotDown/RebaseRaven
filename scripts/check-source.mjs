@@ -43,7 +43,8 @@ for (const filename of files.sort()) {
     continue;
   }
   for (const [index, line] of text.split("\n").entries()) {
-    if (!localizedContent && han.test(line)) violations.push(`${relative}:${index + 1}: source text must use English outside translation resources and localized documentation`);
+    const localizedLink = relative === "README.md" && /^\s*<a href="README\.zh-CN\.md">[^<]+<\/a>\s*$/.test(line);
+    if (!localizedContent && !localizedLink && han.test(line)) violations.push(`${relative}:${index + 1}: source text must use English outside translation resources and localized documentation`);
   }
 }
 

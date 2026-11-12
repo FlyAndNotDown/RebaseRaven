@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { validateSiteDocument, validateSiteRouting } from "./site-document.mjs";
+import { validateSiteDocument, validateSiteRedirect, validateSiteRouting } from "./site-document.mjs";
+import { englishRedirectDocument } from "../site/prerender";
 
 const canonical = "https://rebaseraven.flyandnotdown.com/";
 const download = "https://github.com/FlyAndNotDown/RebaseRaven/releases/latest";
@@ -8,18 +9,18 @@ const product = {
   "@type": "SoftwareApplication",
   name: "RebaseRaven",
   url: canonical,
-  description: "A unified version control client.",
+  description: "A Git and Perforce GUI client built with Rust.",
   applicationCategory: "DeveloperApplication",
   operatingSystem: ["macOS (Apple Silicon)", "Windows (x64)"],
   license: "https://opensource.org/license/mit",
   downloadUrl: download,
   sameAs: "https://github.com/FlyAndNotDown/RebaseRaven",
 };
-const content = `<main><h1>A unified version control client</h1><p>${"Review changes and follow repository history. ".repeat(5)}</p><p>macOS Apple Silicon and Windows x64. MIT License.</p><a href="${download}"><svg><path /></svg>Download</a></main>`;
+const content = `<main><h1>A Git and Perforce GUI client built with Rust</h1><p>${"Review changes and follow repository history. ".repeat(5)}</p><p>macOS Apple Silicon and Windows x64. MIT License.</p><a href="${download}"><svg><path /></svg>Download</a></main>`;
 
 function fixture() {
   return {
-    html: `<html><head><link rel="alternate" hreflang="en" href="${canonical}en/"><link rel="alternate" hreflang="zh-CN" href="${canonical}zh-CN/"><link rel="alternate" hreflang="x-default" href="${canonical}"><link href="${canonical}" rel="canonical"><meta content="${canonical}" property="og:url"><script type="application/ld+json">${JSON.stringify(product)}</script></head><body><div id="root" data-prerendered="true"><div>RebaseRaven</div>${content}</div></body></html>`,
+    html: `<html><head><link rel="alternate" hreflang="en" href="${canonical}"><link rel="alternate" hreflang="zh-CN" href="${canonical}zh-CN/"><link rel="alternate" hreflang="x-default" href="${canonical}"><link href="${canonical}" rel="canonical"><meta content="${canonical}" property="og:url"><script type="application/ld+json">${JSON.stringify(product)}</script></head><body><div id="root" data-prerendered="true"><div>RebaseRaven</div>${content}</div></body></html>`,
     sitemap: `<urlset><url><loc>${canonical}</loc></url></urlset>`,
     files: new Set(["index.html", "sitemap.xml", "assets/index-abc.js", "assets/index-abc.css"]),
   };
@@ -67,7 +68,7 @@ describe("published website document", () => {
     const value = fixture();
     value.html = value.html.replace('hreflang="zh-CN"', 'hreflang="fr"');
     expect(validateSiteDocument(value)).toContainEqual(expect.stringContaining("zh-CN language alternate"));
-    expect(validateSiteDocument({ ...fixture(), filename: "en/index.html" })).toContainEqual(expect.stringContaining("canonical must identify this language page"));
+    expect(validateSiteDocument({ ...fixture(), filename: "zh-CN/index.html" })).toContainEqual(expect.stringContaining("canonical must identify this language page"));
   });
 
   it("rejects leaked SSR code and source maps while allowing the browser assets", () => {
@@ -76,6 +77,21 @@ describe("published website document", () => {
     const violations = validateSiteDocument(value);
     expect(violations).toHaveLength(5);
     expect(violations.every((message: string) => message.includes("Pages output must not contain"))).toBe(true);
+  });
+});
+
+describe("English homepage alias", () => {
+  it("redirects to the canonical homepage without loading a duplicate product page", () => {
+    expect(validateSiteRedirect({ html: englishRedirectDocument(), sitemap: fixture().sitemap })).toEqual([]);
+  });
+
+  it("rejects delayed or wrong redirects and sitemap entries for the alias", () => {
+    for (const replacement of ["1; url=../", "0; url=../zh-CN/"]) {
+      const html = englishRedirectDocument().replace("0; url=../", replacement);
+      expect(validateSiteRedirect({ html, sitemap: fixture().sitemap })).toContainEqual(expect.stringContaining("immediate redirect"));
+    }
+    const sitemap = `<urlset><url><loc>${canonical}en/</loc></url></urlset>`;
+    expect(validateSiteRedirect({ html: englishRedirectDocument(), sitemap })).toContainEqual(expect.stringContaining("must not be listed"));
   });
 });
 

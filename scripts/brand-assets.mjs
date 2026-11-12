@@ -62,19 +62,51 @@ async function refineSmallIcns(small) {
   await writeFile(filename, Buffer.concat([header, ...chunks]));
 }
 
-async function shareImage(width, height, icon) {
-  const heading = await sharp({ text: { text: "RebaseRaven", font: "Geist Medium 88", fontfile, rgba: true, dpi: 72 } }).png().toBuffer({ resolveWithObject: true });
-  const subtitle = await sharp({ text: { text: '<span foreground="#666b73">Git + Perforce desktop client</span>', font: "Geist 32", fontfile, rgba: true, dpi: 72 } }).png().toBuffer({ resolveWithObject: true });
-  const iconSize = 172;
-  const gap = 30;
-  const blockWidth = iconSize + gap + Math.max(heading.info.width, subtitle.info.width);
+async function shareImage(width, height, banner = false) {
+  const mark = await readFile(destination("assets", "brand", "raven.svg"));
+  const titleSize = banner ? 128 : 78;
+  const subtitleSize = banner ? 40 : 28;
+  const heading = await sharp({ text: { text: '<span foreground="#111318">RebaseRaven</span>', font: `Geist Bold ${titleSize}`, fontfile, rgba: true, dpi: 72 } }).png().toBuffer({ resolveWithObject: true });
+  const subtitle = await sharp({ text: { text: '<span foreground="#676d76">Rust-powered Git + Perforce client</span>', font: `Geist ${subtitleSize}`, fontfile, rgba: true, dpi: 72 } }).png().toBuffer({ resolveWithObject: true });
+  const logo = await sharp(mark).resize({ width: banner ? 350 : 220 }).png().toBuffer({ resolveWithObject: true });
+  const gap = banner ? 52 : 34;
+  const textGap = banner ? 28 : 22;
+  const blockWidth = logo.info.width + gap + Math.max(heading.info.width, subtitle.info.width);
   const left = Math.round((width - blockWidth) / 2);
-  const textTop = Math.round((height - heading.info.height - subtitle.info.height - 25) / 2);
+  const textTop = Math.round((height - heading.info.height - subtitle.info.height - textGap) / 2);
   return sharp({ create: { width, height, channels: 4, background: "#fafafa" } }).composite([
-    { input: await imagePng(icon, iconSize), left, top: Math.round((height - iconSize) / 2) },
-    { input: heading.data, left: left + iconSize + gap, top: textTop },
-    { input: subtitle.data, left: left + iconSize + gap, top: textTop + heading.info.height + 25 },
+    { input: logo.data, left, top: Math.round((height - logo.info.height) / 2) },
+    { input: heading.data, left: left + logo.info.width + gap, top: textTop },
+    { input: subtitle.data, left: left + logo.info.width + gap, top: textTop + heading.info.height + textGap },
   ]).withIccProfile("srgb").png({ compressionLevel: 9 }).toBuffer();
+}
+
+async function generateMarketingAssets() {
+  await mkdir(brandDirectory, { recursive: true });
+  await writeFile(path.join(brandDirectory, "readme-banner.png"), await shareImage(1800, 520, true));
+  await writeFile(destination("site", "public", "assets", "social.png"), await shareImage(1200, 630));
+  await writeFile(path.join(brandDirectory, "github-social.png"), await shareImage(1280, 640));
+  console.log("Generated RebaseRaven README and social assets.");
+}
+
+async function generateWindowsAssets() {
+  const source = await readFile(destination("assets", "brand", "app-icon-windows.svg"));
+  const directory = path.join(iconDirectory, "windows");
+  await mkdir(directory, { recursive: true });
+  const sizes = [16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 128, 256];
+  const images = [];
+  for (const size of sizes) {
+    const image = await sharp(source, { density: 384 }).resize(size, size)
+      .withIccProfile("srgb").png({ compressionLevel: 9 }).toBuffer();
+    images.push({ size, image });
+    if (size === 32 || size === 128) await writeFile(path.join(directory, `${size}x${size}.png`), image);
+    if (size === 256) {
+      await writeFile(path.join(directory, "128x128@2x.png"), image);
+      await writeFile(destination("public", "assets", "mark-windows.png"), image);
+    }
+  }
+  await writeFile(path.join(directory, "icon.ico"), iconFile(images));
+  console.log("Generated RebaseRaven Windows icons.");
 }
 
 async function generate() {
@@ -108,9 +140,11 @@ async function generate() {
   await writeFile(destination("site", "public", "assets", "favicon.ico"), iconFile([16, 24, 32, 48, 64].map(size => ({ size, image:small[size] }))));
   await copyFile(path.join(brandDirectory, "favicon.svg"), destination("site", "public", "assets", "favicon.svg"));
   await copyFile(path.join(brandDirectory, "raven.svg"), destination("site", "public", "assets", "raven.svg"));
-  await writeFile(destination("site", "public", "assets", "social.png"), await shareImage(1200, 630, icon));
-  await writeFile(path.join(brandDirectory, "github-social.png"), await shareImage(1280, 640, icon));
+  await generateWindowsAssets();
+  await generateMarketingAssets();
   console.log("Generated RebaseRaven desktop, web, favicon, and social assets.");
 }
 
-await generate();
+if (process.argv.includes("--windows-only")) await generateWindowsAssets();
+else if (process.argv.includes("--marketing-only")) await generateMarketingAssets();
+else await generate();

@@ -1,8 +1,9 @@
+import { desktopPlatform } from "@/lib/desktop-platform";
 import { cn } from "@/lib/utils";
 
 export function AppMark({
   className,
-  src = `${import.meta.env.BASE_URL}assets/mark.png`,
+  src = `${import.meta.env.BASE_URL}assets/${desktopPlatform() === "windows" ? "mark-windows.png" : "mark.png"}`,
 }: {
   className?: string;
   src?: string;

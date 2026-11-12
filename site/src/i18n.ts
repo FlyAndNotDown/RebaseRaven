@@ -4,7 +4,6 @@ import zhCN from "./locales/zh-CN.json" with { type: "json" };
 
 export const SITE_LOCALES = ["en", "zh-CN"] as const;
 export type SiteLocale = typeof SITE_LOCALES[number];
-export const LANGUAGE_STORAGE_KEY = "rebaseraven.site.language";
 export const siteResources = { en, "zh-CN": zhCN };
 
 export function isSiteLocale(value: unknown): value is SiteLocale {
@@ -25,26 +24,11 @@ export function localeFromPath(pathname: string): SiteLocale | null {
 }
 
 export function localeHref(locale: SiteLocale, rootPage: boolean) {
-  return `${rootPage ? "./" : "../"}${locale}/`;
+  return `${rootPage ? "./" : "../"}${localePath(locale)}`;
 }
 
-export function rememberSiteLanguage(locale: SiteLocale | null) {
-  try {
-    if (locale) localStorage.setItem(LANGUAGE_STORAGE_KEY, locale);
-    else localStorage.removeItem(LANGUAGE_STORAGE_KEY);
-  } catch {
-    // Explicit language links continue to work without browser storage.
-  }
-}
-
-export function preferredSiteLocale(languages: readonly string[]): SiteLocale {
-  try {
-    const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-    if (isSiteLocale(saved)) return saved;
-  } catch {
-    // Browser language remains available when storage is unavailable.
-  }
-  return browserLocale(languages);
+export function localePath(locale: SiteLocale) {
+  return locale === "en" ? "" : `${locale}/`;
 }
 
 export function createSiteI18n(locale: SiteLocale) {

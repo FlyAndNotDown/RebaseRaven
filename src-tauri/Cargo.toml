@@ -1,7 +1,7 @@
 [package]
 name = "rebaseraven"
-version = "0.1.14"
-description = "A unified version control client"
+version = "0.1.15"
+description = "A Rust-powered Git and Perforce desktop client"
 license = "MIT"
 edition = "2021"
 

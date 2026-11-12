@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { render } from "./entry-server";
 import { LATEST_RELEASE_URL } from "./release-downloads";
 import { siteResources } from "./i18n";
+import { SITE_URL, softwareApplication } from "./product";
+import { readBundledReleaseDownloads } from "./release-downloads";
 
 describe("website prerender", () => {
   it("renders product facts and working download URLs without a browser", async () => {
@@ -26,13 +28,24 @@ describe("website prerender", () => {
     const translated = await render("zh-CN", false);
     expect(translated).toContain(siteResources["zh-CN"]["preview.title"]);
     expect(translated).toContain(siteResources["zh-CN"]["demo.gitIntro"]);
-    expect(translated).toContain('href="../en/"');
+    expect(translated).toContain('href="../"');
     expect(translated).toContain('href="../zh-CN/"');
     expect(translated).toContain("../assets/raven.svg");
-    const english = await render("en", false);
+    const english = await render("en", true);
     expect(english).toContain(siteResources.en["preview.title"]);
-    expect(english).toContain("../assets/raven.svg");
+    expect(english).toContain("./assets/raven.svg");
+    expect(english).toContain('href="./zh-CN/"');
     expect(english).not.toContain(siteResources["zh-CN"]["preview.title"]);
+  });
+
+  it("uses canonical language URLs and the same published release as the download links", () => {
+    const release = readBundledReleaseDownloads(JSON.stringify({ tag_name: "v1.2.3", draft: false, prerelease: false, assets: [] }));
+    const english = softwareApplication("en", release?.tag);
+    expect(english.url).toBe(SITE_URL);
+    expect(english.softwareVersion).toBe("1.2.3");
+    expect(softwareApplication("zh-CN", release?.tag).url).toBe(`${SITE_URL}zh-CN/`);
+    expect(softwareApplication("en")).not.toHaveProperty("softwareVersion");
+    expect(english.sameAs).toBe("https://github.com/FlyAndNotDown/RebaseRaven");
   });
 
   it("keeps the initial platform and generated accessibility IDs deterministic", async () => {
