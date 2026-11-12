@@ -3,7 +3,6 @@
     "title": "Usage analytics",
     "enabled": "Share usage analytics",
     "saving": "Saving…",
-    "disclosure": "Enabled by default. Google Analytics receives a random installation ID, basic device information and coarse app usage. Repository content, paths and credentials are excluded. You can turn this off at any time.",
     "saveFailed": "Could not save your choice. Analytics remains off for this session."
   },
   "validation": {

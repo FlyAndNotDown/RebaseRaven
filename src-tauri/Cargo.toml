@@ -1,6 +1,6 @@
 [package]
 name = "rebaseraven"
-version = "0.1.15"
+version = "0.1.16"
 description = "A Rust-powered Git and Perforce desktop client"
 license = "MIT"
 edition = "2021"

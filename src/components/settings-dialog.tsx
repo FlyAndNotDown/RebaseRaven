@@ -574,7 +574,6 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
                       {loaded ? <Checkbox
                         checked={prefs.analyticsEnabled && analyticsAllowed}
                         disabled={analyticsSaving}
-                        aria-describedby="analytics-disclosure"
                         onCheckedChange={(checked) => { void changeAnalytics(checked === true); }}
                       /> : <Skeleton className="size-4" />}
                       <span>{t("analytics.enabled")}</span>
@@ -590,7 +589,6 @@ function SettingsForm({ open, initialSection }: { open: boolean; initialSection:
                       </span>
                     </HoverTip>
                   </div>
-                  <p id="analytics-disclosure" className="text-xs leading-relaxed text-muted-foreground">{t("analytics.disclosure")}</p>
                   <span role="status" className="sr-only">{analyticsFeedback}</span>
                 </FieldGroup>
               </div>
