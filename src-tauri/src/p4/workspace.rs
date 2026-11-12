@@ -892,7 +892,10 @@ fn annotate_ignored_with(
             .iter()
             .map(|entry| {
                 if entry.dir {
-                    format!("{}/", entry.path.trim_end_matches(['/', '\\']))
+                    // Native batches select directory mode from their first path,
+                    // allowing descendant exclusions to hide ordinary file matches.
+                    // Query default contents without asking P4 to prune the directory.
+                    format!("{}/*", entry.path.trim_end_matches(['/', '\\']))
                 } else {
                     entry.path.clone()
                 }
@@ -910,8 +913,8 @@ fn annotate_ignored_with(
             .filter_map(|line| line.strip_suffix(" ignored"))
             .map(|path| local_path_key(path.trim_end_matches(['/', '\\'])))
             .collect::<BTreeSet<_>>();
-        for entry in chunk {
-            entry.ignored = ignored.contains(&local_path_key(&entry.path));
+        for (entry, path) in chunk.iter_mut().zip(&paths) {
+            entry.ignored = ignored.contains(&local_path_key(path));
         }
     }
 }
@@ -4615,7 +4618,7 @@ mod tests {
             Ok(args
                 .iter()
                 .skip(2)
-                .filter(|path| path.ends_with('/'))
+                .filter(|path| path.ends_with("/*"))
                 .map(|path| format!("{path} ignored\n"))
                 .collect::<String>())
         });
@@ -4735,13 +4738,50 @@ mod tests {
         entries[1].dir = false;
         annotate_ignored_with(&mut entries, &mut |args| {
             assert_eq!(&args[..2], ["ignores", "-i"]);
-            assert!(args[2].ends_with("build/"));
+            assert!(args[2].ends_with("build/*"));
             assert!(!args[3].ends_with('/'));
             Ok(format!("{} ignored\n{} ignored\n", args[2], args[4]))
         });
         assert!(entries[0].ignored);
         assert!(!entries[1].ignored);
         assert!(entries[2].ignored);
+    }
+
+    #[test]
+    fn directory_first_ignore_batches_keep_file_matches_and_child_exclusions() {
+        let root = tempfile::tempdir().unwrap();
+        let generated = root.path().join("generated");
+        let source = root.path().join("source");
+        fs::create_dir_all(&generated).unwrap();
+        fs::create_dir_all(&source).unwrap();
+        let output = generated.join("output.bin");
+        let keep = generated.join("keep.txt");
+        fs::write(&output, "output").unwrap();
+        fs::write(&keep, "keep").unwrap();
+        let mut entries = vec![
+            plain_dir("generated", &generated),
+            plain_dir("source", &source),
+            plain_dir("output.bin", &output),
+            plain_dir("keep.txt", &keep),
+        ];
+        entries[2].dir = false;
+        entries[3].dir = false;
+        annotate_ignored_with(&mut entries, &mut |args| {
+            // P4 uses the first target's type for the batch. Directory mode
+            // conservatively keeps paths that might contain included descendants.
+            if Path::new(args[2]).is_dir() {
+                return Ok(String::new());
+            }
+            Ok(args[2..]
+                .iter()
+                .filter(|path| Path::new(path).starts_with(&generated) && Path::new(path) != keep)
+                .map(|path| format!("{path} ignored\n"))
+                .collect())
+        });
+        assert!(entries[0].ignored);
+        assert!(!entries[1].ignored);
+        assert!(entries[2].ignored);
+        assert!(!entries[3].ignored);
     }
 
     #[test]
