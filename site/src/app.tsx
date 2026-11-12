@@ -24,7 +24,7 @@ import {
   SunIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { localeHref, rememberSiteLanguage, SITE_LOCALES, type SiteLocale } from "./i18n";
+import { browserLocale, localeHref, SITE_LOCALES, type SiteLocale } from "./i18n";
 import { useSiteTheme } from "./theme";
 import { BrandMark } from "@/components/brand-mark";
 import { GitHubMark } from "@/components/github-mark";
@@ -177,7 +177,7 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
 
         <section className="site-faq site-section" aria-labelledby="faq-title">
           <div className="site-section-intro"><h2 id="faq-title">{t("faq.title")}</h2></div>
-          <div>{["what", "rust", "systems", "tools", "license", "accounts", "demo"].map((key) => <details key={key} open={key === "what"}><summary>{t(`faq.${key}.question`)}<ChevronRightIcon aria-hidden="true" /></summary><p>{t(`faq.${key}.answer`)}</p></details>)}</div>
+          <div>{["what", "rust", "systems", "tools", "gitServers", "bridge", "license", "accounts", "demo"].map((key) => <details key={key} open={key === "what"}><summary>{t(`faq.${key}.question`)}<ChevronRightIcon aria-hidden="true" /></summary><p>{t(`faq.${key}.answer`)}</p></details>)}</div>
         </section>
 
         <section className="site-download" aria-labelledby="download-title">
@@ -226,12 +226,17 @@ function LanguageMenu({ rootPage }: { rootPage: boolean }) {
         <DropdownMenuContent align="end">
           {links.map(({ locale, href, label, current }) => (
             <DropdownMenuItem key={locale} asChild>
-              <a href={href} hrefLang={locale} aria-current={current} onClick={() => rememberSiteLanguage(locale)}>{label}</a>
+              <a href={href} hrefLang={locale} aria-current={current}>{label}</a>
             </DropdownMenuItem>
           ))}
           <DropdownMenuSeparator />
-          <DropdownMenuItem asChild>
-            <a href={rootPage ? "./" : "../"} onClick={() => rememberSiteLanguage(null)}>{t("language.automatic")}</a>
+          <DropdownMenuItem onSelect={() => {
+            const target = new URL(localeHref(browserLocale(navigator.languages), rootPage), window.location.href);
+            target.search = window.location.search;
+            target.hash = window.location.hash;
+            window.location.assign(target.href);
+          }}>
+            <LanguagesIcon />{t("language.automatic")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

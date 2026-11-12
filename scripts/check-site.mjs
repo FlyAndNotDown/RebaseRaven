@@ -2,9 +2,9 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { validateSiteDocument, validateSiteRouting } from "./site-document.mjs";
+import { validateSiteDocument, validateSiteRedirect, validateSiteRouting } from "./site-document.mjs";
 
-const root = fileURLToPath(new URL("../site/dist/", import.meta.url));
+const root = process.argv[2] ? path.resolve(process.argv[2]) : fileURLToPath(new URL("../site/dist/", import.meta.url));
 const files = new Set();
 const textFiles = new Map();
 const violations = [];
@@ -89,10 +89,11 @@ else {
   }
 }
 if (/<loc>[^<]*\/analytics\//.test(sitemap)) violations.push("sitemap.xml: the internal analytics bridge must not be listed");
-for (const filename of ["index.html", "en/index.html", "zh-CN/index.html"]) {
+for (const filename of ["index.html", "zh-CN/index.html"]) {
   if (!files.has(filename)) violations.push(`${filename}: missing crawlable language page`);
   violations.push(...validateSiteDocument({ html: textFiles.get(filename) ?? "", sitemap, files, filename }));
 }
+violations.push(...validateSiteRedirect({ html: textFiles.get("en/index.html") ?? "", sitemap }));
 
 if (violations.length) {
   console.error(violations.join("\n"));

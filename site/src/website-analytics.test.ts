@@ -6,7 +6,7 @@ const ORIGIN = "https://rebaseraven.flyandnotdown.com";
 const WINDOWS = "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v1.2.3/RebaseRaven_v1.2.3_windows_x64.exe";
 const MACOS = "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v1.2.3/RebaseRaven_v1.2.3_macos_arm64.dmg";
 
-function fixture(pathname = "/en/", origin = ORIGIN) {
+function fixture(pathname = "/", origin = ORIGIN) {
   const script = { onload: null as (() => void) | null, onerror: null as (() => void) | null, src: "", remove: vi.fn() };
   const host = {
     location: { origin, pathname },
@@ -18,16 +18,16 @@ function fixture(pathname = "/en/", origin = ORIGIN) {
 }
 
 describe("website analytics isolation", () => {
-  it("counts locale pages while excluding redirects, the desktop bridge and preview origins", () => {
-    for (const [path, locale] of [["/en/", "en"], ["/zh-CN/", "zh-CN"], ["/en/index.html", "en"]]) {
+  it("counts canonical pages while excluding redirects, the desktop bridge and preview origins", () => {
+    for (const [path, locale] of [["/", "en"], ["/index.html", "en"], ["/zh-CN/", "zh-CN"], ["/zh-CN/index.html", "zh-CN"]]) {
       expect(websiteAnalyticsLocale({ origin: ORIGIN, pathname: path })).toBe(locale);
     }
-    for (const path of ["/", "/analytics/", "/analytics/en/", "/en/private", "/unsupported/"]) {
+    for (const path of ["/en/", "/en/index.html", "/analytics/", "/analytics/en/", "/en/private", "/unsupported/"]) {
       const { host } = fixture(path);
       expect(createWebsiteAnalytics(host, "G-WEBSITE42")).toBeNull();
       expect(host.document.createElement).not.toHaveBeenCalled();
     }
-    const { host } = fixture("/en/", "https://example.com");
+    const { host } = fixture("/", "https://example.com");
     expect(createWebsiteAnalytics(host, "G-WEBSITE42")).toBeNull();
     expect(host.document.createElement).not.toHaveBeenCalled();
   });

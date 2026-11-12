@@ -9,14 +9,14 @@
 </p>
 
 <p align="center">
-  <a href="https://rebaseraven.flyandnotdown.com/en/">Website &amp; interactive demo</a> ·
+  <a href="https://rebaseraven.flyandnotdown.com/">Website &amp; interactive demo</a> ·
   <a href="https://github.com/FlyAndNotDown/RebaseRaven/releases/latest">Download</a> ·
-  <a href="README.zh-CN.md">Simplified Chinese</a>
+  <a href="README.zh-CN.md">中文</a>
 </p>
 
-# A Rust-powered Git and Perforce client
+# RebaseRaven — Rust-powered Git and Perforce GUI client
 
-**RebaseRaven** is a free, open-source **Git GUI and Perforce desktop client**,
+**RebaseRaven** is a free, open-source **Git and Perforce GUI client**,
 built with **Rust and Tauri** for Windows and macOS. Review code and image diffs,
 follow repository history, prepare Git commits or Perforce changelists, and
 resolve conflicts in the app or your external merge tool.
@@ -43,7 +43,7 @@ workspace view.
 | Merge and resolve | Merge, cherry-pick, and interactive rebase; edit conflicts in the app | Preview integration and revision undo; resolve conflicts internally or externally |
 | Publish changes | Commit, fetch, pull, and push | Sync, reconcile, shelve, restore shelves, and submit |
 
-**Try it before installing:** the [interactive Git and Perforce demo](https://rebaseraven.flyandnotdown.com/en/#features)
+**Try it before installing:** the [interactive Git and Perforce demo](https://rebaseraven.flyandnotdown.com/#features)
 uses sample data in your browser. It never changes a real repository.
 
 ## Get started
@@ -67,6 +67,19 @@ Chinese are available in Settings.
 Rust powers the desktop backend, with Tauri providing the application shell.
 The interface uses React and TypeScript. Repository operations run through your
 installed Git and `p4` executables.
+
+### Does RebaseRaven work with GitHub, GitLab, and self-hosted Git?
+
+RebaseRaven uses your installed Git to access local repositories and Git remotes
+over HTTPS or SSH. GitHub, GitLab, Gitea, and other Git servers use your existing
+credentials and configuration. Hosting tasks such as pull request reviews stay
+on your Git service.
+
+### Does RebaseRaven convert or sync Git and Perforce repositories?
+
+Git repositories and Perforce workspaces are separate workflows in RebaseRaven.
+It does not convert repository history or synchronize changes between Git and
+Perforce.
 
 ### Is RebaseRaven free?
 

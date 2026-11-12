@@ -1,20 +1,26 @@
 import { LATEST_RELEASE_URL, REPOSITORY_URL } from "./release-downloads.ts";
-import { siteResources, type SiteLocale } from "./i18n.ts";
+import { localePath, siteResources, type SiteLocale } from "./i18n.ts";
 
 export const SITE_URL = "https://rebaseraven.flyandnotdown.com/";
 
-export function softwareApplication(locale: SiteLocale = "en", rootPage = true) {
+export function sitePageUrl(locale: SiteLocale) {
+  return `${SITE_URL}${localePath(locale)}`;
+}
+
+export function softwareApplication(locale: SiteLocale = "en", releaseTag: string | null = null) {
   const copy = siteResources[locale];
   return {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "@id": `${SITE_URL}#application`,
   name: "RebaseRaven",
-  url: rootPage ? SITE_URL : `${SITE_URL}${locale}/`,
+  url: sitePageUrl(locale),
   description: copy["meta.description"],
   inLanguage: locale,
   applicationCategory: "DeveloperApplication",
-  applicationSubCategory: "Git GUI and Perforce desktop client",
+  applicationSubCategory: "Git and Perforce GUI client",
+  author: { "@type": "Person", name: "FlyAndNotDown", url: "https://github.com/FlyAndNotDown" },
+  ...(releaseTag ? { softwareVersion: releaseTag.slice(1) } : {}),
   operatingSystem: ["macOS (Apple Silicon)", "Windows (x64)"],
   license: "https://opensource.org/license/mit",
   isAccessibleForFree: true,

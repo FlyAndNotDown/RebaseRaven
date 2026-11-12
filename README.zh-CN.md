@@ -14,9 +14,9 @@
   <a href="README.md">English</a>
 </p>
 
-# 基于 Rust 的 Git / Perforce 客户端
+# RebaseRaven — 基于 Rust 的 Git / Perforce 图形客户端
 
-**RebaseRaven** 是基于 **Rust 与 Tauri** 构建的免费、开源 **Git / Perforce 桌面客户端**，
+**RebaseRaven** 是基于 **Rust 与 Tauri** 构建的免费、开源 **Git / Perforce 桌面图形客户端**，
 支持 Windows 与 macOS。审阅代码和图片差异、追溯仓库历史、准备 Git 提交或 Perforce Changelist，
 并在应用内或外部合并工具中解决冲突。
 
@@ -60,6 +60,17 @@
 
 Rust 用于桌面后端，Tauri 提供应用外壳，界面由 React 与 TypeScript 构建。
 Git 与 Perforce 的仓库操作通过你安装的 Git 和 `p4` 可执行文件执行。
+
+### 支持 GitHub、GitLab 和自托管 Git 服务吗？
+
+RebaseRaven 通过你安装的 Git 访问本地仓库，以及 HTTPS 或 SSH 远程仓库。
+连接 GitHub、GitLab、Gitea 等 Git 服务时，沿用现有凭据与配置。
+Pull Request 审阅等托管平台功能仍在对应 Git 服务中完成。
+
+### 会转换或同步 Git 与 Perforce 仓库吗？
+
+Git 仓库与 Perforce 工作区在 RebaseRaven 中是独立的工作流。
+应用不转换仓库历史，也不在 Git 与 Perforce 之间同步变更。
 
 ### RebaseRaven 可以免费使用吗？
 
