@@ -131,7 +131,8 @@
     "streamWorkChangeDelete": "请先提交或还原已签出的 Stream 定义。",
     "streamWorkRestoreChange": "请先将已签出的 Stream 定义移至所选变更列表。",
     "streamWorkShelf": "此 Shelf 不包含当前工作区的 Stream 定义。",
-    "streamWorkShelfDelete": "未能从 Shelf 移除 Stream 定义。"
+    "streamWorkShelfDelete": "未能从 Shelf 移除 Stream 定义。",
+    "workspaceStale": "工作区配置已变化，请重新加载后再保存。"
   },
   "connectionRequired": "请重新连接此工作区后继续。",
   "workspaceBusy": "请等待当前工作区操作完成。",

@@ -16,7 +16,7 @@ import { P4StreamDialog } from "@/components/p4/p4-stream-dialog";
 import { P4ReconcileDialog } from "@/components/p4/p4-reconcile-dialog";
 import { P4CleanDialog } from "@/components/p4/p4-clean-dialog";
 import { P4LoginDialog } from "@/components/p4/p4-login-dialog";
-import { P4SwitchDialog, P4SwitchResultDialog } from "@/components/p4/p4-switch-dialog";
+import { P4SwitchDialog, P4SwitchUpdateDialog } from "@/components/p4/p4-switch-dialog";
 import { P4IntegrationDialog } from "@/components/p4/p4-integration-dialog";
 import type { P4IntegrationInitial, P4IntegrationRequest, P4IntegrationPreview } from "@/types/p4-integration";
 import { P4WorkspaceDialog } from "@/components/p4/p4-workspace-dialog";
@@ -25,7 +25,7 @@ import { depotBase, P4_LOGIN, P4_MISSING, p4Api, syncSummary } from "@/lib/p4";
 import { sameRepoPath } from "@/lib/format";
 import { useGitPick } from "@/state/git-context";
 import { repoTabId, type RepoTab } from "@/state/session";
-import { defaultChange, fileKey, pendingChangeDescription, refreshPendingSession, savePendingDescription, sameP4Connection, showP4OperationResult, shownFile, updateP4Session, usableP4Session, type P4ResolveRequest, type P4Session as Session, type P4View } from "@/state/p4-session";
+import { defaultChange, fileKey, finishPendingShelf, pendingChangeDescription, refreshPendingSession, savePendingDescription, sameP4Connection, showP4OperationResult, shownFile, updateP4Session, usableP4Session, type PendingShelf, type P4ResolveRequest, type P4Session as Session, type P4View } from "@/state/p4-session";
 import { p4ReadRequest, pendingDiffRequest, pendingRefreshRequest, withP4Login } from "@/state/p4-requests";
 import { acquireP4Mutation, invalidateP4Session } from "@/state/p4-mutations";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
@@ -41,8 +41,6 @@ import type {
   P4Auth,
   P4WorkspaceEdit,
   P4SwitchRequest,
-  P4SwitchPreview,
-  P4SwitchOutcome,
   P4WorkspaceSettings,
   P4ChangePage,
   P4Changelist,
@@ -85,6 +83,8 @@ interface P4ContextValue {
   setView: (view: P4View) => void;
   connection: P4Connection | null;
   pending: P4Changelist[];
+  pendingShelves: Record<string, PendingShelf>;
+  loadPendingShelf: (id: string, retry?: boolean) => Promise<void>;
   loading: boolean;
   busy: boolean;
   busyLabel: string;
@@ -150,12 +150,12 @@ interface P4ContextValue {
   sync: (paths?: string[]) => Promise<void>;
   getRevision: (request: P4GetRevision) => Promise<string | null>;
   filesEpoch: number;
-  reconcile: () => Promise<void>;
+  reconcile: (scope?: string) => Promise<void>;
   openClean: (scope?: string) => void;
   previewClean: (request: P4CleanRequest) => Promise<P4CleanPreview>;
   applyClean: (request: P4CleanRequest, paths: string[], fingerprint: string) => Promise<void>;
-  previewReconcile: () => Promise<P4ReconcilePreview>;
-  applyReconcile: (paths: string[], changeId: string, fingerprint: string) => Promise<void>;
+  previewReconcile: (scope?: string) => Promise<P4ReconcilePreview>;
+  applyReconcile: (paths: string[], changeId: string, fingerprint: string, scope?: string) => Promise<void>;
   fileAction: (action: "edit" | "add" | "delete", paths: string[]) => Promise<void>;
   loadSubmitted: (more?: boolean) => Promise<void>;
   submittedUser: string;
@@ -187,8 +187,7 @@ interface P4ContextValue {
   workspaceOpen: boolean;
   setWorkspaceOpen: (open: boolean) => void;
   switchStream: (target?: string) => void;
-  previewSwitch: (request: P4SwitchRequest) => Promise<P4SwitchPreview>;
-  applySwitch: (request: P4SwitchRequest, fingerprint: string) => Promise<void>;
+  applySwitch: (request: P4SwitchRequest) => Promise<void>;
   workspaceSettings: () => Promise<P4WorkspaceSettings>;
   saveWorkspace: (edit: P4WorkspaceEdit, fingerprint: string) => Promise<void>;
 }
@@ -239,10 +238,10 @@ export function P4Provider({ children }: { children: ReactNode }) {
   const [streamInitial, setStreamInitial] = useState<Pick<P4StreamRequest,"mode"|"source"> | null>(null);
   const setStreamOpen = useCallback((open: boolean) => {setStreamInitial(null);updateStreamOpen(open);},[]);
   const openStreamIntegration = useCallback((mode:P4StreamRequest["mode"],source:string) => {setStreamInitial({mode,source});updateStreamOpen(true);},[]);
-  const [reconcileOpen, setReconcileOpen] = useState(false);
+  const [reconcileTarget, setReconcileTarget] = useState<{ connection: P4Connection; scope?: string } | null>(null);
   const [cleanTarget, setCleanTarget] = useState<{connection: P4Connection; scope: string} | null>(null);
   const [switchTarget, setSwitchTarget] = useState<string | null>(null);
-  const [switchOutcome, setSwitchOutcome] = useState<P4SwitchOutcome | null>(null);
+  const [switchOutcome, setSwitchOutcome] = useState<{ tabId: string; connection: P4Connection } | null>(null);
   const switchStream = useCallback((target = "") => setSwitchTarget(target), []);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [filesEpoch, setFilesEpoch] = useState(0);
@@ -357,7 +356,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
 
   const requestDiff = useCallback((current: Session, quiet = false) => {
     const file = current.selectedFile;
-    if (!file) return;
+    if (!file || (current.selectedShelved && current.pendingShelves?.[current.selectedChange]?.status !== "ready")) return;
     const key = fileKey(current.selectedChange, file, current.selectedShelved);
     if (current.diffFor === key) return;
     const token = nextToken(diffTokens.current, current.tabId);
@@ -388,7 +387,8 @@ export function P4Provider({ children }: { children: ReactNode }) {
   const selectedShelved = visibleSession?.selectedShelved ?? false;
   const selectedChange = visibleSession?.selectedChange ?? "default";
   const diffKey = connection && selectedFile ? fileKey(selectedChange, selectedFile, selectedShelved) : "";
-  const diffLoading = diffKey !== "" && visibleSession?.diffFor !== diffKey;
+  const diffLoading = diffKey !== "" && visibleSession?.diffFor !== diffKey &&
+    !(selectedShelved && visibleSession?.pendingShelves?.[selectedChange]?.status === "error");
 
   const reloadPending = useCallback(async (target: Session, selectId?: string, quiet = false) => {
     const owner = cache.current.get(target.tabId);
@@ -398,6 +398,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
     if (pendingTokens.current.get(target.tabId) !== token) return;
     const latest = cache.current.get(target.tabId);
     if (!latest || !sameP4Connection(latest.connection, target.connection)) return;
+    nextToken(diffTokens.current, target.tabId);
     const next = updateSession(target.tabId, (current) => refreshPendingSession(current, pending, selectId, target.selectedChange));
     if (next) requestDiff(next, quiet);
   }, [guard, requestDiff, updateSession]);
@@ -476,18 +477,13 @@ export function P4Provider({ children }: { children: ReactNode }) {
           previous && pending.some((change) => change.id === previous.selectedChange)
             ? previous.selectedChange
             : defaultChange(pending);
-        const selected = pending.find((change) => change.id === selectedChange);
-        const shown = shownFile(selected?.files ?? [], previous ? {
-          path: previous.selectedFile,
-          shelved: previous.selectedShelved,
-        } : undefined);
         const next = refreshPendingSession({
           tabId,
           connection: opened.connection,
           pending: previous?.pending ?? [],
           selectedChange: previous?.selectedChange ?? selectedChange,
-          selectedFile: shown.path,
-          selectedShelved: shown.shelved,
+          selectedFile: previous?.selectedFile ?? null,
+          selectedShelved: previous?.selectedShelved ?? false,
           description: previous?.description ?? "",
           diff: null,
           diffFor: "",
@@ -543,11 +539,13 @@ export function P4Provider({ children }: { children: ReactNode }) {
     const current = sessionRef.current;
     if (!current || current.selectedChange === id) return;
     const change = current.pending.find((item) => item.id === id);
+    const shelf = current.pendingShelves?.[id];
     const shown = shownFile(change?.files ?? []);
+    const selected = shown.path || shelf?.status !== "ready" ? shown : shownFile(shelf.detail.files);
     patch({
       selectedChange: id,
-      selectedFile: shown.path,
-      selectedShelved: shown.shelved,
+      selectedFile: selected.path,
+      selectedShelved: selected.shelved,
       description: change?.description ?? "",
       diff: null,
       diffFor: "",
@@ -765,6 +763,28 @@ export function P4Provider({ children }: { children: ReactNode }) {
     if (!current) throw new Error(t("p4-operations.connectionRequired"));
     return guard(current.connection, () => p4Api.shelfDetail(current.connection, changeId));
   }, [guard]);
+
+  const loadPendingShelf = useCallback(async (id: string, retry = false) => {
+    const owner = sessionRef.current;
+    if (!owner || !owner.pending.some(change => change.id === id && change.shelved)) return;
+    const existing = owner.pendingShelves?.[id];
+    if (existing && !(retry && existing.status === "error")) return;
+    const request: PendingShelf = { status: "loading" };
+    updateSession(owner.tabId, current => ({ ...current, pendingShelves: { ...current.pendingShelves, [id]: request } }));
+    let result: PendingShelf;
+    try {
+      const load = () => p4Api.shelfDetail(owner.connection, id, true);
+      const detail = await p4ReadRequest(load, !retry, read => guard(owner.connection, read));
+      result = { status: "ready", detail };
+    } catch (caught) {
+      result = { status: "error", message: errorMessage(caught) };
+    }
+    const latest = cache.current.get(owner.tabId);
+    if (latest?.pendingShelves?.[id] !== request) return;
+    const next = updateSession(owner.tabId, current => finishPendingShelf(current, id, request, result));
+    if (result.status === "ready" && next?.selectedChange === id &&
+        (next.selectedShelved || next.selectedFile !== latest.selectedFile)) requestDiff(next, !retry);
+  }, [guard, requestDiff, updateSession]);
 
   const shelfDiff = useCallback(async (path: string, changeId: string) => {
     const current = sessionRef.current;
@@ -1222,7 +1242,10 @@ export function P4Provider({ children }: { children: ReactNode }) {
     [lockMutation, beginActivity, bumpFiles, endActivity, guard, reloadPending, report],
   );
 
-  const reconcile = useCallback(async () => { setReconcileOpen(true); }, []);
+  const reconcile = useCallback(async (scope?: string) => {
+    const current = sessionRef.current;
+    if (current) setReconcileTarget({ connection: current.connection, scope });
+  }, []);
 
   const openClean = useCallback((scope?: string) => {
     const current=sessionRef.current;
@@ -1247,20 +1270,20 @@ export function P4Provider({ children }: { children: ReactNode }) {
     }
   },[guard,lockMutation,beginActivity,endActivity,reloadPending,bumpFiles,report]);
 
-  const previewReconcile = useCallback(async () => {
+  const previewReconcile = useCallback(async (scope?: string) => {
     const current = sessionRef.current;
     if (!current) throw new Error(t("p4-operations.connectionRequired"));
-    return guard(current.connection, () => p4Api.previewReconcile(current.connection));
+    return guard(current.connection, () => p4Api.previewReconcile(current.connection, scope));
   }, [guard]);
 
-  const applyReconcile = useCallback(async (paths: string[], changeId: string, fingerprint: string) => {
+  const applyReconcile = useCallback(async (paths: string[], changeId: string, fingerprint: string, scope?: string) => {
     const current = sessionRef.current;
     if (!current) throw new Error(t("p4-operations.connectionRequired"));
     const release = lockMutation(current, t("p4.reconciling"));
     if (!release) throw new Error(t("p4-operations.workspaceBusy"));
     const activity = beginActivity(t("p4.reconciling"), current.connection.client);
     try {
-      await guard(current.connection, () => p4Api.applyReconcile(current.connection, paths, changeId, fingerprint));
+      await guard(current.connection, () => p4Api.applyReconcile(current.connection, paths, changeId, fingerprint, scope));
       toast.success(t("p4.reconciled"));
     } finally {
       await reloadPending(current, changeId).catch(report);
@@ -1503,13 +1526,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
     [guard, report],
   );
 
-  const previewSwitch = useCallback(async (request: P4SwitchRequest) => {
-    const current = sessionRef.current;
-    if (!current) throw new Error(t("p4-operations.connectionRequired"));
-    return guard(current.connection, () => p4Api.previewSwitch(current.connection, request));
-  }, [guard]);
-
-  const applySwitch = useCallback(async (request: P4SwitchRequest, fingerprint: string) => {
+  const applySwitch = useCallback(async (request: P4SwitchRequest) => {
     const current = sessionRef.current;
     if (!current) throw new Error(t("p4-operations.connectionRequired"));
     if (current.description !== (current.pending.find((change) => change.id === current.selectedChange)?.description ?? "")) {
@@ -1519,8 +1536,8 @@ export function P4Provider({ children }: { children: ReactNode }) {
     if (!release) throw new Error(t("p4-operations.workspaceBusy"));
     const activity = beginActivity(t("p4.switchStream.running"), request.target);
     try {
-      const outcome = await guard(current.connection, () => p4Api.applySwitch(current.connection, request, fingerprint));
-      setSwitchTarget(null); setSwitchOutcome(outcome);
+      const next = await guard(current.connection, () => p4Api.applySwitch(current.connection, request));
+      setSwitchTarget(null); setSwitchOutcome({ tabId: current.tabId, connection: next });
       invalidateP4Session(cache.current, current.tabId, activeTabRef.current.id, reconnect);
     } finally { endActivity(activity); release(); }
   }, [guard, lockMutation, beginActivity, endActivity, reconnect]);
@@ -1647,6 +1664,8 @@ export function P4Provider({ children }: { children: ReactNode }) {
       setView,
       connection,
       pending: visibleSession?.pending ?? [],
+      pendingShelves: visibleSession?.pendingShelves ?? {},
+      loadPendingShelf,
       loading,
       busy: mutationLabels.has(activePerforceId),
       busyLabel: mutationLabels.get(activePerforceId)?.label ?? "",
@@ -1742,7 +1761,6 @@ export function P4Provider({ children }: { children: ReactNode }) {
       saveWorkspace,
       workspaceSettings,
       switchStream,
-      previewSwitch,
       applySwitch,
     }),
     [
@@ -1810,7 +1828,6 @@ export function P4Provider({ children }: { children: ReactNode }) {
       saveWorkspace,
       workspaceSettings,
       switchStream,
-      previewSwitch,
       applySwitch,
       searchSubmitted,
       workspaceOpen,
@@ -1829,6 +1846,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
       selectedFile,
       selectedShelved,
       visibleSession,
+      loadPendingShelf,
       setDescription,
       setSubmittedFilter,
       setView,
@@ -1850,10 +1868,21 @@ export function P4Provider({ children }: { children: ReactNode }) {
         {workspaceOpen && connection ? <P4WorkspaceDialog key={JSON.stringify(connection)} /> : null}
         {integrationInitial && connection ? <P4IntegrationDialog key={JSON.stringify([connection,integrationInitial])} initial={integrationInitial} onClose={() => setIntegrationInitial(null)} /> : null}
         {streamOpen && connection ? <P4StreamDialog initial={streamInitial} key={JSON.stringify([connection,streamInitial])} onClose={() => setStreamOpen(false)} /> : null}
-        {reconcileOpen && connection ? <P4ReconcileDialog key={JSON.stringify(connection)} onClose={() => setReconcileOpen(false)} /> : null}
+        {reconcileTarget && connection && sameP4Connection(reconcileTarget.connection, connection) ? <P4ReconcileDialog key={JSON.stringify(reconcileTarget)} scope={reconcileTarget.scope} onClose={() => setReconcileTarget(current => current === reconcileTarget ? null : current)} /> : null}
         {cleanTarget && connection && sameP4Connection(cleanTarget.connection,connection) ? <P4CleanDialog key={JSON.stringify(cleanTarget)} scope={cleanTarget.scope} onClose={()=>setCleanTarget(current=>current===cleanTarget ? null : current)} /> : null}
         {switchTarget !== null && connection ? <P4SwitchDialog key={JSON.stringify([connection,switchTarget])} initialTarget={switchTarget} onClose={() => setSwitchTarget(null)} /> : null}
-        {switchOutcome ? <P4SwitchResultDialog outcome={switchOutcome} onClose={() => setSwitchOutcome(null)} /> : null}
+        {switchOutcome && activePerforceId === switchOutcome.tabId ? <P4SwitchUpdateDialog
+          stream={switchOutcome.connection.stream ?? ""}
+          disabled={loading || mutationLabels.has(activePerforceId) || !connection || !sameP4Connection(connection, switchOutcome.connection)}
+          onClose={() => setSwitchOutcome(null)}
+          onUpdate={() => {
+            const current = sessionRef.current;
+            if (!current || current.tabId !== switchOutcome.tabId || !sameP4Connection(current.connection, switchOutcome.connection)) return;
+            setSwitchOutcome(null);
+            setView("pending");
+            void sync();
+          }}
+        /> : null}
         <P4LoginDialog
           open={loginOpen}
           client={loginTarget.client}

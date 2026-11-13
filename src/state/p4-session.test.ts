@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { emptyBinaryDiff } from "@/lib/git";
 import type { P4Changelist, P4File } from "@/types/p4";
-import { defaultChange, fileKey, pendingChangeDescription, refreshPendingSession, savePendingDescription, sameP4Connection, showP4OperationResult, shownFile, updateP4Session, usableP4Session, type P4Session } from "./p4-session";
+import { defaultChange, fileKey, finishPendingShelf, pendingChangeDescription, refreshPendingSession, savePendingDescription, sameP4Connection, showP4OperationResult, shownFile, updateP4Session, usableP4Session, type P4Session } from "./p4-session";
 
 function file(name: string): P4File {
   return {
@@ -95,6 +95,22 @@ describe("pending workspace refreshes", () => {
     expect(refreshed.selectedFile).toBe("//depot/main/b.txt");
     expect(refreshed.selectedShelved).toBe(true);
     expect(refreshed.diff).toBe(current.diff);
+  });
+
+  it("revalidates a selected shelf file after refresh and ignores an older detail response", () => {
+    const summary = { ...change("42", "Shelved", []), shelved: true };
+    const oldRequest = { status: "loading" } as const;
+    const current = { ...session(), pending: [summary], selectedShelved: true, pendingShelves: { "42": oldRequest } };
+    const refreshed = refreshPendingSession(current, [summary]);
+    expect(refreshed.selectedFile).toBe(current.selectedFile);
+    const detail = { ...summary, files: [{ ...file("new.txt"), shelved: true }] };
+    const ready = { status: "ready", detail } as const;
+    expect(finishPendingShelf(refreshed, "42", oldRequest, ready)).toBe(refreshed);
+    const request = { status: "loading" } as const;
+    const next = finishPendingShelf({ ...refreshed, pendingShelves: { "42": request } }, "42", request, ready);
+    expect(next.selectedFile).toBe(detail.files[0].depotPath);
+    expect(next.diff).toBeNull();
+    expect(next.selectedShelved).toBe(true);
   });
 
   it("retains an edited description and the latest file selection", () => {

@@ -10,7 +10,8 @@ use super::operations::P4OperationPreview;
 use super::parse::{indexed_groups, parse_ztag, valid_depot_path};
 use super::review::{allow_empty, hash_file, number, pending_change, run, STALE};
 use super::workspace::{
-    change_from_record, files_from_groups, P4ChangePage, P4Changelist, P4Connection,
+    annotate_pending, change_from_record, files_from_groups, P4ChangePage, P4Changelist,
+    P4Connection,
 };
 use crate::error::{AppError, AppResult};
 
@@ -99,6 +100,15 @@ fn shelf_record(connection: &P4Connection, change: &str) -> AppResult<(String, P
 
 pub fn shelf_detail(connection: &P4Connection, change: &str) -> AppResult<P4Changelist> {
     shelf_record(connection, change).map(|(_, detail)| detail)
+}
+
+pub fn pending_shelf_detail(connection: &P4Connection, change: &str) -> AppResult<P4Changelist> {
+    let mut detail = shelf_detail(connection, change)?;
+    detail
+        .files
+        .sort_by_cached_key(|file| file.depot_path.to_lowercase());
+    annotate_pending(connection, std::slice::from_mut(&mut detail));
+    Ok(detail)
 }
 
 #[derive(Debug, Clone, Deserialize)]

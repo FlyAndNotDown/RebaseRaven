@@ -1,3 +1,4 @@
+import { joinRoot } from "@/lib/file-search";
 import { t, useTranslation } from "@/i18n";
 import { useMemo, useState, type KeyboardEvent, type MouseEvent } from "react";
 import {
@@ -491,7 +492,7 @@ export function ChangesPane() {
               <CopyIcon />{t("git.ui.copy_relative_path")}</ContextMenuItem>
             {snapshot ? (
               <ContextMenuItem
-                onClick={() => void copyText(`${snapshot.repo.path.replace(/[\\/]+$/, "")}/${file.path}`)}
+                onClick={() => void copyText(joinRoot(snapshot.repo.path, file.path))}
               >
                 <CopyIcon />{t("git.ui.copy_full_path")}</ContextMenuItem>
             ) : null}

@@ -54,7 +54,10 @@ pub fn conflict_view(repo: &Repository, path: &str) -> AppResult<ConflictView> {
 /// A stash apply can leave conflicts without any merge or rebase in progress,
 /// so the index entry decides whether a path can be resolved.
 pub(super) fn ensure_conflicted(repo: &Repository, path: &str) -> AppResult<()> {
-    let output = run_git(workdir(repo)?, &["ls-files", "-u", "-z", "--", path])?;
+    let output = run_git(
+        workdir(repo)?,
+        &["--literal-pathspecs", "ls-files", "-u", "-z", "--", path],
+    )?;
     if !output.status.success() {
         return Err(git_output_error(output));
     }
@@ -83,7 +86,7 @@ pub fn save_conflict(
     }
     fs::write(&abs, text)?;
     let root = workdir(repo)?.to_path_buf();
-    run_git_stdout(&root, &["add", "--", &path])?;
+    run_git_stdout(&root, &["--literal-pathspecs", "add", "--", &path])?;
     snapshot(repo)
 }
 
@@ -115,12 +118,18 @@ pub fn resolve_conflict(
     ensure_conflicted(repo, &path)?;
     let root = workdir(repo)?.to_path_buf();
     match side.trim() {
-        "ours" => run_git_stdout(&root, &["checkout", "--ours", "--", &path])?,
-        "theirs" => run_git_stdout(&root, &["checkout", "--theirs", "--", &path])?,
+        "ours" => run_git_stdout(
+            &root,
+            &["--literal-pathspecs", "checkout", "--ours", "--", &path],
+        )?,
+        "theirs" => run_git_stdout(
+            &root,
+            &["--literal-pathspecs", "checkout", "--theirs", "--", &path],
+        )?,
         "both" => resolve_both_sides(&root, &path)?,
         _ => return Err(AppError::msg("Choose a side: ours, theirs, or both")),
     };
-    run_git_stdout(&root, &["add", "--", &path])?;
+    run_git_stdout(&root, &["--literal-pathspecs", "add", "--", &path])?;
     snapshot(repo)
 }
 

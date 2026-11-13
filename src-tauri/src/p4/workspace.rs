@@ -1665,7 +1665,7 @@ fn local_path_key(path: &str) -> String {
     }
 }
 
-fn annotate_pending(connection: &P4Connection, changes: &mut [P4Changelist]) {
+pub(super) fn annotate_pending(connection: &P4Connection, changes: &mut [P4Changelist]) {
     let env = env_for(connection);
     let mut paths = Vec::new();
     for change in changes.iter() {
@@ -3825,7 +3825,7 @@ fn load_pending(connection: &P4Connection) -> AppResult<Vec<P4Changelist>> {
         ],
         None,
     )?;
-    let shelved_text = run_ok(
+    let shelved_text = super::review::allow_empty(run_ok(
         &env,
         &[
             "-ztag",
@@ -3834,18 +3834,11 @@ fn load_pending(connection: &P4Connection) -> AppResult<Vec<P4Changelist>> {
             "shelved",
             "-c",
             &connection.client,
+            "-L",
         ],
         None,
-    )
-    .unwrap_or_default();
+    ))?;
     let opened_text = run_ok(&env, &["-ztag", "opened"], None)?;
-    let mut shelved_ids = BTreeSet::new();
-    for record in parse_ztag(&shelved_text) {
-        let id = field(&record, "change");
-        if !id.is_empty() {
-            shelved_ids.insert(id);
-        }
-    }
     let opened = parse_ztag(&opened_text);
     let depot_files: Vec<String> = opened
         .iter()
@@ -3865,7 +3858,6 @@ fn load_pending(connection: &P4Connection) -> AppResult<Vec<P4Changelist>> {
             )
         })
     });
-    let mut shelved_streams = BTreeMap::new();
     let mut by_change: BTreeMap<String, Vec<P4File>> = BTreeMap::new();
     for record in &opened {
         if !record.contains_key("depotFile") {
@@ -3884,17 +3876,6 @@ fn load_pending(connection: &P4Connection) -> AppResult<Vec<P4Changelist>> {
             .or_default()
             .push(file_from_opened(connection, record, &locals, false));
     }
-    for id in shelved_ids.iter().take(40) {
-        let Ok(text) = run_ok(&env, &["-ztag", "describe", "-S", "-s", id], None) else {
-            continue;
-        };
-        let record = parse_ztag(&text).into_iter().next().unwrap_or_default();
-        if let Some(stream) = stream_from_record(&record) {
-            shelved_streams.insert(id.clone(), stream);
-        }
-        let extra = files_from_groups(connection, &indexed_groups(&record), true);
-        by_change.entry(id.clone()).or_default().extend(extra);
-    }
     let default_description = run_ok(&env, &["change", "-o"], None)
         .map(|spec| read_description(&spec))
         .unwrap_or_default();
@@ -3910,34 +3891,7 @@ fn load_pending(connection: &P4Connection) -> AppResult<Vec<P4Changelist>> {
         stream: None,
         shelved_stream: None,
     }];
-    let mut numbered = Vec::new();
-    for record in parse_ztag(&pending_text) {
-        let id = field(&record, "change");
-        if id.is_empty() {
-            continue;
-        }
-        let files = by_change.remove(&id).unwrap_or_default();
-        let shelved = shelved_ids.contains(&id);
-        numbered.push(change_from_record(&record, files, shelved));
-    }
-    for (id, files) in by_change {
-        if numbered.iter().any(|change| change.id == id) {
-            continue;
-        }
-        numbered.push(P4Changelist {
-            id: id.clone(),
-            user: connection.user.clone(),
-            client: connection.client.clone(),
-            status: "pending".to_string(),
-            description: String::new(),
-            time: 0,
-            shelved: shelved_ids.contains(&id),
-            files,
-            stream: None,
-            shelved_stream: None,
-        });
-    }
-    numbered.sort_by_key(|change| std::cmp::Reverse(change_number(&change.id)));
+    let numbered = pending_summaries(connection, &pending_text, &shelved_text, by_change);
     changes.extend(numbered);
     for change in &mut changes {
         change
@@ -3947,10 +3901,56 @@ fn load_pending(connection: &P4Connection) -> AppResult<Vec<P4Changelist>> {
             .as_ref()
             .filter(|(id, _)| id == &change.id)
             .map(|(_, stream)| stream.clone());
-        change.shelved_stream = shelved_streams.remove(&change.id);
     }
     annotate_pending(connection, &mut changes);
     Ok(changes)
+}
+
+fn pending_summaries(
+    connection: &P4Connection,
+    pending: &str,
+    shelves: &str,
+    mut opened: BTreeMap<String, Vec<P4File>>,
+) -> Vec<P4Changelist> {
+    let mut shelves: BTreeMap<_, _> = parse_ztag(shelves)
+        .into_iter()
+        .filter_map(|record| Some((record.get("change")?.clone(), record)))
+        .collect();
+    let mut changes = Vec::new();
+    for record in parse_ztag(pending) {
+        let Some(id) = record.get("change") else {
+            continue;
+        };
+        let files = opened.remove(id).unwrap_or_default();
+        changes.push(change_from_record(
+            &record,
+            files,
+            shelves.remove(id).is_some(),
+        ));
+    }
+    for (id, record) in shelves {
+        changes.push(change_from_record(
+            &record,
+            opened.remove(&id).unwrap_or_default(),
+            true,
+        ));
+    }
+    for (id, files) in opened {
+        changes.push(P4Changelist {
+            id,
+            files,
+            user: connection.user.clone(),
+            client: connection.client.clone(),
+            status: "pending".to_string(),
+            description: String::new(),
+            time: 0,
+            shelved: false,
+            stream: None,
+            shelved_stream: None,
+        });
+    }
+    changes.sort_by_key(|change| std::cmp::Reverse(change_number(&change.id)));
+    changes
 }
 
 fn file_from_opened(
@@ -4606,6 +4606,34 @@ fn first_text(preferred: Option<&String>, fallback: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn pending_lists_every_shelf_without_reading_its_files() {
+        let connection = P4Connection {
+            root: String::new(),
+            port: String::new(),
+            user: "author".into(),
+            client: "main".into(),
+            charset: String::new(),
+            stream: None,
+            server: String::new(),
+        };
+        let shelves: String = (100..=145)
+            .map(|id| format!("... change {id}\n... status pending\n... desc Shelf {id}\n\n"))
+            .collect();
+        let changes = pending_summaries(
+            &connection,
+            "... change 100\n... status pending\n",
+            &shelves,
+            BTreeMap::new(),
+        );
+        assert_eq!(changes.len(), 46);
+        assert!(changes
+            .iter()
+            .all(|change| change.shelved && change.files.is_empty()));
+        assert_eq!(changes[0].id, "145");
+        assert_eq!(changes[0].description, "Shelf 145");
+    }
+
     #[test]
     fn search_ancestors_keep_ignore_rules_without_changing_an_excluded_child() {
         let root = PathBuf::from("workspace");

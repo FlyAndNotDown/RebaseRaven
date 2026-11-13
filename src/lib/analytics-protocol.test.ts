@@ -32,11 +32,18 @@ describe("analytics bridge contract", () => {
       { sessionId: 0 }, { sessionId: 1.5 }, { sessionId: Number.MAX_SAFE_INTEGER + 1 },
       { platform: "unknown" }, { appVersion: "1.2.3\n" }, { appVersion: "x".repeat(65) },
       { repository: "private-project" },
+      { screenSchema: 1 }, { screenSchema: "2" }, { screenSchema: 3 },
     ]) expect(isAnalyticsInit({ ...init, ...patch })).toBe(false);
     for (const value of [null, [], new Date(), Object.create(init)]) expect(isAnalyticsInit(value)).toBe(false);
     expect(isAnalyticsVersion("01.2.3")).toBe(false);
     expect(isAnalyticsVersion("1.2.3-01")).toBe(false);
     expect(isAnalyticsVersion("1.2.3-beta.01")).toBe(false);
+  });
+
+  it("accepts legacy handshakes and the explicit current screen schema", () => {
+    expect(isAnalyticsInit(init)).toBe(true);
+    expect(isAnalyticsInit({ ...init, screenSchema: 2 })).toBe(true);
+    expect(isAnalyticsInit({ ...init, screenSchema: 2, username: "example" })).toBe(false);
   });
 
   it("rejects unapproved event fields, panes, durations and stale generations", () => {

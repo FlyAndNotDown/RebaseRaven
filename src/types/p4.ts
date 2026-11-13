@@ -240,14 +240,10 @@ export type P4FileSource =
   | { kind: "resolve"; path: string }
   | { kind: "stream"; request: import("./p4-stream-specs").P4StreamDiffRequest };
 
-export interface P4WorkspaceOptions { allwrite: boolean; clobber: boolean; compress: boolean; modtime: boolean; rmdir: boolean }
-export interface P4WorkspaceEdit { root: string; view: string[]; lineEnd: "local" | "unix" | "mac" | "win" | "share"; options: P4WorkspaceOptions }
-export interface P4WorkspaceSettings extends P4WorkspaceEdit { stream: string; fingerprint: string }
+export interface P4WorkspaceEdit { root: string; view: string[]; limitView: string[]; lineEnd: "local" | "unix" | "mac" | "win" | "share" }
+export interface P4WorkspaceSettings extends P4WorkspaceEdit { stream: string; limitViewSupported: boolean; fingerprint: string }
 
-export interface P4SwitchRequest { target: string; shelve: boolean }
-export interface P4SwitchFile { path: string; depotPath: string; action: string; change: string | null }
-export interface P4SwitchPreview { current: string; target: string; view: string[]; limitView: string[]; changes: P4SwitchFile[]; unresolved: boolean; fingerprint: string }
-export interface P4SwitchOutcome { connection: P4Connection; source: string; target: string; stage: "shelve" | "switch" | "sync" | "done"; backupShelf: string | null; output: string }
+export interface P4SwitchRequest { target: string }
 
 export interface P4CleanRequest {
   scope: string;

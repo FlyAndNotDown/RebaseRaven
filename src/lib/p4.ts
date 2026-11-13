@@ -12,8 +12,6 @@ import type {
   P4Auth,
   P4WorkspaceEdit,
   P4SwitchRequest,
-  P4SwitchPreview,
-  P4SwitchOutcome,
   P4WorkspaceSettings,
   P4ChangePage,
   P4Changelist,
@@ -164,8 +162,7 @@ export const p4Api = {
   cancelDepotSearch: (connection: P4Connection) => call<void>("p4_cancel_depot_search", { connection }),
   searchFiles: (connection: P4Connection, query: string) =>
     call<P4FileSearch>("p4_search_files", { connection, query }),
-  previewSwitch: (connection: P4Connection, request: P4SwitchRequest) => call<P4SwitchPreview>("p4_preview_switch", {connection, request}),
-  applySwitch: (connection: P4Connection, request: P4SwitchRequest, fingerprint: string) => call<P4SwitchOutcome>("p4_apply_switch", {connection, request, fingerprint}),
+  applySwitch: (connection: P4Connection, request: P4SwitchRequest) => call<P4Connection>("p4_apply_switch", {connection, request}),
   workspaceSettings: (connection: P4Connection) => call<P4WorkspaceSettings>("p4_workspace_settings", {connection}),
   saveWorkspace: (connection: P4Connection, edit: P4WorkspaceEdit, fingerprint: string) =>
     call<P4Connection>("p4_save_workspace", { connection, edit, fingerprint }),
@@ -205,7 +202,7 @@ export const p4Api = {
   getRevision: (connection: P4Connection, request: P4GetRevision, activityId?: string) =>
     call<string>("p4_get_revision", { connection, request, activityId: activityId ?? null }),
   listShelves: (connection: P4Connection, user: string, client: string, before: number | null) => call<P4ChangePage>("p4_list_shelves", { connection, user, client, before }),
-  shelfDetail: (connection: P4Connection, changeId: string) => call<P4Changelist>("p4_shelf_detail", { connection, changeId }),
+  shelfDetail: (connection: P4Connection, changeId: string, pending = false) => call<P4Changelist>("p4_shelf_detail", { connection, changeId, pending }),
   previewUnshelve: (connection: P4Connection, request: P4UnshelveRequest) => call<P4OperationPreview>("p4_preview_unshelve", { connection, request }),
   restoreShelf: (connection: P4Connection, request: P4UnshelveRequest, fingerprint: string) => call<string>("p4_restore_shelf", { connection, request, fingerprint }),
   previewStream: (connection: P4Connection, request: P4StreamRequest) => call<P4StreamPreview>("p4_preview_stream", { connection, request }),
@@ -220,9 +217,9 @@ export const p4Api = {
     call<string>("p4_apply_undo", { connection, request, fingerprint }),
   previewClean: (connection: P4Connection, request: P4CleanRequest) => call<P4CleanPreview>("p4_preview_clean", {connection,request}),
   applyClean: (connection: P4Connection, request: P4CleanRequest, paths: string[], fingerprint: string) => call<string>("p4_apply_clean", {connection,request,paths,fingerprint}),
-  previewReconcile: (connection: P4Connection) => call<P4ReconcilePreview>("p4_preview_reconcile", { connection }),
-  applyReconcile: (connection: P4Connection, paths: string[], changeId: string, fingerprint: string) =>
-    call<string>("p4_apply_reconcile", { connection, paths, changeId, fingerprint }),
+  previewReconcile: (connection: P4Connection, scope?: string) => call<P4ReconcilePreview>("p4_preview_reconcile", { connection, scope: scope ?? null }),
+  applyReconcile: (connection: P4Connection, paths: string[], changeId: string, fingerprint: string, scope?: string) =>
+    call<string>("p4_apply_reconcile", { connection, paths, changeId, fingerprint, scope: scope ?? null }),
   fileAction: (connection: P4Connection, action: "edit" | "add" | "delete" | "lock" | "unlock", paths: string[], changeId?: string) =>
     call<void>("p4_file_action", { connection, action, paths, changeId: changeId ?? null }),
   login: (connection: P4Connection, password: string) =>

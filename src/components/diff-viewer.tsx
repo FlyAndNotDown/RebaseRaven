@@ -137,15 +137,16 @@ export function DiffViewer({ source }: { source: DiffSource }) {
   const changePath = changeSelection?.path;
   const changeStaged = changeSelection?.staged ?? false;
   const changeKind = changeFile?.kind;
+  const fingerprint = changeDiff?.fingerprint;
   const lineActions = useMemo<DiffLineActions | undefined>(() => {
     // A whitespace-blind diff cannot be turned back into a patch that applies.
-    if (ignoreWhitespace || !changePath || !changeKind || !LINE_KINDS.has(changeKind)) return undefined;
+    if (!fingerprint || ignoreWhitespace || !changePath || !changeKind || !LINE_KINDS.has(changeKind)) return undefined;
     return {
       staged: changeStaged,
       allowDiscard: !changeStaged && changeKind !== "untracked",
-      onApply: (action, lines) => applyLines(changePath, changeStaged, action, lines),
+      onApply: (action, lines) => applyLines(changePath, changeStaged, action, lines, fingerprint),
     };
-  }, [applyLines, changeKind, changePath, changeStaged, ignoreWhitespace]);
+  }, [applyLines, changeKind, changePath, changeStaged, fingerprint, ignoreWhitespace]);
   const textual = Boolean(diff && !diff.binary && !conflicted);
   let fileSource: FileSource | null = null;
   if (diff && selection) {
@@ -342,7 +343,8 @@ export const DiffLines = memo(function DiffLines({
   const anchor = picks.diff === diff ? picks.anchor : null;
   const drag = useRef<{ base: ReadonlySet<number>; from: number; adding: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [confirmDiscard, setConfirmDiscard] = useState<number[] | null>(null);
+  const [pendingDiscard, setConfirmDiscard] = useState<{ diff: FileDiff; indices: number[] } | null>(null);
+  const confirmDiscard = pendingDiscard?.diff === diff ? pendingDiscard.indices : null;
 
   useEffect(() => {
     const end = () => {
@@ -413,7 +415,7 @@ export const DiffLines = memo(function DiffLines({
   }
 
   function request(action: LineAction, indices: number[]) {
-    if (action === "discard") setConfirmDiscard(indices);
+    if (action === "discard") setConfirmDiscard({ diff, indices });
     else void run(action, indices);
   }
 

@@ -40,44 +40,31 @@ pub fn unstage_paths(repo: &Repository, paths: &[String]) -> AppResult<()> {
 pub(super) fn is_untracked(repo: &Repository, rel: &str) -> bool {
     let Ok(output) = run_git(
         repo.workdir(),
-        &["status", "--porcelain=v1", "-z", "--ignored=no", "--", rel],
+        &[
+            "--literal-pathspecs",
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--ignored=no",
+            "--",
+            rel,
+        ],
     ) else {
         return false;
     };
     output.status.success() && output.stdout.starts_with(b"??")
 }
 
-pub(super) fn remove_worktree_path(full: &Path) -> AppResult<()> {
-    let metadata = match fs::symlink_metadata(full) {
-        Ok(metadata) => metadata,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(err) => return Err(err.into()),
-    };
-    let directory = metadata.is_dir();
-    #[cfg(windows)]
-    let directory = {
-        use std::os::windows::fs::FileTypeExt;
-        directory || metadata.file_type().is_symlink_dir()
-    };
-    if directory {
-        fs::remove_dir_all(full)?;
-    } else {
-        fs::remove_file(full)?;
-    }
-    Ok(())
-}
-
 /// Resolve parent directories for containment, but preserve the final entry so
 /// discarding a symlink removes the link instead of the file it points to.
-fn discard_entry_path(repo: &Repository, relative: &str) -> AppResult<PathBuf> {
+fn discard_entry_path(root: &Path, relative: &str) -> AppResult<PathBuf> {
     safe_repo_path(relative)?;
-    let root = workdir(repo)?.canonicalize()?;
     let candidate = root.join(relative);
     let mut parent = candidate.parent();
     while let Some(path) = parent {
         match path.canonicalize() {
             Ok(canonical) => {
-                if !canonical.starts_with(&root) {
+                if !canonical.starts_with(root) {
                     return Err(AppError::msg("Path is outside the repository"));
                 }
                 return Ok(candidate);
@@ -112,53 +99,160 @@ pub(super) fn clear_readonly(full: &Path) -> AppResult<()> {
     Ok(())
 }
 
+// ls-tree expands a selected directory if queried alongside a descendant.
+fn paths_in_head(root: &Path, head: &str, paths: &[String]) -> AppResult<HashSet<Vec<u8>>> {
+    let selected: HashSet<&str> = paths.iter().map(String::as_str).collect();
+    let mut groups = std::collections::BTreeMap::<usize, Vec<String>>::new();
+    for path in paths {
+        let selected_parents = path
+            .match_indices('/')
+            .filter(|(index, _)| selected.contains(&path[..*index]))
+            .count();
+        groups
+            .entry(selected_parents)
+            .or_default()
+            .push(path.clone());
+    }
+    let mut tracked = HashSet::new();
+    for paths in groups.values() {
+        for chunk in pathspec_chunks(paths) {
+            let mut args = vec![
+                "--literal-pathspecs",
+                "ls-tree",
+                "-t",
+                "-z",
+                "--name-only",
+                head,
+                "--",
+            ];
+            args.extend(chunk.iter().map(String::as_str));
+            let output = run_git_stdout(root, &args)?;
+            tracked.extend(
+                output
+                    .split(|byte| *byte == 0)
+                    .filter(|entry| !entry.is_empty())
+                    .map(<[u8]>::to_vec),
+            );
+        }
+    }
+    Ok(tracked)
+}
+
+fn reject_case_aliases(root: &Path, head: Option<&str>, paths: &[String]) -> AppResult<()> {
+    // The index (including staged removals from HEAD) may spell a path
+    // differently from the filesystem. Never delete it as an untracked path.
+    let config = run_git(root, &["config", "--bool", "--get", "core.ignorecase"])?;
+    match config.status.code() {
+        Some(1) => return Ok(()),
+        Some(0) if config.stdout != b"true\n" && config.stdout != b"true\r\n" => return Ok(()),
+        Some(0) => {}
+        _ => return Err(git_output_error(config)),
+    }
+    let tree = head.map(|head| format!("--with-tree={head}"));
+    let specs: Vec<_> = paths
+        .iter()
+        .map(|path| format!(":(icase,literal){path}"))
+        .collect();
+    let requested: HashSet<_> = paths.iter().map(String::as_str).collect();
+    for chunk in pathspec_chunks(&specs) {
+        let mut args = vec!["ls-files", "-z"];
+        args.extend(tree.as_deref());
+        args.push("--");
+        args.extend(chunk.iter().map(String::as_str));
+        let output = run_git_stdout(root, &args)?;
+        for entry in output
+            .split(|byte| *byte == 0)
+            .filter(|entry| !entry.is_empty())
+        {
+            let entry = String::from_utf8_lossy(entry);
+            // Git matched this entry case-insensitively. It must also be
+            // inside one of the requested paths with its exact spelling.
+            if !entry
+                .match_indices('/')
+                .map(|(i, _)| &entry[..i])
+                .chain([entry.as_ref()])
+                .any(|part| requested.contains(part))
+            {
+                return Err(AppError::msg("A selected path differs in case from a tracked path. Refresh before discarding changes."));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn discard_paths(repo: &Repository, paths: &[String]) -> AppResult<()> {
-    let has_head = head_oid(repo).is_some();
+    let paths: Vec<String> = paths
+        .iter()
+        .map(|path| to_git_path(path))
+        .filter(|path| !path.is_empty())
+        .collect();
+    if paths.is_empty() {
+        return Ok(());
+    }
+    let root = workdir(repo)?;
+    let canonical_root = root.canonicalize()?;
+    let entries = paths
+        .iter()
+        .map(|rel| discard_entry_path(&canonical_root, rel))
+        .collect::<AppResult<Vec<_>>>()?;
+    let output = run_git(root, &["rev-parse", "--verify", "--quiet", "HEAD"])?;
+    let head = match output.status.code() {
+        Some(0) => Some(String::from_utf8_lossy(&output.stdout).trim().to_owned()),
+        Some(1) if output.stderr.is_empty() => None,
+        _ => return Err(git_output_error(output)),
+    };
+
+    // ls-tree includes tree entries (-t), so selecting a tracked directory
+    // restores its tracked contents even if it also contains untracked files.
+    let tracked = match &head {
+        Some(head) => paths_in_head(root, head, &paths)?,
+        None => HashSet::new(),
+    };
     let mut in_head = Vec::new();
     let mut not_in_head = Vec::new();
-    for raw in paths {
-        let rel = to_git_path(raw);
-        if rel.is_empty() {
-            continue;
-        }
-        let full = discard_entry_path(repo, &rel)?;
-        if is_untracked(repo, &rel) {
-            remove_worktree_path(&full)?;
-            continue;
-        }
-        if has_head && object_exists(repo, &format!("HEAD:{rel}")) {
+    for (rel, full) in paths.into_iter().zip(entries) {
+        if tracked.contains(rel.as_bytes()) {
             clear_readonly(&full)?;
             in_head.push(rel);
         } else {
-            not_in_head.push((rel, full));
+            if fs::symlink_metadata(&full).is_ok_and(|meta| meta.is_dir())
+                && full.join(".git").exists()
+            {
+                return Err(AppError::msg(
+                    "Discard changes inside the nested repository instead.",
+                ));
+            }
+            not_in_head.push(rel);
         }
     }
 
     if !not_in_head.is_empty() {
-        let specs: Vec<String> = not_in_head.iter().map(|(rel, _)| rel.clone()).collect();
-        let root = workdir(repo)?;
-        if has_head {
-            run_git_pathspecs(root, &["reset", "-q", "HEAD"], &specs)?;
+        reject_case_aliases(root, head.as_deref(), &not_in_head)?;
+        if let Some(head) = &head {
+            run_git_pathspecs(root, &["reset", "-q", head], &not_in_head)?;
         } else {
             run_git_pathspecs(
                 root,
                 &["rm", "-q", "--cached", "--force", "--ignore-unmatch"],
-                &specs,
+                &not_in_head,
             )?;
         }
-        for (_, full) in &not_in_head {
-            remove_worktree_path(full)?;
+        // One force flag lets Git protect nested repositories while still
+        // removing ignored files within an explicitly selected directory.
+        for chunk in pathspec_chunks(&not_in_head) {
+            let mut args = vec!["--literal-pathspecs", "clean", "-fdqx", "--"];
+            args.extend(chunk.iter().map(String::as_str));
+            run_git_stdout(root, &args)?;
         }
     }
 
     // `git checkout` resets the index entry too, and applies the same filters as
     // `git status`. Writing the raw blob turns a clean CRLF worktree into LF,
     // which stays listed with an empty diff.
-    let root = workdir(repo)?;
-    for chunk in pathspec_chunks(&in_head) {
-        let mut args = vec!["--literal-pathspecs", "checkout", "HEAD", "--"];
-        args.extend(chunk.iter().map(String::as_str));
-        run_git_stdout(root, &args)?;
+    if let Some(head) = head {
+        if !in_head.is_empty() {
+            run_git_pathspecs(root, &["checkout", &head], &in_head)?;
+        }
     }
     Ok(())
 }
@@ -186,8 +280,17 @@ pub(super) fn pathspec_chunks(paths: &[String]) -> Vec<&[String]> {
 /// Appends patterns to the top-level .gitignore, skipping ones it already lists
 /// and keeping the file's line endings.
 pub fn ignore_patterns(repo: &Repository, patterns: &[String]) -> AppResult<()> {
-    let path = workdir(repo)?.join(".gitignore");
-    let existing = fs::read_to_string(&path).unwrap_or_default();
+    append_ignore_patterns(&workdir(repo)?.join(".gitignore"), patterns)
+}
+
+fn append_ignore_patterns(path: &Path, patterns: &[String]) -> AppResult<()> {
+    use std::io::{ErrorKind, Write};
+
+    let existing = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(error.into()),
+    };
     let newline = if existing.contains("\r\n") {
         "\r\n"
     } else {
@@ -197,19 +300,23 @@ pub fn ignore_patterns(repo: &Repository, patterns: &[String]) -> AppResult<()> 
         .lines()
         .map(|line| line.trim().to_string())
         .collect();
-    let mut text = existing.clone();
+    let mut additions = String::new();
     for pattern in patterns.iter().map(|pattern| pattern.trim()) {
         if pattern.is_empty() || !listed.insert(pattern.to_string()) {
             continue;
         }
-        if !text.is_empty() && !text.ends_with('\n') {
-            text.push_str(newline);
+        if additions.is_empty() && !existing.is_empty() && !existing.ends_with('\n') {
+            additions.push_str(newline);
         }
-        text.push_str(pattern);
-        text.push_str(newline);
+        additions.push_str(pattern);
+        additions.push_str(newline);
     }
-    if text != existing {
-        fs::write(&path, text)?;
+    if !additions.is_empty() {
+        fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)?
+            .write_all(additions.as_bytes())?;
     }
     Ok(())
 }
@@ -244,4 +351,30 @@ pub fn commit(repo: &Repository, message: &str, amend: bool) -> AppResult<Commit
     run_git_input(workdir(repo)?, &args, message.as_bytes())?;
     let oid = head_oid(repo).ok_or_else(|| AppError::msg("Commit did not move HEAD"))?;
     summarize_oid(repo, &oid)
+}
+
+#[cfg(test)]
+mod ignore_tests {
+    use super::*;
+
+    #[test]
+    fn ignore_preserves_existing_rules_when_decoding_fails() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join(".gitignore");
+        let original = b"*.log\n#\xff\n";
+        fs::write(&path, original).unwrap();
+        assert!(append_ignore_patterns(&path, &["*.tmp".into()]).is_err());
+        assert_eq!(fs::read(path).unwrap(), original);
+    }
+
+    #[test]
+    fn ignore_creates_missing_files_and_appends_without_rewriting_rules() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join(".gitignore");
+        append_ignore_patterns(&path, &["*.log".into()]).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"*.log\n");
+        fs::write(&path, b"# rules\r\n*.log").unwrap();
+        append_ignore_patterns(&path, &["*.log".into(), "*.tmp".into()]).unwrap();
+        assert_eq!(fs::read(path).unwrap(), b"# rules\r\n*.log\r\n*.tmp\r\n");
+    }
 }

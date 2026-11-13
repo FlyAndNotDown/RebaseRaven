@@ -1,10 +1,11 @@
 import {
-  isAnalyticsDisable, isAnalyticsEvent, isAnalyticsInit, isTrustedAnalyticsParent,
+  isAnalyticsContext, isAnalyticsDisable, isAnalyticsEvent, isAnalyticsInit, isTrustedAnalyticsParent,
   type AnalyticsEvent, type AnalyticsInit, type AnalyticsReply,
 } from "../../src/lib/analytics-protocol";
 
 export interface AnalyticsTag {
   ready: Promise<void>;
+  setScreenSchema(schema: 2): void;
   send(event: AnalyticsEvent): void;
   disable(): void;
 }
@@ -39,6 +40,8 @@ export function installAnalyticsBridge(host: Window, createTag: (init: Analytics
         // Stop collection before the parent receives permission to remove us.
         disable();
         reply("disabled");
+      } else if (state !== "disabled" && isAnalyticsContext(data, generation)) {
+        tag?.setScreenSchema(data.screenSchema);
       } else if (state === "ready" && isAnalyticsEvent(data, generation)) {
         try { tag?.send(data); } catch { fail(); }
       }

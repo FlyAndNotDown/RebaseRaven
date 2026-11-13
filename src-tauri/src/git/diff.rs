@@ -24,18 +24,18 @@ pub(super) struct ParsedLine {
     pub new_lineno: Option<u32>,
 }
 
-/// The diff shown for a changed file: HEAD to index when `staged`, otherwise
-/// index to working tree. Line staging rebuilds patches from this same diff,
-/// so the line numbers the UI sends always match. `ignore_whitespace` is for
-/// display only; applying lines always passes false.
-pub(super) fn change_diff(
-    repo: &Repository,
-    rel: &str,
-    staged: bool,
-    ignore_whitespace: bool,
-) -> AppResult<ParsedDiff> {
-    let stdout = git_diff_bytes(repo, &[], staged, ignore_whitespace, rel)?;
-    Ok(parse_unified_diff(&stdout, rel))
+#[derive(Debug, Serialize)]
+pub struct WorkdirDiff {
+    #[serde(flatten)]
+    pub diff: FileDiff,
+    pub fingerprint: Option<String>,
+}
+
+pub(super) fn diff_fingerprint(path: &str, staged: bool, bytes: &[u8]) -> String {
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    let mut hash = DefaultHasher::new();
+    (path, staged, bytes).hash(&mut hash);
+    format!("{:016x}", hash.finish())
 }
 
 pub fn workdir_diff(
@@ -43,80 +43,57 @@ pub fn workdir_diff(
     path: &str,
     staged: bool,
     ignore_whitespace: bool,
-) -> AppResult<FileDiff> {
+) -> AppResult<WorkdirDiff> {
     let rel = to_git_path(path);
-    let parsed = change_diff(repo, &rel, staged, ignore_whitespace)?;
-    let file_diff = file_diff_from_parsed(&parsed, &rel);
-    if !staged && !file_diff.binary && file_diff.lines.is_empty() {
-        if let Some(fallback) = untracked_workdir_diff(repo, &rel)? {
-            return Ok(fallback);
-        }
+    let bytes = git_diff_bytes(repo, &[], staged, ignore_whitespace, &rel)?;
+    let mut diff = file_diff_from_parsed(&parse_unified_diff(&bytes, &rel), &rel);
+    if !staged && !diff.binary && diff.lines.is_empty() && is_untracked(repo, &rel) {
+        let (bytes, truncated) = untracked_diff_bytes(repo, &rel, ignore_whitespace)?;
+        diff = file_diff_from_parsed(&parse_unified_diff(&bytes, &rel), &rel);
+        diff.truncated |= truncated;
+        let fingerprint =
+            (!ignore_whitespace && !diff.binary).then(|| diff_fingerprint(&rel, false, &bytes));
+        return Ok(WorkdirDiff { diff, fingerprint });
     }
-    Ok(file_diff)
+    let fingerprint =
+        (!ignore_whitespace && !diff.binary).then(|| diff_fingerprint(&rel, staged, &bytes));
+    Ok(WorkdirDiff { diff, fingerprint })
 }
 
-pub(super) fn untracked_workdir_diff(repo: &Repository, path: &str) -> AppResult<Option<FileDiff>> {
-    if !is_untracked(repo, path) {
-        return Ok(None);
-    }
-    if looks_binary_path(path) {
-        return Ok(Some(FileDiff {
-            path: path.to_string(),
-            old_path: None,
-            binary: true,
-            truncated: false,
-            lines: Vec::new(),
-        }));
-    }
-
-    let abs = ensure_inside_workdir(repo, path)?;
-    if !abs.is_file() {
-        return Ok(None);
-    }
-    let (bytes, cut) = read_text_prefix(&abs)?;
-    if bytes.contains(&0) {
-        return Ok(Some(FileDiff {
-            path: path.to_string(),
-            old_path: None,
-            binary: true,
-            truncated: false,
-            lines: Vec::new(),
-        }));
-    }
-
-    let text = String::from_utf8_lossy(&bytes);
-    let body = text.strip_suffix('\n').unwrap_or(&text);
-    let mut lines = Vec::new();
-    let mut truncated = cut;
-    if !text.is_empty() {
-        let total = body.split('\n').count();
-        lines.push(DiffLine {
-            kind: "hunk".to_string(),
-            content: format!("@@ -0,0 +1,{total} @@"),
-            old_lineno: None,
-            new_lineno: None,
-        });
-        for (index, line) in body.split('\n').enumerate() {
-            if lines.len() > MAX_DIFF_LINES {
-                truncated = true;
-                break;
-            }
-            let content = line.strip_suffix('\r').unwrap_or(line).to_string();
-            lines.push(DiffLine {
-                kind: "add".to_string(),
-                content,
-                old_lineno: None,
-                new_lineno: Some((index + 1) as u32),
-            });
+/// Git normalizes the new file exactly as it will be stored in the index. The
+/// full blob ID in the header also authenticates content past the preview cap.
+pub(super) fn untracked_diff_bytes(
+    repo: &Repository,
+    path: &str,
+    ignore_whitespace: bool,
+) -> AppResult<(Vec<u8>, bool)> {
+    ensure_inside_workdir(repo, path)?;
+    let mut args = diff_args(ignore_whitespace);
+    args.extend(["--no-index", "--", "/dev/null", path]);
+    let mut child = spawn_git_stdout(repo.workdir(), &args)?;
+    let mut bytes = Vec::new();
+    child
+        .stdout
+        .take()
+        .ok_or_else(|| AppError::msg("Could not read Git diff"))?
+        .take(MAX_TEXT_BYTES + 1)
+        .read_to_end(&mut bytes)?;
+    let truncated = bytes.len() as u64 > MAX_TEXT_BYTES;
+    if truncated {
+        stop_child(&mut child);
+        bytes.truncate(
+            bytes
+                .iter()
+                .rposition(|byte| *byte == b'\n')
+                .map_or(0, |index| index + 1),
+        );
+    } else {
+        let status = child.wait()?;
+        if !status.success() && status.code() != Some(1) {
+            return Err(AppError::msg("Could not read the new file's diff"));
         }
     }
-    Ok(Some(FileDiff {
-        path: path.to_string(),
-        old_path: None,
-        binary: false,
-        truncated,
-        lines,
-    }))
+    Ok((bytes, truncated))
 }
 
 pub fn commit_details(repo: &Repository, oid: &str) -> AppResult<CommitDetails> {
@@ -165,15 +142,14 @@ pub(super) fn parse_name_status_z(bytes: &[u8]) -> AppResult<Vec<CommitFile>> {
             _ => "modified",
         };
         let first = match parts.next() {
-            Some(path) if !path.is_empty() => String::from_utf8_lossy(path).replace('\\', "/"),
+            Some(path) if !path.is_empty() => String::from_utf8_lossy(path).into_owned(),
             _ => continue,
         };
         let (path, old_path) = if matches!(kind, "renamed" | "copied") {
             match parts.next() {
-                Some(path) if !path.is_empty() => (
-                    String::from_utf8_lossy(path).replace('\\', "/"),
-                    Some(first),
-                ),
+                Some(path) if !path.is_empty() => {
+                    (String::from_utf8_lossy(path).into_owned(), Some(first))
+                }
                 _ => (first, None),
             }
         } else {
@@ -254,14 +230,26 @@ pub(super) fn diff_between(
     ))
 }
 
-fn git_diff_bytes(
+pub(super) fn git_diff_bytes(
     repo: &Repository,
     revisions: &[&str],
     staged: bool,
     ignore_whitespace: bool,
     path: &str,
 ) -> AppResult<Vec<u8>> {
+    let mut args = diff_args(ignore_whitespace);
+    if staged {
+        args.push("--cached");
+    }
+    args.extend_from_slice(revisions);
+    args.push("--");
+    args.push(path);
+    run_git_stdout(repo.workdir(), &args)
+}
+
+fn diff_args(ignore_whitespace: bool) -> Vec<&'static str> {
     let mut args = vec![
+        "--literal-pathspecs",
         "-c",
         "core.quotePath=false",
         "-c",
@@ -269,6 +257,7 @@ fn git_diff_bytes(
         "-c",
         "diff.noprefix=false",
         "diff",
+        "--full-index",
         "--no-color",
         "--no-ext-diff",
         "--no-textconv",
@@ -279,13 +268,7 @@ fn git_diff_bytes(
     if ignore_whitespace {
         args.push("-w");
     }
-    if staged {
-        args.push("--cached");
-    }
-    args.extend_from_slice(revisions);
-    args.push("--");
-    args.push(path);
-    run_git_stdout(repo.workdir(), &args)
+    args
 }
 
 pub(super) fn file_diff_from_parsed(parsed: &ParsedDiff, fallback: &str) -> FileDiff {
@@ -370,7 +353,7 @@ pub(super) fn parse_unified_diff(bytes: &[u8], fallback: &str) -> ParsedDiff {
         .collect();
 
     let mut parsed = ParsedDiff {
-        path: fallback.replace('\\', "/"),
+        path: fallback.to_string(),
         old_path: None,
         binary: false,
         hunks: Vec::new(),
@@ -392,7 +375,7 @@ pub(super) fn parse_unified_diff(bytes: &[u8], fallback: &str) -> ParsedDiff {
             parsed.hunks.clear();
             parsed.binary = false;
             parsed.old_path = None;
-            parsed.path = fallback.replace('\\', "/");
+            parsed.path = fallback.to_string();
             continue;
         }
         if let Some(name) = line.strip_prefix("rename from ") {
@@ -505,7 +488,7 @@ fn parse_hunk_header(line: &str) -> Option<(u32, u32)> {
 fn unquote_git_path(value: &str) -> String {
     let value = value.trim();
     if !value.starts_with('"') {
-        return value.replace('\\', "/");
+        return value.to_string();
     }
     let bytes = value.as_bytes();
     let mut out = Vec::new();
@@ -544,7 +527,7 @@ fn unquote_git_path(value: &str) -> String {
         }
         index += 1;
     }
-    String::from_utf8_lossy(&out).replace('\\', "/")
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 #[cfg(test)]

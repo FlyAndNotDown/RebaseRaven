@@ -10,9 +10,10 @@ const SCREEN_NAMES = {
   git_stash: "Git stashes",
   git_files: "Git files",
   p4_pending: "Perforce pending changes",
-  p4_files: "Perforce files",
+  p4_files: "Perforce workspace files",
   p4_history: "Perforce history",
   p4_depot: "Perforce depot",
+  p4_shelves: "Perforce shelves",
 } satisfies Record<AnalyticsPane, string>;
 
 export function analyticsConfiguration(init: AnalyticsInit) {
@@ -24,7 +25,7 @@ export function analyticsConfiguration(init: AnalyticsInit) {
     app_version: init.appVersion,
     app_platform: init.platform,
     content_group: "Desktop application",
-    page_title: SCREEN_NAMES.welcome,
+    page_title: DESKTOP_ANALYTICS_NAME,
     page_location: ANALYTICS_BRIDGE_URL,
     page_referrer: "",
     ignore_referrer: true,
@@ -34,12 +35,13 @@ export function analyticsConfiguration(init: AnalyticsInit) {
     cookie_prefix: "rebaseraven_app",
     cookie_domain: "none",
     cookie_path: new URL(ANALYTICS_BRIDGE_URL).pathname,
-    cookie_expires: 0,
-    cookie_update: false,
+    // Keep first-visit and session metadata across native application restarts.
+    cookie_expires: 63_072_000,
+    cookie_update: true,
   } as const;
 }
 
-export function analyticsEventParameters(init: AnalyticsInit, event: AnalyticsEvent, measurementId: string, currentPane: AnalyticsPane = "welcome") {
+export function analyticsEventParameters(init: AnalyticsInit, event: AnalyticsEvent, measurementId: string, currentPane: AnalyticsPane | null = null) {
   const pane = event.event === "pane_view" ? event.pane : currentPane;
   return {
     send_to: measurementId,
@@ -48,13 +50,16 @@ export function analyticsEventParameters(init: AnalyticsInit, event: AnalyticsEv
     app_name: DESKTOP_ANALYTICS_NAME,
     app_version: init.appVersion,
     app_platform: init.platform,
+    screen_schema: init.screenSchema === 2 ? "2" : "legacy",
     content_group: "Desktop application",
-    screen_name: SCREEN_NAMES[pane],
-    screen_class: pane,
-    pane,
-    version_control: pane.startsWith("git_") ? "git" : pane.startsWith("p4_") ? "perforce" : "none",
+    ...(pane === null ? {} : {
+      screen_name: SCREEN_NAMES[pane],
+      screen_class: pane,
+      pane,
+      version_control: pane.startsWith("git_") ? "git" : pane.startsWith("p4_") ? "perforce" : "none",
+    }),
     // GA4 uses the web title in its combined Pages and screens report.
-    page_title: SCREEN_NAMES[pane],
+    page_title: pane === null ? DESKTOP_ANALYTICS_NAME : SCREEN_NAMES[pane],
     page_location: ANALYTICS_BRIDGE_URL,
     page_referrer: "",
     ...(event.event === "app_engagement" ? {
@@ -66,12 +71,14 @@ export function analyticsEventParameters(init: AnalyticsInit, event: AnalyticsEv
 
 export function createGoogleAnalyticsTag(host: Window, measurementId: string | undefined, init: AnalyticsInit): AnalyticsTag {
   const tag = createGoogleTag(host, measurementId, analyticsConfiguration(init));
-  let pane: AnalyticsPane = "welcome";
+  let pane: AnalyticsPane | null = null;
+  let screenSchema = init.screenSchema;
   return {
     ready: tag.ready,
+    setScreenSchema(schema) { screenSchema = schema; },
     send(event) {
       if (event.event === "pane_view") pane = event.pane;
-      tag.send(event.event === "pane_view" ? "screen_view" : event.event, analyticsEventParameters(init, event, measurementId!, pane));
+      tag.send(event.event === "pane_view" ? "screen_view" : event.event, analyticsEventParameters({ ...init, screenSchema }, event, measurementId!, pane));
     },
     disable: tag.disable,
   };

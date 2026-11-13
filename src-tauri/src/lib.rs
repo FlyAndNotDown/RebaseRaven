@@ -262,7 +262,7 @@ async fn get_workdir_diff(
     path: String,
     staged: bool,
     ignore_whitespace: Option<bool>,
-) -> AppResult<FileDiff> {
+) -> AppResult<git::WorkdirDiff> {
     let ignore_whitespace = ignore_whitespace.unwrap_or(false);
     with_repo_async(repo_path, move |repo| {
         git::workdir_diff(repo, &path, staged, ignore_whitespace)
@@ -401,9 +401,10 @@ async fn apply_lines(
     staged: bool,
     action: String,
     lines: Vec<git::LineRef>,
+    fingerprint: String,
 ) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, move |repo| {
-        git::apply_lines(repo, &path, staged, &action, &lines)
+        git::apply_lines(repo, &path, staged, &action, &lines, &fingerprint)
     })
     .await
 }
@@ -1762,20 +1763,11 @@ async fn p4_apply_label_tag(
 }
 
 #[tauri::command]
-async fn p4_preview_switch(
-    connection: p4::P4Connection,
-    request: p4::P4SwitchRequest,
-) -> AppResult<p4::P4SwitchPreview> {
-    blocking(move || p4::preview_switch(&connection, &request)).await
-}
-
-#[tauri::command]
 async fn p4_apply_switch(
     connection: p4::P4Connection,
     request: p4::P4SwitchRequest,
-    fingerprint: String,
-) -> AppResult<p4::P4SwitchOutcome> {
-    blocking(move || p4::apply_switch(&connection, &request, &fingerprint)).await
+) -> AppResult<p4::P4Connection> {
+    blocking(move || p4::apply_switch(&connection, &request)).await
 }
 
 #[tauri::command]
@@ -1989,8 +1981,11 @@ async fn p4_sync(
 }
 
 #[tauri::command]
-async fn p4_preview_reconcile(connection: p4::P4Connection) -> AppResult<p4::P4ReconcilePreview> {
-    blocking(move || p4::preview_reconcile(&connection)).await
+async fn p4_preview_reconcile(
+    connection: p4::P4Connection,
+    scope: Option<String>,
+) -> AppResult<p4::P4ReconcilePreview> {
+    blocking(move || p4::preview_reconcile(&connection, scope.as_deref())).await
 }
 
 #[tauri::command]
@@ -2017,8 +2012,18 @@ async fn p4_apply_reconcile(
     paths: Vec<String>,
     change_id: String,
     fingerprint: String,
+    scope: Option<String>,
 ) -> AppResult<String> {
-    blocking(move || p4::apply_reconcile(&connection, &paths, &change_id, &fingerprint)).await
+    blocking(move || {
+        p4::apply_reconcile(
+            &connection,
+            &paths,
+            &change_id,
+            &fingerprint,
+            scope.as_deref(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
@@ -2035,8 +2040,16 @@ async fn p4_list_shelves(
 async fn p4_shelf_detail(
     connection: p4::P4Connection,
     change_id: String,
+    pending: Option<bool>,
 ) -> AppResult<p4::P4Changelist> {
-    blocking(move || p4::shelf_detail(&connection, &change_id)).await
+    blocking(move || {
+        if pending.unwrap_or(false) {
+            p4::pending_shelf_detail(&connection, &change_id)
+        } else {
+            p4::shelf_detail(&connection, &change_id)
+        }
+    })
+    .await
 }
 
 #[tauri::command]
@@ -2615,7 +2628,6 @@ pub fn run() {
             p4_label_files,
             p4_preview_label_tag,
             p4_apply_label_tag,
-            p4_preview_switch,
             p4_apply_switch,
             p4_submit,
             p4_save_change,

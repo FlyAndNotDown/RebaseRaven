@@ -86,43 +86,6 @@ npm run site:preview
 `check:site` typechecks, builds, and checks the website assets. Vite writes
 `site/dist/`.
 
-### Analytics
-
-Use separate GA4 properties and deployment variables for each surface:
-
-| Surface | Property | GitHub variable | Vite variable |
-| --- | --- | --- | --- |
-| Desktop | RebaseRavenApp | GA_APP_MEASUREMENT_ID | VITE_GA_APP_MEASUREMENT_ID |
-| Website | RebaseRavenWebsite | GA_WEBSITE_MEASUREMENT_ID | VITE_GA_WEBSITE_MEASUREMENT_ID |
-
-GA4 offers Web, Android and iOS data streams, but no native desktop stream.
-The desktop uses the isolated HTTPS bridge and the Google tag, with automatic
-page views and Enhanced Measurement disabled. A validated handshake is required
-before the bridge loads any remote tag. The installation ID stays independent
-of website cookies and contains no machine or account identity.
-
-Desktop events are `app_open`, `screen_view`, `app_foreground`, `app_background`
-and `app_engagement`. The internal `pane_view` message becomes a Google-tag
-`screen_view` event with fixed screen names. Register `pane`, `app_platform`,
-`app_version` and `version_control` as event dimensions, and
-`foreground_time_sec` as an event metric in seconds. Foreground time uses the
-application's focus and visibility state; it does not measure physical input
-activity. Repository names, paths, file contents and credentials are excluded.
-
-The website tag runs only on the public production homepage and Chinese page.
-The `/en/` redirect, previews, embedded pages and `/analytics/` are excluded.
-It uses normal web page views and acquisition information, plus `download_dialog_open`,
-`file_download` and `demo_start`. Installer tracking accepts only published
-RebaseRaven release assets; fallback release-page links are not downloads.
-`file_download` measures a link click, not a completed installation.
-
-Enable website Enhanced Measurement for scrolls and outbound clicks. Disable
-automatic file downloads to avoid duplicating explicit installer events, and
-disable form interactions, site search, videos and history-based page views.
-Register `site_language`, `download_platform`, `entry_point` and `release_version`
-as event dimensions, and mark `file_download` as a key event. Production builds
-require two valid, different measurement IDs; local builds may omit both.
-
 ## Localization
 
 The app and website use i18next and react-i18next with English fallback.

@@ -533,6 +533,7 @@ pub fn launch_difftool(
     if config_value(Some(repo), "diff.guitool").is_some() {
         args.insert(1, "--gui".to_string());
     }
+    args.insert(0, "--literal-pathspecs".to_string());
     let root = workdir_owned(repo)?;
     thread::spawn(move || {
         let argv: Vec<&str> = args.iter().map(String::as_str).collect();
@@ -592,7 +593,7 @@ pub fn run_mergetool(repo: &mut Repository, path: &str) -> AppResult<WorkspaceSn
         ));
     }
     ensure_conflicted(repo, &rel)?;
-    let mut args = vec!["mergetool", "--no-prompt"];
+    let mut args = vec!["--literal-pathspecs", "mergetool", "--no-prompt"];
     if config_value(Some(repo), "merge.guitool").is_some() {
         args.push("--gui");
     }
