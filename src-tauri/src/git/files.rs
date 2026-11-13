@@ -123,7 +123,7 @@ pub fn search_files(repo: &Repository, query: &str) -> AppResult<FileSearch> {
     let paths = bytes
         .split(|byte| *byte == 0)
         .filter(|raw| !raw.is_empty())
-        .map(|raw| String::from_utf8_lossy(raw).replace('\\', "/"));
+        .map(|raw| String::from_utf8_lossy(raw).into_owned());
     let mut result = hits_from_paths(paths, &needle);
     let paths = result
         .hits

@@ -171,7 +171,8 @@ pub(super) fn parse_search_query(query: &str) -> SearchQuery {
         }
         match key.to_ascii_lowercase().as_str() {
             "author" => parsed.authors.push(value),
-            "path" | "file" => parsed.paths.push(value.replace('\\', "/")),
+            "path" | "file" if cfg!(windows) => parsed.paths.push(value.replace('\\', "/")),
+            "path" | "file" => parsed.paths.push(value),
             "content" => parsed.content = Some(value),
             "regex" => parsed.regex = Some(value),
             "since" | "after" => parsed.since = Some(value),
@@ -670,6 +671,7 @@ pub fn file_commits(
     let stdout = run_git_stdout(
         root,
         &[
+            "--literal-pathspecs",
             "-c",
             "log.showSignature=false",
             "-c",
@@ -712,12 +714,12 @@ pub(super) fn parse_follow_log(bytes: &[u8], current: &str) -> Vec<CommitSummary
             .collect();
         let path = match status.as_slice() {
             [kind, old, new, ..] if kind.starts_with('R') || kind.starts_with('C') => {
-                let path = new.replace('\\', "/");
-                fallback = old.replace('\\', "/");
+                let path = (*new).to_string();
+                fallback = (*old).to_string();
                 path
             }
             [_, path, ..] => {
-                let path = path.replace('\\', "/");
+                let path = (*path).to_string();
                 fallback = path.clone();
                 path
             }

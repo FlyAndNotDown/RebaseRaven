@@ -104,13 +104,13 @@ pub(super) fn parse_porcelain(bytes: &[u8]) -> AppResult<StatusSnapshot> {
         let y = rest[1] as char;
         rest = &rest[3..];
         let (first, next) = split_z(rest);
-        let first = String::from_utf8_lossy(first).replace('\\', "/");
+        let first = String::from_utf8_lossy(first).into_owned();
         // With -z a rename is written as `XY new\0old\0`.
         let (path, old_path, next) = if matches!(x, 'R' | 'C') {
             let (second, next) = split_z(next);
             (
                 first,
-                Some(String::from_utf8_lossy(second).replace('\\', "/")),
+                Some(String::from_utf8_lossy(second).into_owned()),
                 next,
             )
         } else {

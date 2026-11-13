@@ -40,7 +40,15 @@ pub fn unstage_paths(repo: &Repository, paths: &[String]) -> AppResult<()> {
 pub(super) fn is_untracked(repo: &Repository, rel: &str) -> bool {
     let Ok(output) = run_git(
         repo.workdir(),
-        &["status", "--porcelain=v1", "-z", "--ignored=no", "--", rel],
+        &[
+            "--literal-pathspecs",
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--ignored=no",
+            "--",
+            rel,
+        ],
     ) else {
         return false;
     };

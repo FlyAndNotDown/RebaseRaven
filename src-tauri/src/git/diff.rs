@@ -165,15 +165,14 @@ pub(super) fn parse_name_status_z(bytes: &[u8]) -> AppResult<Vec<CommitFile>> {
             _ => "modified",
         };
         let first = match parts.next() {
-            Some(path) if !path.is_empty() => String::from_utf8_lossy(path).replace('\\', "/"),
+            Some(path) if !path.is_empty() => String::from_utf8_lossy(path).into_owned(),
             _ => continue,
         };
         let (path, old_path) = if matches!(kind, "renamed" | "copied") {
             match parts.next() {
-                Some(path) if !path.is_empty() => (
-                    String::from_utf8_lossy(path).replace('\\', "/"),
-                    Some(first),
-                ),
+                Some(path) if !path.is_empty() => {
+                    (String::from_utf8_lossy(path).into_owned(), Some(first))
+                }
                 _ => (first, None),
             }
         } else {
@@ -262,6 +261,7 @@ fn git_diff_bytes(
     path: &str,
 ) -> AppResult<Vec<u8>> {
     let mut args = vec![
+        "--literal-pathspecs",
         "-c",
         "core.quotePath=false",
         "-c",
@@ -370,7 +370,7 @@ pub(super) fn parse_unified_diff(bytes: &[u8], fallback: &str) -> ParsedDiff {
         .collect();
 
     let mut parsed = ParsedDiff {
-        path: fallback.replace('\\', "/"),
+        path: fallback.to_string(),
         old_path: None,
         binary: false,
         hunks: Vec::new(),
@@ -392,7 +392,7 @@ pub(super) fn parse_unified_diff(bytes: &[u8], fallback: &str) -> ParsedDiff {
             parsed.hunks.clear();
             parsed.binary = false;
             parsed.old_path = None;
-            parsed.path = fallback.replace('\\', "/");
+            parsed.path = fallback.to_string();
             continue;
         }
         if let Some(name) = line.strip_prefix("rename from ") {
@@ -505,7 +505,7 @@ fn parse_hunk_header(line: &str) -> Option<(u32, u32)> {
 fn unquote_git_path(value: &str) -> String {
     let value = value.trim();
     if !value.starts_with('"') {
-        return value.replace('\\', "/");
+        return value.to_string();
     }
     let bytes = value.as_bytes();
     let mut out = Vec::new();
@@ -544,7 +544,7 @@ fn unquote_git_path(value: &str) -> String {
         }
         index += 1;
     }
-    String::from_utf8_lossy(&out).replace('\\', "/")
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 #[cfg(test)]

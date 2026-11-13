@@ -817,6 +817,47 @@ fn porcelain_status_splits_staged_unstaged_renames_and_conflicts() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn status_and_search_keep_literal_backslashes_through_file_actions() {
+    let (root, repo) = temp_repo();
+    let literal = r"dir\note.txt";
+    let nested = "dir/note.txt";
+    fs::create_dir(root.join("dir")).unwrap();
+    for path in [literal, nested] {
+        fs::write(root.join(path), "base\n").unwrap();
+    }
+    stage_paths(&repo, &[literal.into(), nested.into()]).unwrap();
+    run_git_stdout(&root, &["commit", "-m", "Add both files"]).unwrap();
+    fs::write(root.join(literal), "literal edit\n").unwrap();
+    fs::write(root.join(nested), "nested edit\n").unwrap();
+
+    let status = status_snapshot(&repo).unwrap();
+    let selected = status
+        .unstaged
+        .iter()
+        .find(|file| file.path == literal)
+        .unwrap();
+    assert!(status.unstaged.iter().any(|file| file.path == nested));
+    let search = search_files(&repo, "note.txt").unwrap();
+    assert!(search.hits.iter().any(|hit| hit.path == literal));
+    assert!(search.hits.iter().any(|hit| hit.path == nested));
+    let diff = workdir_diff(&repo, &selected.path, false, false).unwrap();
+    assert_eq!(diff.path, literal);
+    assert!(diff.lines.iter().any(|line| line.content == "literal edit"));
+
+    stage_paths(&repo, std::slice::from_ref(&selected.path)).unwrap();
+    let status = status_snapshot(&repo).unwrap();
+    assert_eq!(status.staged.len(), 1);
+    assert_eq!(status.staged[0].path, literal);
+    assert_eq!(status.unstaged.len(), 1);
+    assert_eq!(status.unstaged[0].path, nested);
+    discard_paths(&repo, std::slice::from_ref(&status.staged[0].path)).unwrap();
+    assert_eq!(fs::read(root.join(literal)).unwrap(), b"base\n");
+    assert_eq!(fs::read(root.join(nested)).unwrap(), b"nested edit\n");
+    let _ = fs::remove_dir_all(root);
+}
+
 #[test]
 fn staged_rename_is_listed_under_its_new_name() {
     let (root, repo) = temp_repo();

@@ -13,6 +13,7 @@ import {
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { joinRoot } from "@/lib/file-search";
 import { toast } from "sonner";
 import { t } from "@/i18n";
 import { emptyBinaryDiff, errorMessage, expandHistoryRevs, GIT_MISSING, gitApi, isCancelled, subscribeGitMissing } from "@/lib/git";
@@ -2837,7 +2838,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
   const repoFilePath = useCallback(
     (path: string) => {
       const root = activeRepoPath();
-      return root ? `${root.replace(/[\\/]+$/, "")}/${path}` : null;
+      return root ? joinRoot(root, path) : null;
     },
     [activeRepoPath],
   );

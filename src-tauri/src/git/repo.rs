@@ -391,7 +391,7 @@ pub fn ignored_queries(repo: &Repository, queries: &[String]) -> AppResult<HashS
     }
     let mut input = Vec::new();
     for query in queries {
-        input.extend_from_slice(query.replace('\\', "/").as_bytes());
+        input.extend_from_slice(query.as_bytes());
         input.push(0);
     }
     let output = run_git_input_output(repo.workdir(), &["check-ignore", "-z", "--stdin"], &input)?;
@@ -406,14 +406,13 @@ pub fn ignored_queries(repo: &Repository, queries: &[String]) -> AppResult<HashS
         .filter(|part| !part.is_empty())
         .map(|part| {
             String::from_utf8_lossy(part)
-                .replace('\\', "/")
                 .trim_end_matches('/')
                 .to_string()
         })
         .collect();
     Ok(queries
         .iter()
-        .filter(|query| reported.contains(query.replace('\\', "/").trim_end_matches('/')))
+        .filter(|query| reported.contains(query.trim_end_matches('/')))
         .cloned()
         .collect())
 }

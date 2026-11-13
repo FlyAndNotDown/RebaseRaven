@@ -45,7 +45,7 @@ export function nestSearchNodes(nodes: SearchNode[]): {
   }
 
   for (const node of nodes) {
-    const relative = node.relative.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+    const relative = node.relative.replace(/^\/+|\/+$/g, "");
     if (!relative || relative.split("/").includes("..")) continue;
     if (node.dir) {
       addDir(relative, false);
@@ -87,6 +87,8 @@ function baseName(relative: string) {
 
 export function joinRoot(root: string, relative: string) {
   if (!relative) return root;
-  const separator = root.includes("\\") ? "\\" : "/";
-  return `${root.replace(/[/\\]+$/, "")}${separator}${relative.split("/").join(separator)}`;
+  // A POSIX absolute root may contain backslashes, even as its final character.
+  const windows = !root.startsWith("/") && root.includes("\\");
+  const separator = windows ? "\\" : "/";
+  return `${root.replace(windows ? /[/\\]+$/ : /\/+$/, "")}${separator}${relative.split("/").join(separator)}`;
 }

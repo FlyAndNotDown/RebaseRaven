@@ -6,6 +6,16 @@ function names(nodes: SearchNode[] | undefined) {
 }
 
 describe("nestSearchNodes", () => {
+  it("keeps a literal backslash distinct from a directory separator", () => {
+    const tree = nestSearchNodes([
+      { relative: "dir\\file.txt", dir: false },
+      { relative: "dir/file.txt", dir: false },
+    ]);
+    expect(names(tree.entries[""])).toEqual(["dir", "dir\\file.txt"]);
+    expect(tree.entries.dir[0].relative).toBe("dir/file.txt");
+    expect(joinRoot("/work/repo\\", "dir\\file.txt")).toBe("/work/repo\\/dir\\file.txt");
+  });
+
   it("shows a matching file under its parent folders and expands those folders", () => {
     const tree = nestSearchNodes([
       { relative: "client/src/notes.bat", dir: false, status: "current", detail: "Up to date" },
