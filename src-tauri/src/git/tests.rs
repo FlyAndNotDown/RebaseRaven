@@ -661,6 +661,45 @@ fn discarding_a_directory_keeps_siblings_and_rejects_parent_traversal() {
     let _ = fs::remove_dir_all(&root);
 }
 
+#[test]
+fn discard_preflights_all_paths_and_preserves_case_aliases() {
+    let (root, repo) = temp_repo();
+    commit_file(&repo, &root, "Tracked.txt", "keep\n", "base");
+    config_set_local(&repo, "core.ignorecase", "true").unwrap();
+    fs::write(root.join("loose"), "keep this until validated").unwrap();
+    fs::write(root.join("Tracked.txt"), "edited\n").unwrap();
+    assert!(discard_paths(&repo, &["loose".into(), "tracked.txt".into()]).is_err());
+    assert!(root.join("loose").is_file());
+    assert_eq!(fs::read(root.join("Tracked.txt")).unwrap(), b"edited\n");
+    assert!(discard_paths(&repo, &["loose".into(), "../outside".into()]).is_err());
+    assert!(root.join("loose").is_file());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn discard_handles_overlapping_paths_and_literal_names_in_one_selection() {
+    let (root, repo) = temp_repo();
+    config_set_local(&repo, "core.autocrlf", "false").unwrap();
+    fs::create_dir(root.join("dir")).unwrap();
+    commit_file(&repo, &root, "dir/keep", "base\n", "base");
+    fs::write(root.join("dir/keep"), "edit\n").unwrap();
+    for file in ["dir/item[1]", "dir/item1", "dir/staged"] {
+        fs::write(root.join(file), "new").unwrap();
+    }
+    stage_paths(&repo, &["dir/staged".into()]).unwrap();
+    discard_paths(
+        &repo,
+        &["dir".into(), "dir/item[1]".into(), "dir/staged".into()],
+    )
+    .unwrap();
+    assert_eq!(fs::read(root.join("dir/keep")).unwrap(), b"base\n");
+    assert!(root.join("dir/item1").is_file());
+    assert!(!root.join("dir/item[1]").exists());
+    assert!(!root.join("dir/staged").exists());
+    assert!(status_snapshot(&repo).unwrap().staged.is_empty());
+    let _ = fs::remove_dir_all(root);
+}
+
 #[cfg(windows)]
 #[test]
 fn clearing_readonly_on_a_symlink_does_not_change_its_target() {
