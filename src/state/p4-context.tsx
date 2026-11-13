@@ -25,7 +25,7 @@ import { depotBase, P4_LOGIN, P4_MISSING, p4Api, syncSummary } from "@/lib/p4";
 import { sameRepoPath } from "@/lib/format";
 import { useGitPick } from "@/state/git-context";
 import { repoTabId, type RepoTab } from "@/state/session";
-import { defaultChange, fileKey, pendingChangeDescription, refreshPendingSession, savePendingDescription, sameP4Connection, showP4OperationResult, shownFile, updateP4Session, usableP4Session, type P4ResolveRequest, type P4Session as Session, type P4View } from "@/state/p4-session";
+import { defaultChange, fileKey, finishPendingShelf, pendingChangeDescription, refreshPendingSession, savePendingDescription, sameP4Connection, showP4OperationResult, shownFile, updateP4Session, usableP4Session, type PendingShelf, type P4ResolveRequest, type P4Session as Session, type P4View } from "@/state/p4-session";
 import { p4ReadRequest, pendingDiffRequest, pendingRefreshRequest, withP4Login } from "@/state/p4-requests";
 import { acquireP4Mutation, invalidateP4Session } from "@/state/p4-mutations";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
@@ -85,6 +85,8 @@ interface P4ContextValue {
   setView: (view: P4View) => void;
   connection: P4Connection | null;
   pending: P4Changelist[];
+  pendingShelves: Record<string, PendingShelf>;
+  loadPendingShelf: (id: string, retry?: boolean) => Promise<void>;
   loading: boolean;
   busy: boolean;
   busyLabel: string;
@@ -357,7 +359,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
 
   const requestDiff = useCallback((current: Session, quiet = false) => {
     const file = current.selectedFile;
-    if (!file) return;
+    if (!file || (current.selectedShelved && current.pendingShelves?.[current.selectedChange]?.status !== "ready")) return;
     const key = fileKey(current.selectedChange, file, current.selectedShelved);
     if (current.diffFor === key) return;
     const token = nextToken(diffTokens.current, current.tabId);
@@ -388,7 +390,8 @@ export function P4Provider({ children }: { children: ReactNode }) {
   const selectedShelved = visibleSession?.selectedShelved ?? false;
   const selectedChange = visibleSession?.selectedChange ?? "default";
   const diffKey = connection && selectedFile ? fileKey(selectedChange, selectedFile, selectedShelved) : "";
-  const diffLoading = diffKey !== "" && visibleSession?.diffFor !== diffKey;
+  const diffLoading = diffKey !== "" && visibleSession?.diffFor !== diffKey &&
+    !(selectedShelved && visibleSession?.pendingShelves?.[selectedChange]?.status === "error");
 
   const reloadPending = useCallback(async (target: Session, selectId?: string, quiet = false) => {
     const owner = cache.current.get(target.tabId);
@@ -398,6 +401,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
     if (pendingTokens.current.get(target.tabId) !== token) return;
     const latest = cache.current.get(target.tabId);
     if (!latest || !sameP4Connection(latest.connection, target.connection)) return;
+    nextToken(diffTokens.current, target.tabId);
     const next = updateSession(target.tabId, (current) => refreshPendingSession(current, pending, selectId, target.selectedChange));
     if (next) requestDiff(next, quiet);
   }, [guard, requestDiff, updateSession]);
@@ -476,18 +480,13 @@ export function P4Provider({ children }: { children: ReactNode }) {
           previous && pending.some((change) => change.id === previous.selectedChange)
             ? previous.selectedChange
             : defaultChange(pending);
-        const selected = pending.find((change) => change.id === selectedChange);
-        const shown = shownFile(selected?.files ?? [], previous ? {
-          path: previous.selectedFile,
-          shelved: previous.selectedShelved,
-        } : undefined);
         const next = refreshPendingSession({
           tabId,
           connection: opened.connection,
           pending: previous?.pending ?? [],
           selectedChange: previous?.selectedChange ?? selectedChange,
-          selectedFile: shown.path,
-          selectedShelved: shown.shelved,
+          selectedFile: previous?.selectedFile ?? null,
+          selectedShelved: previous?.selectedShelved ?? false,
           description: previous?.description ?? "",
           diff: null,
           diffFor: "",
@@ -543,11 +542,13 @@ export function P4Provider({ children }: { children: ReactNode }) {
     const current = sessionRef.current;
     if (!current || current.selectedChange === id) return;
     const change = current.pending.find((item) => item.id === id);
+    const shelf = current.pendingShelves?.[id];
     const shown = shownFile(change?.files ?? []);
+    const selected = shown.path || shelf?.status !== "ready" ? shown : shownFile(shelf.detail.files);
     patch({
       selectedChange: id,
-      selectedFile: shown.path,
-      selectedShelved: shown.shelved,
+      selectedFile: selected.path,
+      selectedShelved: selected.shelved,
       description: change?.description ?? "",
       diff: null,
       diffFor: "",
@@ -765,6 +766,28 @@ export function P4Provider({ children }: { children: ReactNode }) {
     if (!current) throw new Error(t("p4-operations.connectionRequired"));
     return guard(current.connection, () => p4Api.shelfDetail(current.connection, changeId));
   }, [guard]);
+
+  const loadPendingShelf = useCallback(async (id: string, retry = false) => {
+    const owner = sessionRef.current;
+    if (!owner || !owner.pending.some(change => change.id === id && change.shelved)) return;
+    const existing = owner.pendingShelves?.[id];
+    if (existing && !(retry && existing.status === "error")) return;
+    const request: PendingShelf = { status: "loading" };
+    updateSession(owner.tabId, current => ({ ...current, pendingShelves: { ...current.pendingShelves, [id]: request } }));
+    let result: PendingShelf;
+    try {
+      const load = () => p4Api.shelfDetail(owner.connection, id, true);
+      const detail = await p4ReadRequest(load, !retry, read => guard(owner.connection, read));
+      result = { status: "ready", detail };
+    } catch (caught) {
+      result = { status: "error", message: errorMessage(caught) };
+    }
+    const latest = cache.current.get(owner.tabId);
+    if (latest?.pendingShelves?.[id] !== request) return;
+    const next = updateSession(owner.tabId, current => finishPendingShelf(current, id, request, result));
+    if (result.status === "ready" && next?.selectedChange === id &&
+        (next.selectedShelved || next.selectedFile !== latest.selectedFile)) requestDiff(next, !retry);
+  }, [guard, requestDiff, updateSession]);
 
   const shelfDiff = useCallback(async (path: string, changeId: string) => {
     const current = sessionRef.current;
@@ -1647,6 +1670,8 @@ export function P4Provider({ children }: { children: ReactNode }) {
       setView,
       connection,
       pending: visibleSession?.pending ?? [],
+      pendingShelves: visibleSession?.pendingShelves ?? {},
+      loadPendingShelf,
       loading,
       busy: mutationLabels.has(activePerforceId),
       busyLabel: mutationLabels.get(activePerforceId)?.label ?? "",
@@ -1829,6 +1854,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
       selectedFile,
       selectedShelved,
       visibleSession,
+      loadPendingShelf,
       setDescription,
       setSubmittedFilter,
       setView,

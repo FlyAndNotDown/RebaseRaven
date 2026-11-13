@@ -1,7 +1,8 @@
 import { P4StreamWorkDialog, P4StreamDiffDialog } from "@/components/p4/p4-stream-work";
+import { PendingShelfGroup, ShelfReadError } from "@/components/p4/p4-pending-shelf";
 import type { P4StreamDiffRequest } from "@/types/p4-stream-specs";
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { GitBranchIcon, ArchiveIcon, ArchiveRestoreIcon, ChevronDownIcon, CopyIcon, GitMergeIcon, Loader2Icon, PencilIcon, PlusIcon, SendIcon, Trash2Icon, Undo2Icon, UndoDotIcon } from "lucide-react";
+import { GitBranchIcon, ArchiveIcon, ChevronDownIcon, CopyIcon, GitMergeIcon, Loader2Icon, PencilIcon, PlusIcon, SendIcon, Trash2Icon, Undo2Icon, UndoDotIcon } from "lucide-react";
 import { toast } from "sonner";
 import { ChangeBadge, ChangelistMarker } from "@/components/p4/change-badge";
 import { P4ChangeDialog, type ChangeDialogRequest } from "@/components/p4/p4-change-dialog";
@@ -62,6 +63,14 @@ export function P4Pending() {
   const canDeleteChange = changeToDelete != null && !changeToDelete.shelved && !changeToDelete.stream && !changeToDelete.shelvedStream && changeToDelete.files.length === 0;
   const dialogChange = changeDialog ? p4.pending.find((change) => change.id === changeDialog.id) : null;
 
+  const selected = p4.pending.find(change => change.id === p4.selectedChange);
+  const selectedShelf = p4.pendingShelves[p4.selectedChange];
+  const needsShelf = selected?.shelved && (!p4.selectedFile || p4.selectedShelved);
+  const { loadPendingShelf } = p4;
+  useEffect(() => {
+    if (selected && needsShelf && !selectedShelf) void loadPendingShelf(selected.id);
+  }, [loadPendingShelf, needsShelf, selected, selectedShelf]);
+
   function openChangeDialog(change: P4Changelist, mode: ChangeDialogRequest["mode"]) {
     setChangeDialog({
       id: change.id,
@@ -119,8 +128,9 @@ export function P4Pending() {
         if (!file.shelved) rows.push({ change: change.id, path: file.depotPath, shelved: false });
       }
       if (shelvedOpen.has(change.id)) {
-        for (const file of change.files) {
-          if (file.shelved) rows.push({ change: change.id, path: file.depotPath, shelved: true });
+        const shelf = p4.pendingShelves[change.id];
+        if (shelf?.status === "ready") {
+          for (const file of shelf.detail.files) rows.push({ change: change.id, path: file.depotPath, shelved: true });
         }
       }
     }
@@ -300,8 +310,8 @@ export function P4Pending() {
             </div>
             <div className={cn("min-h-0 flex-1 overflow-auto px-1 py-1", dragKind && "[&_*]:cursor-grabbing")}>
               {p4.pending.map((change) => {
-                const changeOpened = change.files.filter((file) => !file.shelved);
-                const changeShelved = change.files.filter((file) => file.shelved);
+                const changeOpened = change.files;
+                const shelf = p4.pendingShelves[change.id];
                 const summary = changeSummary(change.description);
                 const open = openChanges.has(change.id);
                 const active = change.id === p4.selectedChange;
@@ -345,7 +355,7 @@ export function P4Pending() {
                               focusChange(change.id);
                             }}
                           >
-                            <ChangelistMarker opened={changeOpened.length > 0 || !!change.stream} shelved={change.shelved || changeShelved.length > 0 || !!change.shelvedStream} conflict={changeOpened.some(file => file.status === "conflict")} />
+                            <ChangelistMarker opened={changeOpened.length > 0 || !!change.stream} shelved={change.shelved} conflict={changeOpened.some(file => file.status === "conflict")} />
                             <ChangeBadge id={change.id} />
                             <span className="min-w-0 flex-1 truncate text-xs">{summary || t("p4.noDescription")}</span>
                           </button>
@@ -451,47 +461,21 @@ export function P4Pending() {
                             data-drop="shelf"
                             data-change={change.id}
                           >
-                          <FileGroup
-                            extraCount={change.shelvedStream ? 1 : 0}
-                            extra={change.shelvedStream ? <ContextMenu><ContextMenuTrigger asChild><button type="button" className="flex w-full items-center gap-2 rounded-md py-1.5 pl-9 pr-2 text-left text-xs hover:bg-muted/70" onClick={() => setStreamDiff({kind:"shelf", path:change.shelvedStream!.path, change:change.id})}><GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 truncate">{t("p4.streamWork.shelved")}</span><span className="truncate font-mono text-[11px] text-muted-foreground">{depotBase(change.shelvedStream.path)}</span></button></ContextMenuTrigger><ContextMenuContent><ContextMenuItem variant="destructive" disabled={p4.busy} onClick={() => {p4.selectChange(change.id); setDeletingShelf(true);}}><Trash2Icon />{t("p4.delete")}</ContextMenuItem></ContextMenuContent></ContextMenu> : null}
-                            title={t("p4.shelved")}
-                            changeId={change.id}
-                            open={shelvedOpen.has(change.id)}
-                            files={changeShelved}
-                            picked={picked}
-                            selectedPath={selectedPath}
-                            selectedShelved={p4.selectedShelved}
-                            onToggle={() => {
-                              if (didDrag.current) return;
-                              toggleShelved(change.id);
-                            }}
-                            onSelect={(event, path) => pickFile(event, { change: change.id, path, shelved: true })}
-                            onPointerDown={beginPointer}
-                            menu={
-                              changeShelved.length === 0 ? undefined : (
-                              <ContextMenuContent className="min-w-36">
-                                <ContextMenuItem
-                                  disabled={p4.busy}
-                                  onClick={() => {
-                                    p4.selectChange(change.id);
-                                    void p4.unshelveSelected();
-                                  }}
-                                >
-                                  <ArchiveRestoreIcon />{t("p4.unshelve")}</ContextMenuItem>
-                                <ContextMenuSeparator />
-                                <ContextMenuItem
-                                  variant="destructive"
-                                  disabled={p4.busy}
-                                  onClick={() => {
-                                    p4.selectChange(change.id);
-                                    setDeletingShelf(true);
-                                  }}
-                                >
-                                  <Trash2Icon />{t("p4.delete")}</ContextMenuItem>
-                              </ContextMenuContent>
-                              )
-                            }
-                          />
+                            <PendingShelfGroup
+                              id={change.id} exists={change.shelved} shelf={shelf} busy={p4.busy}
+                              open={shelvedOpen.has(change.id)} load={loadPendingShelf}
+                              onToggle={() => { if (!didDrag.current) toggleShelved(change.id); }}
+                              onUnshelve={() => { p4.selectChange(change.id); void p4.unshelveSelected(); }}
+                              onDelete={() => { p4.selectChange(change.id); setDeletingShelf(true); }}
+                              onStream={path => setStreamDiff({kind: "shelf", path, change: change.id})}
+                            >
+                              <PendingFiles
+                                changeId={change.id} files={shelf?.status === "ready" ? shelf.detail.files : []}
+                                picked={picked} selectedPath={selectedPath} selectedShelved={p4.selectedShelved}
+                                className="pl-12" onPointerDown={beginPointer}
+                                onSelect={(event, path) => pickFile(event, { change: change.id, path, shelved: true })}
+                              />
+                            </PendingShelfGroup>
                           </div>
                         ) : null}
                       </>
@@ -504,12 +488,16 @@ export function P4Pending() {
         </ResizablePanel>
         <ResizableHandle />
         <ResizablePanel id="p4-diff" defaultSize="58%" minSize="30%">
-          <P4Diff
-            fileSource={p4.selectedFile ? p4.selectedShelved ? {kind:"shelf",path:p4.selectedFile,changeId:p4.selectedChange} : {kind:"opened",path:p4.selectedFile} : undefined}
-            diff={p4.diff}
-            loading={p4.diffLoading}
-            empty={p4.selectedFile ? t("p4.noDifferencesInThisFile") : t("p4.selectAFileToSeeItsDiff")}
-          />
+          {needsShelf && selectedShelf?.status === "error" ? (
+            <ShelfReadError message={selectedShelf.message} retry={() => void loadPendingShelf(p4.selectedChange, true)} />
+          ) : (
+            <P4Diff
+              fileSource={p4.selectedFile ? p4.selectedShelved ? {kind:"shelf",path:p4.selectedFile,changeId:p4.selectedChange} : {kind:"opened",path:p4.selectedFile} : undefined}
+              diff={p4.diff}
+              loading={p4.diffLoading || Boolean(needsShelf && selectedShelf?.status !== "ready")}
+              empty={p4.selectedFile ? t("p4.noDifferencesInThisFile") : t("p4.selectAFileToSeeItsDiff")}
+            />
+          )}
         </ResizablePanel>
       </ResizablePanelGroup>
       {resolvingPath ? <P4Resolve key={resolvingPath} path={resolvingPath} onClose={closeResolution} /> : null}
@@ -615,75 +603,6 @@ function openedSelection(
     }
   }
   return found.length > 0 ? found : [{ change: file.change, path: file.path, action: "" }];
-}
-
-function FileGroup({
-  title,
-  changeId,
-  open,
-  files,
-  picked,
-  selectedPath,
-  selectedShelved,
-  onToggle,
-  onSelect,
-  onPointerDown,
-  menu,
-  extra,
-  extraCount = 0,
-}: {
-  title: string;
-  changeId: string;
-  open: boolean;
-  files: PendingFile[];
-  picked: string[];
-  selectedPath: string | null;
-  selectedShelved: boolean;
-  onToggle: () => void;
-  onSelect: (event: MouseEvent, path: string) => void;
-  onPointerDown: (event: ReactPointerEvent, file: PendingDragFile) => void;
-  menu?: ReactNode;
-  extra?: ReactNode;
-  extraCount?: number;
-}) {
-  useTranslation();
-  const header = (
-    <button
-      type="button"
-      className="flex h-7 w-full items-center gap-1.5 rounded-md pr-2 pl-7 text-left hover:bg-muted/70"
-      onClick={onToggle}
-      aria-expanded={open}
-    >
-      <ChevronDownIcon className={cn("size-3.5 text-muted-foreground transition-transform", !open && "-rotate-90")} />
-      <span className="text-xs font-medium">{title}</span>
-      <span className="tabular-nums text-xs text-muted-foreground">{files.length + extraCount}</span>
-    </button>
-  );
-  return (
-    <div>
-      {menu ? (
-        <ContextMenu>
-          <ContextMenuTrigger asChild>{header}</ContextMenuTrigger>
-          {menu}
-        </ContextMenu>
-      ) : (
-        header
-      )}
-      {open ? <>
-        {extra}
-        <PendingFiles
-          changeId={changeId}
-          files={files}
-          picked={picked}
-          selectedPath={selectedPath}
-          selectedShelved={selectedShelved}
-          className="pl-12"
-          onSelect={onSelect}
-          onPointerDown={onPointerDown}
-        />
-      </> : null}
-    </div>
-  );
 }
 
 function PendingFiles({

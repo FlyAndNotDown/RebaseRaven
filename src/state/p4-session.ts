@@ -10,10 +10,16 @@ export interface P4ResolveRequest {
   path: string;
 }
 
+export type PendingShelf =
+  | { status: "loading" }
+  | { status: "ready"; detail: P4Changelist }
+  | { status: "error"; message: string };
+
 export interface P4Session {
   tabId: string;
   connection: P4Connection;
   pending: P4Changelist[];
+  pendingShelves?: Record<string, PendingShelf>;
   selectedChange: string;
   selectedFile: string | null;
   selectedShelved: boolean;
@@ -106,10 +112,9 @@ export function refreshPendingSession(
       ? current.selectedChange
       : defaultChange(pending);
   const change = pending.find((item) => item.id === selected);
-  const shown = shownFile(change?.files ?? [], {
-    path: current.selectedFile,
-    shelved: current.selectedShelved,
-  });
+  const preferredFile = { path: current.selectedFile, shelved: current.selectedShelved };
+  const keepShelf = selected === current.selectedChange && change?.shelved && preferredFile.shelved && preferredFile.path;
+  const shown = keepShelf ? preferredFile : shownFile(change?.files ?? [], preferredFile);
   const previousDescription = current.pending.find((item) => item.id === current.selectedChange)?.description ?? "";
   const edited = current.description !== previousDescription;
   const sameSelection = selected === current.selectedChange &&
@@ -117,6 +122,7 @@ export function refreshPendingSession(
   return {
     ...current,
     pending,
+    pendingShelves: {},
     selectedChange: selected,
     selectedFile: shown.path,
     selectedShelved: shown.shelved,
@@ -124,6 +130,18 @@ export function refreshPendingSession(
     diff: sameSelection ? current.diff : null,
     diffFor: "",
   };
+}
+
+export function finishPendingShelf(
+  current: P4Session, changeId: string, request: PendingShelf, result: PendingShelf,
+): P4Session {
+  if (current.pendingShelves?.[changeId] !== request) return current;
+  const next = { ...current, pendingShelves: { ...current.pendingShelves, [changeId]: result } };
+  if (result.status !== "ready" || current.selectedChange !== changeId) return next;
+  const opened = current.pending.find(change => change.id === changeId)?.files ?? [];
+  const shown = shownFile([...opened, ...result.detail.files], { path: current.selectedFile, shelved: current.selectedShelved });
+  if (shown.path === current.selectedFile && shown.shelved === current.selectedShelved) return next;
+  return { ...next, selectedFile: shown.path, selectedShelved: shown.shelved, diff: null, diffFor: "" };
 }
 
 export function fileKey(change: string, file: string | null, shelved: boolean) {

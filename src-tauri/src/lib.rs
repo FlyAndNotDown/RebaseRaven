@@ -2035,8 +2035,16 @@ async fn p4_list_shelves(
 async fn p4_shelf_detail(
     connection: p4::P4Connection,
     change_id: String,
+    pending: Option<bool>,
 ) -> AppResult<p4::P4Changelist> {
-    blocking(move || p4::shelf_detail(&connection, &change_id)).await
+    blocking(move || {
+        if pending.unwrap_or(false) {
+            p4::pending_shelf_detail(&connection, &change_id)
+        } else {
+            p4::shelf_detail(&connection, &change_id)
+        }
+    })
+    .await
 }
 
 #[tauri::command]
