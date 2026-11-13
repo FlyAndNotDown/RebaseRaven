@@ -40,7 +40,7 @@ pub use shelves::{
     P4UnshelveRequest,
 };
 pub use streams::{apply_stream, preview_stream, P4StreamPreview, P4StreamRequest};
-pub use switch::{apply_switch, preview_switch, P4SwitchOutcome, P4SwitchPreview, P4SwitchRequest};
+pub use switch::{apply_switch, P4SwitchRequest};
 mod workspace;
 
 pub use cli::{active_p4, check_p4_executable, p4_on_path, prepare_p4_prefs, set_p4_executable};

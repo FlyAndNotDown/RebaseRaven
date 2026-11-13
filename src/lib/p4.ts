@@ -12,8 +12,6 @@ import type {
   P4Auth,
   P4WorkspaceEdit,
   P4SwitchRequest,
-  P4SwitchPreview,
-  P4SwitchOutcome,
   P4WorkspaceSettings,
   P4ChangePage,
   P4Changelist,
@@ -164,8 +162,7 @@ export const p4Api = {
   cancelDepotSearch: (connection: P4Connection) => call<void>("p4_cancel_depot_search", { connection }),
   searchFiles: (connection: P4Connection, query: string) =>
     call<P4FileSearch>("p4_search_files", { connection, query }),
-  previewSwitch: (connection: P4Connection, request: P4SwitchRequest) => call<P4SwitchPreview>("p4_preview_switch", {connection, request}),
-  applySwitch: (connection: P4Connection, request: P4SwitchRequest, fingerprint: string) => call<P4SwitchOutcome>("p4_apply_switch", {connection, request, fingerprint}),
+  applySwitch: (connection: P4Connection, request: P4SwitchRequest) => call<P4Connection>("p4_apply_switch", {connection, request}),
   workspaceSettings: (connection: P4Connection) => call<P4WorkspaceSettings>("p4_workspace_settings", {connection}),
   saveWorkspace: (connection: P4Connection, edit: P4WorkspaceEdit, fingerprint: string) =>
     call<P4Connection>("p4_save_workspace", { connection, edit, fingerprint }),

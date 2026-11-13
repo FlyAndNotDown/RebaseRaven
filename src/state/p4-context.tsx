@@ -16,7 +16,7 @@ import { P4StreamDialog } from "@/components/p4/p4-stream-dialog";
 import { P4ReconcileDialog } from "@/components/p4/p4-reconcile-dialog";
 import { P4CleanDialog } from "@/components/p4/p4-clean-dialog";
 import { P4LoginDialog } from "@/components/p4/p4-login-dialog";
-import { P4SwitchDialog, P4SwitchResultDialog } from "@/components/p4/p4-switch-dialog";
+import { P4SwitchDialog, P4SwitchUpdateDialog } from "@/components/p4/p4-switch-dialog";
 import { P4IntegrationDialog } from "@/components/p4/p4-integration-dialog";
 import type { P4IntegrationInitial, P4IntegrationRequest, P4IntegrationPreview } from "@/types/p4-integration";
 import { P4WorkspaceDialog } from "@/components/p4/p4-workspace-dialog";
@@ -41,8 +41,6 @@ import type {
   P4Auth,
   P4WorkspaceEdit,
   P4SwitchRequest,
-  P4SwitchPreview,
-  P4SwitchOutcome,
   P4WorkspaceSettings,
   P4ChangePage,
   P4Changelist,
@@ -189,8 +187,7 @@ interface P4ContextValue {
   workspaceOpen: boolean;
   setWorkspaceOpen: (open: boolean) => void;
   switchStream: (target?: string) => void;
-  previewSwitch: (request: P4SwitchRequest) => Promise<P4SwitchPreview>;
-  applySwitch: (request: P4SwitchRequest, fingerprint: string) => Promise<void>;
+  applySwitch: (request: P4SwitchRequest) => Promise<void>;
   workspaceSettings: () => Promise<P4WorkspaceSettings>;
   saveWorkspace: (edit: P4WorkspaceEdit, fingerprint: string) => Promise<void>;
 }
@@ -244,7 +241,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const [cleanTarget, setCleanTarget] = useState<{connection: P4Connection; scope: string} | null>(null);
   const [switchTarget, setSwitchTarget] = useState<string | null>(null);
-  const [switchOutcome, setSwitchOutcome] = useState<P4SwitchOutcome | null>(null);
+  const [switchOutcome, setSwitchOutcome] = useState<{ tabId: string; connection: P4Connection } | null>(null);
   const switchStream = useCallback((target = "") => setSwitchTarget(target), []);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [filesEpoch, setFilesEpoch] = useState(0);
@@ -1526,13 +1523,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
     [guard, report],
   );
 
-  const previewSwitch = useCallback(async (request: P4SwitchRequest) => {
-    const current = sessionRef.current;
-    if (!current) throw new Error(t("p4-operations.connectionRequired"));
-    return guard(current.connection, () => p4Api.previewSwitch(current.connection, request));
-  }, [guard]);
-
-  const applySwitch = useCallback(async (request: P4SwitchRequest, fingerprint: string) => {
+  const applySwitch = useCallback(async (request: P4SwitchRequest) => {
     const current = sessionRef.current;
     if (!current) throw new Error(t("p4-operations.connectionRequired"));
     if (current.description !== (current.pending.find((change) => change.id === current.selectedChange)?.description ?? "")) {
@@ -1542,8 +1533,8 @@ export function P4Provider({ children }: { children: ReactNode }) {
     if (!release) throw new Error(t("p4-operations.workspaceBusy"));
     const activity = beginActivity(t("p4.switchStream.running"), request.target);
     try {
-      const outcome = await guard(current.connection, () => p4Api.applySwitch(current.connection, request, fingerprint));
-      setSwitchTarget(null); setSwitchOutcome(outcome);
+      const next = await guard(current.connection, () => p4Api.applySwitch(current.connection, request));
+      setSwitchTarget(null); setSwitchOutcome({ tabId: current.tabId, connection: next });
       invalidateP4Session(cache.current, current.tabId, activeTabRef.current.id, reconnect);
     } finally { endActivity(activity); release(); }
   }, [guard, lockMutation, beginActivity, endActivity, reconnect]);
@@ -1767,7 +1758,6 @@ export function P4Provider({ children }: { children: ReactNode }) {
       saveWorkspace,
       workspaceSettings,
       switchStream,
-      previewSwitch,
       applySwitch,
     }),
     [
@@ -1835,7 +1825,6 @@ export function P4Provider({ children }: { children: ReactNode }) {
       saveWorkspace,
       workspaceSettings,
       switchStream,
-      previewSwitch,
       applySwitch,
       searchSubmitted,
       workspaceOpen,
@@ -1879,7 +1868,18 @@ export function P4Provider({ children }: { children: ReactNode }) {
         {reconcileOpen && connection ? <P4ReconcileDialog key={JSON.stringify(connection)} onClose={() => setReconcileOpen(false)} /> : null}
         {cleanTarget && connection && sameP4Connection(cleanTarget.connection,connection) ? <P4CleanDialog key={JSON.stringify(cleanTarget)} scope={cleanTarget.scope} onClose={()=>setCleanTarget(current=>current===cleanTarget ? null : current)} /> : null}
         {switchTarget !== null && connection ? <P4SwitchDialog key={JSON.stringify([connection,switchTarget])} initialTarget={switchTarget} onClose={() => setSwitchTarget(null)} /> : null}
-        {switchOutcome ? <P4SwitchResultDialog outcome={switchOutcome} onClose={() => setSwitchOutcome(null)} /> : null}
+        {switchOutcome && activePerforceId === switchOutcome.tabId ? <P4SwitchUpdateDialog
+          stream={switchOutcome.connection.stream ?? ""}
+          disabled={loading || mutationLabels.has(activePerforceId) || !connection || !sameP4Connection(connection, switchOutcome.connection)}
+          onClose={() => setSwitchOutcome(null)}
+          onUpdate={() => {
+            const current = sessionRef.current;
+            if (!current || current.tabId !== switchOutcome.tabId || !sameP4Connection(current.connection, switchOutcome.connection)) return;
+            setSwitchOutcome(null);
+            setView("pending");
+            void sync();
+          }}
+        /> : null}
         <P4LoginDialog
           open={loginOpen}
           client={loginTarget.client}
