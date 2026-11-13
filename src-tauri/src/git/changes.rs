@@ -186,8 +186,17 @@ pub(super) fn pathspec_chunks(paths: &[String]) -> Vec<&[String]> {
 /// Appends patterns to the top-level .gitignore, skipping ones it already lists
 /// and keeping the file's line endings.
 pub fn ignore_patterns(repo: &Repository, patterns: &[String]) -> AppResult<()> {
-    let path = workdir(repo)?.join(".gitignore");
-    let existing = fs::read_to_string(&path).unwrap_or_default();
+    append_ignore_patterns(&workdir(repo)?.join(".gitignore"), patterns)
+}
+
+fn append_ignore_patterns(path: &Path, patterns: &[String]) -> AppResult<()> {
+    use std::io::{ErrorKind, Write};
+
+    let existing = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(error.into()),
+    };
     let newline = if existing.contains("\r\n") {
         "\r\n"
     } else {
@@ -197,19 +206,23 @@ pub fn ignore_patterns(repo: &Repository, patterns: &[String]) -> AppResult<()> 
         .lines()
         .map(|line| line.trim().to_string())
         .collect();
-    let mut text = existing.clone();
+    let mut additions = String::new();
     for pattern in patterns.iter().map(|pattern| pattern.trim()) {
         if pattern.is_empty() || !listed.insert(pattern.to_string()) {
             continue;
         }
-        if !text.is_empty() && !text.ends_with('\n') {
-            text.push_str(newline);
+        if additions.is_empty() && !existing.is_empty() && !existing.ends_with('\n') {
+            additions.push_str(newline);
         }
-        text.push_str(pattern);
-        text.push_str(newline);
+        additions.push_str(pattern);
+        additions.push_str(newline);
     }
-    if text != existing {
-        fs::write(&path, text)?;
+    if !additions.is_empty() {
+        fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)?
+            .write_all(additions.as_bytes())?;
     }
     Ok(())
 }
@@ -244,4 +257,30 @@ pub fn commit(repo: &Repository, message: &str, amend: bool) -> AppResult<Commit
     run_git_input(workdir(repo)?, &args, message.as_bytes())?;
     let oid = head_oid(repo).ok_or_else(|| AppError::msg("Commit did not move HEAD"))?;
     summarize_oid(repo, &oid)
+}
+
+#[cfg(test)]
+mod ignore_tests {
+    use super::*;
+
+    #[test]
+    fn ignore_preserves_existing_rules_when_decoding_fails() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join(".gitignore");
+        let original = b"*.log\n#\xff\n";
+        fs::write(&path, original).unwrap();
+        assert!(append_ignore_patterns(&path, &["*.tmp".into()]).is_err());
+        assert_eq!(fs::read(path).unwrap(), original);
+    }
+
+    #[test]
+    fn ignore_creates_missing_files_and_appends_without_rewriting_rules() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join(".gitignore");
+        append_ignore_patterns(&path, &["*.log".into()]).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"*.log\n");
+        fs::write(&path, b"# rules\r\n*.log").unwrap();
+        append_ignore_patterns(&path, &["*.log".into(), "*.tmp".into()]).unwrap();
+        assert_eq!(fs::read(path).unwrap(), b"# rules\r\n*.log\r\n*.tmp\r\n");
+    }
 }
