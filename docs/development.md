@@ -100,6 +100,14 @@ The desktop uses the isolated HTTPS bridge and the Google tag, with automatic
 page views and Enhanced Measurement disabled. A validated handshake is required
 before the bridge loads any remote tag. The installation ID stays independent
 of website cookies and contains no machine or account identity.
+App-scoped Google-tag cookies request a two-year lifetime and refresh with use so
+native application restarts do not deliberately discard first-visit and session
+metadata. Cookie restrictions or clearing application data can still reset this
+metadata. Only the production native package reports usage; development builds,
+browser previews and packages with a different identifier are excluded. App
+versions come from the running native binary. Active-user reports count anonymous
+installation identifiers, not people; automatic new-user metrics are not
+installation or activation counts.
 
 Desktop events are `app_open`, `screen_view`, `app_foreground`, `app_background`
 and `app_engagement`. The internal `pane_view` message becomes a Google-tag
@@ -107,7 +115,20 @@ and `app_engagement`. The internal `pane_view` message becomes a Google-tag
 `app_version` and `version_control` as event dimensions, and
 `foreground_time_sec` as an event metric in seconds. Foreground time uses the
 application's focus and visibility state; it does not measure physical input
-activity. Repository names, paths, file contents and credentials are excluded.
+activity. Samples are capped at one minute after delayed timers; buffered events
+are bounded and collection is best effort. Repository names, paths, file contents
+and credentials are excluded.
+An allowlisted `screenSchema: 2` context message distinguishes current screen
+classification from legacy clients without breaking older hosted bridges.
+Register `screen_schema` as an event dimension and use `2` for current-screen
+reports: Perforce workspace files,
+depot files and shelves are separate. Events before the first visible screen do
+not claim a Welcome screen. Screen categories describe the selected main
+workspace, including dialogs opened within it. Legacy screen data is not
+reclassified retroactively.
+Deploy the updated App analytics bridge before releasing the updated native app
+to populate current-classification screen reports. Older bridges ignore the
+context message and continue collecting their supported events.
 
 The website tag runs only on the public production homepage and Chinese page.
 The `/en/` redirect, previews, embedded pages and `/analytics/` are excluded.

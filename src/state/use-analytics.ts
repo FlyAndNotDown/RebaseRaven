@@ -1,12 +1,14 @@
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { isTauri } from "@tauri-apps/api/core";
-import { version } from "../../package.json";
+import { getIdentifier, getVersion } from "@tauri-apps/api/app";
+import { identifier } from "../../src-tauri/tauri.conf.json";
 import { analyticsInstallId, analyticsSessionAllowed, ANALYTICS_PULSE_MS, createAnalyticsController, registerAnalyticsStop, subscribeAnalyticsSession } from "@/lib/analytics";
 import { createAnalyticsFrame } from "@/lib/analytics-frame";
-import type { AnalyticsPane } from "@/lib/analytics-protocol";
+import { isAnalyticsVersion } from "@/lib/analytics-protocol";
 import { desktopPlatform } from "@/lib/desktop-platform";
 import { useGitPick } from "./git-context";
 import { useP4View } from "./p4-context";
+import { analyticsPane, analyticsP4FilesMode, subscribeAnalyticsP4FilesMode } from "./analytics-screen";
 
 export function useAnalyticsSessionAllowed() {
   return useSyncExternalStore(subscribeAnalyticsSession, analyticsSessionAllowed, analyticsSessionAllowed);
@@ -16,21 +18,30 @@ export function useAnalytics() {
   const { prefs, prefsReady, activeTab, view } = useGitPick(["prefs", "prefsReady", "activeTab", "view"]);
   const p4View = useP4View();
   const allowed = useAnalyticsSessionAllowed();
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  const filesMode = useSyncExternalStore(subscribeAnalyticsP4FilesMode, analyticsP4FilesMode, analyticsP4FilesMode);
   const controller = useRef<ReturnType<typeof createAnalyticsController> | null>(null);
-  const pane: AnalyticsPane = activeTab.kind !== "repo" ? "welcome" : activeTab.vcs === "perforce"
-    ? p4View === "pending" ? "p4_pending" : p4View === "submitted" ? "p4_history" : "p4_files"
-    : view === "history" ? "git_history" : view === "stash" ? "git_stash" : view === "files" ? "git_files" : "git_changes";
+  const pane = analyticsPane(activeTab.kind === "repo" ? activeTab.vcs : null, view, p4View, filesMode);
 
   useEffect(() => {
-    // A browser preview must never count as an installed application.
-    if (!isTauri()) return;
+    // Only the production native package belongs in application usage reports.
+    if (!isTauri() || import.meta.env.DEV) return;
+    let current = true;
+    void Promise.all([getIdentifier(), getVersion()]).then(([id, version]) => {
+      if (current && id === identifier && isAnalyticsVersion(version)) setAppVersion(version);
+    }).catch(() => {});
+    return () => { current = false; };
+  }, []);
+
+  useEffect(() => {
+    if (appVersion === null) return;
     const current = createAnalyticsController({
       installId: () => analyticsInstallId(localStorage, () => crypto.randomUUID()),
       randomUUID: () => crypto.randomUUID(),
       now: () => performance.now(),
       sessionId: () => Math.floor(Date.now() / 1_000),
       platform: desktopPlatform(),
-      appVersion: version,
+      appVersion,
       createBridge: createAnalyticsFrame,
     });
     controller.current = current;
@@ -48,13 +59,13 @@ export function useAnalytics() {
       current.stop();
       controller.current = null;
     };
-  }, []);
+  }, [appVersion]);
 
-  useEffect(() => { controller.current?.setPane(pane); }, [pane]);
-  useEffect(() => { controller.current?.configure(prefsReady, prefs.analyticsEnabled && allowed); }, [prefsReady, prefs.analyticsEnabled, allowed]);
+  useEffect(() => { controller.current?.setPane(pane); }, [appVersion, pane]);
+  useEffect(() => { controller.current?.configure(prefsReady, prefs.analyticsEnabled && allowed); }, [appVersion, prefsReady, prefs.analyticsEnabled, allowed]);
   useEffect(() => {
-    if (!prefsReady || !prefs.analyticsEnabled || !allowed || !isTauri()) return;
+    if (appVersion === null || !prefsReady || !prefs.analyticsEnabled || !allowed) return;
     const timer = window.setInterval(() => controller.current?.pulse(), ANALYTICS_PULSE_MS);
     return () => { window.clearInterval(timer); };
-  }, [prefsReady, prefs.analyticsEnabled, allowed]);
+  }, [appVersion, prefsReady, prefs.analyticsEnabled, allowed]);
 }

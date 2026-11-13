@@ -132,6 +132,25 @@ describe("desktop analytics privacy", () => {
     expect(frames[0].disable).toHaveBeenCalledOnce();
   });
 
+  it("restores the actual screen after startup buffering fills before attributing more foreground time", () => {
+    const { controller, frames, time } = fixture();
+    controller.setForeground(true);
+    controller.configure(true, true);
+    for (let index = 1; index <= 20; index += 1) {
+      time(index * 100);
+      controller.setPane(index % 2 ? "git_changes" : "git_history");
+    }
+    controller.setPane("p4_shelves");
+    frames[0].ready();
+    expect(frames[0].events.at(-1)).toMatchObject({ event: "pane_view", pane: "p4_shelves" });
+    time(3_000);
+    controller.pulse();
+    expect(frames[0].events.slice(-2)).toEqual([
+      { type: "event", generation: GENERATIONS[0], event: "pane_view", pane: "p4_shelves" },
+      { type: "event", generation: GENERATIONS[0], event: "app_engagement", engagementTimeMsec: 1_000 },
+    ]);
+  });
+
   it("stops synchronously when the Settings choice changes, even if persistence fails", () => {
     const stop = vi.fn();
     const unsubscribe = registerAnalyticsStop(stop);
@@ -147,6 +166,37 @@ describe("desktop analytics privacy", () => {
 });
 
 describe("installation identity", () => {
+  it("preserves the installation across application restarts and upgrades while starting a new session", () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value); },
+    };
+    const random = vi.fn(() => ID);
+    const handshakes: AnalyticsInit[] = [];
+    for (const [index, appVersion] of ["1.2.3", "1.2.3", "1.2.4"].entries()) {
+      const controller = createAnalyticsController({
+        installId: () => analyticsInstallId(storage, random),
+        randomUUID: () => GENERATIONS[0],
+        now: () => 0,
+        sessionId: () => 1_700_000_000 + index * 60,
+        platform: "windows",
+        appVersion,
+        createBridge(init) {
+          handshakes.push(init);
+          return { send: vi.fn(), disable: vi.fn() };
+        },
+      });
+      controller.configure(true, true);
+      controller.stop();
+    }
+    expect(random).toHaveBeenCalledOnce();
+    expect(handshakes.map(({ clientId }) => clientId)).toEqual([ID, ID, ID]);
+    expect(handshakes.map(({ sessionId }) => sessionId)).toEqual([1_700_000_000, 1_700_000_060, 1_700_000_120]);
+    expect(handshakes.map(({ appVersion }) => appVersion)).toEqual(["1.2.3", "1.2.3", "1.2.4"]);
+    expect(handshakes.every(isAnalyticsInit)).toBe(true);
+  });
+
   it("reuses only a random UUID and never derives one from environment information", () => {
     const random = vi.fn(() => ID);
     const storage = { getItem: vi.fn(() => ID), setItem: vi.fn() };

@@ -30,6 +30,7 @@ import { p4Api, relativeToRoot } from "@/lib/p4";
 import { p4DisplayText } from "@/lib/p4-display";
 import { useFileQuery } from "@/lib/use-file-query";
 import { useP4 } from "@/state/p4-context";
+import { setAnalyticsP4FilesMode } from "@/state/analytics-screen";
 import type { P4Connection, P4DirEntry, P4EntryStatus } from "@/types/p4";
 
 export function P4Files() {
@@ -40,6 +41,8 @@ export function P4Files() {
   const root = p4.connection?.root ?? "";
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<"workspace" | "depot">("workspace");
+  useEffect(() => { setAnalyticsP4FilesMode(mode); }, [mode]);
+  useEffect(() => () => { setAnalyticsP4FilesMode("workspace"); }, []);
   const connection = p4.connection;
   const connectionKey = JSON.stringify(connection);
   const searchFiles = useCallback(

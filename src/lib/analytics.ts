@@ -46,15 +46,16 @@ export function createAnalyticsController(options: AnalyticsOptions) {
   const sessionId = options.sessionId();
 
   function send(event: AnalyticsEvent) {
-    if (!enabled || !generation || event.generation !== generation || !bridge) return;
+    if (!enabled || !generation || event.generation !== generation || !bridge) return false;
     if (ready) bridge.send(event);
     else if (pending.length < MAX_PENDING_EVENTS) pending.push(event);
+    else return false;
+    return true;
   }
 
   function sendPane() {
     if (!foreground || !generation || sentPane === pane) return;
-    send({ type: "event", generation, event: "pane_view", pane });
-    sentPane = pane;
+    if (send({ type: "event", generation, event: "pane_view", pane })) sentPane = pane;
   }
 
   function flushEngagement() {
@@ -88,7 +89,7 @@ export function createAnalyticsController(options: AnalyticsOptions) {
         generation = current;
         const init: AnalyticsInit = {
           type: "rebaseraven:analytics:init", protocol: 1, generation: current,
-          clientId: options.installId(), sessionId, platform: options.platform, appVersion: options.appVersion,
+          clientId: options.installId(), sessionId, platform: options.platform, appVersion: options.appVersion, screenSchema: 2,
         };
         bridge = options.createBridge(init, {
           ready() {
@@ -97,6 +98,8 @@ export function createAnalyticsController(options: AnalyticsOptions) {
             const queued = pending;
             pending = [];
             for (const event of queued) send(event);
+            // A full startup queue may have dropped the latest screen transition.
+            sendPane();
           },
           error() { if (generation === current) stop(); },
         });

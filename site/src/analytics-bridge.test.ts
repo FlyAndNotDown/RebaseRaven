@@ -30,6 +30,7 @@ function harness() {
   let reject!: () => void;
   const tag: AnalyticsTag = {
     ready: new Promise<void>((accept, fail) => { resolve = accept; reject = () => fail(new Error("private diagnostic")); }),
+    setScreenSchema: vi.fn(),
     send: vi.fn(), disable: vi.fn(() => { order.push("disable"); }),
   };
   const createTag = vi.fn(() => tag);
@@ -84,6 +85,25 @@ describe("hosted analytics lifecycle", () => {
     bridge.event({ type: "event", generation: init.generation, event: "app_open" });
     expect(bridge.tag.send).not.toHaveBeenCalled();
     expect(bridge.port.postMessage).not.toHaveBeenCalledWith({ type: "ready", generation: init.generation });
+    bridge.dispose();
+  });
+
+  it("accepts only the fixed classification context and never forwards it as a GA event", async () => {
+    const bridge = harness();
+    bridge.message(init);
+    const context = { type: "context", generation: init.generation, screenSchema: 2 };
+    for (const patch of [{ generation: "stale" }, { screenSchema: 3 }, { username: "example" }]) {
+      bridge.event({ ...context, ...patch });
+    }
+    expect(bridge.tag.setScreenSchema).not.toHaveBeenCalled();
+    bridge.event(context);
+    expect(bridge.tag.setScreenSchema).toHaveBeenCalledExactlyOnceWith(2);
+    expect(bridge.tag.send).not.toHaveBeenCalled();
+    bridge.resolve();
+    await Promise.resolve();
+    bridge.event({ type: "disable", generation: init.generation });
+    bridge.event(context);
+    expect(bridge.tag.setScreenSchema).toHaveBeenCalledOnce();
     bridge.dispose();
   });
 

@@ -9,7 +9,7 @@ const init: AnalyticsInit = {
   sessionId: 1_700_000_000, platform: "windows", appVersion: "1.2.3",
 };
 
-function fixture() {
+function fixture(metadata = init) {
   vi.useFakeTimers();
   const port = { postMessage: vi.fn(), start: vi.fn(), close: vi.fn(), onmessage: null as ((event: { data: unknown }) => void) | null };
   const transfer = {};
@@ -26,7 +26,7 @@ function fixture() {
   vi.stubGlobal("MessageChannel", class { port1 = port; port2 = transfer; });
   const ready = vi.fn();
   const error = vi.fn();
-  const bridge = createAnalyticsFrame(init, { ready, error });
+  const bridge = createAnalyticsFrame(metadata, { ready, error });
   return { bridge, frame, port, transfer, append, ready, error };
 }
 
@@ -53,6 +53,16 @@ describe("isolated analytics frame", () => {
     expect(frame.remove).toHaveBeenCalledOnce();
     expect(frame.onload).toBeNull();
     expect(frame.contentWindow.postMessage).not.toHaveBeenCalled();
+  });
+
+  it("keeps the legacy handshake while sending current classification before usage events", () => {
+    const { bridge, frame, port, transfer } = fixture({ ...init, screenSchema: 2 });
+    frame.onload?.();
+    expect(frame.contentWindow.postMessage).toHaveBeenCalledExactlyOnceWith(init, new URL(ANALYTICS_BRIDGE_URL).origin, [transfer]);
+    expect(port.postMessage).toHaveBeenCalledExactlyOnceWith({ type: "context", generation: init.generation, screenSchema: 2 });
+    port.onmessage?.({ data: { type: "ready", generation: init.generation } });
+    bridge.send({ type: "event", generation: init.generation, event: "app_open" });
+    expect(port.postMessage.mock.calls.map(([message]) => message.type)).toEqual(["context", "event"]);
   });
 
   it("rejects stale replies and invalid payloads, then waits for disable acknowledgment before removal", () => {

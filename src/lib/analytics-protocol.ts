@@ -2,7 +2,7 @@ export const ANALYTICS_BRIDGE_URL = "https://rebaseraven.flyandnotdown.com/analy
 
 export const ANALYTICS_PANES = [
   "welcome", "git_changes", "git_history", "git_stash", "git_files",
-  "p4_pending", "p4_files", "p4_history", "p4_depot",
+  "p4_pending", "p4_files", "p4_history", "p4_depot", "p4_shelves",
 ] as const;
 
 export type AnalyticsPane = typeof ANALYTICS_PANES[number];
@@ -16,6 +16,7 @@ export interface AnalyticsInit {
   sessionId: number;
   platform: AnalyticsPlatform;
   appVersion: string;
+  screenSchema?: 2;
 }
 
 export type AnalyticsEvent = { type: "event"; generation: string } & (
@@ -27,6 +28,7 @@ export type AnalyticsEvent = { type: "event"; generation: string } & (
 );
 
 export interface AnalyticsDisable { type: "disable"; generation: string }
+export interface AnalyticsContext { type: "context"; generation: string; screenSchema: 2 }
 export interface AnalyticsReply { type: "ready" | "disabled" | "error"; generation: string }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -60,7 +62,9 @@ export function isTrustedAnalyticsParent(origin: string, source: unknown, parent
 
 export function isAnalyticsInit(value: unknown): value is AnalyticsInit {
   return record(value)
-    && exactKeys(value, ["type", "protocol", "generation", "clientId", "sessionId", "platform", "appVersion"])
+    && exactKeys(value, ["type", "protocol", "generation", "clientId", "sessionId", "platform", "appVersion",
+      ...(Object.prototype.hasOwnProperty.call(value, "screenSchema") ? ["screenSchema"] : [])])
+    && (!Object.prototype.hasOwnProperty.call(value, "screenSchema") || value.screenSchema === 2)
     && value.type === "rebaseraven:analytics:init" && value.protocol === 1
     && typeof value.generation === "string" && UUID.test(value.generation)
     && typeof value.clientId === "string" && UUID.test(value.clientId)
@@ -87,6 +91,11 @@ export function isAnalyticsEvent(value: unknown, generation: string): value is A
 export function isAnalyticsDisable(value: unknown, generation: string): value is AnalyticsDisable {
   return record(value) && exactKeys(value, ["type", "generation"])
     && value.type === "disable" && value.generation === generation;
+}
+
+export function isAnalyticsContext(value: unknown, generation: string): value is AnalyticsContext {
+  return record(value) && exactKeys(value, ["type", "generation", "screenSchema"])
+    && value.type === "context" && value.generation === generation && value.screenSchema === 2;
 }
 
 export function isAnalyticsReply(value: unknown, generation: string): value is AnalyticsReply {

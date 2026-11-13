@@ -6,7 +6,7 @@ const init: AnalyticsInit = {
   type: "rebaseraven:analytics:init", protocol: 1,
   generation: "099a2525-4c0c-41e6-9969-9ecf6d4e26c7",
   clientId: "245bbf45-cbda-49cd-b1d6-d580fe56a85e", sessionId: 1_700_000_000,
-  platform: "windows", appVersion: "1.2.3",
+  platform: "windows", appVersion: "1.2.3", screenSchema: 2,
 };
 
 function hostFixture() {
@@ -26,16 +26,17 @@ describe("official Google tag adapter", () => {
     expect(analyticsConfiguration(init)).toEqual({
       client_id: init.clientId, session_id: init.sessionId, send_page_view: false,
       app_name: "RebaseRavenApp", app_version: "1.2.3", app_platform: "windows", content_group: "Desktop application",
-      page_title: "Welcome", page_location: ANALYTICS_BRIDGE_URL, page_referrer: "",
+      page_title: "RebaseRavenApp", page_location: ANALYTICS_BRIDGE_URL, page_referrer: "",
       ignore_referrer: true, allow_google_signals: false, allow_ad_personalization_signals: false,
       cookie_flags: "SameSite=None;Secure",
-      cookie_prefix: "rebaseraven_app", cookie_domain: "none", cookie_path: "/analytics/", cookie_expires: 0, cookie_update: false,
+      cookie_prefix: "rebaseraven_app", cookie_domain: "none", cookie_path: "/analytics/", cookie_expires: 63_072_000, cookie_update: true,
     });
     expect(analyticsEventParameters(init, {
       type: "event", generation: init.generation, event: "pane_view", pane: "git_history",
     }, "G-EXAMPLE42")).toEqual({
       send_to: "G-EXAMPLE42", client_id: init.clientId, session_id: init.sessionId,
       app_name: "RebaseRavenApp", app_version: "1.2.3", app_platform: "windows", content_group: "Desktop application",
+      screen_schema: "2",
       screen_name: "Git history", screen_class: "git_history", version_control: "git",
       page_title: "Git history", page_location: ANALYTICS_BRIDGE_URL, page_referrer: "", pane: "git_history",
     });
@@ -104,7 +105,46 @@ describe("official Google tag adapter", () => {
     expect(command.slice(0, 2)).toEqual(["event", "app_engagement"]);
     expect(command[2]).toMatchObject({ engagement_time_msec: 1500 });
     expect(command[2]).not.toHaveProperty("generation");
-    expect(command[2]).toMatchObject({ pane: "welcome", screen_name: "Welcome", foreground_time_sec: 1.5 });
+    expect(command[2]).toMatchObject({ page_title: "RebaseRavenApp", foreground_time_sec: 1.5 });
+    expect(command[2]).not.toHaveProperty("pane");
+    expect(command[2]).not.toHaveProperty("screen_name");
+    tag.disable();
+  });
+
+  it("never invents a Welcome view before the first visible workspace is reported", async () => {
+    const { host, script, globals } = hostFixture();
+    const tag = createGoogleAnalyticsTag(host, "G-EXAMPLE42", init);
+    script.onload?.();
+    await tag.ready;
+    tag.send({ type: "event", generation: init.generation, event: "app_open" });
+    tag.send({ type: "event", generation: init.generation, event: "pane_view", pane: "p4_shelves" });
+    tag.send({ type: "event", generation: init.generation, event: "app_engagement", engagementTimeMsec: 2_000 });
+    tag.send({ type: "event", generation: init.generation, event: "pane_view", pane: "p4_depot" });
+    tag.send({ type: "event", generation: init.generation, event: "app_engagement", engagementTimeMsec: 1_000 });
+    const commands = (globals.dataLayer as IArguments[]).slice(3).map((args) => Array.from(args));
+    expect(commands[0][2]).not.toHaveProperty("pane");
+    expect(commands[0][2]).not.toHaveProperty("version_control");
+    expect(commands[1][2]).toMatchObject({ pane: "p4_shelves", screen_name: "Perforce shelves", version_control: "perforce", screen_schema: "2" });
+    expect(commands[2][2]).toMatchObject({ pane: "p4_shelves", foreground_time_sec: 2 });
+    expect(commands[3][2]).toMatchObject({ pane: "p4_depot", screen_name: "Perforce depot" });
+    expect(commands[4][2]).toMatchObject({ pane: "p4_depot", foreground_time_sec: 1 });
+    expect(analyticsEventParameters({ ...init, screenSchema: undefined }, {
+      type: "event", generation: init.generation, event: "pane_view", pane: "p4_files",
+    }, "G-EXAMPLE42")).toMatchObject({ screen_schema: "legacy" });
+    tag.disable();
+  });
+
+  it("upgrades screen classification through the private channel without a synthetic GA event", async () => {
+    const { host, script, globals } = hostFixture();
+    const tag = createGoogleAnalyticsTag(host, "G-EXAMPLE42", { ...init, screenSchema: undefined });
+    tag.setScreenSchema(2);
+    script.onload?.();
+    await tag.ready;
+    tag.send({ type: "event", generation: init.generation, event: "pane_view", pane: "p4_shelves" });
+    const commands = (globals.dataLayer as IArguments[]).slice(3).map((args) => Array.from(args));
+    expect(commands).toHaveLength(1);
+    expect(commands[0][1]).toBe("screen_view");
+    expect(commands[0][2]).toMatchObject({ screen_schema: "2", pane: "p4_shelves" });
     tag.disable();
   });
 });

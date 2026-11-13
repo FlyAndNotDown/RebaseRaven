@@ -51,7 +51,10 @@ export function createAnalyticsFrame(init: AnalyticsInit, callbacks: { ready: ()
         callbacks.ready();
       };
       port.start();
-      frame.contentWindow.postMessage(init, new URL(ANALYTICS_BRIDGE_URL).origin, [channel.port2]);
+      // Preserve the original handshake so an older hosted bridge can still collect.
+      const { screenSchema, ...handshake } = init;
+      frame.contentWindow.postMessage(handshake, new URL(ANALYTICS_BRIDGE_URL).origin, [channel.port2]);
+      if (screenSchema !== undefined) port.postMessage({ type: "context", generation: init.generation, screenSchema });
     } catch { fail(); }
   };
   document.body.append(frame);
