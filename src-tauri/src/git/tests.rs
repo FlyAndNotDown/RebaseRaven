@@ -860,6 +860,7 @@ fn porcelain_status_splits_staged_unstaged_renames_and_conflicts() {
 #[test]
 fn status_and_search_keep_literal_backslashes_through_file_actions() {
     let (root, repo) = temp_repo();
+    config_set_local(&repo, "core.autocrlf", "false").unwrap();
     let literal = r"dir\note.txt";
     let nested = "dir/note.txt";
     fs::create_dir(root.join("dir")).unwrap();
@@ -881,7 +882,9 @@ fn status_and_search_keep_literal_backslashes_through_file_actions() {
     let search = search_files(&repo, "note.txt").unwrap();
     assert!(search.hits.iter().any(|hit| hit.path == literal));
     assert!(search.hits.iter().any(|hit| hit.path == nested));
-    let diff = workdir_diff(&repo, &selected.path, false, false).unwrap();
+    let diff = workdir_diff(&repo, &selected.path, false, false)
+        .unwrap()
+        .diff;
     assert_eq!(diff.path, literal);
     assert!(diff.lines.iter().any(|line| line.content == "literal edit"));
 
@@ -1728,9 +1731,10 @@ fn pick_lines(
     path: &str,
     staged: bool,
     pick: impl Fn(&str) -> bool,
-) -> Vec<LineRef> {
-    workdir_diff(repo, path, staged, false)
-        .unwrap()
+) -> (Vec<LineRef>, String) {
+    let review = workdir_diff(repo, path, staged, false).unwrap();
+    let lines = review
+        .diff
         .lines
         .iter()
         .filter(|line| matches!(line.kind.as_str(), "add" | "delete") && pick(&line.content))
@@ -1746,7 +1750,8 @@ fn pick_lines(
                 None
             },
         })
-        .collect()
+        .collect();
+    (lines, review.fingerprint.unwrap())
 }
 
 #[test]
@@ -1758,11 +1763,11 @@ fn staging_selected_lines_leaves_the_rest_unstaged() {
         .replace("line 15\n", "line fifteen\n");
     fs::write(root.join("file.txt"), &edited).unwrap();
 
-    let lines = pick_lines(&repo, "file.txt", false, |text| {
+    let (lines, fingerprint) = pick_lines(&repo, "file.txt", false, |text| {
         text == "line 2" || text == "line two"
     });
     assert_eq!(lines.len(), 2);
-    apply_lines(&mut repo, "file.txt", false, "stage", &lines).unwrap();
+    apply_lines(&mut repo, "file.txt", false, "stage", &lines, &fingerprint).unwrap();
 
     let expected_index = numbered_lines(20).replace("line 2\n", "line two\n");
     assert_eq!(blob_text(&repo, ":file.txt"), expected_index);
@@ -1780,17 +1785,33 @@ fn unstaging_and_discarding_selected_lines_touch_only_those_lines() {
     fs::write(root.join("file.txt"), &edited).unwrap();
     stage_paths(&repo, &["file.txt".into()]).unwrap();
 
-    let fifteen = pick_lines(&repo, "file.txt", true, |text| {
+    let (fifteen, fingerprint) = pick_lines(&repo, "file.txt", true, |text| {
         text.contains("15") || text.contains("fifteen")
     });
-    apply_lines(&mut repo, "file.txt", true, "unstage", &fifteen).unwrap();
+    apply_lines(
+        &mut repo,
+        "file.txt",
+        true,
+        "unstage",
+        &fifteen,
+        &fingerprint,
+    )
+    .unwrap();
     assert_eq!(
         blob_text(&repo, ":file.txt"),
         numbered_lines(20).replace("line 2\n", "line two\n")
     );
 
-    let unstaged = pick_lines(&repo, "file.txt", false, |_| true);
-    apply_lines(&mut repo, "file.txt", false, "discard", &unstaged).unwrap();
+    let (unstaged, fingerprint) = pick_lines(&repo, "file.txt", false, |_| true);
+    apply_lines(
+        &mut repo,
+        "file.txt",
+        false,
+        "discard",
+        &unstaged,
+        &fingerprint,
+    )
+    .unwrap();
     assert_eq!(
         workdir_text(&root, "file.txt"),
         numbered_lines(20).replace("line 2\n", "line two\n")
@@ -1804,11 +1825,11 @@ fn part_of_a_new_file_can_be_staged() {
     commit_file(&repo, &root, "base.txt", "base\n", "base");
     fs::write(root.join("new.txt"), "alpha\nbeta\ngamma\n").unwrap();
     let diff = workdir_diff(&repo, "new.txt", false, false).unwrap();
-    assert_eq!(diff.lines[0].kind, "hunk");
-    assert_eq!(diff.lines.len(), 4);
+    assert_eq!(diff.diff.lines[0].kind, "hunk");
+    assert_eq!(diff.diff.lines.len(), 4);
 
-    let picked = pick_lines(&repo, "new.txt", false, |text| text != "beta");
-    apply_lines(&mut repo, "new.txt", false, "stage", &picked).unwrap();
+    let (picked, fingerprint) = pick_lines(&repo, "new.txt", false, |text| text != "beta");
+    apply_lines(&mut repo, "new.txt", false, "stage", &picked, &fingerprint).unwrap();
     assert_eq!(blob_text(&repo, ":new.txt"), "alpha\ngamma\n");
     let _ = fs::remove_dir_all(&root);
 }
@@ -1818,8 +1839,8 @@ fn a_last_line_without_a_newline_can_be_staged() {
     let (root, mut repo) = temp_repo();
     commit_file(&repo, &root, "file.txt", "one\ntwo", "base");
     fs::write(root.join("file.txt"), "one\nTWO").unwrap();
-    let picked = pick_lines(&repo, "file.txt", false, |_| true);
-    apply_lines(&mut repo, "file.txt", false, "stage", &picked).unwrap();
+    let (picked, fingerprint) = pick_lines(&repo, "file.txt", false, |_| true);
+    apply_lines(&mut repo, "file.txt", false, "stage", &picked, &fingerprint).unwrap();
     assert_eq!(blob_text(&repo, ":file.txt"), "one\nTWO");
     let _ = fs::remove_dir_all(&root);
 }
@@ -1841,17 +1862,17 @@ fn line_actions_work_on_crlf_working_trees() {
         .replace('\n', "\r\n");
     fs::write(root.join("file.txt"), &edited).unwrap();
 
-    let first = pick_lines(&repo, "file.txt", false, |text| {
+    let (first, fingerprint) = pick_lines(&repo, "file.txt", false, |text| {
         text.ends_with(" 1") || text == "line one"
     });
-    apply_lines(&mut repo, "file.txt", false, "stage", &first).unwrap();
+    apply_lines(&mut repo, "file.txt", false, "stage", &first, &fingerprint).unwrap();
     assert_eq!(
         blob_text(&repo, ":file.txt"),
         numbered_lines(12).replace("line 1\n", "line one\n")
     );
 
-    let rest = pick_lines(&repo, "file.txt", false, |_| true);
-    apply_lines(&mut repo, "file.txt", false, "discard", &rest).unwrap();
+    let (rest, fingerprint) = pick_lines(&repo, "file.txt", false, |_| true);
+    apply_lines(&mut repo, "file.txt", false, "discard", &rest, &fingerprint).unwrap();
     let on_disk = fs::read_to_string(root.join("file.txt")).unwrap();
     assert_eq!(
         on_disk,
@@ -1874,9 +1895,10 @@ fn hiding_whitespace_drops_indentation_only_changes() {
     );
     fs::write(root.join("file.txt"), "fn main() {\n    body();\n}\n").unwrap();
     let shown = workdir_diff(&repo, "file.txt", false, false).unwrap();
-    assert!(shown.lines.iter().any(|line| line.kind == "add"));
+    assert!(shown.diff.lines.iter().any(|line| line.kind == "add"));
     let hidden = workdir_diff(&repo, "file.txt", false, true).unwrap();
     assert!(!hidden
+        .diff
         .lines
         .iter()
         .any(|line| line.kind == "add" || line.kind == "delete"));
@@ -1888,13 +1910,14 @@ fn stale_line_selections_are_rejected() {
     let (root, mut repo) = temp_repo();
     commit_file(&repo, &root, "file.txt", "one\ntwo\n", "base");
     fs::write(root.join("file.txt"), "one\nTWO\n").unwrap();
+    let (_, fingerprint) = pick_lines(&repo, "file.txt", false, |_| true);
     let stale = vec![LineRef {
         old: Some(40),
         new: None,
     }];
-    let err = apply_lines(&mut repo, "file.txt", false, "stage", &stale).unwrap_err();
+    let err = apply_lines(&mut repo, "file.txt", false, "stage", &stale, &fingerprint).unwrap_err();
     assert!(err.to_string().contains("no longer changes"), "{err}");
-    assert!(apply_lines(&mut repo, "file.txt", true, "stage", &stale).is_err());
+    assert!(apply_lines(&mut repo, "file.txt", true, "stage", &stale, &fingerprint).is_err());
     let _ = fs::remove_dir_all(&root);
 }
 

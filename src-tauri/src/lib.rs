@@ -262,7 +262,7 @@ async fn get_workdir_diff(
     path: String,
     staged: bool,
     ignore_whitespace: Option<bool>,
-) -> AppResult<FileDiff> {
+) -> AppResult<git::WorkdirDiff> {
     let ignore_whitespace = ignore_whitespace.unwrap_or(false);
     with_repo_async(repo_path, move |repo| {
         git::workdir_diff(repo, &path, staged, ignore_whitespace)
@@ -401,9 +401,10 @@ async fn apply_lines(
     staged: bool,
     action: String,
     lines: Vec<git::LineRef>,
+    fingerprint: String,
 ) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, move |repo| {
-        git::apply_lines(repo, &path, staged, &action, &lines)
+        git::apply_lines(repo, &path, staged, &action, &lines, &fingerprint)
     })
     .await
 }

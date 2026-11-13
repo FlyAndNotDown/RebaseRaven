@@ -109,6 +109,8 @@ export interface LineRef {
 export type LineAction = "stage" | "unstage" | "discard";
 
 export interface FileDiff {
+  /** Present only for an actionable Git worktree or index diff. */
+  fingerprint?: string | null;
   path: string;
   oldPath: string | null;
   binary: boolean;

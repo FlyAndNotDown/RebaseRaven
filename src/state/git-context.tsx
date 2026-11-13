@@ -217,7 +217,7 @@ interface GitContextValue {
   stage: (paths: string[]) => Promise<void>;
   unstage: (paths: string[]) => Promise<void>;
   discard: (paths: string[]) => Promise<void>;
-  applyLines: (path: string, staged: boolean, action: LineAction, lines: LineRef[]) => Promise<boolean>;
+  applyLines: (path: string, staged: boolean, action: LineAction, lines: LineRef[], fingerprint: string) => Promise<boolean>;
   commit: (message: string, amend?: boolean) => Promise<boolean>;
   commitAndPush: (message: string, amend?: boolean) => Promise<boolean>;
   undoLastCommit: (tabId?: string) => Promise<boolean>;
@@ -1918,13 +1918,13 @@ export function GitProvider({ children }: { children: ReactNode }) {
   );
 
   const applyLines = useCallback(
-    async (path: string, staged: boolean, action: LineAction, lines: LineRef[]) => {
+    async (path: string, staged: boolean, action: LineAction, lines: LineRef[], fingerprint: string) => {
       const count = t("operations.lineCount", { count: lines.length });
       const label =
         action === "stage" ? t("operations.staging", { value: count }) : action === "unstage" ? t("operations.unstaging", { value: count }) : t("operations.discarding", { value: count });
       return runMutation(
         label,
-        (repoPath) => gitApi.applyLines(repoPath, path, staged, action, lines),
+        (repoPath) => gitApi.applyLines(repoPath, path, staged, action, lines, fingerprint),
         action === "discard" ? t("operations.discarded", { value: count }) : undefined,
       );
     },

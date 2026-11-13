@@ -167,8 +167,8 @@ export const gitApi = {
     call<WorkspaceSnapshot>("stage_paths", { repoPath, paths }),
   unstagePaths: (repoPath: string, paths: string[]) =>
     call<WorkspaceSnapshot>("unstage_paths", { repoPath, paths }),
-  applyLines: (repoPath: string, path: string, staged: boolean, action: LineAction, lines: LineRef[]) =>
-    call<WorkspaceSnapshot>("apply_lines", { repoPath, path, staged, action, lines }),
+  applyLines: (repoPath: string, path: string, staged: boolean, action: LineAction, lines: LineRef[], fingerprint: string) =>
+    call<WorkspaceSnapshot>("apply_lines", { repoPath, path, staged, action, lines, fingerprint }),
   discardPaths: (repoPath: string, paths: string[]) =>
     call<WorkspaceSnapshot>("discard_paths", { repoPath, paths }),
   commit: (repoPath: string, message: string, amend = false) =>

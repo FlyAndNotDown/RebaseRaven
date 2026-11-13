@@ -90,6 +90,7 @@ export function sameDiff(left: FileDiff | null, right: FileDiff | null) {
   if (left === right) return true;
   if (!left || !right) return false;
   if (
+    left.fingerprint !== right.fingerprint ||
     left.path !== right.path ||
     left.oldPath !== right.oldPath ||
     left.binary !== right.binary ||
