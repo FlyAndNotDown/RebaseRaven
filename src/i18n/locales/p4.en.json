@@ -315,6 +315,7 @@
     "externalConfirmHint": "Review the result, then mark the merge complete. Closing the external tool does not resolve the file."
   },
   "clean": {
+    "menu": "Clean",
     "review_one": "Review {{count}} file",
     "review_other": "Review {{count}} files",
     "apply_one": "Clean {{count}} file",
@@ -349,6 +350,7 @@
     }
   },
   "reconcileReview": {
+    "menu": "Reconcile",
     "title": "Reconcile offline changes",
     "selected": "{{count}} / {{total}} selected",
     "scanning": "Scanning workspace…",

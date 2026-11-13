@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use super::cli;
-use super::parse::{parse_ztag, spec_field};
+use super::parse::{parse_ztag, path_is_within, spec_field};
 use super::workspace::{env_for, workspace_directory_path, workspace_file_spec, P4Connection};
 use crate::error::{AppError, AppResult};
 
@@ -111,11 +111,29 @@ pub struct P4ReconcilePreview {
     pub fingerprint: String,
 }
 
-pub fn preview_reconcile(connection: &P4Connection) -> AppResult<P4ReconcilePreview> {
-    let scope = format!("//{}/...", connection.client);
+fn reconcile_scope(connection: &P4Connection, scope: Option<&str>) -> AppResult<String> {
+    let Some(scope) = scope else {
+        return Ok(format!("//{}/...", connection.client));
+    };
+    let directory = PathBuf::from(scope);
+    if !directory.is_absolute() || scope.contains("...") || scope.chars().any(char::is_control) {
+        return Err(AppError::msg(
+            "Choose a local workspace folder without wildcards or control characters.",
+        ));
+    }
+    let directory = workspace_directory_path(Path::new(&connection.root), directory)?;
+    let spec = workspace_file_spec(&connection.root, &directory.to_string_lossy());
+    Ok(format!("{}/...", spec.trim_end_matches(['/', '\\'])))
+}
+
+pub fn preview_reconcile(
+    connection: &P4Connection,
+    scope: Option<&str>,
+) -> AppResult<P4ReconcilePreview> {
+    let spec = reconcile_scope(connection, scope)?;
     let output = allow_empty(run(
         connection,
-        &["-ztag", "reconcile", "-n", "-e", "-a", "-d", &scope],
+        &["-ztag", "reconcile", "-n", "-e", "-a", "-d", &spec],
     ))?;
     let mut hash = DefaultHasher::new();
     (
@@ -123,6 +141,8 @@ pub fn preview_reconcile(connection: &P4Connection) -> AppResult<P4ReconcilePrev
         &connection.user,
         &connection.client,
         &connection.root,
+        &connection.charset,
+        &spec,
         &output,
     )
         .hash(&mut hash);
@@ -134,6 +154,14 @@ pub fn preview_reconcile(connection: &P4Connection) -> AppResult<P4ReconcilePrev
             continue;
         }
         let path = get("clientFile");
+        if !path_is_within(
+            Path::new(scope.unwrap_or(&connection.root)),
+            Path::new(&path),
+        ) {
+            return Err(AppError::msg(
+                "P4 returned a file outside the selected workspace folder.",
+            ));
+        }
         hash_file(&connection.root, &PathBuf::from(&path), &mut hash)?;
         files.push(P4ReconcileFile {
             path,
@@ -152,12 +180,13 @@ pub fn apply_reconcile(
     paths: &[String],
     change: &str,
     fingerprint: &str,
+    scope: Option<&str>,
 ) -> AppResult<String> {
     if paths.is_empty() {
         return Err(AppError::msg("Choose a file."));
     }
     let change = pending_change(connection, change)?;
-    let preview = preview_reconcile(connection)?;
+    let preview = preview_reconcile(connection, scope)?;
     if preview.fingerprint != fingerprint
         || paths
             .iter()
@@ -180,4 +209,64 @@ pub fn apply_reconcile(
     );
     let refs: Vec<_> = args.iter().map(String::as_str).collect();
     run(connection, &refs)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn connection(root: &Path) -> P4Connection {
+        P4Connection {
+            root: root.to_string_lossy().into_owned(),
+            port: String::new(),
+            user: String::new(),
+            client: "example".into(),
+            charset: String::new(),
+            stream: None,
+            server: String::new(),
+        }
+    }
+
+    #[test]
+    fn directory_reconcile_limits_the_recursive_spec_and_escapes_local_names() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join("folder #@% name");
+        fs::create_dir(&directory).unwrap();
+        let connection = connection(root.path());
+        assert_eq!(reconcile_scope(&connection, None).unwrap(), "//example/...");
+        assert_eq!(
+            reconcile_scope(&connection, directory.to_str()).unwrap(),
+            format!(
+                "{}/...",
+                root.path().join("folder %23%40%25 name").display()
+            )
+        );
+        let nested = root.path().join("folder #@% name").join("nested");
+        fs::create_dir(&nested).unwrap();
+        assert!(reconcile_scope(&connection, nested.to_str())
+            .unwrap()
+            .ends_with("/nested/..."));
+    }
+
+    #[test]
+    fn directory_reconcile_rejects_nonlocal_missing_and_escaping_scopes() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let connection = connection(root.path());
+        for scope in [
+            "relative",
+            "//example/...",
+            outside.path().to_str().unwrap(),
+            root.path().join("missing").to_str().unwrap(),
+            root.path().join("a...b").to_str().unwrap(),
+        ] {
+            assert!(reconcile_scope(&connection, Some(scope)).is_err());
+        }
+        #[cfg(unix)]
+        {
+            let link = root.path().join("outside");
+            std::os::unix::fs::symlink(outside.path(), &link).unwrap();
+            assert!(reconcile_scope(&connection, link.to_str()).is_err());
+        }
+    }
 }

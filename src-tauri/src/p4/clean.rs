@@ -371,6 +371,9 @@ mod tests {
             file.display()
         );
         assert!(files(root.path(), &record.repeat(2)).is_err());
+        let selected = root.path().join("selected");
+        fs::create_dir(&selected).unwrap();
+        assert!(files(&selected, &record).is_err());
         #[cfg(unix)]
         {
             let link = root.path().join("link");

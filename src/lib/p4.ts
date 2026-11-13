@@ -217,9 +217,9 @@ export const p4Api = {
     call<string>("p4_apply_undo", { connection, request, fingerprint }),
   previewClean: (connection: P4Connection, request: P4CleanRequest) => call<P4CleanPreview>("p4_preview_clean", {connection,request}),
   applyClean: (connection: P4Connection, request: P4CleanRequest, paths: string[], fingerprint: string) => call<string>("p4_apply_clean", {connection,request,paths,fingerprint}),
-  previewReconcile: (connection: P4Connection) => call<P4ReconcilePreview>("p4_preview_reconcile", { connection }),
-  applyReconcile: (connection: P4Connection, paths: string[], changeId: string, fingerprint: string) =>
-    call<string>("p4_apply_reconcile", { connection, paths, changeId, fingerprint }),
+  previewReconcile: (connection: P4Connection, scope?: string) => call<P4ReconcilePreview>("p4_preview_reconcile", { connection, scope: scope ?? null }),
+  applyReconcile: (connection: P4Connection, paths: string[], changeId: string, fingerprint: string, scope?: string) =>
+    call<string>("p4_apply_reconcile", { connection, paths, changeId, fingerprint, scope: scope ?? null }),
   fileAction: (connection: P4Connection, action: "edit" | "add" | "delete" | "lock" | "unlock", paths: string[], changeId?: string) =>
     call<void>("p4_file_action", { connection, action, paths, changeId: changeId ?? null }),
   login: (connection: P4Connection, password: string) =>

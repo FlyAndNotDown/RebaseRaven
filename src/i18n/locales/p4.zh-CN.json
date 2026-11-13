@@ -315,6 +315,7 @@
     "externalConfirmHint": "检查合并结果后，确认合并完成。关闭外部工具不会直接解决此文件。"
   },
   "clean": {
+    "menu": "清理",
     "review_one": "确认 {{count}} 个文件",
     "review_other": "确认 {{count}} 个文件",
     "apply_one": "清理 {{count}} 个文件",
@@ -349,6 +350,7 @@
     }
   },
   "reconcileReview": {
+    "menu": "整理离线修改",
     "title": "整理离线修改",
     "selected": "已选 {{count}} / {{total}}",
     "scanning": "正在扫描工作区…",

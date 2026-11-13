@@ -8,8 +8,8 @@ import { setLanguagePreference } from "@/i18n";
 import type { P4DirEntry, P4EntryStatus } from "@/types/p4";
 import { analyticsP4FilesMode } from "@/state/analytics-screen";
 
-const actions=vi.hoisted(()=>({listDir:vi.fn(),listDepot:vi.fn(),status:vi.fn(),search:vi.fn(),cancel:vi.fn(),connection:{root:"/workspace",port:"server:1666",user:"alice",client:"client",stream:""}}));
-vi.mock("@/state/p4-context",()=>({useP4:()=>({connection:actions.connection,listDir:actions.listDir,listDepot:actions.listDepot,filesEpoch:0,busy:false})}));
+const actions=vi.hoisted(()=>({listDir:vi.fn(),listDepot:vi.fn(),status:vi.fn(),search:vi.fn(),cancel:vi.fn(),reconcile:vi.fn(),openClean:vi.fn(),connection:{root:"/workspace",port:"server:1666",user:"alice",client:"client",stream:""}}));
+vi.mock("@/state/p4-context",()=>({useP4:()=>({connection:actions.connection,listDir:actions.listDir,listDepot:actions.listDepot,reconcile:actions.reconcile,openClean:actions.openClean,filesEpoch:0,busy:false})}));
 vi.mock("@/lib/p4",async importOriginal=>({...await importOriginal<typeof import("@/lib/p4")>(),p4Api:{listingStatus:actions.status,searchFiles:actions.search,cancelDepotSearch:actions.cancel}}));
 vi.mock("@/components/p4/p4-file-history",()=>({P4FileHistory:({path}:{path:string})=><div data-file-history={path}/> }));
 vi.mock("@/components/p4/p4-directory-history",()=>({P4DirectoryHistory:({path}:{path:string})=><div data-directory-history={path}/> }));
@@ -33,6 +33,29 @@ it("reports the selected file-tree mode and clears it when leaving the files vie
   expect(analyticsP4FilesMode()).toBe("depot");
   await act(async()=>root.render(null));expect(analyticsP4FilesMode()).toBe("workspace");
   await render();expect(analyticsP4FilesMode()).toBe("workspace");
+});
+
+it("scopes directory reconciliation and cleanup to the right-clicked folder", async () => {
+  await render();
+  async function openMenu() {
+    await act(async () => rows("/workspace/cache")[0].dispatchEvent(new MouseEvent("contextmenu", {bubbles:true,button:2})));
+  }
+  function item(label: string) {
+    const found = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent?.trim() === label);
+    expect(found, `Missing menu item: ${label}`).toBeDefined();
+    return found!;
+  }
+  await openMenu();
+  await act(async () => item("Reconcile").click());
+  expect(actions.reconcile).toHaveBeenCalledExactlyOnceWith("/workspace/cache");
+  await openMenu();
+  expect(document.querySelector('[role="menu"]')?.textContent).not.toContain("Clean workspace");
+  await act(async () => item("Clean").click());
+  expect(actions.openClean).toHaveBeenCalledExactlyOnceWith("/workspace/cache");
+  await act(async () => rows("/workspace/output.tmp")[0].dispatchEvent(new MouseEvent("contextmenu", {bubbles:true,button:2})));
+  const labels = [...document.querySelectorAll('[role="menuitem"]')].map(item => item.textContent?.trim());
+  expect(labels).not.toContain("Reconcile");
+  expect(labels).not.toContain("Clean");
 });
 
 it("keeps native ignore matches after asynchronous status icons arrive",async()=>{

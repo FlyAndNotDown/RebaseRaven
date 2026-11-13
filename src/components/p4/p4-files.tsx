@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
-import { ArrowRightLeftIcon, BrushCleaningIcon, DownloadIcon, FilePenIcon, FolderIcon, FolderOpenIcon, FolderSearchIcon, FolderTreeIcon, GitMergeIcon, HistoryIcon, PlusIcon, Trash2Icon, Undo2Icon } from "lucide-react";
+import { ArrowRightLeftIcon, BrushCleaningIcon, DownloadIcon, FilePenIcon, FolderIcon, FolderOpenIcon, FolderSearchIcon, FolderTreeIcon, GitMergeIcon, HistoryIcon, ListChecksIcon, PlusIcon, Trash2Icon, Undo2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { FileTree, FileTreeFilter, FilteredFileTree, type FileTreeEntry } from "@/components/file-tree";
 import { FileStatusIcon } from "@/components/p4/file-status-icon";
@@ -140,7 +140,10 @@ export function P4Files() {
         <ContextMenuItem disabled={p4.busy} onSelect={() => setRevisionTarget({ path: entry.path, recursive: entry.dir })}>
           <HistoryIcon />{t("p4.getRevision")}</ContextMenuItem>
         {entry.dir ? <ContextMenuItem disabled={p4.busy} onClick={() => p4.openIntegration(mode === "depot" ? {source:path} : {target:`//${connection?.client}/${relativeToRoot(root,entry.path).replace(/\/+$/, "")}${relativeToRoot(root,entry.path) ? "/" : ""}...`})}><GitMergeIcon />{t("p4.integration.title")}</ContextMenuItem> : null}
-        {entry.dir && mode === "workspace" ? <ContextMenuItem disabled={p4.busy} onClick={()=>p4.openClean(entry.path)}><BrushCleaningIcon/>{t("p4.clean.title")}</ContextMenuItem> : null}
+        {entry.dir && mode === "workspace" ? <>
+          <ContextMenuItem disabled={p4.busy} onClick={() => void p4.reconcile(entry.path)}><ListChecksIcon />{t("p4.reconcileReview.menu")}</ContextMenuItem>
+          <ContextMenuItem disabled={p4.busy} onClick={() => p4.openClean(entry.path)}><BrushCleaningIcon />{t("p4.clean.menu")}</ContextMenuItem>
+        </> : null}
         {!entry.dir ? <>
           <ContextMenuSeparator />
           <ContextMenuItem disabled={p4.busy} onClick={() => setOperation({ kind: "integrate", path: entry.path, depot: mode === "depot" })}>

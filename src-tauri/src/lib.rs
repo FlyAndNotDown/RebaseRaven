@@ -1981,8 +1981,11 @@ async fn p4_sync(
 }
 
 #[tauri::command]
-async fn p4_preview_reconcile(connection: p4::P4Connection) -> AppResult<p4::P4ReconcilePreview> {
-    blocking(move || p4::preview_reconcile(&connection)).await
+async fn p4_preview_reconcile(
+    connection: p4::P4Connection,
+    scope: Option<String>,
+) -> AppResult<p4::P4ReconcilePreview> {
+    blocking(move || p4::preview_reconcile(&connection, scope.as_deref())).await
 }
 
 #[tauri::command]
@@ -2009,8 +2012,18 @@ async fn p4_apply_reconcile(
     paths: Vec<String>,
     change_id: String,
     fingerprint: String,
+    scope: Option<String>,
 ) -> AppResult<String> {
-    blocking(move || p4::apply_reconcile(&connection, &paths, &change_id, &fingerprint)).await
+    blocking(move || {
+        p4::apply_reconcile(
+            &connection,
+            &paths,
+            &change_id,
+            &fingerprint,
+            scope.as_deref(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]

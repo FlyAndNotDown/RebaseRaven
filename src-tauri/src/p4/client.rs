@@ -192,7 +192,8 @@ pub fn save_workspace(
     if moving {
         let scope = format!("//{}/...", connection.client);
         let opened = allow_empty(run(connection, &["-ztag", "opened", &scope]))?;
-        if !parse_ztag(&opened).is_empty() || !preview_reconcile(connection)?.files.is_empty() {
+        if !parse_ztag(&opened).is_empty() || !preview_reconcile(connection, None)?.files.is_empty()
+        {
             return Err(AppError::msg("Submit, shelve and revert local changes before changing workspace mappings or root."));
         }
     }

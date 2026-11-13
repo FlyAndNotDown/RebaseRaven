@@ -12,7 +12,7 @@ import { relativeToRoot } from "@/lib/p4";
 import { useP4 } from "@/state/p4-context";
 import type { P4ReconcilePreview } from "@/types/p4";
 
-export function P4ReconcileDialog({ onClose }: { onClose: () => void }) {
+export function P4ReconcileDialog({ scope, onClose }: { scope?: string; onClose: () => void }) {
   const { t } = useTranslation();
   const { connection, previewReconcile, applyReconcile, busy: workspaceBusy, selectedChange } = useP4();
   const [preview, setPreview] = useState<P4ReconcilePreview | null>(null);
@@ -31,11 +31,11 @@ export function P4ReconcileDialog({ onClose }: { onClose: () => void }) {
     running.current = true;
     setLoading(true); setError(null); setPreview(null); setPicked(new Set());
     try {
-      const next = await previewReconcile();
+      const next = await previewReconcile(scope);
       if (mounted.current) { setPreview(next); setPicked(new Set(next.files.map((file) => file.path))); }
     } catch (caught) { if (mounted.current) setError(p4DisplayError(errorMessage(caught))); }
     finally { running.current = false; if (mounted.current) setLoading(false); }
-  }, [previewReconcile]);
+  }, [previewReconcile, scope]);
 
   useEffect(() => { mounted.current = true; void Promise.resolve().then(() => { if (mounted.current) void scan(); }); return () => { mounted.current = false; }; }, [scan]);
 
@@ -43,8 +43,8 @@ export function P4ReconcileDialog({ onClose }: { onClose: () => void }) {
     if (!preview || picked.size === 0 || running.current || workspaceBusy) return;
     running.current = true; setApplying(true); setError(null);
     try {
-      await applyReconcile([...picked], change, preview.fingerprint);
-      onClose();
+      await applyReconcile([...picked], change, preview.fingerprint, scope);
+      if (mounted.current) onClose();
     } catch (caught) {
       if (mounted.current) { setError(p4DisplayError(errorMessage(caught))); setPreview(null); setPicked(new Set()); }
     } finally { running.current = false; if (mounted.current) setApplying(false); }
@@ -53,7 +53,7 @@ export function P4ReconcileDialog({ onClose }: { onClose: () => void }) {
   const blocked = loading || applying || workspaceBusy;
   return <Dialog open onOpenChange={(open) => { if (!open && !applying) onClose(); }}>
     <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-2xl" showCloseButton={!applying}>
-      <DialogHeader><DialogTitle>{t("p4.reconcileReview.title")}</DialogTitle><DialogDescription className="truncate font-mono text-xs">{connection?.client}</DialogDescription></DialogHeader>
+      <DialogHeader><DialogTitle>{t("p4.reconcileReview.title")}</DialogTitle><DialogDescription className="truncate font-mono text-xs" title={scope}>{scope ? relativeToRoot(connection?.root ?? "", scope) || connection?.client : connection?.client}</DialogDescription></DialogHeader>
       <div className="flex items-center justify-between gap-2">
         <Label className="flex items-center gap-2 text-xs"><Checkbox checked={picked.size > 0 && picked.size === preview?.files.length ? true : picked.size > 0 ? "indeterminate" : false} disabled={blocked || !preview?.files.length} onCheckedChange={(checked) => setPicked(new Set(checked ? preview?.files.map((file) => file.path) : []))} />{t("p4.reconcileReview.selected", { count: picked.size, total: preview?.files.length ?? 0 })}</Label>
         <Button variant="ghost" size="xs" disabled={blocked} onClick={() => void scan()}><RefreshCwIcon />{t("p4.refresh")}</Button>
