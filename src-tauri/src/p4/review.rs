@@ -243,9 +243,16 @@ mod tests {
         );
         let nested = root.path().join("folder #@% name").join("nested");
         fs::create_dir(&nested).unwrap();
-        assert!(reconcile_scope(&connection, nested.to_str())
-            .unwrap()
-            .ends_with("/nested/..."));
+        assert_eq!(
+            reconcile_scope(&connection, nested.to_str()).unwrap(),
+            format!(
+                "{}/...",
+                root.path()
+                    .join("folder %23%40%25 name")
+                    .join("nested")
+                    .display()
+            )
+        );
     }
 
     #[test]
