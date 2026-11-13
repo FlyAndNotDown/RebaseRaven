@@ -131,7 +131,8 @@
     "streamWorkChangeDelete": "Submit or revert the opened stream definition first.",
     "streamWorkRestoreChange": "Move the opened stream definition to the selected changelist first.",
     "streamWorkShelf": "This shelf has no definition for the workspace's stream.",
-    "streamWorkShelfDelete": "The stream definition was not removed from the shelf."
+    "streamWorkShelfDelete": "The stream definition was not removed from the shelf.",
+    "workspaceStale": "The workspace changed. Reload it before saving."
   },
   "connectionRequired": "Reconnect this workspace before continuing.",
   "workspaceBusy": "Wait for the current workspace operation to finish.",

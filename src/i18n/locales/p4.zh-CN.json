@@ -403,10 +403,9 @@
   "workspaceSettings": {
     "section": "工作区设置",
     "general": "常规",
-    "mapping": "View 映射",
+    "mapping": "映射",
     "lineEnd": "换行符",
     "rootHint": "修改根目录不会移动现有文件。请先提交，或搁置并还原本地修改。",
-    "generatedHint": "映射由 Perforce 根据 Stream 自动生成。请通过“切换 Stream”更换分支。",
     "lineEnds": {
       "local": "跟随系统",
       "unix": "Unix（LF）",
@@ -414,21 +413,34 @@
       "share": "共享（规范化为 LF）",
       "mac": "Classic Mac（CR）"
     },
-    "options": {
-      "allwrite": "保持文件可写",
-      "clobber": "允许覆盖可写文件",
-      "compress": "压缩传输数据",
-      "modtime": "保留文件修改时间",
-      "rmdir": "同步后移除空目录"
-    },
-    "hints": {
-      "allwrite": "无需签出即可编辑文件，通过“整理离线修改”识别改动。",
-      "clobber": "同步时允许覆盖工作区中可写的文件。",
-      "compress": "压缩此工作区与服务器之间传输的数据。",
-      "modtime": "同步文件时使用版本库中的文件时间。",
-      "rmdir": "移除同步后变为空的目录。"
-    },
-    "saveBeforeSwitch": "先保存或取消工作区修改，再切换 Stream。"
+    "saveBeforeSwitch": "先保存或取消工作区修改，再切换 Stream。",
+    "editor": "映射编辑方式",
+    "rules": "规则",
+    "text": "文本",
+    "rule": "规则",
+    "path": "路径",
+    "depotPath": "仓库路径",
+    "workspacePath": "工作区路径",
+    "rowRule": "第 {{count}} 条映射规则",
+    "rowSource": "第 {{count}} 条源路径",
+    "rowTarget": "第 {{count}} 条工作区路径",
+    "addMapping": "添加规则",
+    "removeMapping": "删除规则",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "overrides": "工作区映射覆盖",
+    "overrideHint": "仅调整当前工作区的包含、排除范围。留空使用完整 Stream。路径统一使用仓库语法或工作区语法。",
+    "mappingHint": "后面的规则优先。工作区路径以客户端名称开头，而不是本地文件夹。",
+    "allStreamFiles": "完整 Stream",
+    "noMappings": "添加一条映射规则。",
+    "unsupportedOverrides": "映射覆盖需要 P4 Server 2025.2 或更高版本。",
+    "reload": "放弃草稿并重新加载",
+    "kinds": {
+      "include": "包含",
+      "exclude": "排除",
+      "overlay": "叠加",
+      "ditto": "一对多"
+    }
   },
   "switchStream": {
     "title": "切换 Stream",

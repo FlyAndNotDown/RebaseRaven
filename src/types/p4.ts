@@ -240,9 +240,8 @@ export type P4FileSource =
   | { kind: "resolve"; path: string }
   | { kind: "stream"; request: import("./p4-stream-specs").P4StreamDiffRequest };
 
-export interface P4WorkspaceOptions { allwrite: boolean; clobber: boolean; compress: boolean; modtime: boolean; rmdir: boolean }
-export interface P4WorkspaceEdit { root: string; view: string[]; lineEnd: "local" | "unix" | "mac" | "win" | "share"; options: P4WorkspaceOptions }
-export interface P4WorkspaceSettings extends P4WorkspaceEdit { stream: string; fingerprint: string }
+export interface P4WorkspaceEdit { root: string; view: string[]; limitView: string[]; lineEnd: "local" | "unix" | "mac" | "win" | "share" }
+export interface P4WorkspaceSettings extends P4WorkspaceEdit { stream: string; limitViewSupported: boolean; fingerprint: string }
 
 export interface P4SwitchRequest { target: string }
 

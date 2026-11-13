@@ -121,6 +121,6 @@ it("labels private edits and disables fields not isolated by the server", async 
   expect(document.body.textContent).toContain("Changes stay private");
   expect((document.getElementById("p4-stream-name") as HTMLInputElement).disabled).toBe(true);
   expect((document.getElementById("p4-stream-owner") as HTMLInputElement).disabled).toBe(true);
-  await click("View mappings");
+  await click("Mappings");
   expect((document.getElementById("p4-stream-paths") as HTMLTextAreaElement).disabled).toBe(false);
 });

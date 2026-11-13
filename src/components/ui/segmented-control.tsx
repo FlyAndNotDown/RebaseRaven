@@ -14,7 +14,7 @@ export function SegmentedControl<T extends string>({
 }: {
   label: string;
   value: T;
-  options: { value: T; label: ReactNode; tip?: string }[];
+  options: { value: T; label: ReactNode; tip?: string; disabled?: boolean }[];
   onChange: (value: T) => void;
   disabled?: boolean;
   dense?: boolean;
@@ -29,7 +29,7 @@ export function SegmentedControl<T extends string>({
             type="button"
             size={dense ? "icon-xs" : "sm"}
             variant="ghost"
-            disabled={disabled}
+            disabled={disabled || option.disabled}
             aria-pressed={selected}
             aria-label={option.tip}
             className={cn(

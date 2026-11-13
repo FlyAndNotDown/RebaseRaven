@@ -403,10 +403,9 @@
   "workspaceSettings": {
     "section": "Workspace settings",
     "general": "General",
-    "mapping": "View mappings",
+    "mapping": "Mappings",
     "lineEnd": "Line endings",
     "rootHint": "Changing the root does not move existing files. Submit, shelve and revert local changes first.",
-    "generatedHint": "Perforce generates these mappings from the stream. Change streams using Switch stream.",
     "lineEnds": {
       "local": "System default",
       "unix": "Unix (LF)",
@@ -414,21 +413,34 @@
       "share": "Shared (LF normalization)",
       "mac": "Classic Mac (CR)"
     },
-    "options": {
-      "allwrite": "Keep files writable",
-      "clobber": "Allow overwriting writable files",
-      "compress": "Compress server transfers",
-      "modtime": "Preserve file modification times",
-      "rmdir": "Remove empty folders after sync"
-    },
-    "hints": {
-      "allwrite": "Files remain writable without checking them out. Use Reconcile to detect offline edits.",
-      "clobber": "Sync may overwrite writable workspace files.",
-      "compress": "Compress data transferred between this workspace and the server.",
-      "modtime": "Use the depot file timestamp when syncing.",
-      "rmdir": "Delete folders left empty by a sync operation."
-    },
-    "saveBeforeSwitch": "Save or discard workspace edits before switching streams."
+    "saveBeforeSwitch": "Save or discard workspace edits before switching streams.",
+    "editor": "Mapping editor",
+    "rules": "Rules",
+    "text": "Text",
+    "rule": "Rule",
+    "path": "Path",
+    "depotPath": "Depot path",
+    "workspacePath": "Workspace path",
+    "rowRule": "Mapping rule {{count}}",
+    "rowSource": "Source path {{count}}",
+    "rowTarget": "Workspace path {{count}}",
+    "addMapping": "Add rule",
+    "removeMapping": "Remove rule",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "overrides": "Workspace mapping overrides",
+    "overrideHint": "Include or exclude paths in this workspace only. Leave empty for the full stream. Use depot or workspace syntax consistently.",
+    "mappingHint": "Later rules take precedence. Workspace paths start with the client name, not the local folder.",
+    "allStreamFiles": "All stream files",
+    "noMappings": "Add a mapping rule.",
+    "unsupportedOverrides": "Mapping overrides require P4 Server 2025.2 or later.",
+    "reload": "Discard draft and reload",
+    "kinds": {
+      "include": "Include",
+      "exclude": "Exclude",
+      "overlay": "Overlay",
+      "ditto": "Ditto"
+    }
   },
   "switchStream": {
     "title": "Switch stream",
