@@ -1,15 +1,15 @@
 {
-  "version": "0.1.18",
-  "notes": "- Check for updates through the website, with GitHub Releases as a fallback.\n- Publish the website and signed update manifest together with each release.\n",
-  "pub_date": "2026-11-14T05:03:08.505Z",
+  "version": "0.1.19",
+  "notes": "- Share the desktop diff renderer and Perforce dialogs with the website preview for consistent interactions.\n- Redesign the website with localized product stories, theme-aware illustrations, and accessible revision comparison.\n- Route website downloads through GitHub Releases and submit website URLs to Bing daily.\n- Restore clean dependency installation with complete bundled WebAssembly metadata.\n",
+  "pub_date": "2026-11-14T18:50:25.569Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUK0hSbWZEbkU5REEyQ052VEVyc3ZFNzdSRU4yQ3BMNjNpZEg1YjdrdW5YRkRjbXU0bk9YQUdXdE12aGlrckpLRVlVRGVpSTRBbnpIcjlmR3RkcERNM0VzWDRHOHphSVFNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NjMyMzE4CWZpbGU6UmViYXNlUmF2ZW5fMC4xLjE4X3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjEuMTgKTGlCY0FaNy9LZEliejJvRHBNM2xQSmlUOC9Pa0hmK01vdVozWVAveHBMY29GaUR3VUxPOXR0YzdKZU41STZQazBoVVNPK3JRRlJOcTJoc3l2TWw0Qmc9PQo=",
-      "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v0.1.18/RebaseRaven_v0.1.18_windows_x64.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUK0hSbWZEbkU5REk1WkhtUm0za3l1U3ZuYzVwR0o1c3A0cENHbHNZWmY4RkE5ZUFMVnBHN044aThXZWM0TFVqVkxCOGs3UkFma0tsTmNGRkRkT3FES3B5YXNqQi9iK3dFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NjgyMjExCWZpbGU6UmViYXNlUmF2ZW5fMC4xLjE5X3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjEuMTkKdGsrOUliMHkwUy9mM0ZWcVIyVUFiaDlnVnVJVjVoQlY4aVBpY0l5N0xIQjRnamUvcGp5MUtlYkNScWhCNU5YT3h5NWxpa0NMR0wrSUJlTXhxQURzQXc9PQo=",
+      "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v0.1.19/RebaseRaven_v0.1.19_windows_x64.exe"
     },
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUK0hSbWZEbkU5REdveUhWcGVmMHQ4S0FKQ3lTYXo4aDdqL2gwR0Q3VHQ5a3Vpd01zVVJsVGdnYVdOS21CY0RXeUs3MlNyT3JxNGZCMis3U0s4ODViMFcwZUh6S0tiWkFBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NjMyNDg4CWZpbGU6UmViYXNlUmF2ZW4uYXBwLnRhci5negl2ZXJzaW9uOjAuMS4xOApjUHJNWGpCR2w0OEZVOVNIVEs3WXgxdWRNNjIrUU9hTGtnNklaMmNmdmVvWk5mTThRU2czSzExSFllMHFMOEtJN1NtY0l2Wkx6clRZM2VzS3NXUTFBQT09Cg==",
-      "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v0.1.18/RebaseRaven_v0.1.18_macos_arm64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUK0hSbWZEbkU5REIrZ2x5OS9lc0hpeWhXUkJ0QU5UV1JHa1FocHdNaEVtQnVjbmtNckFKKzh0ZzIyZmVuVmpuK1ZPVm14Z0JxaVVwY041OTVWYXMyVHdmaVBFOTNpNmcwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NjgyMTM0CWZpbGU6UmViYXNlUmF2ZW4uYXBwLnRhci5negl2ZXJzaW9uOjAuMS4xOQpWSFAyMFRraTZocDZHaXYzc3RkQTQ2NVRKS244WTdmSVdrNnVwOUVlYU42R3FOelRxK29wTXVrTE1aa2I0eDRKY2YzcE8wSlN5MUxkZ2ltTDVkT09Ddz09Cg==",
+      "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v0.1.19/RebaseRaven_v0.1.19_macos_arm64.app.tar.gz"
     }
   }
 }
