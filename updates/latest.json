@@ -1,0 +1,15 @@
+{
+  "version": "0.1.17",
+  "notes": "- Add directory-scoped reconciliation for Perforce workspaces.\n- Allow Perforce stream switching without a preview or forced sync, with an optional update prompt.\n- Add editable Perforce workspace mappings.\n- Remove unused Perforce workspace options.\n- Rename the Perforce directory cleanup action to Clean.\n- Load Perforce shelf details on demand.\n- Resolve pending Perforce file actions when their menu opens.\n- Bind Git partial staging and discard actions to the reviewed diff.\n- Speed up Git discard operations by batching path classification.\n- Preserve existing Git ignore rules when the ignore file cannot be read.\n- Handle literal backslashes in Git repository paths correctly.\n- Correct desktop usage attribution for application versions, operating systems, foreground time, and pane navigation.\n",
+  "pub_date": "2026-11-13T14:03:13.059Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUK0hSbWZEbkU5REwzRGQxMFhaZ0k3eEhuYjFuQ0FQYzREd0locWU4Q2dKSHJ6UnBMRUVLY2xwaVIxYjhGMXB3RlNJa1lEZGxtSTI2WXVXc2xoRnVYamhRWjBWdEc1YkE4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTc4MDg3CWZpbGU6UmViYXNlUmF2ZW5fMC4xLjE3X3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjEuMTcKVytZTVdIK3NqbHVNdVNFSTQ3bHZUS3p5c1dKZHI4aXVjSG9DRW55cE1pTkpuOFNnWnQ5SkJ5a3p5WlBweGltL1FsTU1uTUpLQVZZTmxLcDd2a1lZQWc9PQo=",
+      "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v0.1.17/RebaseRaven_v0.1.17_windows_x64.exe"
+    },
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUK0hSbWZEbkU5REdmdjBsQ09hNWpsNlpOL3RzV0ZoQitWZEdLV0NmaEZtZFl0RitBY3FRRmx6RzRBL215ZUR3UzRsUnRoZnNTaUFjRkNQOWovUnRzNk9JL3VNUERJUGdrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTc4NTY4CWZpbGU6UmViYXNlUmF2ZW4uYXBwLnRhci5negl2ZXJzaW9uOjAuMS4xNwpIc2NQamw4OEJlajgrd1JDYlJtVlFqN0tTSEFhdTJVbXI4ZGl2N240anNTVjBmbjNQampzVlBWekJDMWRoREJrZnRuMFh6WU9NbFZWeGlYUUxlWXZBdz09Cg==",
+      "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v0.1.17/RebaseRaven_v0.1.17_macos_arm64.app.tar.gz"
+    }
+  }
+}
