@@ -1,25 +1,26 @@
 import type { VcsKind } from "@/state/session";
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 
 export function VcsIcon({
   vcs,
-  className,
-}: {
+  ...props
+}: SVGProps<SVGSVGElement> & {
   vcs: VcsKind | "git" | "perforce";
-  className?: string;
 }) {
-  if (vcs === "perforce") return <PerforceMark className={className} />;
-  return <GitLogo className={className} />;
+  if (vcs === "perforce") return <PerforceMark {...props} />;
+  return <GitLogo {...props} />;
 }
 
 /** Official Git mark from https://git-scm.com/images/logos/downloads/Git-Icon-1788C.svg */
-export function GitLogo({ className }: { className?: string }) {
+export function GitLogo({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 78 78"
       aria-hidden="true"
       className={cn("size-4", className)}
+      {...props}
     >
       <path
         fill="currentColor"
@@ -31,9 +32,9 @@ export function GitLogo({ className }: { className?: string }) {
 }
 
 /** Official Perforce logomark from https://simpleicons.org/icons/perforce.svg */
-export function PerforceMark({ className }: { className?: string }) {
+export function PerforceMark({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className={cn("size-4", className)}>
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={cn("size-4", className)} {...props}>
       <path
         fill="currentColor"
         transform="translate(1.56 1.56) scale(0.87)"

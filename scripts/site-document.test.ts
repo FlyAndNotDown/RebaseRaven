@@ -58,6 +58,12 @@ describe("published website document", () => {
     expect(validateSiteDocument(unsupported)).toContainEqual(expect.stringContaining("supported systems"));
   });
 
+  it("accepts system details in validated metadata without requiring a visible requirements section", () => {
+    const value = fixture();
+    value.html = value.html.replace("macOS Apple Silicon and Windows x64. MIT License.", "Free under the MIT License.");
+    expect(validateSiteDocument(value)).toEqual([]);
+  });
+
   it("requires a download anchor in the main content instead of a JavaScript-only button", () => {
     const value = fixture();
     value.html = value.html.replace(`<a href="${download}"><svg><path /></svg>Download</a>`, "<button>Download</button>");

@@ -101,8 +101,8 @@ export function validateSiteDocument({ html, sitemap, files, filename = "index.h
       fail("SoftwareApplication metadata must describe the public product, supported systems, MIT license, and stable release link");
     }
     const visible = readableText(main).toLowerCase();
-    if (!visible.includes("macos") || !visible.includes("apple silicon") || !visible.includes("windows") || !visible.includes("x64") || !/\bmit\b/.test(visible)) {
-      fail("supported systems and license must also be readable in the page content");
+    if (!/\bmit\b/.test(visible)) {
+      fail("the MIT license must also be readable in the page content");
     }
   } else if (schemas.length === 1 && product !== undefined) fail("SoftwareApplication JSON-LD must be an object");
 

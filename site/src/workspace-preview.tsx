@@ -18,7 +18,7 @@ export function WorkspacePreview() {
   const platform = useSyncExternalStore(subscribePlatform, desktopPlatform, serverPlatform);
   const [repository, setRepository] = useState("git");
   const [generation, setGeneration] = useState(0);
-  const [notice, setNotice] = useState(t("demo.gitIntro"));
+  const [notice, setNotice] = useState("");
   const [perforceRequested, setPerforceRequested] = useState(false);
   const [perforceAttempt, setPerforceAttempt] = useState(0);
   const [PerforceDemo, setPerforceDemo] = useState<PerforceDemoComponent | null>(null);
@@ -42,8 +42,7 @@ export function WorkspacePreview() {
 
   return (
     <>
-      <p className="site-demo-mobile-hint">{t("demo.mobileHint")}</p>
-      <div className="demo-viewport" tabIndex={0} role="region" aria-label={t("demo.viewport")}><Tabs value={repository} onValueChange={(value) => { setRepository(value); if (value === "perforce") setPerforceRequested(true); setNotice(value === "git" ? t("demo.gitIntro") : t("demo.p4Intro")); }} className="workspace-preview" data-platform={platform}>
+      <div className="demo-viewport" tabIndex={0} role="region" aria-label={t("demo.viewport")}><Tabs value={repository} onValueChange={(value) => { setRepository(value); if (value === "perforce") setPerforceRequested(true); setNotice(""); }} className="workspace-preview" data-platform={platform}>
         {platform === "linux" ? <div className="demo-system-frame" aria-hidden="true">RebaseRaven</div> : null}
         <div className="demo-titlebar">
           {platform === "macos" ? <span className="demo-traffic-lights" aria-hidden="true"><i /><i /><i /></span> : null}
@@ -65,7 +64,7 @@ export function WorkspacePreview() {
           </div> : null}
         </TabsContent>
       </Tabs></div>
-      <div className="site-demo-help"><p role="status" aria-live="polite">{notice}</p><Button size="sm" variant="ghost" onClick={reset}><RotateCcwIcon />{t("demo.reset")}</Button></div>
+      <div className="site-demo-help"><p className="sr-only" role="status" aria-live="polite">{notice}</p><Button size="sm" variant="ghost" onClick={reset}><RotateCcwIcon />{t("demo.reset")}</Button></div>
     </>
   );
 }
