@@ -79,6 +79,7 @@
       "requireSignedVersion": true,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMzRDcxMEU5RjE5MURGRQpSV1QrSFJtZkRuRTlEQ0ZtSWg0MjhvZ1VONml1c053L1J5QmJtZmhmOGRBa2hZNElySWhQcXdRSwo=",
       "endpoints": [
+        "https://rebaseraven.flyandnotdown.com/updates/latest.json",
         "https://github.com/FlyAndNotDown/RebaseRaven/releases/latest/download/latest.json"
       ],
       "windows": {

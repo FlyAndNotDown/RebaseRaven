@@ -222,10 +222,9 @@ jobs:
     name: Website
     needs: publish
     permissions:
-      contents: read
-      pages: write
+      contents: write
       id-token: write
-    uses: ./.github/workflows/pages.yml
+    uses: ./.github/workflows/website.yml
     with:
       release_tag: ${{ inputs.version }}
     secrets:

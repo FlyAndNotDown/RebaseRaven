@@ -76,7 +76,7 @@ describe("published website document", () => {
     for (const filename of ["src/entry-server.tsx", "entry-server.js", "assets/index.js.map", "assets/prerender.js", "dist-ssr/index.mjs"]) value.files.add(filename);
     const violations = validateSiteDocument(value);
     expect(violations).toHaveLength(5);
-    expect(violations.every((message: string) => message.includes("Pages output must not contain"))).toBe(true);
+    expect(violations.every((message: string) => message.includes("Static output must not contain"))).toBe(true);
   });
 });
 
@@ -96,23 +96,20 @@ describe("English homepage alias", () => {
 });
 
 describe("published custom-domain routing", () => {
-  it("accepts the canonical host and its discoverable sitemap", () => {
+  it("accepts the discoverable canonical sitemap", () => {
     expect(validateSiteRouting({
-      cname: "rebaseraven.flyandnotdown.com\n",
       robots: `User-agent: *\nAllow: /\n\nSitemap: ${canonical}sitemap.xml\n`,
     })).toEqual([]);
   });
 
-  it("rejects a missing or mismatched custom host and obsolete sitemap locations", () => {
-    expect(validateSiteRouting({})).toHaveLength(2);
+  it("rejects missing, obsolete, or duplicate sitemap locations", () => {
+    expect(validateSiteRouting({})).toHaveLength(1);
     expect(validateSiteRouting({
-      cname: "www.example.com\n",
       robots: "Sitemap: https://site.example.com/sitemap.xml\n",
     })).toEqual(expect.arrayContaining([
-      expect.stringContaining("CNAME:"), expect.stringContaining("robots.txt:"),
+      expect.stringContaining("robots.txt:"),
     ]));
     expect(validateSiteRouting({
-      cname: "rebaseraven.flyandnotdown.com\n",
       robots: `Sitemap: ${canonical}sitemap.xml\nSitemap: ${canonical}sitemap.xml\n`,
     })).toContainEqual(expect.stringContaining("advertise the canonical website sitemap once"));
   });
