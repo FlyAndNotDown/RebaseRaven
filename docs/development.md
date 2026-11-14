@@ -57,9 +57,8 @@ check on one operating system does not establish support on the others.
 | `src/types/` | Frontend command models |
 | `src-tauri/src/` | Native operations, persistence, credentials, and platform integration |
 | `src-tauri/src/git/`, `src-tauri/src/p4/` | CLI adapters and repository operations |
-| `src-tauri/icons/` | Application icon source and desktop assets |
-| `scripts/` | Source checks, asset generation, and build validation |
-| `site/` | Product website source and brand artwork |
+| `scripts/` | Source checks and repository automation |
+| `site/` | Product website source |
 | `docs/` | Development guide |
 
 Frontend files use kebab-case, with React entry points `App.tsx` and `main.tsx`.
@@ -78,8 +77,7 @@ behavior, async ownership, cancellation, and bounded loading.
 ## Website
 
 The website uses React and Vite with the same dependencies, UI primitives,
-Geist fonts, and theme tokens as the desktop app. It does not call native
-commands.
+and theme tokens as the desktop app. It does not call native commands.
 
 ```sh
 npm run site:dev
@@ -102,23 +100,3 @@ redirects immediately to `/`. Language pages work without JavaScript and include
 matching canonical, alternate-language, and structured metadata. The URL selects
 the language; browser preferences apply only when the visitor chooses the browser
 language action.
-
-## Brand assets
-
-The glass icon master is `src-tauri/icons/app-icon.png`. The flat,
-transparent mark is `assets/brand/raven.svg`. Run `npm run brand:generate` to
-regenerate desktop icons, small-size favicon variants, website marks, and the
-website and GitHub social cards. The generator preserves the glass icon at
-normal sizes and uses a simplified mark for 16–24 pixel system icons.
-
-Use `BrandMark` with the transparent SVG for website navigation and promotional
-callouts. Its color follows the surrounding text in both themes. Use `AppMark`
-for the glass application icon in desktop identity surfaces.
-
-The website card is `site/public/assets/social.png` (1200 × 630). The GitHub
-repository social preview is `assets/brand/github-social.png` (1280 × 640).
-Both use the bundled Geist font. The PNG glass treatment is static artwork.
-
-The README banner is `assets/brand/readme-banner.png`, shared by both
-README translations. It is a fixed composition, separate from generated
-website and repository social cards.
