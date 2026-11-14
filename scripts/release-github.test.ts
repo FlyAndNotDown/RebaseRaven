@@ -320,7 +320,7 @@ describe("release publication guards", () => {
       });
     }
     expect(repos.updateRelease).toHaveBeenCalledWith({
-      ...input.context.repo, release_id: 99, draft: false, make_latest: "true",
+      ...input.context.repo, release_id: 99, tag_name: tag, target_commitish: input.context.sha, draft: false, make_latest: "true",
     });
     expect(repos.uploadReleaseAsset.mock.invocationCallOrder[0]).toBeLessThan(repos.updateRelease.mock.invocationCallOrder[0]);
   });

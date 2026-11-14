@@ -1,67 +1,32 @@
-import { useRef, useState, type MouseEvent, type RefObject } from "react";
-import {
-  ArrowDownToLineIcon,
-  ArrowUpRightIcon,
-  ChevronRightIcon,
-  ChevronDownIcon,
-  CodeXmlIcon,
-  CommandIcon,
-  FileDiffIcon,
-  FolderOpenIcon,
-  GitForkIcon,
-  GitPullRequestIcon,
-  HistoryIcon,
-  MessageSquareIcon,
-  MousePointer2Icon,
-  ScaleIcon,
-  LanguagesIcon,
-  LayersIcon,
-  ShieldCheckIcon,
-  TerminalIcon,
-  LaptopIcon,
-  MonitorIcon,
-  MoonIcon,
-  SunIcon,
-} from "lucide-react";
+import { useId, useRef, useState, type MouseEvent, type RefObject } from "react";
+import { ArrowDownToLineIcon, ArrowUpRightIcon, LanguagesIcon, MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { browserLocale, localeHref, SITE_LOCALES, type SiteLocale } from "./i18n";
 import { useSiteTheme } from "./theme";
 import { BrandMark } from "@/components/brand-mark";
 import { GitHubMark } from "@/components/github-mark";
-import { VcsIcon } from "@/components/vcs-icon";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuCheckboxItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { HoverTip } from "@/components/ui/tooltip";
 import { WorkspacePreview } from "./workspace-preview";
-import { LATEST_RELEASE_URL, readBundledReleaseDownloads, REPOSITORY_URL } from "./release-downloads";
-import { trackDemoStart, trackDownloadDialog, trackInstallerDownload } from "./website-analytics";
+import { FeatureStories } from "./feature-stories";
+import { PlatformMark } from "./platform-mark";
+import { useArtMotion } from "./use-art-motion";
+import { useSiteMotion } from "./motion";
+import { LATEST_RELEASE_URL, REPOSITORY_URL } from "./release-downloads";
+import { trackDemoStart, trackDownloadDialog, trackReleasePageOpen } from "./website-analytics";
 
 const REPOSITORY = REPOSITORY_URL;
-const capabilityIcons = { review: FileDiffIcon, organize: LayersIcon, history: HistoryIcon, advanced: GitForkIcon, tools: TerminalIcon };
-const gettingStartedSteps = [{ step: 1, Icon: ArrowDownToLineIcon }, { step: 2, Icon: TerminalIcon }, { step: 3, Icon: FolderOpenIcon }] as const;
-const downloads = readBundledReleaseDownloads(import.meta.env.VITE_RELEASE_DOWNLOADS);
 
 export function Site({ rootPage = false }: { rootPage?: boolean }) {
   const { t } = useTranslation();
   const [downloadOpen, setDownloadOpen] = useState(false);
   const downloadTrigger = useRef<HTMLAnchorElement | null>(null);
   const demoStarted = useRef(false);
+  const atmosphere = useId();
+  const { ref: atmosphereRef, playing: atmospherePlaying } = useArtMotion();
+  const mark = `${rootPage ? "./" : "../"}assets/raven.svg`;
 
   function startDemo() {
     if (demoStarted.current) return;
@@ -74,135 +39,58 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
     event.preventDefault();
     downloadTrigger.current = event.currentTarget;
     const source = event.currentTarget.dataset.downloadSource;
-    if (source === "header" || source === "hero" || source === "footer") trackDownloadDialog(source);
+    if (source === "header" || source === "hero") trackDownloadDialog(source);
     setDownloadOpen(true);
   }
 
-  return (
-    <>
-      <a className="site-skip" href="#main">{t("nav.skip")}</a>
-      <div className="site-header-shell">
-        <header className="site-header site-container">
-          <a className="site-brand" href={rootPage ? "./" : "../"} aria-label={t("nav.home")}>
-            <BrandMark className="site-brand-mark size-8" src={`${rootPage ? "./" : "../"}assets/raven.svg`} /><span translate="no">RebaseRaven</span>
-          </a>
-          <nav className="site-navigation" aria-label={t("nav.main")}>
-            <Button variant="ghost" size="sm" asChild className="overview-link"><a href="#features">{t("nav.features")}</a></Button>
-            <Button variant="ghost" size="sm" asChild className="overview-link"><a href="#workflows">{t("nav.workflow")}</a></Button>
-            <Button variant="ghost" size="sm" asChild className="overview-link overview-link-start"><a href="#start">{t("nav.start")}</a></Button>
-            <HoverTip label={t("nav.source")}><Button variant="ghost" size="icon-sm" asChild className="site-source-link"><a href={REPOSITORY} aria-label={t("nav.source")}><GitHubMark /></a></Button></HoverTip>
-            <LanguageMenu rootPage={rootPage} />
-            <ThemeMenu />
-            <Button size="sm" asChild className="site-nav-download"><a href={LATEST_RELEASE_URL} aria-label={t("nav.download")} data-download-source="header" onClick={openDownload}><span className="site-nav-download-label">{t("nav.download")}</span><ArrowDownToLineIcon /></a></Button>
-          </nav>
-        </header>
+  return <div className="site-page">
+    <a className="site-skip" href="#main">{t("nav.skip")}</a>
+    <header className="site-header">
+      <div className="site-wrap site-header-inner">
+        <a className="site-brand" href={rootPage ? "./" : "../"} aria-label={t("nav.home")}><BrandMark src={mark} className="site-brand-mark" /></a>
+        <nav className="site-navigation" aria-label={t("nav.main")}>
+          <HoverTip label={t("nav.source")}><Button variant="ghost" size="icon-sm" asChild className="site-source"><a href={REPOSITORY} aria-label={t("nav.source")}><GitHubMark /></a></Button></HoverTip>
+          <LanguageMenu rootPage={rootPage} />
+          <ThemeMenu />
+          <Button asChild size="sm" className="site-download site-header-download"><a href={LATEST_RELEASE_URL} aria-label={t("nav.download")} data-download-source="header" onClick={openDownload}><span className="site-nav-download-label">{t("nav.download")}</span><ArrowDownToLineIcon /></a></Button>
+        </nav>
       </div>
+    </header>
 
-      <main id="main" className="site-container">
-        <section className="site-product" aria-labelledby="hero-title">
-          <div className="site-hero">
-            <div className="site-hero-heading">
-              <p className="site-eyebrow">{t("hero.eyebrow")}</p>
-              <h1 id="hero-title">{t("hero.title").split("\n").map((line, index) => <span key={line} className={index ? "site-hero-title-secondary" : undefined}>{index ? ` ${line}` : line}</span>)}</h1>
+    <main id="main">
+      <section className="site-hero" aria-labelledby="hero-title">
+        <div className="site-hero-atmosphere" ref={atmosphereRef} data-playing={atmospherePlaying} aria-hidden="true"><svg viewBox="0 0 1440 500" preserveAspectRatio="xMidYMid slice" fill="none"><defs><linearGradient id={`${atmosphere}-plane`} x1="640" y1="60" x2="1240" y2="460" gradientUnits="userSpaceOnUse"><stop stopColor="var(--hero-fold-light)" /><stop offset=".6" stopColor="var(--hero-fold-dark)" /><stop offset="1" stopColor="var(--background)" stopOpacity="0" /></linearGradient><linearGradient id={`${atmosphere}-edge`} x1="670" y1="0" x2="1240" y2="460" gradientUnits="userSpaceOnUse"><stop stopColor="var(--foreground)" stopOpacity="0" /><stop offset=".5" stopColor="var(--foreground)" stopOpacity=".12" /><stop offset="1" stopColor="var(--foreground)" stopOpacity="0" /></linearGradient></defs><path d="M624 0 1430 0 1012 464 452 464Z" fill={`url(#${atmosphere}-plane)`} /><path d="M954 0 1012 464 1430 0Z" className="hero-fold-face" /><path d="m954 0 58 464L624 0M452 464 954 0" stroke={`url(#${atmosphere}-edge)`} /><g className="hero-light-sweep"><path d="M850 -40 720 500" stroke={`url(#${atmosphere}-edge)`} strokeWidth="100" /></g></svg></div>
+        <div className="site-wrap site-hero-layout">
+          <div className="site-hero-heading">
+            <div className="site-statement">
+              <div className="site-wordmark"><h1 id="hero-title" translate="no">RebaseRaven</h1></div>
+              <p className="site-description">{t("concept.category")}</p>
             </div>
-            <div className="site-hero-summary">
-              <p className="site-hero-description">{t("hero.description")}</p>
+            <div className="site-download-group">
               <div className="site-actions">
-                <Button size="lg" asChild><a href={LATEST_RELEASE_URL} data-download-source="hero" onClick={openDownload}><ArrowDownToLineIcon />{t("hero.download")}</a></Button>
-                <Button variant="outline" size="lg" asChild><a href="#features"><MousePointer2Icon />{t("hero.explore")}</a></Button>
+                <Button asChild size="lg"><a href={LATEST_RELEASE_URL} data-download-source="hero" onClick={openDownload}><ArrowDownToLineIcon />{t("nav.download")}</a></Button>
+                <Button asChild variant="outline" size="lg"><a href={REPOSITORY}><GitHubMark />GitHub<ArrowUpRightIcon aria-hidden="true" /></a></Button>
               </div>
-              <p className="site-platforms"><span className="site-supported-platforms">{t("hero.platforms")}</span></p>
             </div>
           </div>
-          <div id="features" className="site-workspace" role="region" aria-label={t("preview.title")}>
-            <div className="site-preview-label"><span>{t("preview.eyebrow")}</span><span>{t("preview.label")}</span></div>
-            <div className="site-preview-frame" onPointerDownCapture={startDemo} onKeyDownCapture={startDemo}>
-              <noscript className="site-preview-caption">{t("preview.noscript")}</noscript>
-              <WorkspacePreview />
-            </div>
+          <div id="features" className="site-canvas" role="region" aria-label={t("preview.title")} onPointerDownCapture={startDemo} onKeyDownCapture={startDemo}>
+            <noscript className="site-preview-caption">{t("preview.noscript")}</noscript>
+            <WorkspacePreview />
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section className="site-product-facts" aria-label={t("facts.label")}>
-          <dl>{(["core", "tools", "license"] as const).map(kind => <div key={kind}>
-            <dt>{t(`facts.${kind}.label`)}</dt>
-            <dd><strong>{t(`facts.${kind}.value`)}</strong><span>{t(`facts.${kind}.detail`)}</span></dd>
-          </div>)}</dl>
-        </section>
+      <FeatureStories />
 
-        <section id="workflows" className="site-workflows site-section" aria-labelledby="workflows-title">
-          <div className="site-section-intro">
-            <h2 id="workflows-title">{t("workflow.title")}</h2>
-            <p>{t("workflow.intro")}</p>
-          </div>
-          <div className="site-workflow-pair">
-            <WorkflowPath kind="git" />
-            <WorkflowPath kind="p4" />
-          </div>
-        </section>
-
-        <section className="site-capabilities site-section" aria-labelledby="capabilities-title">
-          <div className="site-section-intro">
-            <h2 id="capabilities-title">{t("capabilities.title")}</h2>
-            <p>{t("capabilities.intro")}</p>
-          </div>
-          <details className="site-capability-details" open>
-            <summary>{t("capabilities.toggle")}<ChevronDownIcon aria-hidden="true" /></summary>
-            <div className="site-capability-content">
-              <table className="site-capability-table">
-                <caption className="sr-only">{t("capabilities.caption")}</caption>
-                <thead><tr><th scope="col">{t("capabilities.category")}</th><th scope="col"><VcsIcon vcs="git" />Git</th><th scope="col"><VcsIcon vcs="perforce" />Perforce</th></tr></thead>
-                <tbody>{(["review", "organize", "history", "advanced", "tools"] as const).map((kind) => { const Icon = capabilityIcons[kind]; return <tr key={kind}>
-                  <th scope="row"><span className="site-capability-label"><Icon aria-hidden="true" /><span>{t(`capabilities.${kind}.title`)}</span></span></th>
-                  <td data-label="Git">{t(`capabilities.${kind}.git`)}</td>
-                  <td data-label="Perforce">{t(`capabilities.${kind}.p4`)}</td>
-                </tr>; })}</tbody>
-              </table>
-            </div>
-          </details>
-        </section>
-
-        <section className="site-tooling site-section" aria-labelledby="tooling-title">
-          <div className="site-section-intro"><h2 id="tooling-title">{t("tooling.title")}</h2><p>{t("tooling.intro")}</p></div>
-          <div className="site-tool-list">
-            {([{ kind: "cli", Icon: TerminalIcon }, { kind: "editor", Icon: CodeXmlIcon }, { kind: "access", Icon: ShieldCheckIcon }, { kind: "comfort", Icon: CommandIcon }] as const).map(({ kind, Icon }) => <article key={kind}><Icon aria-hidden="true" /><div><h3>{t(`tooling.${kind}.title`)}</h3><p>{t(`tooling.${kind}.body`)}</p></div></article>)}
-          </div>
-          <p className="site-local-note">{t("principles.local.body")} {t("principles.open.body")}</p>
-        </section>
-
-        <section id="start" className="site-get-started site-section" aria-labelledby="start-title">
-          <div className="site-section-intro"><h2 id="start-title">{t("start.title")}</h2></div>
-          <ol>{gettingStartedSteps.map(({ step, Icon }) => <li key={step}><span>0{step}</span><h3><Icon aria-hidden="true" />{t(`start.step${step}.title`)}</h3><p>{t(`start.step${step}.body`)}</p>{step === 2 ? <div className="site-tool-links"><a href="https://git-scm.com/downloads/">Git<ArrowUpRightIcon aria-hidden="true" /></a><a href="https://www.perforce.com/downloads/helix-command-line-client-p4">Perforce CLI<ArrowUpRightIcon aria-hidden="true" /></a></div> : null}</li>)}</ol>
-        </section>
-
-        <section className="site-faq site-section" aria-labelledby="faq-title">
-          <div className="site-section-intro"><h2 id="faq-title">{t("faq.title")}</h2></div>
-          <div>{["what", "rust", "systems", "tools", "gitServers", "bridge", "license", "accounts", "demo"].map((key) => <details key={key} open={key === "what"}><summary>{t(`faq.${key}.question`)}<ChevronRightIcon aria-hidden="true" /></summary><p>{t(`faq.${key}.answer`)}</p></details>)}</div>
-        </section>
-
-        <section className="site-download" aria-labelledby="download-title">
-          <div className="site-download-content"><BrandMark className="size-12" src={`${rootPage ? "./" : "../"}assets/raven.svg`} /><div><p className="site-eyebrow" translate="no">RebaseRaven</p><h2 id="download-title">{t("download.title")}</h2><p>{t("download.body")}</p></div></div>
-          <Button size="lg" asChild><a href={LATEST_RELEASE_URL} data-download-source="footer" onClick={openDownload}>{t("download.action")}<ArrowDownToLineIcon /></a></Button>
-        </section>
-      </main>
-
-      <footer className="site-footer site-container">
-        <div className="site-footer-brand"><a href={rootPage ? "./" : "../"} translate="no">RebaseRaven</a><p>{t("footer.tagline")}</p></div>
-        <nav aria-label={t("nav.footer")}><a href={`${REPOSITORY}/issues`}><MessageSquareIcon aria-hidden="true" />{t("nav.feedback")}</a><a href={`${REPOSITORY}/blob/dev/CONTRIBUTING.md`}><GitPullRequestIcon aria-hidden="true" />{t("nav.contribute")}</a><a href={`${REPOSITORY}/blob/dev/LICENSE`}><ScaleIcon aria-hidden="true" />{t("nav.license")}</a></nav>
-      </footer>
-      <DownloadDialog open={downloadOpen} onOpenChange={setDownloadOpen} returnFocusTo={downloadTrigger} />
-    </>
-  );
-}
-
-function WorkflowPath({ kind }: { kind: "git" | "p4" }) {
-  const { t } = useTranslation();
-  return <article className="site-workflow-path">
-    <div className="site-workflow-heading"><VcsIcon vcs={kind === "git" ? "git" : "perforce"} /><span>{kind === "git" ? "Git" : "Perforce"}</span><p>{t(`workflow.${kind}.tag`)}</p></div>
-    <h3>{t(`workflow.${kind}.title`)}</h3>
-    <p>{t(`workflow.${kind}.body`)}</p>
-    <ol>{[1, 2, 3].map((step) => <li key={step}><span>{step}</span><div><h4>{t(`workflow.${kind}.step${step}.title`)}</h4><p>{t(`workflow.${kind}.step${step}.body`)}</p></div></li>)}</ol>
-  </article>;
+      <div className="site-wrap">
+        <footer className="site-footer"><nav aria-label={t("nav.footer")}><a href={`${REPOSITORY}/issues`}>{t("nav.feedback")}</a><a href={`${REPOSITORY}/blob/dev/CONTRIBUTING.md`}>{t("nav.contribute")}</a><a href={`${REPOSITORY}/blob/dev/LICENSE`}>{t("nav.license")}</a></nav></footer>
+      </div>
+    </main>
+    <DownloadDialog open={downloadOpen} onOpenChange={setDownloadOpen} returnFocusTo={downloadTrigger} onReleaseOpen={() => {
+      const source = downloadTrigger.current?.dataset.downloadSource;
+      if (source === "header" || source === "hero") trackReleasePageOpen(source);
+    }} />
+  </div>;
 }
 
 function LanguageMenu({ rootPage }: { rootPage: boolean }) {
@@ -229,14 +117,13 @@ function LanguageMenu({ rootPage }: { rootPage: boolean }) {
               <a href={href} hrefLang={locale} aria-current={current}>{label}</a>
             </DropdownMenuItem>
           ))}
-          <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => {
             const target = new URL(localeHref(browserLocale(navigator.languages), rootPage), window.location.href);
             target.search = window.location.search;
             target.hash = window.location.hash;
             window.location.assign(target.href);
           }}>
-            <LanguagesIcon />{t("language.automatic")}
+            {t("language.automatic")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -259,50 +146,31 @@ function LanguageMenu({ rootPage }: { rootPage: boolean }) {
 
 function ThemeMenu() {
   const { theme, setTheme } = useSiteTheme();
+  const { status, setPaused } = useSiteMotion();
   const { t } = useTranslation();
-  return <DropdownMenu><HoverTip label={t("theme.label")}><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={t("theme.label")}><SunIcon className="hidden dark:block" /><MoonIcon className="dark:hidden" /></Button></DropdownMenuTrigger></HoverTip><DropdownMenuContent align="end" className="w-36"><DropdownMenuRadioGroup value={theme} onValueChange={(value) => { if (value === "light" || value === "dark" || value === "system") setTheme(value); }}>{([{ value: "light", icon: SunIcon }, { value: "dark", icon: MoonIcon }, { value: "system", icon: MonitorIcon }] as const).map(({ value, icon: Icon }) => <DropdownMenuRadioItem key={value} value={value}><Icon /><span>{t(`theme.${value}`)}</span></DropdownMenuRadioItem>)}</DropdownMenuRadioGroup></DropdownMenuContent></DropdownMenu>;
+  return <DropdownMenu><HoverTip label={t("theme.label")}><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={t("theme.label")}><SunIcon className="hidden dark:block" /><MoonIcon className="dark:hidden" /></Button></DropdownMenuTrigger></HoverTip><DropdownMenuContent align="end" className="w-36"><DropdownMenuRadioGroup value={theme} onValueChange={(value) => { if (value === "light" || value === "dark" || value === "system") setTheme(value); }}>{([{ value: "light", icon: SunIcon }, { value: "dark", icon: MoonIcon }, { value: "system", icon: MonitorIcon }] as const).map(({ value, icon: Icon }) => <DropdownMenuRadioItem key={value} value={value}><Icon /><span>{t(`theme.${value}`)}</span></DropdownMenuRadioItem>)}</DropdownMenuRadioGroup><DropdownMenuSeparator /><DropdownMenuCheckboxItem checked={status === "auto"} disabled={status === "reduced"} onCheckedChange={checked => setPaused(checked !== true)}>{t("motion.enabled")}</DropdownMenuCheckboxItem></DropdownMenuContent></DropdownMenu>;
 }
 
-function DownloadDialog({ open, onOpenChange, returnFocusTo }: {
+function DownloadDialog({ open, onOpenChange, returnFocusTo, onReleaseOpen }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   returnFocusTo: RefObject<HTMLAnchorElement | null>;
+  onReleaseOpen: () => void;
 }) {
   const { t } = useTranslation();
-  const platforms = [
-    { platform: "macos" as const, label: "macOS", detail: "Apple Silicon", format: "DMG", icon: LaptopIcon, url: downloads?.macos },
-    { platform: "windows" as const, label: "Windows", detail: "x64", format: t("download.installer"), icon: MonitorIcon, url: downloads?.windows },
-  ];
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="site-download-dialog max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain sm:max-w-md"
-        onCloseAutoFocus={(event) => { event.preventDefault(); returnFocusTo.current?.focus(); }}
-      >
-        <DialogHeader>
-          <DialogTitle>{t("download.dialog.title")}</DialogTitle>
-          <DialogDescription>{t("download.dialog.body")}</DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-1">
-          {platforms.map(({ platform, label, detail, format, icon: Icon, url }) => (
-            <Button key={label} variant="ghost" asChild className="h-auto justify-start gap-3 px-2 py-3">
-              <a href={url ?? LATEST_RELEASE_URL} onClick={() => { if (url && downloads) trackInstallerDownload(platform, url, downloads.tag); }}>
-                <Icon className="size-5 text-muted-foreground" />
-                <span className="grid min-w-0 flex-1 gap-1 text-left">
-                  <span>{label}<span className="ml-1 text-xs text-muted-foreground">{detail}</span></span>
-                  <span className="text-xs font-normal text-muted-foreground">{url ? format : t("download.viewLatest")}</span>
-                </span>
-                {url ? <ArrowDownToLineIcon className="text-muted-foreground" /> : <ChevronRightIcon className="text-muted-foreground" />}
-              </a>
-            </Button>
-          ))}
-        </div>
-        {downloads ? <p className="text-xs text-muted-foreground">{t("download.version", { version: downloads.tag })}</p> : null}
-        <DialogFooter className="items-center sm:justify-between">
-          <Button variant="ghost" size="sm" asChild><a href={`${REPOSITORY}/blob/dev/docs/development.md`}>{t("download.build")}</a></Button>
-          <Button size="sm" asChild><a href={LATEST_RELEASE_URL}>{t("download.latest")}<ArrowUpRightIcon /></a></Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
+  return <Dialog open={open} onOpenChange={onOpenChange}>
+    <DialogContent className="site-download-dialog sm:max-w-sm" onCloseAutoFocus={event => { event.preventDefault(); returnFocusTo.current?.focus(); }}>
+      <DialogHeader>
+        <DialogTitle>{t("download.dialog.title")}</DialogTitle>
+        <DialogDescription className="sr-only">{t("download.dialog.body")}</DialogDescription>
+      </DialogHeader>
+      <ul className="site-download-platforms" aria-label={t("download.supported")}>
+        <li><span role="img" aria-label="macOS Apple Silicon" title="macOS Apple Silicon"><PlatformMark platform="macos" width="36" height="36" /></span></li>
+        <li><span role="img" aria-label="Windows x64" title="Windows x64"><PlatformMark platform="windows" width="32" height="32" /></span></li>
+      </ul>
+      <Button variant="outline" asChild className="site-release-link">
+        <a href={LATEST_RELEASE_URL} onClick={onReleaseOpen}><GitHubMark className="size-5" /><span>GitHub Releases</span><ArrowUpRightIcon /></a>
+      </Button>
+    </DialogContent>
+  </Dialog>;
 }

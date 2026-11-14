@@ -10,11 +10,9 @@ describe("website prerender", () => {
     const html = await render();
     expect(html).toContain('<main id="main"');
     expect(html).toContain(siteResources.en["hero.title"].split("\n")[0]);
-    expect(html).toContain("macOS Apple Silicon");
-    expect(html).toContain("Windows x64");
     expect(html).toContain("Git and Perforce");
-    expect(html).toContain("open source under the MIT License.");
-    expect(html.split(`href="${LATEST_RELEASE_URL}"`)).toHaveLength(4);
+    expect(html).toContain(siteResources.en["story.source.body"]);
+    expect(html.split(`href="${LATEST_RELEASE_URL}"`)).toHaveLength(3);
     expect(html).toContain("Enable JavaScript to try the interactive demo.");
     expect(html).toContain('id="demo-commit-message"');
     expect(html).toContain("./assets/raven.svg");
@@ -27,7 +25,10 @@ describe("website prerender", () => {
   it("prerenders complete Chinese copy and locale links without leaking locale state", async () => {
     const translated = await render("zh-CN", false);
     expect(translated).toContain(siteResources["zh-CN"]["preview.title"]);
-    expect(translated).toContain(siteResources["zh-CN"]["demo.gitIntro"]);
+    expect(translated).toContain(siteResources["zh-CN"]["story.review.body"]);
+    expect(translated).toContain(siteResources["zh-CN"]["nav.license"]);
+    expect(translated).not.toContain(siteResources["zh-CN"]["demo.gitIntro"]);
+    expect(translated).not.toContain(siteResources["zh-CN"]["demo.sampleData"]);
     expect(translated).toContain('href="../"');
     expect(translated).toContain('href="../zh-CN/"');
     expect(translated).toContain("../assets/raven.svg");
@@ -43,6 +44,7 @@ describe("website prerender", () => {
     const english = softwareApplication("en", release?.tag);
     expect(english.url).toBe(SITE_URL);
     expect(english.softwareVersion).toBe("1.2.3");
+    expect(english.operatingSystem).toEqual(["macOS (Apple Silicon)", "Windows (x64)"]);
     expect(softwareApplication("zh-CN", release?.tag).url).toBe(`${SITE_URL}zh-CN/`);
     expect(softwareApplication("en")).not.toHaveProperty("softwareVersion");
     expect(english.sameAs).toBe("https://github.com/FlyAndNotDown/RebaseRaven");

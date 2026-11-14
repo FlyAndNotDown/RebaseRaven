@@ -3,6 +3,7 @@ import { I18nextProvider } from "react-i18next";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Site } from "./app";
 import { SiteThemeProvider } from "./theme";
+import { SiteMotionProvider } from "./motion";
 import { createSiteI18n, type SiteLocale } from "./i18n";
 
 export const IDENTIFIER_PREFIX = "rebaseraven-";
@@ -13,9 +14,11 @@ export function SiteRoot({ locale = "en", rootPage = true }: { locale?: SiteLoca
     <StrictMode>
       <I18nextProvider i18n={i18n}>
         <SiteThemeProvider>
-          <TooltipProvider>
-            <Site rootPage={rootPage} />
-          </TooltipProvider>
+          <SiteMotionProvider>
+            <TooltipProvider>
+              <Site rootPage={rootPage} />
+            </TooltipProvider>
+          </SiteMotionProvider>
         </SiteThemeProvider>
       </I18nextProvider>
     </StrictMode>

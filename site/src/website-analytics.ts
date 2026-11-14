@@ -1,30 +1,13 @@
 import { createGoogleTag } from "./google-tag";
 import { SITE_URL } from "./product";
-import { REPOSITORY_URL } from "./release-downloads";
+import { LATEST_RELEASE_URL } from "./release-downloads";
 
-export type DownloadEntryPoint = "header" | "hero" | "footer";
-export type DownloadPlatform = "macos" | "windows";
+export type DownloadEntryPoint = "header" | "hero";
 
 export function websiteAnalyticsLocale(location: Pick<Location, "origin" | "pathname">) {
   if (location.origin !== new URL(SITE_URL).origin) return null;
   if (location.pathname === "/" || location.pathname === "/index.html") return "en";
   return /^\/zh-CN\/(?:index\.html)?$/.test(location.pathname) ? "zh-CN" : null;
-}
-
-export function installerDownloadParameters(platform: DownloadPlatform, url: string, version: string) {
-  if (!/^v\d+\.\d+\.\d+$/.test(version)) return null;
-  const names = platform === "macos"
-    ? [`RebaseRaven_${version}_macos_arm64.dmg`]
-    : [`RebaseRaven_${version}_windows_x64.exe`, `RebaseRaven_${version}_windows_x64.msi`];
-  const name = names.find((name) => url === `${REPOSITORY_URL}/releases/download/${version}/${name}`);
-  if (!name) return null;
-  return {
-    file_name: name,
-    file_extension: name.split(".").at(-1),
-    link_url: url,
-    download_platform: platform,
-    release_version: version,
-  };
 }
 
 export function createWebsiteAnalytics(host: Window, measurementId: string | undefined) {
@@ -51,9 +34,8 @@ export function createWebsiteAnalytics(host: Window, measurementId: string | und
     downloadDialog(entryPoint: DownloadEntryPoint) {
       tag.send("download_dialog_open", { entry_point: entryPoint, site_language: locale });
     },
-    installerDownload(platform: DownloadPlatform, url: string, version: string) {
-      const parameters = installerDownloadParameters(platform, url, version);
-      if (parameters) tag.send("file_download", { ...parameters, site_language: locale });
+    releasePage(entryPoint: DownloadEntryPoint) {
+      tag.send("release_page_open", { entry_point: entryPoint, link_url: LATEST_RELEASE_URL, site_language: locale });
     },
     demoStart() {
       tag.send("demo_start", { site_language: locale });
@@ -68,5 +50,5 @@ export function initializeWebsiteAnalytics(host: Window, measurementId: string |
 }
 
 export const trackDownloadDialog = (entryPoint: DownloadEntryPoint) => websiteAnalytics?.downloadDialog(entryPoint);
-export const trackInstallerDownload = (platform: DownloadPlatform, url: string, version: string) => websiteAnalytics?.installerDownload(platform, url, version);
+export const trackReleasePageOpen = (entryPoint: DownloadEntryPoint) => websiteAnalytics?.releasePage(entryPoint);
 export const trackDemoStart = () => websiteAnalytics?.demoStart();

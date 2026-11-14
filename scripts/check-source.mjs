@@ -30,8 +30,8 @@ await collect(path.join(root, "src-tauri"), false);
 for (const directory of directories) await collect(path.join(root, directory), true);
 
 for (const filename of files.sort()) {
-  // Workspace agent instructions are policy, not application source.
-  if (path.basename(filename) === "AGENTS.md") continue;
+  // Developer-specific instructions are local configuration, not shared source.
+  if (path.basename(filename) === "AGENTS.local.md") continue;
   const relative = path.relative(root, filename).replaceAll("\\", "/");
   const localizedContent = /^(?:src\/i18n\/locales\/(?:[a-z0-9-]+\.)?(?:en|zh-CN)\.json|site\/src\/locales\/(?:en|zh-CN)\.json|README\.zh-CN\.md)$/.test(relative);
   if (han.test(relative)) violations.push(`${relative}: source file names must use English`);

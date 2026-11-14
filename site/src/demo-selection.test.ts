@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { fileChangeIds } from "./demo-model";
 import { demoFiles } from "./demo-data";
 import { reconcileDemoSelection } from "./demo-selection";
 
 const navigation = demoFiles[0];
 const theme = demoFiles[1];
-const navigationHunks = navigation.hunks.map((hunk) => hunk.id);
-const themeHunk = theme.hunks[0].id;
+const navigationHunks = fileChangeIds(navigation);
+const themeHunk = fileChangeIds(theme)[0];
 
 describe("demo change selection", () => {
   it("keeps the current scope while the selected file still has changes there", () => {

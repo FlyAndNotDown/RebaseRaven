@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { useTranslation } from "@/i18n";
+import { useTranslation } from "react-i18next";
 import { ArchiveIcon, TriangleAlertIcon } from "lucide-react";
 import { HoverTip } from "@/components/ui/tooltip";
 

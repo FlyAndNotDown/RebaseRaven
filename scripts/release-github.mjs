@@ -251,6 +251,6 @@ export async function publishRelease({ github, context, core, tag, releaseId }) 
     owner, repo, release_id, name: "latest.json", data,
     headers: { "content-type": "application/json", "content-length": data.length },
   });
-  await github.rest.repos.updateRelease({ owner, repo, release_id, draft: false, make_latest: "true" });
+  await github.rest.repos.updateRelease({ owner, repo, release_id, tag_name: tag, target_commitish: context.sha, draft: false, make_latest: "true" });
   core.info(`Published RebaseRaven ${tag} with all updater packages.`);
 }

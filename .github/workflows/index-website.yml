@@ -1,0 +1,48 @@
+name: Index website URLs
+
+on:
+  schedule:
+    - cron: "17 0 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Validate the published sitemap without submitting URLs"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: index-website-urls
+  cancel-in-progress: false
+
+jobs:
+  bing:
+    name: Submit sitemap URLs to Bing
+    if: >-
+      github.repository == 'FlyAndNotDown/RebaseRaven' &&
+      github.ref == 'refs/heads/master' &&
+      (github.event_name == 'schedule' ||
+       (github.actor == github.repository_owner &&
+        github.triggering_actor == github.repository_owner))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Submit published URLs
+        env:
+          SITE_URL: https://rebaseraven.flyandnotdown.com/
+          BING_WEBMASTER_SITE_URL: ${{ vars.BING_WEBMASTER_SITE_URL }}
+          BING_WEBMASTER_API_KEY: ${{ secrets.BING_WEBMASTER_API_KEY }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+        run: node scripts/submit-website-urls.mjs

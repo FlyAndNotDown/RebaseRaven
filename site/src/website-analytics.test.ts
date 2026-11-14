@@ -1,10 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { createGoogleTag } from "./google-tag";
-import { createWebsiteAnalytics, installerDownloadParameters, websiteAnalyticsLocale } from "./website-analytics";
+import { createWebsiteAnalytics, websiteAnalyticsLocale } from "./website-analytics";
+import { LATEST_RELEASE_URL } from "./release-downloads";
 
 const ORIGIN = "https://rebaseraven.flyandnotdown.com";
-const WINDOWS = "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v1.2.3/RebaseRaven_v1.2.3_windows_x64.exe";
-const MACOS = "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v1.2.3/RebaseRaven_v1.2.3_macos_arm64.dmg";
 
 function fixture(pathname = "/", origin = ORIGIN) {
   const script = { onload: null as (() => void) | null, onerror: null as (() => void) | null, src: "", remove: vi.fn() };
@@ -49,20 +48,19 @@ describe("website analytics isolation", () => {
     expect(script.src).toBe("https://www.googletagmanager.com/gtag/js?id=G-WEBSITE42");
   });
 
-  it("routes download intent, installer clicks and demo usage exclusively to the website property", () => {
+  it("routes download intent, release page visits and demo usage exclusively to the website property", () => {
     const { host, script, globals } = fixture();
     const analytics = createWebsiteAnalytics(host, "G-WEBSITE42")!;
     script.onload?.();
     analytics.downloadDialog("hero");
-    analytics.installerDownload("windows", WINDOWS, "v1.2.3");
-    analytics.installerDownload("macos", MACOS, "v1.2.3");
-    analytics.installerDownload("windows", "https://github.com/FlyAndNotDown/RebaseRaven/releases/latest", "v1.2.3");
+    analytics.releasePage("hero");
     analytics.demoStart();
     const commands = (globals.dataLayer as IArguments[]).slice(3).map((args) => Array.from(args));
-    expect(commands.map((command) => command[1])).toEqual(["download_dialog_open", "file_download", "file_download", "demo_start"]);
+    expect(commands.map((command) => command[1])).toEqual(["download_dialog_open", "release_page_open", "demo_start"]);
     expect(commands[0][2]).toMatchObject({ entry_point: "hero", site_language: "en" });
-    expect(commands[1][2]).toMatchObject({ download_platform: "windows", file_extension: "exe", release_version: "v1.2.3" });
-    expect(commands[2][2]).toMatchObject({ download_platform: "macos", file_extension: "dmg" });
+    expect(commands[1][2]).toEqual({
+      entry_point: "hero", link_url: LATEST_RELEASE_URL, site_language: "en", send_to: "G-WEBSITE42",
+    });
     expect(commands.every((command) => (command[2] as Record<string, unknown>).send_to === "G-WEBSITE42")).toBe(true);
   });
 
@@ -83,16 +81,7 @@ describe("website analytics isolation", () => {
   });
 });
 
-describe("download and tag routing boundaries", () => {
-  it("rejects fallback links, other products, mismatched platforms and arbitrary URL fields", () => {
-    expect(installerDownloadParameters("windows", WINDOWS, "v1.2.3")).not.toBeNull();
-    for (const url of [MACOS, WINDOWS + "?private=value", WINDOWS + "#extra", WINDOWS.replace("RebaseRaven/releases", "OtherProduct/releases")]) {
-      expect(installerDownloadParameters("windows", url, "v1.2.3")).toBeNull();
-    }
-    expect(installerDownloadParameters("windows", WINDOWS, "invalid")).toBeNull();
-    expect(installerDownloadParameters("windows", WINDOWS, "v1.2.4")).toBeNull();
-  });
-
+describe("tag routing boundaries", () => {
   it("cannot override the configured property using event parameters", async () => {
     const { host, script, globals } = fixture();
     const tag = createGoogleTag(host, "G-WEBSITE42", { send_page_view: true });
