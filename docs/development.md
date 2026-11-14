@@ -58,14 +58,18 @@ check on one operating system does not establish support on the others.
 | `src-tauri/src/` | Native operations, persistence, credentials, and platform integration |
 | `src-tauri/src/git/`, `src-tauri/src/p4/` | CLI adapters and repository operations |
 | `src-tauri/icons/` | Application icon source and desktop assets |
-| `scripts/` | Source checks and release tooling |
-| `site/` | GitHub Pages website source and brand artwork |
+| `scripts/` | Source checks, asset generation, and build validation |
+| `site/` | Product website source and brand artwork |
 | `docs/` | Development guide |
 
 Frontend files use kebab-case, with React entry points `App.tsx` and `main.tsx`.
 Rust modules use snake_case. Tests live beside pure frontend helpers or with
 the Rust module they cover. Keep generated output and local service
 configuration outside version control.
+
+Shared agent guidance lives in `AGENTS.md`. Developers can add personal workflow
+or environment instructions to the ignored `AGENTS.local.md`; that file is
+optional and must not contain requirements for other contributors.
 
 Repository operations run through the selected command-line executables. Rust
 owns filesystem and process access; React uses typed clients. Preserve command
@@ -101,7 +105,7 @@ language action.
 
 ## Brand assets
 
-The approved glass icon master is `src-tauri/icons/app-icon.png`. The flat,
+The glass icon master is `src-tauri/icons/app-icon.png`. The flat,
 transparent mark is `assets/brand/raven.svg`. Run `npm run brand:generate` to
 regenerate desktop icons, small-size favicon variants, website marks, and the
 website and GitHub social cards. The generator preserves the glass icon at
@@ -115,6 +119,6 @@ The website card is `site/public/assets/social.png` (1200 × 630). The GitHub
 repository social preview is `assets/brand/github-social.png` (1280 × 640).
 Both use the bundled Geist font. The PNG glass treatment is static artwork.
 
-The approved README banner is `assets/brand/readme-banner.png`, shared by both
-README translations. It is a selected composition, separate from generated
+The README banner is `assets/brand/readme-banner.png`, shared by both
+README translations. It is a fixed composition, separate from generated
 website and repository social cards.
