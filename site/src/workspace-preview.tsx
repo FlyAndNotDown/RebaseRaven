@@ -42,7 +42,8 @@ export function WorkspacePreview() {
 
   return (
     <>
-      <Tabs value={repository} onValueChange={(value) => { setRepository(value); if (value === "perforce") setPerforceRequested(true); setNotice(value === "git" ? t("demo.gitIntro") : t("demo.p4Intro")); }} className="workspace-preview" data-platform={platform}>
+      <p className="site-demo-mobile-hint">{t("demo.mobileHint")}</p>
+      <div className="demo-viewport" tabIndex={0} role="region" aria-label={t("demo.viewport")}><Tabs value={repository} onValueChange={(value) => { setRepository(value); if (value === "perforce") setPerforceRequested(true); setNotice(value === "git" ? t("demo.gitIntro") : t("demo.p4Intro")); }} className="workspace-preview" data-platform={platform}>
         {platform === "linux" ? <div className="demo-system-frame" aria-hidden="true">RebaseRaven</div> : null}
         <div className="demo-titlebar">
           {platform === "macos" ? <span className="demo-traffic-lights" aria-hidden="true"><i /><i /><i /></span> : null}
@@ -51,8 +52,8 @@ export function WorkspacePreview() {
             <DropdownMenuContent align="start"><DropdownMenuItem onSelect={reset}><RotateCcwIcon />{t("demo.reset")}</DropdownMenuItem></DropdownMenuContent>
           </DropdownMenu>
           <TabsList aria-label={t("demo.repositories")} className="demo-repository-tabs">
-            <TabsTrigger value="git"><VcsIcon vcs="git" /><span>atlas</span><span className="demo-vcs-label">Git</span></TabsTrigger>
-            <TabsTrigger value="perforce"><VcsIcon vcs="perforce" /><span>studio</span><span className="demo-vcs-label">Perforce</span></TabsTrigger>
+            <TabsTrigger value="git"><VcsIcon vcs="git" /><span>atlas</span></TabsTrigger>
+            <TabsTrigger value="perforce"><VcsIcon vcs="perforce" /><span>studio</span></TabsTrigger>
           </TabsList>
           {platform === "windows" ? <span className="demo-window-controls" aria-hidden="true"><MinusIcon /><SquareIcon /><XIcon /></span> : null}
         </div>
@@ -63,7 +64,7 @@ export function WorkspacePreview() {
             {perforceFailed ? <Button size="sm" variant="outline" onClick={() => { setPerforceFailed(false); setPerforceAttempt((current) => current + 1); }}>{t("demo.retryPerforce")}</Button> : null}
           </div> : null}
         </TabsContent>
-      </Tabs>
+      </Tabs></div>
       <div className="site-demo-help"><p role="status" aria-live="polite">{notice}</p><Button size="sm" variant="ghost" onClick={reset}><RotateCcwIcon />{t("demo.reset")}</Button></div>
     </>
   );

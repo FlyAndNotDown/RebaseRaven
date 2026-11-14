@@ -21,9 +21,9 @@ describe("demo view lifetime", () => {
     expect(panels.filter((panel) => panel.includes('data-state="inactive"')).every((panel) => panel.includes('hidden=""'))).toBe(true);
   });
 
-  it("keeps Perforce views mounted while hiding inactive workspaces", () => {
+  it("keeps pending, history, shelves, and workspace views mounted while inactive", () => {
     const panels = panelRoots(PerforceDemo);
-    expect(panels).toHaveLength(3);
+    expect(panels).toHaveLength(4);
     expect(panels.filter((panel) => !panel.includes('hidden=""'))).toHaveLength(1);
     expect(panels.filter((panel) => panel.includes('data-state="inactive"')).every((panel) => panel.includes('hidden=""'))).toBe(true);
   });

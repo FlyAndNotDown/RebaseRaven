@@ -88,6 +88,12 @@ npm run site:preview
 `check:site` typechecks, builds, and checks the website assets. Vite writes
 `site/dist/`.
 
+The interactive preview uses in-memory sample repositories. Share presentational
+components such as the diff renderer and changelist dialogs with the desktop app;
+keep native commands and desktop state outside those shared components. Demo
+operations must preserve the distinction between working, staged, committed,
+and shelved changes.
+
 ## Localization
 
 The app and website use i18next and react-i18next with English fallback.

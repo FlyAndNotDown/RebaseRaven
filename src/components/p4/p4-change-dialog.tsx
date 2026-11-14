@@ -1,10 +1,10 @@
-import { useId, useRef, useState } from "react";
+import { useId, useRef, useState, type ComponentProps } from "react";
 import { Loader2Icon } from "lucide-react";
 import { ChangeBadge } from "@/components/p4/change-badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { useTranslation } from "@/i18n";
+import { useTranslation } from "react-i18next";
 
 export type ChangeDialogRequest = { id: string; description: string; mode: "edit" | "submit" | "submitShelf" };
 
@@ -18,6 +18,7 @@ export function P4ChangeDialog({
   busy,
   onConfirm,
   onClose,
+  onCloseAutoFocus,
 }: {
   request: ChangeDialogRequest;
   openedCount: number;
@@ -28,6 +29,7 @@ export function P4ChangeDialog({
   busy: boolean;
   onConfirm: (description: string) => Promise<boolean>;
   onClose: () => void;
+  onCloseAutoFocus?: ComponentProps<typeof DialogContent>["onCloseAutoFocus"];
 }) {
   const { t } = useTranslation();
   const descriptionId = useId();
@@ -56,7 +58,7 @@ export function P4ChangeDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && !running.current && onClose()}>
-      <DialogContent className="sm:max-w-lg" showCloseButton={!working}>
+      <DialogContent className="sm:max-w-lg" showCloseButton={!working} onCloseAutoFocus={onCloseAutoFocus}>
         <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); void confirm(); }}>
           <DialogHeader>
             <DialogTitle>{t(submittingShelf ? "p4.submitShelf" : submitting ? "p4.changeDialog.submitTitle" : "p4.changeDialog.editTitle")}</DialogTitle>
