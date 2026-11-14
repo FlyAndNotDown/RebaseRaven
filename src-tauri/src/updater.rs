@@ -11,7 +11,8 @@ use crate::network::HttpPolicy;
 
 mod release;
 
-const UPDATE_ENDPOINT: &str =
+const UPDATE_ENDPOINT: &str = "https://rebaseraven.flyandnotdown.com/updates/latest.json";
+const LEGACY_UPDATE_ENDPOINT: &str =
     "https://github.com/FlyAndNotDown/RebaseRaven/releases/latest/download/latest.json";
 const UPDATE_EVENT: &str = "app-update";
 const MAX_VERSION_BYTES: usize = 128;
@@ -244,7 +245,8 @@ pub async fn check_for_update(app: AppHandle) -> UpdateState {
         let updater = app
             .updater_builder()
             .endpoints(vec![
-                url::Url::parse(UPDATE_ENDPOINT).expect("valid release endpoint")
+                url::Url::parse(UPDATE_ENDPOINT).expect("valid website update endpoint"),
+                url::Url::parse(LEGACY_UPDATE_ENDPOINT).expect("valid legacy release endpoint"),
             ])
             .map_err(|error| check_error(&error))?
             .timeout(Duration::from_secs(25));
@@ -550,6 +552,54 @@ mod tests {
         assert!(state["update"]["publishedAt"].is_null());
         assert!(state["totalBytes"].is_null());
         assert_eq!(state["downloadedBytes"], 0);
+    }
+
+    #[test]
+    fn website_update_source_falls_back_to_the_legacy_manifest() {
+        use crate::network::tests::HttpFixture;
+
+        tauri::async_runtime::block_on(async {
+            let manifest = serde_json::json!({
+                "version": "9.9.9",
+                "platforms": {"fixture": {
+                    "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v9.9.9/update.exe",
+                    "signature": "fixture-signature"
+                }}
+            }).to_string();
+            for status in ["200 OK", "503 Service Unavailable"] {
+                let website = HttpFixture::with_status(&manifest, status);
+                let legacy = HttpFixture::new(&manifest);
+                let mut context = tauri::test::mock_context(tauri::test::noop_assets());
+                context.config_mut().plugins.0.insert(
+                    "updater".to_string(),
+                    serde_json::json!({
+                        "dangerousInsecureTransportProtocol": true, "pubkey": "fixture-key"
+                    }),
+                );
+                let app = tauri::test::mock_builder()
+                    .plugin(tauri_plugin_updater::Builder::new().build())
+                    .build(context)
+                    .unwrap();
+                let updater = app
+                    .updater_builder()
+                    .target("fixture")
+                    .no_proxy()
+                    .timeout(Duration::from_secs(3))
+                    .endpoints(vec![
+                        website.url.parse().unwrap(),
+                        legacy.url.parse().unwrap(),
+                    ])
+                    .unwrap()
+                    .build()
+                    .unwrap();
+                let update = updater.check().await.unwrap().unwrap();
+                assert_eq!(update_info(&update).unwrap().version, "9.9.9");
+                assert!(website.request().starts_with("GET / "));
+                if status.starts_with("503") {
+                    assert!(legacy.request().starts_with("GET / "));
+                }
+            }
+        });
     }
 
     #[test]

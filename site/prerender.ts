@@ -78,6 +78,7 @@ export function productMetadata(): Plugin {
 
 export function prerender(root: string): Plugin {
   let outputDirectory: string;
+  let cacheDirectory: string;
   let releaseTag: string | null = null;
   let mode: string;
   return {
@@ -85,12 +86,14 @@ export function prerender(root: string): Plugin {
     apply: "build",
     configResolved(config) {
       outputDirectory = path.resolve(config.root, config.build.outDir);
+      cacheDirectory = config.cacheDir;
       releaseTag = readBundledReleaseDownloads(config.env.VITE_RELEASE_DOWNLOADS)?.tag ?? null;
       mode = config.mode;
     },
     async closeBundle() {
       const server = await createServer({
         configFile: path.join(root, "vite.config.ts"),
+        cacheDir: cacheDirectory,
         mode,
         server: { middlewareMode: true, hmr: false },
         appType: "custom",

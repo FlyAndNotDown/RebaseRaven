@@ -5,19 +5,24 @@ on:
     inputs:
       release_tag:
         type: string
-        required: false
+        required: true
     secrets:
       GOOGLE_WORKLOAD_IDENTITY_PROVIDER:
         required: false
       GOOGLE_SEARCH_CONSOLE_SERVICE_ACCOUNT:
         required: false
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing latest public release to publish"
+        type: string
+        required: true
 
 permissions:
   contents: read
 
 concurrency:
-  group: pages
+  group: website-release
   cancel-in-progress: false
 
 jobs:
@@ -29,14 +34,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
-      page_url: ${{ steps.deploy.outputs.page_url }}
+      page_url: https://rebaseraven.flyandnotdown.com/
     permissions:
-      contents: read
-      pages: write
-      id-token: write
+      contents: write
     environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      name: website
+      url: https://rebaseraven.flyandnotdown.com/
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -56,13 +59,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          endpoint="latest"
-          if [[ -n "$RELEASE_TAG" ]]; then
-            [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
-            endpoint="tags/$RELEASE_TAG"
-          fi
-          gh api "repos/$GITHUB_REPOSITORY/releases/$endpoint" |
-            node scripts/site-release-downloads.mjs
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          mkdir -p "$RUNNER_TEMP/site-release"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/site-release/release.json"
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern latest.json --dir "$RUNNER_TEMP/site-release"
+          node scripts/site-release-downloads.mjs < "$RUNNER_TEMP/site-release/release.json"
       - name: Build site
         env:
           VITE_GA_APP_MEASUREMENT_ID: ${{ vars.GA_APP_MEASUREMENT_ID }}
@@ -77,15 +78,52 @@ jobs:
           assert.notEqual(app, website, "Desktop and website analytics must use separate destinations.");
           JS
           npm run check:site
-      - name: Configure Pages
-        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
-      - name: Upload site
-        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+      - name: Prepare update source
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          node --input-type=module <<'JS'
+          import path from "node:path";
+          import { readFile } from "node:fs/promises";
+          import { prepareSiteUpdate } from "./scripts/site-publish.mjs";
+          const directory = path.join(process.env.RUNNER_TEMP, "site-release");
+          await prepareSiteUpdate({
+            directory: "site/dist",
+            release: JSON.parse(await readFile(path.join(directory, "release.json"), "utf8")),
+            manifestBytes: await readFile(path.join(directory, "latest.json")),
+            publicKey: JSON.parse(await readFile("src-tauri/tauri.conf.json", "utf8")).plugins.updater.pubkey,
+            repository: process.env.GITHUB_REPOSITORY,
+            tag: process.env.RELEASE_TAG,
+          });
+          JS
+          node scripts/check-site.mjs
+      - name: Publish static website
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
         with:
-          path: site/dist
-      - name: Deploy
-        id: deploy
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const path = require('node:path');
+            const { publishSite } = await import(pathToFileURL(path.join(process.env.GITHUB_WORKSPACE, 'scripts/site-publish.mjs')).href);
+            const sha = await publishSite({ github, context, directory: 'site/dist', tag: process.env.RELEASE_TAG });
+            core.info(`Published static website revision ${sha}.`);
+      - name: Verify production website
+        run: |
+          node --input-type=module <<'JS'
+          import { setTimeout } from "node:timers/promises";
+          import { verifySite } from "./scripts/verify-site.mjs";
+          for (let attempt = 1; ; attempt++) {
+            try {
+              await verifySite({ baseUrl: "https://rebaseraven.flyandnotdown.com/", directory: "site/dist" });
+              break;
+            } catch (error) {
+              if (attempt === 20) throw error;
+              console.log(`Waiting for production website (${attempt}/20).`);
+              await setTimeout(15000);
+            }
+          }
+          JS
 
   index:
     name: Submit sitemap

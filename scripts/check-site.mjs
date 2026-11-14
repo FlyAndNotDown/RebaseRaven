@@ -12,7 +12,7 @@ const violations = [];
 async function collect(directory = "") {
   for (const entry of await readdir(path.join(root, directory), { withFileTypes: true })) {
     const filename = path.posix.join(directory, entry.name);
-    if (entry.isSymbolicLink()) violations.push(`${filename}: Pages assets must not use symbolic links`);
+    if (entry.isSymbolicLink()) violations.push(`${filename}: Static assets must not use symbolic links`);
     else if (entry.isDirectory()) await collect(filename);
     else if (entry.isFile()) files.add(filename);
   }
@@ -44,7 +44,7 @@ for (const [filename, content] of textFiles) {
   for (const reference of references) {
     if (/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(reference)) continue;
     if (reference.startsWith("/")) {
-      violations.push(`${filename}: use a relative URL for project Pages: ${reference}`);
+      violations.push(`${filename}: use a relative URL for static hosting: ${reference}`);
       continue;
     }
     let target;
@@ -72,7 +72,6 @@ for (const [filename, content] of textFiles) {
 
 const sitemap = files.has("sitemap.xml") ? await readFile(path.join(root, "sitemap.xml"), "utf8") : "";
 violations.push(...validateSiteRouting({
-  cname: files.has("CNAME") ? await readFile(path.join(root, "CNAME"), "utf8") : "",
   robots: files.has("robots.txt") ? await readFile(path.join(root, "robots.txt"), "utf8") : "",
 }));
 const analytics = textFiles.get("analytics/index.html");

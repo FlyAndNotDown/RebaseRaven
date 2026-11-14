@@ -50,11 +50,8 @@ function validSiteUrl(value) {
   } catch { return false; }
 }
 
-export function validateSiteRouting({ cname = "", robots = "" }) {
+export function validateSiteRouting({ robots = "" }) {
   const violations = [];
-  if (cname.trim() !== new URL(SITE_URL).hostname) {
-    violations.push("CNAME: the custom domain must match the canonical website host");
-  }
   const sitemaps = [...robots.matchAll(/^sitemap:[\t ]*(\S+)[\t ]*$/gim)].map((match) => match[1]);
   if (sitemaps.length !== 1 || sitemaps[0] !== `${SITE_URL}sitemap.xml`) {
     violations.push("robots.txt: advertise the canonical website sitemap once");
@@ -127,7 +124,7 @@ export function validateSiteDocument({ html, sitemap, files, filename = "index.h
     if (/\.(?:tsx?|jsx|map)$/i.test(filename) || /(?:^|\/)(?:src|server|dist-ssr|node_modules|\.vite)(?:\/|$)/i.test(filename) ||
       /(?:^|\/)(?:entry-server|prerender|vite\.config|tsconfig)(?:[.-]|$)/i.test(filename) ||
       (/\.(?:mjs|cjs|js)$/i.test(filename) && !filename.startsWith("assets/"))) {
-      violations.push(`${filename}: Pages output must not contain server bundles, source files, or source maps`);
+      violations.push(`${filename}: Static output must not contain server bundles, source files, or source maps`);
     }
   }
   return violations;
