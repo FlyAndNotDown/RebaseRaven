@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Local QA artifacts
+/temp/
+
 # Editor directories and files
 .vscode/
 .idea
