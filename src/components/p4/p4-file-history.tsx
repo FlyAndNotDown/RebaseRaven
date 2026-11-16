@@ -3,9 +3,7 @@ import { DownloadIcon, ExternalLinkIcon, LoaderCircleIcon } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { AuthorName, ExactTime, RevisionDot } from "@/components/revision-meta";
 import { ChangeBadge } from "@/components/p4/change-badge";
-import { P4Blame } from "@/components/p4/p4-blame";
 import { P4ChangeFiles } from "@/components/p4/p4-change-files";
-import { SegmentedControl } from "@/components/ui/segmented-control";
 import { P4Diff } from "@/components/p4/p4-diff";
 import { P4GetRevisionDialog, type P4RevisionTarget } from "@/components/p4/p4-get-revision-dialog";
 import { Button } from "@/components/ui/button";
@@ -24,7 +22,6 @@ import type { FileDiff } from "@/types/git";
 export function P4FileHistory({ path }: { path: string }) {
   const { t } = useTranslation();
   const { filelog, revisionDiff, describeSubmitted, selectSubmitted, setView } = useP4();
-  const [mode, setMode] = useState<"diff" | "blame">("diff");
   const [revisions, setRevisions] = useState<P4Revision[] | null>(null);
   const [next, setNext] = useState<P4HistoryCursor | null>(null);
   const [loading, setLoading] = useState(true);
@@ -126,9 +123,8 @@ export function P4FileHistory({ path }: { path: string }) {
         <ResizableHandle />
         <ResizablePanel id="p4-file-diff" defaultSize="66%" minSize="30%">
           <div className="absolute inset-0 flex min-h-0 flex-col">
-            <div className="flex h-9 shrink-0 items-center border-b px-2"><SegmentedControl label={t("p4.history.view")} value={mode} onChange={setMode} options={[{value:"diff",label:t("p4.history.diff")},{value:"blame",label:t("p4.history.blame")}]} /></div>
             <div className="relative flex min-h-0 flex-1 flex-col">
-              {mode === "blame" && selected && file ? <P4Blame revision={{...selected, depotPath:file.depotPath, rev:file.rev}} openChange={openChange} /> : currentDiff?.error ? <div role="alert" className="p-3 text-xs text-destructive"><p>{currentDiff.error}</p><Button size="xs" variant="outline" className="mt-2" onClick={() => {setLoadedDiff(null);setAttempt(value => value + 1);}}>{t("common.retry")}</Button></div> : <P4Diff diff={diff} loading={diffLoading || (loading && !revisions)} empty={t("p4.noRevisionToShow")} fileSource={file ? {kind:"revision",path:file.depotPath,revision:file.rev} : undefined} />}
+              {currentDiff?.error ? <div role="alert" className="p-3 text-xs text-destructive"><p>{currentDiff.error}</p><Button size="xs" variant="outline" className="mt-2" onClick={() => {setLoadedDiff(null);setAttempt(value => value + 1);}}>{t("common.retry")}</Button></div> : <P4Diff diff={diff} loading={diffLoading || (loading && !revisions)} empty={t("p4.noRevisionToShow")} fileSource={file ? {kind:"revision",path:file.depotPath,revision:file.rev} : undefined} />}
             </div>
           </div>
         </ResizablePanel>

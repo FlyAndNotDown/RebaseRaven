@@ -12,6 +12,7 @@ const actions=vi.hoisted(()=>({listDir:vi.fn(),listDepot:vi.fn(),status:vi.fn(),
 vi.mock("@/state/p4-context",()=>({useP4:()=>({connection:actions.connection,listDir:actions.listDir,listDepot:actions.listDepot,reconcile:actions.reconcile,openClean:actions.openClean,filesEpoch:0,busy:false})}));
 vi.mock("@/lib/p4",async importOriginal=>({...await importOriginal<typeof import("@/lib/p4")>(),p4Api:{listingStatus:actions.status,searchFiles:actions.search,cancelDepotSearch:actions.cancel}}));
 vi.mock("@/components/p4/p4-file-history",()=>({P4FileHistory:({path}:{path:string})=><div data-file-history={path}/> }));
+vi.mock("@/components/p4/p4-file-view",()=>({P4FileView:({path}:{path:string})=><div data-file-view={path}/> }));
 vi.mock("@/components/p4/p4-directory-history",()=>({P4DirectoryHistory:({path}:{path:string})=><div data-directory-history={path}/> }));
 vi.mock("@/components/ui/resizable",()=>({ResizablePanelGroup:({children}:{children:ReactNode})=><div>{children}</div>,ResizablePanel:({children}:{children:ReactNode})=><div>{children}</div>,ResizableHandle:()=>null}));
 let root:Root,container:HTMLDivElement,sequence=0;
@@ -87,7 +88,7 @@ it("selects folder history on a single click and expands only with an arrow or d
   await render();await act(async()=>rows("/workspace/output.tmp")[0].click());
   const arrow=()=>container.querySelector<HTMLButtonElement>('button[aria-label="Expand cache"],button[aria-label="Collapse cache"]')!;
   await act(async()=>arrow().click());
-  expect(container.querySelector('[data-file-history="/workspace/output.tmp"]')).not.toBeNull();
+  expect(container.querySelector('[data-file-view="/workspace/output.tmp"]')).not.toBeNull();
   expect(rows("/workspace/cache")[0].getAttribute("aria-expanded")).toBe("true");
   await act(async()=>rows("/workspace/cache")[0].click());
   expect(container.querySelector('[data-directory-history="/workspace/cache"]')).not.toBeNull();
@@ -149,4 +150,26 @@ it("keeps filtered matches below the workspace root", async () => {
   expect(rows("/workspace/cache").at(-1)!.style.paddingLeft).toBe("20px");
   await act(async () => folder.click());
   expect(container.querySelector('[data-directory-history="/workspace"]')).not.toBeNull();
+});
+
+it("places File and History at the top and uses File by default for file selections", async () => {
+  await render();
+  await act(async () => rows("/workspace/output.tmp")[0].click());
+  const views = container.querySelector('[role="group"][aria-label="File view"]')!;
+  const file = [...views.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "File")!;
+  const history = [...views.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "History")!;
+  expect(file.getAttribute("aria-pressed")).toBe("true");
+  expect(container.querySelector('[data-file-view="/workspace/output.tmp"]')).not.toBeNull();
+  expect(container.querySelector('[data-file-history]')).toBeNull();
+  await act(async () => history.click());
+  expect(container.querySelector('[data-file-history="/workspace/output.tmp"]')).not.toBeNull();
+  expect(container.querySelector('[data-file-view]')).toBeNull();
+  await act(async () => file.click());
+  await act(async () => rows("/workspace/cache")[0].click());
+  expect(file.disabled).toBe(true);
+  expect(history.getAttribute("aria-pressed")).toBe("true");
+  expect(container.querySelector('[data-directory-history="/workspace/cache"]')).not.toBeNull();
+  await act(async () => rows("/workspace/output.tmp")[0].click());
+  expect(file.disabled).toBe(false);
+  expect(file.getAttribute("aria-pressed")).toBe("true");
 });

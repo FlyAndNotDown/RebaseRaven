@@ -10,6 +10,7 @@ import { P4OperationDialog } from "@/components/p4/p4-operation-dialog";
 import type { P4OperationKind } from "@/lib/p4-operation-preview";
 import { t, useTranslation } from "@/i18n";
 import { P4FileHistory } from "@/components/p4/p4-file-history";
+import { P4FileView } from "@/components/p4/p4-file-view";
 import { P4DirectoryHistory } from "@/components/p4/p4-directory-history";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import {
@@ -88,6 +89,7 @@ export function P4Files() {
   const [revisionTarget, setRevisionTarget] = useState<Extract<P4RevisionTarget, { path: string }> | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [selectedIsFile, setSelectedIsFile] = useState(false);
+  const [fileView, setFileView] = useState<"file" | "history">("file");
   const revealId = useRef(0);
   const [reveal, setReveal] = useState<TreeReveal | null>(null);
 
@@ -310,15 +312,21 @@ export function P4Files() {
       <ResizableHandle />
       <ResizablePanel id="p4-file-main" defaultSize="72%" minSize="40%">
         <div className="absolute inset-0 flex min-h-0 flex-col">
-          <div className="flex h-10 shrink-0 items-center border-b px-3">
+          <div className="flex h-10 shrink-0 items-center gap-3 border-b px-3">
             <HoverTip label={selected ? shownPath(mode, root, selected) : ""}>
               <div className="min-w-0 flex-1 truncate font-mono text-xs">
                 {selected ? shownPath(mode, root, selected) : t("p4.selectAFileOrFolder")}
               </div>
             </HoverTip>
+            <SegmentedControl label={t("p4.history.view")} value={selectedIsFile || !selected ? fileView : "history"}
+              onChange={setFileView} disabled={!selected}
+              options={[{value:"file",label:t("git-files.file"),disabled:!selectedIsFile},{value:"history",label:t("git-files.history")}]} />
           </div>
           {selected ? (
-            selectedIsFile ? <P4FileHistory key={`${connectionKey}:${selected}:${p4.filesEpoch}`} path={selected} /> : <P4DirectoryHistory key={`${connectionKey}:${selected}:${p4.filesEpoch}`} path={selected} />
+            selectedIsFile ? fileView === "file"
+              ? <P4FileView key={`${connectionKey}:${selected}:${p4.filesEpoch}`} path={selected} />
+              : <P4FileHistory key={`${connectionKey}:${selected}:${p4.filesEpoch}`} path={selected} />
+            : <P4DirectoryHistory key={`${connectionKey}:${selected}:${p4.filesEpoch}`} path={selected} />
           ) : (
             <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">{t("p4.openAFileOrFolderToSeeItsHistory")}</div>
           )}

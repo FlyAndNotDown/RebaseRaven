@@ -409,14 +409,17 @@
     "hint": "Restore selected files into the current workspace. The source shelf is kept; conflicts remain for review in Pending.",
     "restore": "Restore {{count}} files"
   },
+  "filePreview": {
+    "loading": "Loading file…",
+    "deleted": "This file was deleted. Open History to view earlier revisions.",
+    "unavailable": "Text preview is not available for this file.",
+    "empty": "Empty file"
+  },
   "history": {
     "revisions": "File revisions",
     "loadMore": "Load older revisions",
     "openChange": "View changelist",
-    "diff": "Diff",
-    "blame": "Line history",
-    "view": "File view",
-    "blameHint": "Select a revision; click a changelist to inspect its change."
+    "view": "File view"
   },
   "workspaceSettings": {
     "section": "Workspace settings",
@@ -671,5 +674,5 @@
   "autoResolveAfterSyncHint": "After updating, safely merge eligible files across all opened changelists. Conflicting files remain unresolved.",
   "autoResolveSummary": "Auto-resolved {{resolved}} files · {{remaining}} still need resolve",
   "selectAFileOrFolder": "Select a file or folder",
-  "openAFileOrFolderToSeeItsHistory": "Select a file or folder to view its history"
+  "openAFileOrFolderToSeeItsHistory": "Select a file to view its content, or a folder to view its history."
 }

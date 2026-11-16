@@ -50,9 +50,9 @@ export function ImageDiff({ repoPath, source, refreshIdentity }: {
   return <ImageComparison pair={pair} busy={busy} error={error} identity={key} disabled={!repoPath} onReload={() => setAttempt((value) => value + 1)} />;
 }
 
-export function ImageComparison({ pair, busy, error, identity: key, disabled, onReload, captions }: {
+export function ImageComparison({ pair, busy, error, identity: key, disabled, onReload, captions, single = false }: {
   pair: ImagePair | null; busy: boolean; error: string | null; identity: string;
-  disabled?: boolean; onReload: () => void; captions?: [string, string];
+  disabled?: boolean; onReload: () => void; captions?: [string, string]; single?: boolean;
 }) {
   useTranslation();
   const [mode, setMode] = useState<Mode>("split");
@@ -63,7 +63,7 @@ export function ImageComparison({ pair, busy, error, identity: key, disabled, on
   const after = pair?.after ?? null;
   const beforeSize = sizes.before?.key === key && sizes.before.url === before?.dataUrl ? sizes.before.size : undefined;
   const afterSize = sizes.after?.key === key && sizes.after.url === after?.dataUrl ? sizes.after.size : undefined;
-  const comparable = Boolean(before?.dataUrl && after?.dataUrl);
+  const comparable = !single && Boolean(before?.dataUrl && after?.dataUrl);
   const shownMode = comparable ? mode : "split";
   const measure = (side: "before" | "after") => (event: React.SyntheticEvent<HTMLImageElement>) => {
     const image = event.currentTarget;
@@ -106,8 +106,8 @@ export function ImageComparison({ pair, busy, error, identity: key, disabled, on
       </div>
       {error ? <p role="alert" className="break-words px-3 py-2 text-xs text-destructive">{error}</p> : null}
       {!pair ? (error ? null : <div className="relative min-h-0 flex-1"><DiffSkeleton fill label={t("desktop.imageDiff.loading_image")} /></div>) : shownMode === "split" ? (
-        <div className="grid min-h-0 flex-1 grid-cols-2 gap-3 p-3">
-          <ImagePanel label={captions?.[0] ?? t("common.before")} side={before} size={beforeSize} missing={t("desktop.imageDiff.not_in_the_older_version")} onLoad={measure("before")} />
+        <div className={cn("grid min-h-0 flex-1 gap-3 p-3", single ? "grid-cols-1" : "grid-cols-2")}>
+          {!single ? <ImagePanel label={captions?.[0] ?? t("common.before")} side={before} size={beforeSize} missing={t("desktop.imageDiff.not_in_the_older_version")} onLoad={measure("before")} /> : null}
           <ImagePanel label={captions?.[1] ?? t("common.after")} side={after} size={afterSize} missing={t("desktop.imageDiff.deleted")} onLoad={measure("after")} />
         </div>
       ) : (
