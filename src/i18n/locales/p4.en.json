@@ -220,6 +220,22 @@
   "inScope": "In {{scope}}",
   "searchPathHint": "Use a file name, or //depot/name.",
   "searchMinimum": "Type at least 2 characters.",
+  "feedback": {
+    "writable_one": "Skipped {{count}} writable file",
+    "writable_other": "Skipped {{count}} writable files",
+    "modified_one": "Skipped {{count}} locally modified file",
+    "modified_other": "Skipped {{count}} locally modified files",
+    "opened_one": "Skipped {{count}} opened file",
+    "opened_other": "Skipped {{count}} opened files",
+    "resolve_one": "{{count}} file needs resolve",
+    "resolve_other": "{{count}} files need resolve",
+    "outsideView_one": "Skipped {{count}} path outside view",
+    "outsideView_other": "Skipped {{count}} paths outside view",
+    "more_one": "{{count}} more message",
+    "more_other": "{{count}} more messages",
+    "noChanges": "No changes needed",
+    "failed": "Perforce command failed"
+  },
   "sync": {
     "updated_one": "updated {{count}} file",
     "updated_other": "updated {{count}} files",
@@ -393,14 +409,17 @@
     "hint": "Restore selected files into the current workspace. The source shelf is kept; conflicts remain for review in Pending.",
     "restore": "Restore {{count}} files"
   },
+  "filePreview": {
+    "loading": "Loading file…",
+    "deleted": "This file was deleted. Open History to view earlier revisions.",
+    "unavailable": "Text preview is not available for this file.",
+    "empty": "Empty file"
+  },
   "history": {
     "revisions": "File revisions",
     "loadMore": "Load older revisions",
     "openChange": "View changelist",
-    "diff": "Diff",
-    "blame": "Line history",
-    "view": "File view",
-    "blameHint": "Select a revision; click a changelist to inspect its change."
+    "view": "File view"
   },
   "workspaceSettings": {
     "section": "Workspace settings",
@@ -655,5 +674,5 @@
   "autoResolveAfterSyncHint": "After updating, safely merge eligible files across all opened changelists. Conflicting files remain unresolved.",
   "autoResolveSummary": "Auto-resolved {{resolved}} files · {{remaining}} still need resolve",
   "selectAFileOrFolder": "Select a file or folder",
-  "openAFileOrFolderToSeeItsHistory": "Select a file or folder to view its history"
+  "openAFileOrFolderToSeeItsHistory": "Select a file to view its content, or a folder to view its history."
 }

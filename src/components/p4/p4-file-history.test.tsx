@@ -11,7 +11,6 @@ import type { P4Changelist, P4HistoryCursor, P4Revision } from "@/types/p4";
 const calls = vi.hoisted(() => ({ filelog: vi.fn(), revisionDiff: vi.fn(), describeSubmitted: vi.fn(), selectSubmitted: vi.fn(), setView: vi.fn() }));
 vi.mock("@/state/p4-context", () => ({ useP4: () => calls }));
 vi.mock("@/components/p4/p4-diff", () => ({ P4Diff: ({ diff, fileSource }: { diff: FileDiff | null; fileSource?: { path: string; revision: string } }) => <div data-diff-source={JSON.stringify(fileSource)}>{diff?.path}</div> }));
-vi.mock("@/components/p4/p4-blame", () => ({ P4Blame: ({ revision }: { revision: P4Revision }) => <div data-blame={`${revision.depotPath}#${revision.rev}`} /> }));
 vi.mock("@/components/p4/p4-get-revision-dialog", () => ({ P4GetRevisionDialog: () => null }));
 vi.mock("@/components/author-avatar", () => ({ AuthorAvatar: () => <span /> }));
 vi.mock("@/components/ui/resizable", () => ({ ResizablePanelGroup: ({ children }: { children: ReactNode }) => <div>{children}</div>, ResizablePanel: ({ children }: { children: ReactNode }) => <div>{children}</div>, ResizableHandle: () => null }));
@@ -67,7 +66,9 @@ it("keeps the selected revision usable when its changelist detail fails", async 
   expect(document.body.textContent).not.toContain("Detail unavailable"); expect(button("theme.ts")).toBeDefined();
 });
 
-it("uses the selected changelist file for line history", async () => {
-  await render(); await act(async () => button("theme.ts").click()); await act(async () => button("Line history").click());
-  expect(document.querySelector('[data-blame]')?.getAttribute('data-blame')).toBe("//depot/theme.ts#3");
+it("keeps history focused on revision details and diff without nested view controls", async () => {
+  await render(); await act(async () => button("theme.ts").click());
+  expect(calls.revisionDiff).toHaveBeenLastCalledWith("//depot/theme.ts", "3");
+  expect(document.querySelector('[role="group"][aria-label="File view"]')).toBeNull();
+  expect(document.body.textContent).not.toContain("Line history");
 });

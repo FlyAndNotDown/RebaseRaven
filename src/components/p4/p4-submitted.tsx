@@ -4,7 +4,6 @@ import type { P4StreamDiffRequest } from "@/types/p4-stream-specs";
 import { t, useTranslation } from "@/i18n";
 import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import { DownloadIcon, HistoryIcon } from "lucide-react";
-import { toast } from "sonner";
 import { AuthorName, ExactTime, RevisionDot } from "@/components/revision-meta";
 import { ChangeBadge } from "@/components/p4/change-badge";
 import { P4ChangeFiles } from "@/components/p4/p4-change-files";
@@ -19,6 +18,7 @@ import {
 } from "@/components/ui/context-menu";
 import { Input } from "@/components/ui/input";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { notifyP4Error } from "@/lib/p4-output-notice";
 import { errorMessage } from "@/lib/git";
 import { changeSummary } from "@/lib/p4";
 import { cn } from "@/lib/utils";
@@ -118,7 +118,7 @@ export function P4Submitted({history, historyScope, layout = "columns"}: {histor
         if (!live) return;
         setLoadedDiff({ key, diff: null });
         const message = errorMessage(caught);
-        if (message && message !== "Login cancelled") toast.error(message);
+        if (message && message !== "Login cancelled") notifyP4Error(message);
       });
     return () => {
       live = false;

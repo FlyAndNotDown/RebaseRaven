@@ -59,8 +59,9 @@ describe("syncSummary", () => {
       "//depot/c.txt#1 - added as E:\\c.txt",
       "//depot/d.txt#4 - deleted as E:\\d.txt",
       "//depot/e.txt#1 - moved from E:\\old.txt",
+      "//depot/f.txt#2 - replacing E:\\f.txt",
     ].join("\n");
-    expect(syncSummary(output)).toBe("Updated 3 files, added 1 file, deleted 1 file.");
+    expect(syncSummary(output)).toBe("Updated 4 files, added 1 file, deleted 1 file.");
   });
 
   it("uses the singular when one file moved", () => {

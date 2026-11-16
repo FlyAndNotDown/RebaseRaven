@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { ArrowRightLeftIcon, BrushCleaningIcon, DownloadIcon, FilePenIcon, FolderIcon, FolderOpenIcon, FolderSearchIcon, FolderTreeIcon, GitMergeIcon, HistoryIcon, ListChecksIcon, PlusIcon, Trash2Icon, Undo2Icon } from "lucide-react";
 import { toast } from "sonner";
-import { FileTree, FileTreeFilter, FilteredFileTree, type FileTreeEntry } from "@/components/file-tree";
+import { FileTree, FileTreeFilter, FileTreeRoot, FilteredFileTree, type FileTreeEntry } from "@/components/file-tree";
 import { FileStatusIcon } from "@/components/p4/file-status-icon";
 import { FileStatusTip } from "@/components/p4/file-status-tip";
 import { P4GetRevisionDialog, type P4RevisionTarget } from "@/components/p4/p4-get-revision-dialog";
@@ -10,6 +10,7 @@ import { P4OperationDialog } from "@/components/p4/p4-operation-dialog";
 import type { P4OperationKind } from "@/lib/p4-operation-preview";
 import { t, useTranslation } from "@/i18n";
 import { P4FileHistory } from "@/components/p4/p4-file-history";
+import { P4FileView } from "@/components/p4/p4-file-view";
 import { P4DirectoryHistory } from "@/components/p4/p4-directory-history";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import {
@@ -24,6 +25,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { HoverTip } from "@/components/ui/tooltip";
 import { FileTreeSkeleton } from "@/components/skeletons";
 import { normalizeRepoPath, pathsIgnoreCase } from "@/lib/format";
+import { notifyP4Error } from "@/lib/p4-output-notice";
 import { errorMessage, gitApi, isCancelled } from "@/lib/git";
 import { joinRoot, type SearchNode } from "@/lib/file-search";
 import { p4Api, relativeToRoot } from "@/lib/p4";
@@ -39,6 +41,8 @@ export function P4Files() {
   const [moving, setMoving] = useState<string | null>(null);
   const [operation, setOperation] = useState<{ kind: P4OperationKind; path: string; depot: boolean } | null>(null);
   const root = p4.connection?.root ?? "";
+  const workspaceRoot: FileTreeEntry = { path: root, name: root.replace(/[/\\]+$/, "").split(/[/\\]/).pop() || root, dir: true };
+  const depotRoot: FileTreeEntry = { path: "//", name: "//", dir: true };
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<"workspace" | "depot">("workspace");
   useEffect(() => { setAnalyticsP4FilesMode(mode); }, [mode]);
@@ -54,7 +58,7 @@ export function P4Files() {
           : await p4Api.searchFiles(connection, needle);
       } catch (caught) {
         const message = errorMessage(caught);
-        if (message && message !== "Login cancelled" && !isCancelled(caught)) toast.error(message);
+        if (message && message !== "Login cancelled" && !isCancelled(caught)) notifyP4Error(message);
         throw caught;
       }
     },
@@ -85,6 +89,7 @@ export function P4Files() {
   const [revisionTarget, setRevisionTarget] = useState<Extract<P4RevisionTarget, { path: string }> | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [selectedIsFile, setSelectedIsFile] = useState(false);
+  const [fileView, setFileView] = useState<"file" | "history">("file");
   const revealId = useRef(0);
   const [reveal, setReveal] = useState<TreeReveal | null>(null);
 
@@ -111,7 +116,7 @@ export function P4Files() {
       choose(path);
     } catch (caught) {
       const message = errorMessage(caught);
-      if (message && message !== "Login cancelled") toast.error(message);
+      if (message && message !== "Login cancelled") notifyP4Error(message);
     }
   }
 
@@ -127,11 +132,14 @@ export function P4Files() {
       else await gitApi.revealInFileManager(local);
     } catch (caught) {
       const message = errorMessage(caught);
-      if (message && message !== "Login cancelled") toast.error(message);
+      if (message && message !== "Login cancelled") notifyP4Error(message);
     }
   }
 
   function fileMenu(entry: FileTreeEntry) {
+    if (entry.path === "//") return <ContextMenuContent>
+      <ContextMenuItem onSelect={() => chooseDirectory(entry.path)}><HistoryIcon />{t("git-files.history")}</ContextMenuItem>
+    </ContextMenuContent>;
     const path = p4TreeTarget(entry.path, entry.dir);
     return (
       <ContextMenuContent className="min-w-60">
@@ -210,6 +218,7 @@ export function P4Files() {
               <>
                 <div className={fileQuery.active || mode !== "workspace" ? "hidden" : undefined}>
                   {seenModes.has("workspace") ? (
+                    <FileTreeRoot key={root} entry={workspaceRoot} selected={selected} onOpenDirectory={chooseDirectory} menu={fileMenu} revealKey={reveal?.mode === "workspace" ? reveal.id : undefined}>
                     <WorkspaceTree
                       key={root}
                       selected={selected}
@@ -219,10 +228,12 @@ export function P4Files() {
                       reveal={reveal?.mode === "workspace" ? reveal : null}
                       menu={fileMenu}
                     />
+                    </FileTreeRoot>
                   ) : null}
                 </div>
                 <div className={fileQuery.active || mode !== "depot" ? "hidden" : undefined}>
                   {seenModes.has("depot") ? (
+                    <FileTreeRoot key={`${connection?.port ?? ""}:${connection?.client ?? ""}`} entry={depotRoot} selected={selected} onOpenDirectory={chooseDirectory} menu={fileMenu} revealKey={reveal?.mode === "depot" ? reveal.id : undefined}>
                     <DepotTree
                       key={`${connection?.port ?? ""}:${connection?.client ?? ""}`}
                       selected={selected}
@@ -232,9 +243,12 @@ export function P4Files() {
                       reveal={reveal?.mode === "depot" ? reveal : null}
                       menu={fileMenu}
                     />
+                    </FileTreeRoot>
                   ) : null}
                 </div>
                 {fileQuery.active ? (
+                  <FileTreeRoot key={`${mode}:${root}`} entry={mode === "depot" ? depotRoot : workspaceRoot} selected={selected} onOpenDirectory={chooseDirectory} menu={fileMenu} revealKey={query}>
+                  {
                     fileQuery.searching ? (
                     <FileTreeSkeleton fill label={t("p4.searchingFiles")} />
                   ) : (
@@ -251,6 +265,7 @@ export function P4Files() {
                         ) : null
                       ) : (
                       <FilteredFileTree
+                        depth={1}
                         nodes={searchNodes}
                         toPath={(relative) => (mode === "depot" ? depotPath(relative) : joinRoot(root, relative))}
                         selected={selected}
@@ -277,7 +292,7 @@ export function P4Files() {
                             }
                           } catch (caught) {
                             const message = errorMessage(caught);
-                            if (message && message !== "Login cancelled") toast.error(message);
+                            if (message && message !== "Login cancelled") notifyP4Error(message);
                             return null;
                           }
                         }}
@@ -286,6 +301,8 @@ export function P4Files() {
                       )}
                     </>
                   )
+                  }
+                  </FileTreeRoot>
                 ) : null}
               </>
             ) : null}
@@ -295,15 +312,21 @@ export function P4Files() {
       <ResizableHandle />
       <ResizablePanel id="p4-file-main" defaultSize="72%" minSize="40%">
         <div className="absolute inset-0 flex min-h-0 flex-col">
-          <div className="flex h-10 shrink-0 items-center border-b px-3">
+          <div className="flex h-10 shrink-0 items-center gap-3 border-b px-3">
             <HoverTip label={selected ? shownPath(mode, root, selected) : ""}>
               <div className="min-w-0 flex-1 truncate font-mono text-xs">
                 {selected ? shownPath(mode, root, selected) : t("p4.selectAFileOrFolder")}
               </div>
             </HoverTip>
+            <SegmentedControl label={t("p4.history.view")} value={selectedIsFile || !selected ? fileView : "history"}
+              onChange={setFileView} disabled={!selected}
+              options={[{value:"file",label:t("git-files.file"),disabled:!selectedIsFile},{value:"history",label:t("git-files.history")}]} />
           </div>
           {selected ? (
-            selectedIsFile ? <P4FileHistory key={`${connectionKey}:${selected}:${p4.filesEpoch}`} path={selected} /> : <P4DirectoryHistory key={`${connectionKey}:${selected}:${p4.filesEpoch}`} path={selected} />
+            selectedIsFile ? fileView === "file"
+              ? <P4FileView key={`${connectionKey}:${selected}:${p4.filesEpoch}`} path={selected} />
+              : <P4FileHistory key={`${connectionKey}:${selected}:${p4.filesEpoch}`} path={selected} />
+            : <P4DirectoryHistory key={`${connectionKey}:${selected}:${p4.filesEpoch}`} path={selected} />
           ) : (
             <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">{t("p4.openAFileOrFolderToSeeItsHistory")}</div>
           )}
@@ -439,7 +462,7 @@ function WorkspaceTree({
   return (
     <FileTree
       dir=""
-      depth={0}
+      depth={1}
       entries={entries}
       open={open}
       selected={selected}
@@ -559,7 +582,7 @@ function DepotTree({
   return (
     <FileTree
       dir=""
-      depth={0}
+      depth={1}
       entries={entries}
       open={open}
       selected={selected}

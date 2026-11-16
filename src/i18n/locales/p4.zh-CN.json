@@ -220,6 +220,22 @@
   "inScope": "范围：{{scope}}",
   "searchPathHint": "输入文件名或 //depot/name。",
   "searchMinimum": "请至少输入 2 个字符。",
+  "feedback": {
+    "writable_one": "已跳过 {{count}} 个可写文件",
+    "writable_other": "已跳过 {{count}} 个可写文件",
+    "modified_one": "已跳过 {{count}} 个本地修改文件",
+    "modified_other": "已跳过 {{count}} 个本地修改文件",
+    "opened_one": "已跳过 {{count}} 个已签出文件",
+    "opened_other": "已跳过 {{count}} 个已签出文件",
+    "resolve_one": "{{count}} 个文件需要解决冲突",
+    "resolve_other": "{{count}} 个文件需要解决冲突",
+    "outsideView_one": "已跳过 {{count}} 个视图外路径",
+    "outsideView_other": "已跳过 {{count}} 个视图外路径",
+    "more_one": "另有 {{count}} 条信息",
+    "more_other": "另有 {{count}} 条信息",
+    "noChanges": "无需更改",
+    "failed": "Perforce 命令执行失败"
+  },
   "sync": {
     "updated_one": "更新 {{count}} 个文件",
     "updated_other": "更新 {{count}} 个文件",
@@ -393,14 +409,17 @@
     "hint": "将选中文件恢复到当前工作区，保留源 Shelf；如有冲突，在待提交中继续处理。",
     "restore": "恢复 {{count}} 个文件"
   },
+  "filePreview": {
+    "loading": "正在加载文件…",
+    "deleted": "此文件已删除，可在历史中查看早期修订。",
+    "unavailable": "此文件无法预览文本。",
+    "empty": "空文件"
+  },
   "history": {
     "revisions": "文件修订",
     "loadMore": "加载更早的修订",
     "openChange": "查看变更列表",
-    "diff": "差异",
-    "blame": "逐行追溯",
-    "view": "文件视图",
-    "blameHint": "选择修订；点击变更编号查看对应 Changelist。"
+    "view": "文件视图"
   },
   "workspaceSettings": {
     "section": "工作区设置",
@@ -655,5 +674,5 @@
   "autoResolveAfterSyncHint": "更新后安全合并所有已打开更改列表中可自动合并的文件。有冲突的文件会保留为未解决状态。",
   "autoResolveSummary": "已自动解决 {{resolved}} 个文件 · {{remaining}} 个仍需解决",
   "selectAFileOrFolder": "选择文件或文件夹",
-  "openAFileOrFolderToSeeItsHistory": "选择文件或文件夹查看历史"
+  "openAFileOrFolderToSeeItsHistory": "选择文件查看内容，或选择文件夹查看历史。"
 }

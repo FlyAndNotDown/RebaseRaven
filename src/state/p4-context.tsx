@@ -21,7 +21,8 @@ import { P4IntegrationDialog } from "@/components/p4/p4-integration-dialog";
 import type { P4IntegrationInitial, P4IntegrationRequest, P4IntegrationPreview } from "@/types/p4-integration";
 import { P4WorkspaceDialog } from "@/components/p4/p4-workspace-dialog";
 import { errorMessage } from "@/lib/git";
-import { depotBase, P4_LOGIN, P4_MISSING, p4Api, syncSummary } from "@/lib/p4";
+import { depotBase, P4_LOGIN, P4_MISSING, p4Api } from "@/lib/p4";
+import { notifyP4Error, p4SyncNotice } from "@/lib/p4-output-notice";
 import { sameRepoPath } from "@/lib/format";
 import { useGitPick } from "@/state/git-context";
 import { repoTabId, type RepoTab } from "@/state/session";
@@ -330,7 +331,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
       });
       return;
     }
-    toast.error(p4DisplayError(message));
+    notifyP4Error(message);
   }, []);
 
   const remember = useCallback((next: Session) => {
@@ -1190,12 +1191,8 @@ export function P4Provider({ children }: { children: ReactNode }) {
       const id = beginActivity(t("p4.gettingLatest"), current.connection.client);
       try {
         const output = await guard(current.connection, () => p4Api.sync(current.connection, paths, id, prefs.p4AutoResolveAfterSync));
-        if (output.autoResolve) {
-          const summary = output.autoResolve;
-          const message = t("p4.autoResolveSummary", {resolved:summary.resolved,remaining:summary.remaining});
-          if (summary.remaining > 0 || summary.failed) toast.warning(message);
-          else toast.success(message);
-        } else toast.success(syncSummary(output.output));
+        const notice = p4SyncNotice(output.output, output.autoResolve);
+        toast[notice.kind](notice.message);
         await reloadPending(current);
         bumpFiles();
       } catch (caught) {
@@ -1222,7 +1219,8 @@ export function P4Provider({ children }: { children: ReactNode }) {
           p4Api.getRevision(current.connection, request, id),
         );
         if (!request.preview) {
-          toast.success(lastLine(output) || t("p4.gotRevision"));
+          const notice = p4SyncNotice(output);
+          toast[notice.kind](notice.message);
           await reloadPending(current);
           bumpFiles();
         }
@@ -1926,16 +1924,6 @@ function oldestChange(changes: P4Changelist[]) {
 function mergeChanges(current: P4Changelist[], next: P4Changelist[]) {
   const seen = new Set(current.map((change) => change.id));
   return [...current, ...next.filter((change) => !seen.has(change.id))];
-}
-
-function lastLine(text: string) {
-  const lines = text
-    .split(/\r?\n/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-  const line = lines[lines.length - 1];
-  if (!line) return "";
-  return line.length > 140 ? `${line.slice(0, 140)}…` : line;
 }
 
 function nextToken(tokens: Map<string, number>, key: string) {
