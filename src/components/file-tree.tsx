@@ -35,6 +35,31 @@ interface FileTreeProps {
   loading?: ReadonlySet<string>;
 }
 
+/** A selectable root folder that keeps its lazily loaded children mounted. */
+export function FileTreeRoot({
+  entry, selected, onOpenDirectory, menu, revealKey, children,
+}: {
+  entry: FileTreeEntry;
+  selected: string | null;
+  onOpenDirectory: (path: string) => void;
+  menu?: (entry: FileTreeEntry) => ReactNode;
+  revealKey?: string | number;
+  children: ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const [lastReveal, setLastReveal] = useState(revealKey);
+  if (lastReveal !== revealKey) {
+    setLastReveal(revealKey);
+    if (revealKey !== undefined) setExpanded(true);
+  }
+  return <>
+    <TreeRow item={entry} depth={0} expanded={expanded} selected={selected}
+      onToggle={() => setExpanded(current => !current)} onOpenDirectory={onOpenDirectory}
+      onOpenFile={onOpenDirectory} menu={menu} />
+    <div hidden={!expanded}>{children}</div>
+  </>;
+}
+
 export function FileTree(props: FileTreeProps) {
   const { dir, depth, entries, open } = props;
   const items = entries[dir];
@@ -245,6 +270,7 @@ export function FilteredFileTree({
   menu,
   decorate,
   virtualized = false,
+  depth = 0,
 }: {
   nodes: SearchNode[];
   toPath: (relative: string) => string;
@@ -255,6 +281,7 @@ export function FilteredFileTree({
   menu?: (entry: FileTreeEntry) => ReactNode;
   decorate?: (node: SearchNode, entry: FileTreeEntry) => FileTreeEntry;
   virtualized?: boolean;
+  depth?: number;
 }) {
   useTranslation();
   const [seen, setSeen] = useState(nodes);
@@ -315,7 +342,7 @@ export function FilteredFileTree({
   return (
     <Tree
       dir={toPath("")}
-      depth={0}
+      depth={depth}
       entries={tree.entries}
       open={tree.open}
       selected={selected}

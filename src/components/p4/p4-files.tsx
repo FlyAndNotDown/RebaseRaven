@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { ArrowRightLeftIcon, BrushCleaningIcon, DownloadIcon, FilePenIcon, FolderIcon, FolderOpenIcon, FolderSearchIcon, FolderTreeIcon, GitMergeIcon, HistoryIcon, ListChecksIcon, PlusIcon, Trash2Icon, Undo2Icon } from "lucide-react";
 import { toast } from "sonner";
-import { FileTree, FileTreeFilter, FilteredFileTree, type FileTreeEntry } from "@/components/file-tree";
+import { FileTree, FileTreeFilter, FileTreeRoot, FilteredFileTree, type FileTreeEntry } from "@/components/file-tree";
 import { FileStatusIcon } from "@/components/p4/file-status-icon";
 import { FileStatusTip } from "@/components/p4/file-status-tip";
 import { P4GetRevisionDialog, type P4RevisionTarget } from "@/components/p4/p4-get-revision-dialog";
@@ -40,6 +40,8 @@ export function P4Files() {
   const [moving, setMoving] = useState<string | null>(null);
   const [operation, setOperation] = useState<{ kind: P4OperationKind; path: string; depot: boolean } | null>(null);
   const root = p4.connection?.root ?? "";
+  const workspaceRoot: FileTreeEntry = { path: root, name: root.replace(/[/\\]+$/, "").split(/[/\\]/).pop() || root, dir: true };
+  const depotRoot: FileTreeEntry = { path: "//", name: "//", dir: true };
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<"workspace" | "depot">("workspace");
   useEffect(() => { setAnalyticsP4FilesMode(mode); }, [mode]);
@@ -133,6 +135,9 @@ export function P4Files() {
   }
 
   function fileMenu(entry: FileTreeEntry) {
+    if (entry.path === "//") return <ContextMenuContent>
+      <ContextMenuItem onSelect={() => chooseDirectory(entry.path)}><HistoryIcon />{t("git-files.history")}</ContextMenuItem>
+    </ContextMenuContent>;
     const path = p4TreeTarget(entry.path, entry.dir);
     return (
       <ContextMenuContent className="min-w-60">
@@ -211,6 +216,7 @@ export function P4Files() {
               <>
                 <div className={fileQuery.active || mode !== "workspace" ? "hidden" : undefined}>
                   {seenModes.has("workspace") ? (
+                    <FileTreeRoot key={root} entry={workspaceRoot} selected={selected} onOpenDirectory={chooseDirectory} menu={fileMenu} revealKey={reveal?.mode === "workspace" ? reveal.id : undefined}>
                     <WorkspaceTree
                       key={root}
                       selected={selected}
@@ -220,10 +226,12 @@ export function P4Files() {
                       reveal={reveal?.mode === "workspace" ? reveal : null}
                       menu={fileMenu}
                     />
+                    </FileTreeRoot>
                   ) : null}
                 </div>
                 <div className={fileQuery.active || mode !== "depot" ? "hidden" : undefined}>
                   {seenModes.has("depot") ? (
+                    <FileTreeRoot key={`${connection?.port ?? ""}:${connection?.client ?? ""}`} entry={depotRoot} selected={selected} onOpenDirectory={chooseDirectory} menu={fileMenu} revealKey={reveal?.mode === "depot" ? reveal.id : undefined}>
                     <DepotTree
                       key={`${connection?.port ?? ""}:${connection?.client ?? ""}`}
                       selected={selected}
@@ -233,9 +241,12 @@ export function P4Files() {
                       reveal={reveal?.mode === "depot" ? reveal : null}
                       menu={fileMenu}
                     />
+                    </FileTreeRoot>
                   ) : null}
                 </div>
                 {fileQuery.active ? (
+                  <FileTreeRoot key={`${mode}:${root}`} entry={mode === "depot" ? depotRoot : workspaceRoot} selected={selected} onOpenDirectory={chooseDirectory} menu={fileMenu} revealKey={query}>
+                  {
                     fileQuery.searching ? (
                     <FileTreeSkeleton fill label={t("p4.searchingFiles")} />
                   ) : (
@@ -252,6 +263,7 @@ export function P4Files() {
                         ) : null
                       ) : (
                       <FilteredFileTree
+                        depth={1}
                         nodes={searchNodes}
                         toPath={(relative) => (mode === "depot" ? depotPath(relative) : joinRoot(root, relative))}
                         selected={selected}
@@ -287,6 +299,8 @@ export function P4Files() {
                       )}
                     </>
                   )
+                  }
+                  </FileTreeRoot>
                 ) : null}
               </>
             ) : null}
@@ -440,7 +454,7 @@ function WorkspaceTree({
   return (
     <FileTree
       dir=""
-      depth={0}
+      depth={1}
       entries={entries}
       open={open}
       selected={selected}
@@ -560,7 +574,7 @@ function DepotTree({
   return (
     <FileTree
       dir=""
-      depth={0}
+      depth={1}
       entries={entries}
       open={open}
       selected={selected}

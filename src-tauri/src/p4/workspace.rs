@@ -357,6 +357,9 @@ fn change_page(stdout: &str, limit: usize) -> P4ChangePage {
 }
 
 fn directory_history_spec(connection: &P4Connection, path: &str) -> AppResult<String> {
+    if path == "//" {
+        return Ok("//...".into());
+    }
     let path = workspace_cli_path(&connection.root, path);
     if path.starts_with("//") {
         if !valid_depot_path(&path)
@@ -4678,6 +4681,29 @@ mod tests {
         assert_eq!(page.changes.len(), 1);
         assert_eq!(page.changes[0].id, "42");
         assert_eq!(page.scanned_through, Some(42));
+    }
+
+    #[test]
+    fn depot_root_history_keeps_all_depots_in_scope_and_paginates_normally() {
+        let root = tempfile::tempdir().unwrap();
+        let connection = mutation_connection(root.path());
+        for (before, expected) in [(None, "//..."), (Some(100), "//...@1,@99")] {
+            let request = P4PathHistoryRequest {
+                user: String::new(),
+                client: String::new(),
+                query: String::new(),
+                before,
+                limit: 50,
+                scan_limit: 500,
+            };
+            let page = path_history_with(&connection, "//", &request, |_, args| {
+                assert_eq!(args.last().unwrap(), expected);
+                assert!(args.windows(2).any(|pair| pair == ["-m", "50"]));
+                Ok("... change 42\n... desc Update shared files\n".into())
+            })
+            .unwrap();
+            assert_eq!(page.changes[0].id, "42");
+        }
     }
 
     #[test]

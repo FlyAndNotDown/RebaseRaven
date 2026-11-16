@@ -102,3 +102,51 @@ it("selects folder history on a single click and expands only with an arrow or d
   expect(container.querySelector('[data-directory-history="/workspace/cache"]')).not.toBeNull();
   expect(actions.listDir.mock.calls.filter(([path])=>path==="cache")).toHaveLength(1);
 });
+
+it("shows the workspace root above its children and opens its full history without reloading on collapse", async () => {
+  await render();
+  const folder = rows("/workspace")[0];
+  expect(folder.textContent).toBe("workspace");
+  expect(folder.style.paddingLeft).toBe("8px");
+  expect(rows("/workspace/cache")[0].style.paddingLeft).toBe("20px");
+  await act(async () => folder.click());
+  expect(container.querySelector('[data-directory-history="/workspace"]')).not.toBeNull();
+  expect(folder.getAttribute("aria-expanded")).toBe("true");
+  const calls = actions.listDir.mock.calls.length;
+  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Collapse workspace"]')!.click());
+  expect(folder.getAttribute("aria-expanded")).toBe("false");
+  expect(rows("/workspace/cache")[0].closest('[hidden]')).not.toBeNull();
+  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Expand workspace"]')!.click());
+  expect(actions.listDir).toHaveBeenCalledTimes(calls);
+  expect(container.querySelector('[data-directory-history="/workspace"]')).not.toBeNull();
+});
+
+it("shows a selectable depot root above every depot and limits its menu to history", async () => {
+  actions.listDepot.mockResolvedValue([{ name: "depot", path: "//depot", dir: true, ignored: false, status: "", detail: "" }]);
+  await render();
+  await act(async () => [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Depot")!.click());
+  const folder = rows("//")[0];
+  expect(folder.textContent).toBe("//");
+  expect(rows("//depot")[0].style.paddingLeft).toBe("20px");
+  await act(async () => folder.click());
+  expect(container.querySelector('[data-directory-history="//"]')).not.toBeNull();
+  await act(async () => folder.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, button: 2 })));
+  expect([...document.querySelectorAll('[role="menuitem"]')].map(item => item.textContent)).toEqual(["History"]);
+});
+
+it("keeps filtered matches below the workspace root", async () => {
+  vi.useFakeTimers();
+  actions.search.mockResolvedValue({ hits: [entry("cache", true), entry("cache/output.tmp")], truncated: false, scope: "" });
+  await render();
+  const input = container.querySelector<HTMLInputElement>('input[placeholder="Filter files"]')!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "cache");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => vi.advanceTimersByTimeAsync(250));
+  const folder = rows("/workspace").at(-1)!;
+  expect(folder.closest('[hidden]')).toBeNull();
+  expect(rows("/workspace/cache").at(-1)!.style.paddingLeft).toBe("20px");
+  await act(async () => folder.click());
+  expect(container.querySelector('[data-directory-history="/workspace"]')).not.toBeNull();
+});
