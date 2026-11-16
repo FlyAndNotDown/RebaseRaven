@@ -220,6 +220,22 @@
   "inScope": "In {{scope}}",
   "searchPathHint": "Use a file name, or //depot/name.",
   "searchMinimum": "Type at least 2 characters.",
+  "feedback": {
+    "writable_one": "Skipped {{count}} writable file",
+    "writable_other": "Skipped {{count}} writable files",
+    "modified_one": "Skipped {{count}} locally modified file",
+    "modified_other": "Skipped {{count}} locally modified files",
+    "opened_one": "Skipped {{count}} opened file",
+    "opened_other": "Skipped {{count}} opened files",
+    "resolve_one": "{{count}} file needs resolve",
+    "resolve_other": "{{count}} files need resolve",
+    "outsideView_one": "Skipped {{count}} path outside view",
+    "outsideView_other": "Skipped {{count}} paths outside view",
+    "more_one": "{{count}} more message",
+    "more_other": "{{count}} more messages",
+    "noChanges": "No changes needed",
+    "failed": "Perforce command failed"
+  },
   "sync": {
     "updated_one": "updated {{count}} file",
     "updated_other": "updated {{count}} files",

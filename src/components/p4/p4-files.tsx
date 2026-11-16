@@ -24,6 +24,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { HoverTip } from "@/components/ui/tooltip";
 import { FileTreeSkeleton } from "@/components/skeletons";
 import { normalizeRepoPath, pathsIgnoreCase } from "@/lib/format";
+import { notifyP4Error } from "@/lib/p4-output-notice";
 import { errorMessage, gitApi, isCancelled } from "@/lib/git";
 import { joinRoot, type SearchNode } from "@/lib/file-search";
 import { p4Api, relativeToRoot } from "@/lib/p4";
@@ -54,7 +55,7 @@ export function P4Files() {
           : await p4Api.searchFiles(connection, needle);
       } catch (caught) {
         const message = errorMessage(caught);
-        if (message && message !== "Login cancelled" && !isCancelled(caught)) toast.error(message);
+        if (message && message !== "Login cancelled" && !isCancelled(caught)) notifyP4Error(message);
         throw caught;
       }
     },
@@ -111,7 +112,7 @@ export function P4Files() {
       choose(path);
     } catch (caught) {
       const message = errorMessage(caught);
-      if (message && message !== "Login cancelled") toast.error(message);
+      if (message && message !== "Login cancelled") notifyP4Error(message);
     }
   }
 
@@ -127,7 +128,7 @@ export function P4Files() {
       else await gitApi.revealInFileManager(local);
     } catch (caught) {
       const message = errorMessage(caught);
-      if (message && message !== "Login cancelled") toast.error(message);
+      if (message && message !== "Login cancelled") notifyP4Error(message);
     }
   }
 
@@ -277,7 +278,7 @@ export function P4Files() {
                             }
                           } catch (caught) {
                             const message = errorMessage(caught);
-                            if (message && message !== "Login cancelled") toast.error(message);
+                            if (message && message !== "Login cancelled") notifyP4Error(message);
                             return null;
                           }
                         }}

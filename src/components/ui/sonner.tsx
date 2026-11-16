@@ -37,6 +37,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
           toast: "cn-toast",
           error:
             "border-destructive/30! bg-destructive/10! text-destructive! dark:border-destructive/40! dark:bg-destructive/20! [&_[data-description]]:text-destructive/90!",
+          warning:
+            "border-status-warning/30! bg-status-warning/10! text-status-warning! [&_[data-description]]:text-status-warning!",
         },
       }}
       {...props}

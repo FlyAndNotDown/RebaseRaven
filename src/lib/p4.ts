@@ -248,7 +248,7 @@ export function syncSummary(output: string): string {
   for (const raw of output.split(/\r?\n/)) {
     const line = raw.trim();
     if (!line) continue;
-    if (line.includes(" - updating ") || line.includes(" - refreshing ") || line.includes(" - moved ")) {
+    if (line.includes(" - updating ") || line.includes(" - refreshing ") || line.includes(" - replacing ") || line.includes(" - moved ")) {
       updated += 1;
     } else if (line.includes(" - added ")) {
       added += 1;
