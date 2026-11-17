@@ -359,19 +359,23 @@ fn rebase_onto_fast_forwards_to_fetched_targets_without_a_local_branch() {
     .unwrap();
     assert!(!ref_exists(&repo, "refs/heads/incoming"));
 
-    for (name, onto) in [
-        ("by-remote", "refs/remotes/origin/incoming"),
-        ("by-commit", target.as_str()),
-    ] {
-        run_git_stdout(&root, &["switch", "-c", name, &base]).unwrap();
-        let result = rebase_onto(&mut repo, onto).unwrap();
-        assert_eq!(head_id(&repo), target);
-        assert_eq!(symbolic_branch(&repo).as_deref(), Some(name));
-        assert!(result.repo.operation.is_none());
-        assert_eq!(
-            fs::read_to_string(root.join("incoming.txt")).unwrap(),
-            "incoming\n"
-        );
+    for (ending, autocrlf, newline) in [("lf", "false", "\n"), ("crlf", "true", "\r\n")] {
+        config_set_local(&repo, "core.autocrlf", autocrlf).unwrap();
+        for (name, onto) in [
+            ("by-remote", "refs/remotes/origin/incoming"),
+            ("by-commit", target.as_str()),
+        ] {
+            let branch = format!("{name}-{ending}");
+            run_git_stdout(&root, &["switch", "-c", &branch, &base]).unwrap();
+            let result = rebase_onto(&mut repo, onto).unwrap();
+            assert_eq!(head_id(&repo), target);
+            assert_eq!(symbolic_branch(&repo).as_deref(), Some(branch.as_str()));
+            assert!(result.repo.operation.is_none());
+            assert_eq!(
+                fs::read_to_string(root.join("incoming.txt")).unwrap(),
+                format!("incoming{newline}")
+            );
+        }
     }
     assert!(!ref_exists(&repo, "refs/heads/incoming"));
     fs::remove_dir_all(root).unwrap();
