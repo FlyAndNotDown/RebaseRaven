@@ -346,6 +346,62 @@ fn rebase_onto_replays_commits() {
 }
 
 #[test]
+fn rebase_onto_fast_forwards_to_fetched_targets_without_a_local_branch() {
+    let (root, mut repo) = temp_repo();
+    commit_file(&repo, &root, "base.txt", "base\n", "base");
+    let base = head_id(&repo);
+    commit_file(&repo, &root, "incoming.txt", "incoming\n", "incoming");
+    let target = head_id(&repo);
+    run_git_stdout(
+        &root,
+        &["update-ref", "refs/remotes/origin/incoming", &target],
+    )
+    .unwrap();
+    assert!(!ref_exists(&repo, "refs/heads/incoming"));
+
+    for (name, onto) in [
+        ("by-remote", "refs/remotes/origin/incoming"),
+        ("by-commit", target.as_str()),
+    ] {
+        run_git_stdout(&root, &["switch", "-c", name, &base]).unwrap();
+        let result = rebase_onto(&mut repo, onto).unwrap();
+        assert_eq!(head_id(&repo), target);
+        assert_eq!(symbolic_branch(&repo).as_deref(), Some(name));
+        assert!(result.repo.operation.is_none());
+        assert_eq!(
+            fs::read_to_string(root.join("incoming.txt")).unwrap(),
+            "incoming\n"
+        );
+    }
+    assert!(!ref_exists(&repo, "refs/heads/incoming"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn rebase_onto_an_ancestor_preserves_a_long_history_and_is_not_a_reset() {
+    let (root, mut repo) = temp_repo();
+    commit_file(&repo, &root, "base.txt", "base\n", "base");
+    let base = head_id(&repo);
+    for index in 0..100 {
+        commit_file(
+            &repo,
+            &root,
+            "change.txt",
+            &format!("{index}\n"),
+            &format!("change {index}"),
+        );
+    }
+    let original = head_id(&repo);
+    for target in [&base, &original] {
+        let result = rebase_onto(&mut repo, target).unwrap();
+        assert_eq!(head_id(&repo), original);
+        assert!(result.repo.operation.is_none());
+        assert_eq!(fs::read_to_string(root.join("change.txt")).unwrap(), "99\n");
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn interactive_rebase_can_reword_and_drop() {
     let (root, mut repo) = temp_repo();
     commit_file(&repo, &root, "file.txt", "a\n", "base");
