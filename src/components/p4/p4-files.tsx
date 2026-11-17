@@ -320,9 +320,9 @@ export function P4Files() {
                 {selected ? shownPath(mode, root, selected) : t("p4.selectAFileOrFolder")}
               </div>
             </HoverTip>
-            <SegmentedControl label={t("p4.history.view")} value={selectedIsFile || !selected ? fileView : "history"}
-              onChange={setFileView} disabled={!selected}
-              options={[{value:"file",label:t("git-files.file"),disabled:!selectedIsFile},{value:"history",label:t("git-files.history")}]} />
+            {selected && selectedIsFile ? <SegmentedControl label={t("p4.history.view")} value={fileView}
+              onChange={setFileView}
+              options={[{value:"file",label:t("git-files.file")},{value:"history",label:t("git-files.history")}]} /> : null}
           </div>
           {selected ? (
             selectedIsFile ? fileView === "file"

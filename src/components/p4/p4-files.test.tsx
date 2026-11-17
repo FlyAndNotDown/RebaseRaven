@@ -141,6 +141,7 @@ it("shows the workspace root above its children and opens its full history witho
   expect(rows("/workspace/cache")[0].style.paddingLeft).toBe("20px");
   await act(async () => folder.click());
   expect(container.querySelector('[data-directory-history="/workspace"]')).not.toBeNull();
+  expect(container.querySelector('[role="group"][aria-label="File view"]')).toBeNull();
   expect(folder.getAttribute("aria-expanded")).toBe("true");
   const calls = actions.listDir.mock.calls.length;
   await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Collapse workspace"]')!.click());
@@ -160,6 +161,7 @@ it("shows a selectable depot root above every depot and limits its menu to histo
   expect(rows("//depot")[0].style.paddingLeft).toBe("20px");
   await act(async () => folder.click());
   expect(container.querySelector('[data-directory-history="//"]')).not.toBeNull();
+  expect(container.querySelector('[role="group"][aria-label="File view"]')).toBeNull();
   await act(async () => folder.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, button: 2 })));
   expect([...document.querySelectorAll('[role="menuitem"]')].map(item => item.textContent)).toEqual(["History"]);
 });
@@ -181,8 +183,9 @@ it("keeps filtered matches below the workspace root", async () => {
   expect(container.querySelector('[data-directory-history="/workspace"]')).not.toBeNull();
 });
 
-it("places File and History at the top and uses File by default for file selections", async () => {
+it("shows the view switch only for files and preserves their selected mode across directory selections", async () => {
   await render();
+  expect(container.querySelector('[role="group"][aria-label="File view"]')).toBeNull();
   await act(async () => rows("/workspace/output.tmp")[0].click());
   const views = container.querySelector('[role="group"][aria-label="File view"]')!;
   const file = [...views.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "File")!;
@@ -195,10 +198,19 @@ it("places File and History at the top and uses File by default for file selecti
   expect(container.querySelector('[data-file-view]')).toBeNull();
   await act(async () => file.click());
   await act(async () => rows("/workspace/cache")[0].click());
-  expect(file.disabled).toBe(true);
-  expect(history.getAttribute("aria-pressed")).toBe("true");
+  expect(container.querySelector('[role="group"][aria-label="File view"]')).toBeNull();
   expect(container.querySelector('[data-directory-history="/workspace/cache"]')).not.toBeNull();
   await act(async () => rows("/workspace/output.tmp")[0].click());
-  expect(file.disabled).toBe(false);
-  expect(file.getAttribute("aria-pressed")).toBe("true");
+  const restored = container.querySelector('[role="group"][aria-label="File view"]')!;
+  const restoredFile = [...restored.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "File")!;
+  const restoredHistory = [...restored.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "History")!;
+  expect(restoredFile.disabled).toBe(false);
+  expect(restoredFile.getAttribute("aria-pressed")).toBe("true");
+  await act(async () => restoredHistory.click());
+  await act(async () => rows("/workspace/cache")[0].click());
+  expect(container.querySelector('[role="group"][aria-label="File view"]')).toBeNull();
+  await act(async () => rows("/workspace/output.tmp")[0].click());
+  const finalHistory = [...container.querySelectorAll<HTMLButtonElement>('[role="group"][aria-label="File view"] button')].find(button => button.textContent === "History")!;
+  expect(finalHistory.getAttribute("aria-pressed")).toBe("true");
+  expect(container.querySelector('[data-file-history="/workspace/output.tmp"]')).not.toBeNull();
 });
