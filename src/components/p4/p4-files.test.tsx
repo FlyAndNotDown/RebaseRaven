@@ -8,8 +8,8 @@ import { setLanguagePreference } from "@/i18n";
 import type { P4DirEntry, P4EntryStatus } from "@/types/p4";
 import { analyticsP4FilesMode } from "@/state/analytics-screen";
 
-const actions=vi.hoisted(()=>({listDir:vi.fn(),listDepot:vi.fn(),status:vi.fn(),search:vi.fn(),cancel:vi.fn(),reconcile:vi.fn(),openClean:vi.fn(),connection:{root:"/workspace",port:"server:1666",user:"alice",client:"client",stream:""}}));
-vi.mock("@/state/p4-context",()=>({useP4:()=>({connection:actions.connection,listDir:actions.listDir,listDepot:actions.listDepot,reconcile:actions.reconcile,openClean:actions.openClean,filesEpoch:0,busy:false})}));
+const actions=vi.hoisted(()=>({listDir:vi.fn(),listDepot:vi.fn(),status:vi.fn(),search:vi.fn(),cancel:vi.fn(),reconcile:vi.fn(),openClean:vi.fn(),epoch:0,connection:{root:"/workspace",port:"server:1666",user:"alice",client:"client",stream:""}}));
+vi.mock("@/state/p4-context",()=>({useP4:()=>({connection:actions.connection,listDir:actions.listDir,listDepot:actions.listDepot,reconcile:actions.reconcile,openClean:actions.openClean,filesEpoch:actions.epoch,busy:false})}));
 vi.mock("@/lib/p4",async importOriginal=>({...await importOriginal<typeof import("@/lib/p4")>(),p4Api:{listingStatus:actions.status,searchFiles:actions.search,cancelDepotSearch:actions.cancel}}));
 vi.mock("@/components/p4/p4-file-history",()=>({P4FileHistory:({path}:{path:string})=><div data-file-history={path}/> }));
 vi.mock("@/components/p4/p4-file-view",()=>({P4FileView:({path}:{path:string})=><div data-file-view={path}/> }));
@@ -20,7 +20,7 @@ function entry(name:string,dir=false,ignored=false):P4DirEntry {return {name:nam
 function rows(path:string) {return [...container.querySelectorAll<HTMLButtonElement>('button[data-tree-path]')].filter(row=>row.dataset.treePath===path);}
 async function render() {await act(async()=>root.render(<TooltipProvider><P4Files/></TooltipProvider>));}
 beforeEach(()=>{
-  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});setLanguagePreference("en");vi.resetAllMocks();actions.connection={...actions.connection,root:"/workspace",client:`client-${++sequence}`};
+  Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});setLanguagePreference("en");vi.resetAllMocks();actions.epoch=0;actions.connection={...actions.connection,root:"/workspace",client:`client-${++sequence}`};
   actions.listDir.mockImplementation(async (relative:string)=>relative ? [entry(`${relative}/child.txt`)] : [entry("cache",true,true),entry("output.tmp",false,true)]);actions.status.mockResolvedValue([]);actions.cancel.mockResolvedValue(undefined);
   actions.listDepot.mockResolvedValue([]);
   container=document.createElement("div");document.body.append(container);root=createRoot(container);
@@ -59,12 +59,41 @@ it("scopes directory reconciliation and cleanup to the right-clicked folder", as
   expect(labels).not.toContain("Clean");
 });
 
-it("keeps native ignore matches after asynchronous status icons arrive",async()=>{
+it("lets versioned status override ignore rules while keeping local files muted",async()=>{
+  actions.listDir.mockResolvedValue([entry("cache",true,true),entry("output.tmp",false,true),entry("local.tmp",false,true)]);
   let finish!:(statuses:P4EntryStatus[])=>void;actions.status.mockReturnValue(new Promise<P4EntryStatus[]>(resolve=>{finish=resolve;}));
   await render();expect(rows("/workspace/output.tmp")[0].classList.contains("text-muted-foreground")).toBe(true);
   await act(async()=>finish([{path:"/workspace/output.tmp",status:"current",detail:"Up to date"}]));
-  expect(rows("/workspace/output.tmp")[0].classList.contains("text-muted-foreground")).toBe(true);
+  expect(rows("/workspace/output.tmp")[0].classList.contains("text-muted-foreground")).toBe(false);
+  expect(rows("/workspace/local.tmp")[0].classList.contains("text-muted-foreground")).toBe(true);
   expect(rows("/workspace/cache")[0].classList.contains("text-muted-foreground")).toBe(true);
+});
+
+it("keeps known versioned styling during refresh and reapplies rules after a file becomes local",async()=>{
+  actions.listDir.mockResolvedValue([entry("tracked.tmp",false,true),entry("added.tmp",false,true)]);
+  actions.status.mockResolvedValue([{path:"/workspace/tracked.tmp",status:"current",detail:"Up to date"},{path:"/workspace/added.tmp",status:"add",detail:"Marked for add"}]);
+  await render();
+  let finish!:(statuses:P4EntryStatus[])=>void;
+  actions.status.mockReturnValue(new Promise<P4EntryStatus[]>(resolve=>{finish=resolve;}));
+  actions.epoch+=1;await render();
+  expect(rows("/workspace/tracked.tmp")[0].classList.contains("text-muted-foreground")).toBe(false);
+  expect(rows("/workspace/added.tmp")[0].classList.contains("text-muted-foreground")).toBe(false);
+  await act(async()=>finish([{path:"/workspace/tracked.tmp",status:"current",detail:"Up to date"}]));
+  expect(rows("/workspace/tracked.tmp")[0].classList.contains("text-muted-foreground")).toBe(false);
+  expect(rows("/workspace/added.tmp")[0].classList.contains("text-muted-foreground")).toBe(true);
+});
+
+it.each([false,true])("keeps containers of versioned files visible (Windows: %s)",async(windows)=>{
+  if(windows){vi.spyOn(navigator,"userAgent","get").mockReturnValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");actions.connection={...actions.connection,root:"C:\\workspace"};}
+  const path=(relative:string)=>windows ? `C:\\workspace\\${relative.replace(/\//g,"\\")}` : `/workspace/${relative}`;
+  const item=(relative:string,dir=false)=>({...entry(relative,dir,true),path:path(relative)});
+  actions.listDir.mockImplementation(async(relative:string)=>relative ? [item("cache/tracked.tmp"),item("cache/local.tmp")] : [item("cache",true)]);
+  actions.status.mockImplementation(async(_connection:unknown,directory:string)=>directory ? [{path:path("cache/tracked.tmp"),status:"current",detail:"Up to date"}] : []);
+  await render();expect(rows(path("cache"))[0].classList.contains("text-muted-foreground")).toBe(true);
+  await act(async()=>container.querySelector<HTMLButtonElement>('button[aria-label="Expand cache"]')!.click());
+  expect(rows(path("cache"))[0].classList.contains("text-muted-foreground")).toBe(false);
+  expect(rows(path("cache/tracked.tmp"))[0].classList.contains("text-muted-foreground")).toBe(false);
+  expect(rows(path("cache/local.tmp"))[0].classList.contains("text-muted-foreground")).toBe(true);
 });
 
 it("keeps ignored directories, files, and exclusions distinct in filtered results",async()=>{
@@ -77,11 +106,11 @@ it("keeps ignored directories, files, and exclusions distinct in filtered result
   expect(rows("/workspace/cache/keep.txt").at(-1)!.classList.contains("text-muted-foreground")).toBe(false);
 });
 
-it("preserves ignore styling when Windows status paths use different casing and separators",async()=>{
-  vi.spyOn(navigator,"platform","get").mockReturnValue("Win32");actions.connection={...actions.connection,root:"C:\\workspace"};
+it("recognizes versioned Windows paths despite different casing and separators",async()=>{
+  vi.spyOn(navigator,"userAgent","get").mockReturnValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");actions.connection={...actions.connection,root:"C:\\workspace"};
   actions.listDir.mockResolvedValue([{...entry("output.tmp",false,true),path:"C:\\workspace\\output.tmp"}]);
   actions.status.mockResolvedValue([{path:"c:/WORKSPACE/OUTPUT.tmp",status:"current",detail:"Up to date"}]);
-  await render();expect(rows("C:\\workspace\\output.tmp")[0].classList.contains("text-muted-foreground")).toBe(true);
+  await render();expect(rows("C:\\workspace\\output.tmp")[0].classList.contains("text-muted-foreground")).toBe(false);
 });
 
 it("selects folder history on a single click and expands only with an arrow or double click",async()=>{
@@ -112,6 +141,7 @@ it("shows the workspace root above its children and opens its full history witho
   expect(rows("/workspace/cache")[0].style.paddingLeft).toBe("20px");
   await act(async () => folder.click());
   expect(container.querySelector('[data-directory-history="/workspace"]')).not.toBeNull();
+  expect(container.querySelector('[role="group"][aria-label="File view"]')).toBeNull();
   expect(folder.getAttribute("aria-expanded")).toBe("true");
   const calls = actions.listDir.mock.calls.length;
   await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Collapse workspace"]')!.click());
@@ -131,6 +161,7 @@ it("shows a selectable depot root above every depot and limits its menu to histo
   expect(rows("//depot")[0].style.paddingLeft).toBe("20px");
   await act(async () => folder.click());
   expect(container.querySelector('[data-directory-history="//"]')).not.toBeNull();
+  expect(container.querySelector('[role="group"][aria-label="File view"]')).toBeNull();
   await act(async () => folder.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, button: 2 })));
   expect([...document.querySelectorAll('[role="menuitem"]')].map(item => item.textContent)).toEqual(["History"]);
 });
@@ -152,8 +183,9 @@ it("keeps filtered matches below the workspace root", async () => {
   expect(container.querySelector('[data-directory-history="/workspace"]')).not.toBeNull();
 });
 
-it("places File and History at the top and uses File by default for file selections", async () => {
+it("shows the view switch only for files and preserves their selected mode across directory selections", async () => {
   await render();
+  expect(container.querySelector('[role="group"][aria-label="File view"]')).toBeNull();
   await act(async () => rows("/workspace/output.tmp")[0].click());
   const views = container.querySelector('[role="group"][aria-label="File view"]')!;
   const file = [...views.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "File")!;
@@ -166,10 +198,19 @@ it("places File and History at the top and uses File by default for file selecti
   expect(container.querySelector('[data-file-view]')).toBeNull();
   await act(async () => file.click());
   await act(async () => rows("/workspace/cache")[0].click());
-  expect(file.disabled).toBe(true);
-  expect(history.getAttribute("aria-pressed")).toBe("true");
+  expect(container.querySelector('[role="group"][aria-label="File view"]')).toBeNull();
   expect(container.querySelector('[data-directory-history="/workspace/cache"]')).not.toBeNull();
   await act(async () => rows("/workspace/output.tmp")[0].click());
-  expect(file.disabled).toBe(false);
-  expect(file.getAttribute("aria-pressed")).toBe("true");
+  const restored = container.querySelector('[role="group"][aria-label="File view"]')!;
+  const restoredFile = [...restored.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "File")!;
+  const restoredHistory = [...restored.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "History")!;
+  expect(restoredFile.disabled).toBe(false);
+  expect(restoredFile.getAttribute("aria-pressed")).toBe("true");
+  await act(async () => restoredHistory.click());
+  await act(async () => rows("/workspace/cache")[0].click());
+  expect(container.querySelector('[role="group"][aria-label="File view"]')).toBeNull();
+  await act(async () => rows("/workspace/output.tmp")[0].click());
+  const finalHistory = [...container.querySelectorAll<HTMLButtonElement>('[role="group"][aria-label="File view"] button')].find(button => button.textContent === "History")!;
+  expect(finalHistory.getAttribute("aria-pressed")).toBe("true");
+  expect(container.querySelector('[data-file-history="/workspace/output.tmp"]')).not.toBeNull();
 });

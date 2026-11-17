@@ -35,6 +35,8 @@ import { useP4 } from "@/state/p4-context";
 import { setAnalyticsP4FilesMode } from "@/state/analytics-screen";
 import type { P4Connection, P4DirEntry, P4EntryStatus } from "@/types/p4";
 
+type P4TreeEntry = FileTreeEntry & { ruleIgnored: boolean; p4Status: string };
+
 export function P4Files() {
   const { t } = useTranslation();
   const p4 = useP4();
@@ -318,9 +320,9 @@ export function P4Files() {
                 {selected ? shownPath(mode, root, selected) : t("p4.selectAFileOrFolder")}
               </div>
             </HoverTip>
-            <SegmentedControl label={t("p4.history.view")} value={selectedIsFile || !selected ? fileView : "history"}
-              onChange={setFileView} disabled={!selected}
-              options={[{value:"file",label:t("git-files.file"),disabled:!selectedIsFile},{value:"history",label:t("git-files.history")}]} />
+            {selected && selectedIsFile ? <SegmentedControl label={t("p4.history.view")} value={fileView}
+              onChange={setFileView}
+              options={[{value:"file",label:t("git-files.file")},{value:"history",label:t("git-files.history")}]} /> : null}
           </div>
           {selected ? (
             selectedIsFile ? fileView === "file"
@@ -358,7 +360,8 @@ function WorkspaceTree({
   const root = connection?.root ?? "";
   const cacheKey = treeCacheKey("workspace", connection);
   const cached = cacheKey ? treeSnapshots.get(cacheKey) : undefined;
-  const [entries, setEntries] = useState<Record<string, FileTreeEntry[]>>(() => cached?.entries ?? {});
+  const [entries, setEntries] = useState<Record<string, P4TreeEntry[]>>(() => cached?.entries ?? {});
+  const displayedEntries = useMemo(() => includeVersionedParents(entries), [entries]);
   const [open, setOpen] = useState<Set<string>>(() => new Set(cached?.open ?? []));
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState<ReadonlySet<string>>(() => new Set());
@@ -463,7 +466,7 @@ function WorkspaceTree({
     <FileTree
       dir=""
       depth={1}
-      entries={entries}
+      entries={displayedEntries}
       open={open}
       selected={selected}
       onToggle={(path) => void toggle(path)}
@@ -494,7 +497,7 @@ function DepotTree({
   const { connection, listDepot, filesEpoch } = useP4();
   const cacheKey = treeCacheKey("depot", connection);
   const cached = cacheKey ? treeSnapshots.get(cacheKey) : undefined;
-  const [entries, setEntries] = useState<Record<string, FileTreeEntry[]>>(() => cached?.entries ?? {});
+  const [entries, setEntries] = useState<Record<string, P4TreeEntry[]>>(() => cached?.entries ?? {});
   const [open, setOpen] = useState<Set<string>>(() => new Set(cached?.open ?? []));
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState<ReadonlySet<string>>(() => new Set());
@@ -642,7 +645,7 @@ type TreeReveal = {
 function useRevealTree(
   reveal: TreeReveal | null,
   load: (dir: string) => Promise<P4DirEntry[]>,
-  setEntries: Dispatch<SetStateAction<Record<string, FileTreeEntry[]>>>,
+  setEntries: Dispatch<SetStateAction<Record<string, P4TreeEntry[]>>>,
   setOpen: Dispatch<SetStateAction<Set<string>>>,
   onResolved: (path: string) => void,
   onExpanded?: (directories: string[]) => void,
@@ -664,7 +667,7 @@ function useRevealTree(
         setEntries((current) => {
           const next = { ...current };
           for (const [dir, list] of Object.entries(result.entries)) {
-            next[dir] = keepKnownIcons(current[dir], list);
+            next[dir] = keepKnownStatus(current[dir], list);
           }
           return next;
         });
@@ -689,16 +692,16 @@ function normalizeTreePath(path: string) {
 }
 
 async function expandTree(
-  load: (dir: string) => Promise<FileTreeEntry[]>,
+  load: (dir: string) => Promise<P4TreeEntry[]>,
   target: string,
   openTarget: boolean,
 ) {
-  const entries: Record<string, FileTreeEntry[]> = {};
+  const entries: Record<string, P4TreeEntry[]> = {};
   const open: string[] = [];
   const wanted = normalizeTreePath(target);
   let current = "";
   for (let depth = 0; depth < 40; depth += 1) {
-    let children: FileTreeEntry[];
+    let children: P4TreeEntry[];
     try {
       children = await load(current);
     } catch {
@@ -736,7 +739,7 @@ function scrollTreePath(path: string) {
 }
 
 type TreeSnapshot = {
-  entries: Record<string, FileTreeEntry[]>;
+  entries: Record<string, P4TreeEntry[]>;
   open: string[];
 };
 
@@ -752,13 +755,13 @@ function publishDirectory(
   depot: boolean,
   connection: P4Connection | null,
   load: () => Promise<P4DirEntry[]>,
-  setEntries: Dispatch<SetStateAction<Record<string, FileTreeEntry[]>>>,
+  setEntries: Dispatch<SetStateAction<Record<string, P4TreeEntry[]>>>,
   live: () => boolean,
 ) {
   return load().then((next) => {
     if (!live()) return;
     const shown = next.map(presentFile);
-    setEntries((current) => ({ ...current, [directory]: keepKnownIcons(current[directory], shown) }));
+    setEntries((current) => ({ ...current, [directory]: keepKnownStatus(current[directory], shown) }));
     void annotateDirectory(directory, depot, connection, setEntries, live);
   });
 }
@@ -767,7 +770,7 @@ function annotateDirectory(
   directory: string,
   depot: boolean,
   connection: P4Connection | null,
-  setEntries: Dispatch<SetStateAction<Record<string, FileTreeEntry[]>>>,
+  setEntries: Dispatch<SetStateAction<Record<string, P4TreeEntry[]>>>,
   live: () => boolean,
 ) {
   if (!connection || (depot && !directory)) return Promise.resolve();
@@ -784,17 +787,17 @@ function annotateDirectory(
     .catch(() => {});
 }
 
-function keepKnownIcons(previous: FileTreeEntry[] | undefined, next: FileTreeEntry[]) {
+function keepKnownStatus(previous: P4TreeEntry[] | undefined, next: P4TreeEntry[]) {
   if (!previous) return next;
   const prior = new Map(previous.map((entry) => [entry.path, entry]));
   return next.map((entry) => {
     const known = prior.get(entry.path);
-    if (!known?.icon) return entry;
-    return { ...entry, icon: known.icon, iconTitle: known.iconTitle };
+    if (!known?.p4Status) return entry;
+    return { ...entry, p4Status: known.p4Status, ignored: entry.ruleIgnored && !isVersioned(known.p4Status), icon: known.icon, iconTitle: known.iconTitle };
   });
 }
 
-function mergeListingStatus(entries: FileTreeEntry[], statuses: P4EntryStatus[], depot: boolean): FileTreeEntry[] {
+function mergeListingStatus(entries: P4TreeEntry[], statuses: P4EntryStatus[], depot: boolean): P4TreeEntry[] {
   if (statuses.length === 0) return entries;
   const byPath = new Map<string, P4EntryStatus>();
   const byName = new Map<string, P4EntryStatus>();
@@ -812,18 +815,44 @@ function mergeListingStatus(entries: FileTreeEntry[], statuses: P4EntryStatus[],
     const detail = found?.detail || (found ? "" : "Not in the depot");
     return {
       ...entry,
+      p4Status: status,
+      ignored: entry.ruleIgnored && !isVersioned(status),
       icon: <FileStatusIcon status={status} />,
       iconTitle: detail ? <FileStatusTip text={detail} /> : undefined,
     };
   });
 }
 
-function presentFile(entry: P4DirEntry): FileTreeEntry {
+function isVersioned(status: string) {
+  return status !== "" && status !== "local";
+}
+
+function includeVersionedParents(entries: Record<string, P4TreeEntry[]>) {
+  const parents = new Set<string>();
+  const separator = pathsIgnoreCase() ? "\\" : "/";
+  for (const children of Object.values(entries)) {
+    for (const entry of children) {
+      if (entry.dir || !isVersioned(entry.p4Status)) continue;
+      let path = normalizeRepoPath(entry.path);
+      for (let slash = path.lastIndexOf(separator); slash > 0; slash = path.lastIndexOf(separator)) {
+        path = path.slice(0, slash);
+        parents.add(path);
+      }
+    }
+  }
+  return Object.fromEntries(Object.entries(entries).map(([directory, children]) => [directory, children.map(entry =>
+    entry.dir && entry.ignored && parents.has(normalizeRepoPath(entry.path)) ? { ...entry, ignored: false } : entry,
+  )]));
+}
+
+function presentFile(entry: P4DirEntry): P4TreeEntry {
   return {
     path: entry.path,
     name: entry.name,
     dir: entry.dir,
-    ignored: entry.ignored,
+    ruleIgnored: entry.ignored,
+    p4Status: entry.status,
+    ignored: entry.ignored && !isVersioned(entry.status),
     icon: entry.dir ? undefined : <FileStatusIcon status={entry.status} />,
     iconTitle: entry.detail ? <FileStatusTip text={entry.detail} /> : undefined,
   };

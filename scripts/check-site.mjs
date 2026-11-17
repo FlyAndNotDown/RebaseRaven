@@ -2,7 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { validateSiteDocument, validateSiteRedirect, validateSiteRouting } from "./site-document.mjs";
+import { validateSiteDocument, validateSiteRedirect, validateSiteRouting, validateSiteSitemap } from "./site-document.mjs";
 
 const root = process.argv[2] ? path.resolve(process.argv[2]) : fileURLToPath(new URL("../site/dist/", import.meta.url));
 const files = new Set();
@@ -71,6 +71,7 @@ for (const [filename, content] of textFiles) {
 }
 
 const sitemap = files.has("sitemap.xml") ? await readFile(path.join(root, "sitemap.xml"), "utf8") : "";
+violations.push(...validateSiteSitemap(sitemap));
 violations.push(...validateSiteRouting({
   robots: files.has("robots.txt") ? await readFile(path.join(root, "robots.txt"), "utf8") : "",
 }));

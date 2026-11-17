@@ -34,7 +34,11 @@ export function P4Header() {
     </HoverTip> : null}
     <RepositoryActions>
       <HoverTip label={t("p4.refresh")}><ToolbarButton label={t("p4.refresh")} disabled={busy} onClick={() => void p4.refresh()}><RefreshCwIcon /></ToolbarButton></HoverTip>
-      <SyncPopover action={syncAction} openAction={openAction} onOpenAction={setOpenAction} label={t("p4.getLatest")} hint={t("p4.getLatest")} icon={<DownloadIcon />} disabled={busy}>
+      <SyncPopover action={syncAction} openAction={openAction} onOpenAction={setOpenAction} label={t("p4.getLatest")} hint={t("p4.getLatest")} icon={<DownloadIcon />} disabled={busy}
+        onOpenAutoFocus={event => {
+          event.preventDefault();
+          if (event.target instanceof HTMLElement) event.target.focus();
+        }}>
         <div className="grid gap-3">
           <h3 className="text-sm font-medium">{t("p4.getLatest")}</h3>
           <HoverTip label={t("p4.autoResolveAfterSyncHint")}>

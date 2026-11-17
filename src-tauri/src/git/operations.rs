@@ -82,10 +82,6 @@ pub fn rebase_plan(repo: &Repository, onto: &str) -> AppResult<Vec<RebaseCommit>
 pub fn rebase_onto(repo: &mut Repository, onto: &str) -> AppResult<WorkspaceSnapshot> {
     ensure_rebase_ready(repo)?;
     let onto_id = peel_commit(repo, onto)?.id().to_string();
-    let commits = commits_to_replay(repo, &onto_id)?;
-    if commits.is_empty() {
-        return Err(AppError::msg("Already up to date"));
-    }
     let root = workdir(repo)?.to_path_buf();
     if let Err(err) = run_git_stdout(&root, &["rebase", &onto_id]) {
         return Err(rebase_stop_error(repo, err));

@@ -890,34 +890,40 @@ fn annotate_ignored_with(
     entries: &mut [P4DirEntry],
     run: &mut impl FnMut(&[&str]) -> AppResult<String>,
 ) {
-    for chunk in entries.chunks_mut(40) {
-        let paths = chunk
-            .iter()
-            .map(|entry| {
-                if entry.dir {
-                    // Native batches select directory mode from their first path,
-                    // allowing descendant exclusions to hide ordinary file matches.
-                    // Query default contents without asking P4 to prune the directory.
-                    format!("{}/*", entry.path.trim_end_matches(['/', '\\']))
-                } else {
-                    entry.path.clone()
-                }
-            })
+    // P4 selects file or directory matching for the whole batch from its first
+    // target. Directory matching keeps containers with included descendants.
+    for directories in [true, false] {
+        let mut targets = entries
+            .iter_mut()
+            .filter(|entry| entry.dir == directories)
             .collect::<Vec<_>>();
-        let args = ["ignores", "-i"]
-            .into_iter()
-            .chain(paths.iter().map(String::as_str))
-            .collect::<Vec<_>>();
-        let Ok(output) = run(&args) else {
-            continue;
-        };
-        let ignored = output
-            .lines()
-            .filter_map(|line| line.strip_suffix(" ignored"))
-            .map(|path| local_path_key(path.trim_end_matches(['/', '\\'])))
-            .collect::<BTreeSet<_>>();
-        for (entry, path) in chunk.iter_mut().zip(&paths) {
-            entry.ignored = ignored.contains(&local_path_key(path));
+        for chunk in targets.chunks_mut(40) {
+            let paths = chunk
+                .iter()
+                .map(|entry| {
+                    if entry.dir {
+                        format!("{}/", entry.path.trim_end_matches(['/', '\\']))
+                    } else {
+                        entry.path.clone()
+                    }
+                })
+                .collect::<Vec<_>>();
+            let args = ["ignores", "-i"]
+                .into_iter()
+                .chain(paths.iter().map(String::as_str))
+                .collect::<Vec<_>>();
+            let Ok(output) = run(&args) else {
+                continue;
+            };
+            let ignored = output
+                .lines()
+                .filter_map(|line| line.strip_suffix(" ignored"))
+                .map(|path| local_path_key(path.trim_end_matches(['/', '\\'])))
+                .collect::<BTreeSet<_>>();
+            for (entry, path) in chunk.iter_mut().zip(&paths) {
+                entry.ignored =
+                    ignored.contains(&local_path_key(path.trim_end_matches(['/', '\\'])));
+            }
         }
     }
 }
@@ -1471,11 +1477,28 @@ pub fn search_files(connection: &P4Connection, query: &str) -> AppResult<P4FileS
         }
         files_done += 1;
     }
+    clear_versioned_ignores(&mut hits);
     Ok(P4FileSearch {
         hits,
         truncated: false,
         scope: String::new(),
     })
+}
+
+fn clear_versioned_ignores(entries: &mut [P4DirEntry]) {
+    let parents = entries
+        .iter()
+        .filter(|entry| !entry.dir && !matches!(entry.status.as_str(), "" | "local"))
+        .flat_map(|entry| Path::new(&entry.path).ancestors().skip(1))
+        .map(|parent| local_path_key(&parent.to_string_lossy()))
+        .collect::<BTreeSet<_>>();
+    for entry in entries {
+        if (!entry.dir && !matches!(entry.status.as_str(), "" | "local"))
+            || (entry.dir && parents.contains(&local_path_key(&entry.path)))
+        {
+            entry.ignored = false;
+        }
+    }
 }
 
 fn include_search_parents(root: &Path, hits: &mut Vec<P4DirEntry>) {
@@ -4649,7 +4672,7 @@ mod tests {
             Ok(args
                 .iter()
                 .skip(2)
-                .filter(|path| path.ends_with("/*"))
+                .filter(|path| path.ends_with('/'))
                 .map(|path| format!("{path} ignored\n"))
                 .collect::<String>())
         });
@@ -4792,9 +4815,18 @@ mod tests {
         entries[1].dir = false;
         annotate_ignored_with(&mut entries, &mut |args| {
             assert_eq!(&args[..2], ["ignores", "-i"]);
-            assert!(args[2].ends_with("build/*"));
-            assert!(!args[3].ends_with('/'));
-            Ok(format!("{} ignored\n{} ignored\n", args[2], args[4]))
+            Ok(args[2..]
+                .iter()
+                .filter(|path| {
+                    matches!(
+                        Path::new(path.trim_end_matches(['/', '\\']))
+                            .file_name()
+                            .and_then(|name| name.to_str()),
+                        Some("build" | "space ignored")
+                    )
+                })
+                .map(|path| format!("{} ignored\n", path.trim_end_matches(['/', '\\'])))
+                .collect())
         });
         assert!(entries[0].ignored);
         assert!(!entries[1].ignored);
@@ -4802,12 +4834,14 @@ mod tests {
     }
 
     #[test]
-    fn directory_first_ignore_batches_keep_file_matches_and_child_exclusions() {
+    fn native_matching_keeps_included_containers_without_losing_ignored_files() {
         let root = tempfile::tempdir().unwrap();
         let generated = root.path().join("generated");
         let source = root.path().join("source");
+        let cache = root.path().join("cache");
         fs::create_dir_all(&generated).unwrap();
         fs::create_dir_all(&source).unwrap();
+        fs::create_dir_all(&cache).unwrap();
         let output = generated.join("output.bin");
         let keep = generated.join("keep.txt");
         fs::write(&output, "output").unwrap();
@@ -4815,27 +4849,69 @@ mod tests {
         let mut entries = vec![
             plain_dir("generated", &generated),
             plain_dir("source", &source),
+            plain_dir("cache", &cache),
             plain_dir("output.bin", &output),
             plain_dir("keep.txt", &keep),
         ];
-        entries[2].dir = false;
         entries[3].dir = false;
+        entries[4].dir = false;
         annotate_ignored_with(&mut entries, &mut |args| {
-            // P4 uses the first target's type for the batch. Directory mode
-            // conservatively keeps paths that might contain included descendants.
-            if Path::new(args[2]).is_dir() {
-                return Ok(String::new());
-            }
+            // These native results correspond to rules that ignore generated
+            // and cache, but include generated/keep.txt. Only directory mode
+            // keeps the container; file mode still ignores ordinary contents.
+            let directories = Path::new(args[2]).is_dir();
             Ok(args[2..]
                 .iter()
-                .filter(|path| Path::new(path).starts_with(&generated) && Path::new(path) != keep)
-                .map(|path| format!("{path} ignored\n"))
+                .filter(|path| {
+                    let path = Path::new(path);
+                    if directories {
+                        path == cache
+                    } else {
+                        (path.starts_with(&generated) && path != keep) || path.starts_with(&cache)
+                    }
+                })
+                .map(|path| format!("{} ignored\n", path.trim_end_matches(['/', '\\'])))
                 .collect())
         });
-        assert!(entries[0].ignored);
+        assert!(!entries[0].ignored);
         assert!(!entries[1].ignored);
         assert!(entries[2].ignored);
-        assert!(!entries[3].ignored);
+        assert!(entries[3].ignored);
+        assert!(!entries[4].ignored);
+    }
+
+    #[test]
+    fn versioned_search_files_and_their_containers_override_ignore_rules() {
+        let root = PathBuf::from("workspace");
+        let mut entries = vec![
+            plain_dir("project", &root.join("project")),
+            plain_dir("cache", &root.join("cache")),
+        ];
+        for status in [
+            "current",
+            "stale",
+            "edit",
+            "clean",
+            "add",
+            "delete",
+            "integrate",
+            "other",
+            "local",
+            "",
+        ] {
+            let mut entry = plain_dir(status, &root.join("project").join(format!("{status}.txt")));
+            entry.dir = false;
+            entry.status = status.to_string();
+            entries.push(entry);
+        }
+        for entry in &mut entries {
+            entry.ignored = true;
+        }
+        clear_versioned_ignores(&mut entries);
+        assert!(!entries[0].ignored);
+        assert!(entries[1].ignored);
+        assert!(entries[2..10].iter().all(|entry| !entry.ignored));
+        assert!(entries[10..].iter().all(|entry| entry.ignored));
     }
 
     #[test]

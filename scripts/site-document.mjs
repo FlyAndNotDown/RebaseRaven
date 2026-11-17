@@ -3,6 +3,33 @@ const DOWNLOAD_URL = `${REPOSITORY_URL}/releases/latest`;
 const SUPPORTED_SYSTEMS = ["macOS (Apple Silicon)", "Windows (x64)"];
 const SITE_URL = "https://rebaseraven.flyandnotdown.com/";
 
+export function sitemapEntries(sitemap) {
+  return [...sitemap.matchAll(/<url>\s*([\s\S]*?)\s*<\/url>/g)].map(([xml, content]) => ({
+    xml,
+    location: /<loc>\s*([^<]+?)\s*<\/loc>/.exec(content)?.[1],
+    lastModified: /<lastmod>([^<]+)<\/lastmod>/.exec(content)?.[1],
+  }));
+}
+
+export function validSitemapDate(value) {
+  const timestamp = Date.parse(value ?? "");
+  return Number.isFinite(timestamp) && timestamp <= Date.now()
+    && new Date(timestamp).toISOString() === value;
+}
+
+export function validateSiteSitemap(sitemap) {
+  const entries = sitemapEntries(sitemap);
+  const locations = [SITE_URL, `${SITE_URL}zh-CN/`];
+  if (!sitemap.includes('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
+    || entries.length !== locations.length
+    || locations.some((location) => entries.filter((entry) => entry.location === location).length !== 1)) {
+    return ["sitemap.xml: list each canonical language page exactly once"];
+  }
+  return entries.filter((entry) => !validSitemapDate(entry.lastModified)
+    || [...entry.xml.matchAll(/<lastmod>/g)].length !== 1)
+    .map((entry) => `sitemap.xml: ${entry.location} must have one valid lastmod timestamp that is not in the future`);
+}
+
 function decodeText(value) {
   return value.replace(/&(?:#(x[\da-f]+|\d+)|(amp|quot|apos|lt|gt|nbsp));/gi, (entity, numeric, named) => {
     if (numeric) {
