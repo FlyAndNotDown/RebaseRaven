@@ -1,11 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { generateKeyPairSync, sign } from "node:crypto";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { releaseAssets } from "./release-github.mjs";
 import { prepareSiteUpdate, publishSite, validateSiteUpdate } from "./site-publish.mjs";
 import { verifySite } from "./verify-site.mjs";
+import { sitemapEntries } from "./site-document.mjs";
+import { sitemapDocument } from "../site/prerender";
+
+const buildDate = new Date("2026-02-01T12:00:00.000Z");
+const previousDate = new Date("2026-01-01T12:00:00.000Z");
+const digest = (content: string) => createHash("sha256").update(content).digest("hex");
 
 const temporary: string[] = [];
 afterEach(async () => {
@@ -75,12 +81,19 @@ async function publication() {
     await mkdir(path.dirname(path.join(root, filename)), { recursive: true });
     await writeFile(path.join(root, filename), filename);
   }
+  await writeFile(path.join(root, "sitemap.xml"), sitemapDocument(buildDate));
   const context = { eventName: "workflow_dispatch", ref: "refs/heads/master", actor: "maintainer", repo: { owner: "maintainer", repo: "sample-app" } };
   const github = { rest: {
-    repos: { getLatestRelease: vi.fn(async () => ({ data: { tag_name: "v0.0.1", draft: false, prerelease: false } })) },
+    repos: {
+      getLatestRelease: vi.fn(async () => ({ data: { tag_name: "v0.0.1", draft: false, prerelease: false } })),
+      getContent: vi.fn(async ({ path: filename }: { path: string }) => ({ data: {
+        type: "file", encoding: "base64", sha: digest(Buffer.from(filename).toString("base64")),
+        content: Buffer.from(filename === "sitemap.xml" ? sitemapDocument(previousDate) : filename).toString("base64"),
+      } })),
+    },
     git: {
       getRef: vi.fn(async () => ({ data: { object: { sha: "previous" } } })),
-      createBlob: vi.fn(async () => ({ data: { sha: "blob" } })),
+      createBlob: vi.fn(async ({ content }: { content: string }) => ({ data: { sha: digest(content) } })),
       createTree: vi.fn(async () => ({ data: { sha: "tree" } })),
       createCommit: vi.fn(async () => ({ data: { sha: "commit" } })),
       updateRef: vi.fn(async () => ({})), createRef: vi.fn(async () => ({})),
@@ -96,6 +109,48 @@ describe("atomic website branch", () => {
     expect(input.github.rest.git.createCommit).toHaveBeenCalledWith(expect.objectContaining({ parents: ["previous"] }));
     expect(input.github.rest.git.updateRef).toHaveBeenCalledExactlyOnceWith({ ...input.context.repo, ref: "heads/website", sha: "commit", force: false });
     expect(input.github.rest.git.createRef).not.toHaveBeenCalled();
+  });
+
+  it("preserves each unchanged page's lastmod across repeated builds", async () => {
+    const input = await publication();
+    await publishSite(input);
+    const sitemap = await readFile(path.join(input.directory, "sitemap.xml"), "utf8");
+    expect(sitemapEntries(sitemap).map((entry: { lastModified: string }) => entry.lastModified))
+      .toEqual([previousDate.toISOString(), previousDate.toISOString()]);
+    expect(input.github.rest.repos.getContent).toHaveBeenCalledWith(expect.objectContaining({ ref: "previous", path: "sitemap.xml" }));
+    const uploaded = input.github.rest.git.createBlob.mock.calls.map(([request]) => Buffer.from(request.content, "base64").toString("utf8"));
+    expect(uploaded).toContain(sitemap);
+    expect(uploaded).not.toContain(sitemapDocument(buildDate));
+  });
+
+  it("updates only the changed language page's lastmod", async () => {
+    const input = await publication();
+    await writeFile(path.join(input.directory, "zh-CN/index.html"), "Updated translated product metadata and content");
+    await publishSite(input);
+    expect(sitemapEntries(await readFile(path.join(input.directory, "sitemap.xml"), "utf8"))
+      .map((entry: { lastModified: string }) => entry.lastModified))
+      .toEqual([previousDate.toISOString(), buildDate.toISOString()]);
+  });
+
+  it("uses build timestamps for the first publication and migration from an undated sitemap", async () => {
+    for (const firstPublication of [false, true]) {
+      const input = await publication();
+      if (firstPublication) input.github.rest.git.getRef.mockRejectedValueOnce(Object.assign(new Error("Missing branch"), { status: 404 }));
+      else input.github.rest.repos.getContent.mockResolvedValueOnce({ data: {
+        type: "file", encoding: "base64", sha: "sitemap",
+        content: Buffer.from(sitemapDocument(previousDate).replace(/<lastmod>[^<]+<\/lastmod>/g, "")).toString("base64"),
+      } });
+      await publishSite(input);
+      expect(await readFile(path.join(input.directory, "sitemap.xml"), "utf8")).toBe(sitemapDocument(buildDate));
+      if (firstPublication) expect(input.github.rest.git.createRef).toHaveBeenCalledExactlyOnceWith({ ...input.context.repo, ref: "refs/heads/website", sha: "commit" });
+    }
+  });
+
+  it("does not publish when the previous sitemap cannot be read", async () => {
+    const input = await publication();
+    input.github.rest.repos.getContent.mockRejectedValueOnce(Object.assign(new Error("Unavailable"), { status: 503 }));
+    await expect(publishSite(input)).rejects.toThrow("Unavailable");
+    expect(input.github.rest.git.updateRef).not.toHaveBeenCalled();
   });
 
   it("does not publish a stale release or an upload interrupted by a newer release", async () => {
@@ -119,13 +174,16 @@ describe("atomic website branch", () => {
 });
 
 describe("production website verification", () => {
-  it("checks deployed HTML, the analytics bridge, and the exact JSON with a revalidation policy", async () => {
+  it("checks deployed HTML, the sitemap, analytics, and the exact JSON with a revalidation policy", async () => {
     const input = await publication();
-    const routes: Record<string, string> = { "/": "index.html", "/zh-CN/": "zh-CN/index.html", "/analytics/": "analytics/index.html", "/updates/latest.json": "updates/latest.json" };
+    const routes: Record<string, string> = { "/": "index.html", "/zh-CN/": "zh-CN/index.html", "/analytics/": "analytics/index.html", "/updates/latest.json": "updates/latest.json", "/sitemap.xml": "sitemap.xml" };
     const request = async (url: URL) => new Response(await readFile(path.join(input.directory, routes[url.pathname])), {
       headers: { "content-type": url.pathname.endsWith(".json") ? "application/json" : "text/html", "cache-control": "no-cache, must-revalidate" },
     });
     await expect(verifySite({ baseUrl: "https://site.example.test/", directory: input.directory, request })).resolves.toBeUndefined();
+    await expect(verifySite({ baseUrl: "https://site.example.test/", directory: input.directory,
+      request: async (url: URL) => url.pathname === "/sitemap.xml" ? new Response("outdated sitemap") : request(url),
+    })).rejects.toThrow("route sitemap.xml does not match");
     await expect(verifySite({ baseUrl: "https://site.example.test/", directory: input.directory, request: async () => new Response("outdated") })).rejects.toThrow("does not match");
   });
 });

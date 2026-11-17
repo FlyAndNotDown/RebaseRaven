@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { validateSiteDocument, validateSiteRedirect, validateSiteRouting } from "./site-document.mjs";
-import { englishRedirectDocument } from "../site/prerender";
+import { sitemapEntries, validateSiteDocument, validateSiteRedirect, validateSiteRouting, validateSiteSitemap } from "./site-document.mjs";
+import { englishRedirectDocument, sitemapDocument } from "../site/prerender";
 
 const canonical = "https://rebaseraven.flyandnotdown.com/";
 const download = "https://github.com/FlyAndNotDown/RebaseRaven/releases/latest";
@@ -118,5 +118,27 @@ describe("published custom-domain routing", () => {
     expect(validateSiteRouting({
       robots: `Sitemap: ${canonical}sitemap.xml\nSitemap: ${canonical}sitemap.xml\n`,
     })).toContainEqual(expect.stringContaining("advertise the canonical website sitemap once"));
+  });
+});
+
+describe("website sitemap dates", () => {
+  it("generates timestamps for both canonical language pages and excludes internal routes", () => {
+    const modifiedAt = new Date("2026-01-01T12:00:00.000Z");
+    const sitemap = sitemapDocument(modifiedAt);
+    expect(validateSiteSitemap(sitemap)).toEqual([]);
+    expect(sitemapEntries(sitemap)).toEqual([
+      expect.objectContaining({ location: canonical, lastModified: modifiedAt.toISOString() }),
+      expect.objectContaining({ location: `${canonical}zh-CN/`, lastModified: modifiedAt.toISOString() }),
+    ]);
+  });
+
+  it("rejects missing, duplicate, invalid, and future modification timestamps", () => {
+    const sitemap = sitemapDocument(new Date("2026-01-01T12:00:00.000Z"));
+    for (const replacement of ["", "<lastmod>invalid</lastmod>", "<lastmod>2026-02-30T12:00:00.000Z</lastmod>",
+      "<lastmod>9999-01-01T12:00:00.000Z</lastmod>",
+      "<lastmod>2026-01-01T12:00:00.000Z</lastmod><lastmod>2026-01-01T12:00:00.000Z</lastmod>"]) {
+      expect(validateSiteSitemap(sitemap.replace(/<lastmod>[^<]+<\/lastmod>/, replacement)))
+        .toContainEqual(expect.stringContaining("one valid lastmod"));
+    }
   });
 });

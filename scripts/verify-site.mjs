@@ -7,6 +7,7 @@ export async function verifySite({ baseUrl, directory, request = fetch }) {
   for (const [route, filename] of [
     ["", "index.html"], ["zh-CN/", "zh-CN/index.html"],
     ["analytics/", "analytics/index.html"], ["updates/latest.json", "updates/latest.json"],
+    ["sitemap.xml", "sitemap.xml"],
   ]) {
     const response = await request(new URL(route, baseUrl), { signal: AbortSignal.timeout(20000), cache: "no-store" });
     if (response.status !== 200) throw new Error(`Website route ${route || "/"} returned ${response.status}.`);

@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { assertReleaseOwner, releaseAssets, validateUpdaterSignature } from "./release-github.mjs";
 import { parseReleaseTag } from "./release-version.mjs";
+import { sitemapEntries, validSitemapDate, validateSiteSitemap } from "./site-document.mjs";
 
 export const WEBSITE_BRANCH = "website";
 
@@ -55,6 +56,32 @@ async function siteFiles(directory, prefix = "") {
   return files.sort();
 }
 
+async function preserveSitemapDates({ github, repository, previous, tree, sitemap }) {
+  if (!previous) return sitemap;
+  const previousFile = async (filename) => {
+    try {
+      const { data } = await github.rest.repos.getContent({ ...repository, ref: previous, path: filename });
+      if (data.type !== "file") throw new Error(`Invalid published website asset: ${filename}.`);
+      return data;
+    } catch (error) { if (error.status !== 404) throw error; }
+  };
+  const published = await previousFile("sitemap.xml");
+  if (!published) return sitemap;
+  if (published.encoding !== "base64") throw new Error("Cannot read the published sitemap.");
+  const dates = new Map(sitemapEntries(Buffer.from(published.content, "base64").toString("utf8"))
+    .map((entry) => [entry.location, entry.lastModified]));
+  const replacements = await Promise.all(sitemapEntries(sitemap).map(async (entry) => {
+    const lastModified = dates.get(entry.location);
+    if (!validSitemapDate(lastModified)) return [entry.xml, entry.xml];
+    const filename = `${new URL(entry.location).pathname.slice(1)}index.html`;
+    const page = await previousFile(filename);
+    if (page?.sha !== tree.find((asset) => asset.path === filename)?.sha) return [entry.xml, entry.xml];
+    return [entry.xml, entry.xml.replace(/<lastmod>[^<]+<\/lastmod>/, `<lastmod>${lastModified}</lastmod>`)];
+  }));
+  for (const [before, after] of replacements) sitemap = sitemap.replace(before, after);
+  return sitemap;
+}
+
 export async function publishSite({ github, context, directory, tag }) {
   assertReleaseOwner({
     eventName: context.eventName, ref: context.ref, actor: context.actor,
@@ -69,24 +96,32 @@ export async function publishSite({ github, context, directory, tag }) {
   };
   await assertLatest();
   const files = await siteFiles(directory);
-  for (const required of ["index.html", "zh-CN/index.html", "analytics/index.html", "updates/latest.json", "vercel.json"]) {
+  for (const required of ["index.html", "zh-CN/index.html", "analytics/index.html", "updates/latest.json", "vercel.json", "sitemap.xml"]) {
     if (!files.includes(required)) throw new Error(`Missing website asset: ${required}.`);
   }
+  const sitemap = await readFile(path.join(directory, "sitemap.xml"), "utf8");
+  const violations = validateSiteSitemap(sitemap);
+  if (violations.length) throw new Error(violations.join("\n"));
   let previous;
   try {
     previous = (await github.rest.git.getRef({ ...context.repo, ref: `heads/${WEBSITE_BRANCH}` })).data.object.sha;
   } catch (error) { if (error.status !== 404) throw error; }
   const tree = [];
+  const upload = async (filename) => {
+    const content = await readFile(path.join(directory, filename));
+    const { data: blob } = await github.rest.git.createBlob({ ...context.repo, content: content.toString("base64"), encoding: "base64" });
+    tree.push({ path: filename, mode: "100644", type: "blob", sha: blob.sha });
+  };
+  const assets = files.filter((filename) => filename !== "sitemap.xml");
   // Limit upload concurrency while preserving a single atomic branch update.
   let index = 0;
-  await Promise.all(Array.from({ length: Math.min(4, files.length) }, async () => {
-    while (index < files.length) {
-      const filename = files[index++];
-      const content = await readFile(path.join(directory, filename));
-      const { data: blob } = await github.rest.git.createBlob({ ...context.repo, content: content.toString("base64"), encoding: "base64" });
-      tree.push({ path: filename, mode: "100644", type: "blob", sha: blob.sha });
-    }
+  await Promise.all(Array.from({ length: Math.min(4, assets.length) }, async () => {
+    while (index < assets.length) await upload(assets[index++]);
   }));
+  await writeFile(path.join(directory, "sitemap.xml"), await preserveSitemapDates({
+    github, repository: context.repo, previous, tree, sitemap,
+  }));
+  await upload("sitemap.xml");
   const { data: snapshot } = await github.rest.git.createTree({ ...context.repo, tree: tree.sort((a, b) => a.path.localeCompare(b.path)) });
   const { data: commit } = await github.rest.git.createCommit({
     ...context.repo, message: `chore(site): publish ${tag}`, tree: snapshot.sha, parents: previous ? [previous] : [],

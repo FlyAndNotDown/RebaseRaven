@@ -106,3 +106,7 @@ redirects immediately to `/`. Language pages work without JavaScript and include
 matching canonical, alternate-language, and structured metadata. The URL selects
 the language; browser preferences apply only when the visitor chooses the browser
 language action.
+
+The build generates the sitemap with `lastmod` timestamps for both canonical
+language pages. Publication compares each page with the previous website revision
+and preserves its timestamp when the generated page is unchanged.
