@@ -11,7 +11,6 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator,
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { HistorySkeleton } from "@/components/skeletons";
 import { changeSummary } from "@/lib/p4";
-import { errorMessage } from "@/lib/git";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import { useWindowedRows } from "@/lib/use-windowed-rows";
 import { cn } from "@/lib/utils";
@@ -45,7 +44,7 @@ export function P4FileHistory({ path }: { path: string }) {
     try {
       const value = await describeSubmitted(revision.change);
       if (mounted.current && token === detailToken.current) setDetail(value);
-    } catch (caught) { if (mounted.current && token === detailToken.current) setDetailError(p4DisplayError(errorMessage(caught))); }
+    } catch (caught) { if (mounted.current && token === detailToken.current) setDetailError(p4DisplayError(caught)); }
     finally { if (mounted.current && token === detailToken.current) setDetailLoading(false); }
   }, [describeSubmitted]);
 
@@ -58,7 +57,7 @@ export function P4FileHistory({ path }: { path: string }) {
       setRevisions((current) => cursor && current ? [...current, ...page.revisions.filter((revision) => !current.some((old) => old.rev === revision.rev && old.depotPath === revision.depotPath))] : page.revisions);
       setNext(page.next);
       if (!cursor && page.revisions[0]) void showRevision(page.revisions[0]);
-    } catch (caught) { if (mounted.current) setError(p4DisplayError(errorMessage(caught))); }
+    } catch (caught) { if (mounted.current) setError(p4DisplayError(caught)); }
     finally { loadingRef.current = false; if (mounted.current) setLoading(false); }
   }, [filelog, path, showRevision]);
 
@@ -84,7 +83,7 @@ export function P4FileHistory({ path }: { path: string }) {
     let live = true;
     void revisionDiff(diffPath, diffRev)
       .then(value => { if (live) setLoadedDiff({ key: diffKey, diff: value }); })
-      .catch((caught: unknown) => { if (live) setLoadedDiff({ key: diffKey, diff: null, error: p4DisplayError(errorMessage(caught)) }); });
+      .catch((caught: unknown) => { if (live) setLoadedDiff({ key: diffKey, diff: null, error: p4DisplayError(caught) }); });
     return () => { live = false; };
   }, [diffKey, diffPath, diffRev, revisionDiff, attempt]);
 

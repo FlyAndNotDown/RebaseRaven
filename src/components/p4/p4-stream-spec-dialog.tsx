@@ -46,7 +46,7 @@ export function P4StreamSpecDialog({target, onClose, onChanged}: {
     let active = true;
     void streamSpecs.read(path).then(value => {
       if (active) {setLoaded(value); setEdit(value); setError(null);}
-    }).catch((caught: unknown) => {if (active) setError(p4DisplayError(errorMessage(caught)));});
+    }).catch((caught: unknown) => {if (active) setError(p4DisplayError(caught));});
     return () => {active = false;};
   }, [path, streamSpecs, attempt]);
   const blocked = busy || workspaceBusy;
@@ -65,7 +65,7 @@ export function P4StreamSpecDialog({target, onClose, onChanged}: {
     try {
       const value = await streamSpecs.read(path);
       if (live.current) {setLoaded(value); setEdit(value); setConfirmation(""); setStale(false); setError(null);}
-    } catch (caught) {if (live.current) setError(p4DisplayError(errorMessage(caught)));}
+    } catch (caught) {if (live.current) setError(p4DisplayError(caught));}
     finally {running.current = false; if (live.current) setBusy(false);}
   }
   async function apply() {
@@ -84,7 +84,7 @@ export function P4StreamSpecDialog({target, onClose, onChanged}: {
         const value = await streamSpecs.template({...setup, path: setup.path.trim(), parent: setup.parent.trim()});
         if (live.current) {setLoaded(value); setEdit(value);}
       }
-    } catch (caught) {if (live.current) {setError(p4DisplayError(errorMessage(caught))); setStale(errorMessage(caught) === P4_STREAM_SPEC_STALE);}}
+    } catch (caught) {if (live.current) {setError(p4DisplayError(caught)); setStale(errorMessage(caught) === P4_STREAM_SPEC_STALE);}}
     finally {running.current = false; if (live.current) setBusy(false);}
   }
   const valid = deleting ? Boolean(loaded && confirmation === loaded.path) : edit ? Boolean(edit.name.trim() && edit.owner.trim() && edit.paths.some(line => line.trim())) : Boolean(creating && setup.path.trim() && (setup.kind === "mainline" || setup.parent.startsWith("//")));

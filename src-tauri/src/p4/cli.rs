@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 
 use crate::activity;
 use crate::diagnostics::{Code, CommandOutput, CommandTrace, Status};
-use crate::error::{AppError, AppResult, P4_LOGIN, P4_MISSING, P4_PROBE_TIMEOUT as PROBE_TIMEOUT};
+use crate::error::{AppError, AppResult, P4_PROBE_TIMEOUT as PROBE_TIMEOUT};
 
 struct P4Bin {
     selected: String,
@@ -93,7 +93,7 @@ pub fn active_p4() -> Option<String> {
 }
 
 pub fn require_p4() -> AppResult<PathBuf> {
-    find_p4().ok_or_else(|| AppError::msg(P4_MISSING))
+    find_p4().ok_or(AppError::P4Missing)
 }
 
 fn is_p4_executable_name(path: &Path) -> bool {
@@ -130,7 +130,7 @@ pub fn validate_p4_choice(path: &str) -> AppResult<()> {
         return Err(AppError::msg("Choose a file named p4."));
     }
     if !crate::locate::is_executable(file) {
-        return Err(AppError::msg(P4_MISSING));
+        return Err(AppError::P4Missing);
     }
     Ok(())
 }
@@ -175,7 +175,7 @@ pub fn check_p4_executable(path: &str) -> AppResult<()> {
     validate_p4_choice(path)?;
     let path = path.trim();
     if path.is_empty() {
-        return Err(AppError::msg(P4_MISSING));
+        return Err(AppError::P4Missing);
     }
     let output = p4_version_output(path)?;
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -697,7 +697,7 @@ pub fn run_p4_stream(
             if let Err(error) = reject_untrusted_server(line) {
                 auth_error = Some(error);
             } else if auth_error.is_none() && needs_login(line) {
-                auth_error = Some(AppError::msg(P4_LOGIN));
+                auth_error = Some(AppError::P4Login);
             }
         }),
     );
@@ -713,7 +713,7 @@ pub fn run_p4_stream(
         );
         reject_untrusted_server(&message)?;
         if needs_login(&message) {
-            return Err(AppError::msg(P4_LOGIN));
+            return Err(AppError::P4Login);
         }
     }
     Ok(output.status.success())
@@ -731,7 +731,7 @@ fn finish_parts(ok: bool, stdout: String, stderr: String) -> AppResult<String> {
         reject_untrusted_server(&message)?;
     }
     if !ok && needs_login(&message) {
-        return Err(AppError::msg(P4_LOGIN));
+        return Err(AppError::P4Login);
     }
     if !ok {
         return Err(AppError::msg(if message.is_empty() {
@@ -960,7 +960,7 @@ fn p4_start_error(program: &std::ffi::OsStr, error: std::io::Error) -> AppError 
         std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied
     ) && !crate::locate::is_executable(Path::new(program))
     {
-        AppError::msg(P4_MISSING)
+        AppError::P4Missing
     } else {
         AppError::msg(format!("Could not start Perforce: {error}"))
     }

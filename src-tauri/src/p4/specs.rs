@@ -275,11 +275,11 @@ pub fn save_spec(
     name(&edit.name)?;
     let present = exists(connection, edit.kind, &edit.name)?;
     if present != fingerprint.is_some() {
-        return Err(AppError::msg(STALE));
+        return Err(AppError::StaleReview(STALE));
     }
     let original = run(connection, &[edit.kind.command(), "-o", &edit.name])?;
     if fingerprint.is_some_and(|value| value != hash(connection, edit.kind, &original)) {
-        return Err(AppError::msg(STALE));
+        return Err(AppError::StaleReview(STALE));
     }
     let spec = edited_spec(&original, edit)?;
     cli::run_p4_ok(
@@ -298,7 +298,7 @@ pub fn delete_spec(
 ) -> AppResult<()> {
     let spec = existing(connection, kind, value)?;
     if hash(connection, kind, &spec) != fingerprint {
-        return Err(AppError::msg(STALE));
+        return Err(AppError::StaleReview(STALE));
     }
     run(connection, &[kind.command(), "-d", value])?;
     Ok(())
@@ -438,7 +438,7 @@ pub fn apply_label_tag(
 ) -> AppResult<String> {
     let preview = preview_label_tag(connection, request)?;
     if preview.fingerprint != fingerprint {
-        return Err(AppError::msg(STALE));
+        return Err(AppError::StaleReview(STALE));
     }
     let args = tag_args(request, false)?;
     allow_empty(run(

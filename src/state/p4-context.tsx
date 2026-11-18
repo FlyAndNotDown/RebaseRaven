@@ -1,3 +1,4 @@
+import { errorCode } from "@/lib/native-error";
 import { useActivityActions } from "./activity-context";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import { createStore, shallowEqual, type Store } from "./store";
@@ -19,7 +20,7 @@ import { toast } from "sonner";
 import { abortableScan } from "@/lib/p4-workspace-scan";
 import type { P4IntegrationInitial, P4IntegrationRequest, P4IntegrationPreview } from "@/types/p4-integration";
 import { errorMessage, isCancelled } from "@/lib/git";
-import { depotBase, P4_LOGIN, P4_MISSING, p4Api } from "@/lib/p4";
+import { depotBase, P4_LOGIN, p4Api } from "@/lib/p4";
 import { notifyP4Error, p4SyncNotice } from "@/lib/p4-output-notice";
 import { sameRepoPath } from "@/lib/format";
 import { useGitPick } from "@/state/git-context";
@@ -208,7 +209,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
   ]);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{message: string; code?: string} | null>(null);
   const [submittedBusy, setSubmittedBusy] = useState<ReadonlySet<string>>(() => new Set());
   const [mutationLabels, setMutationLabels] = useState<ReadonlyMap<string, { label: string; kind: "submit" | null }>>(() => new Map());
   const mutationOwners = useRef(new Set<string>());
@@ -255,7 +256,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
   const activeTabRef = useRef(activeTab);
   const reconnectTabs = useRef(new Set<string>());
   const activePerforceId = activeTab.kind === "repo" && activeTab.vcs === "perforce" ? activeTab.id : "";
-  const visibleSession = usableP4Session(session, activePerforceId, loading, error);
+  const visibleSession = usableP4Session(session, activePerforceId, loading, error?.message ?? null);
   const submittedLoading = submittedBusy.has(`${activePerforceId}:list`) || submittedBusy.has(`${activePerforceId}:detail`);
   const [attempt, setAttempt] = useState(0);
   const [loginTarget, setLoginTarget] = useState({ client: "", port: "" });
@@ -280,7 +281,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
   useLayoutEffect(() => {
     activeTabRef.current = activeTab;
     const candidate = session?.tabId === activePerforceId ? session : cache.current.get(activePerforceId) ?? null;
-    sessionRef.current = usableP4Session(candidate, activePerforceId, loading, error);
+    sessionRef.current = usableP4Session(candidate, activePerforceId, loading, error?.message ?? null);
   }, [activePerforceId, activeTab, error, loading, session]);
 
   const askPassword = useCallback((connection: P4Connection) => {
@@ -318,7 +319,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
     if (caught instanceof LoginCancelled) return;
     const message = errorMessage(caught);
     if (!message) return;
-    if (message === P4_MISSING) {
+    if (errorCode(caught) === "p4Missing") {
       toast.error(t("desktop.dependencies.p4Missing"), {
         id: "p4-missing",
         action: {
@@ -451,7 +452,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
           const password = await askPassword(opened.connection);
           if (generation.current !== current) return;
           if (!password) {
-            setError(P4_LOGIN);
+            setError({message: P4_LOGIN, code: "p4LoginRequired"});
             setLoading(false);
             return;
           }
@@ -505,7 +506,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
         setError(null);
       } catch (caught) {
         if (generation.current !== current) return;
-        setError(errorMessage(caught));
+        setError({message: errorMessage(caught), code: errorCode(caught)});
         report(caught);
       } finally {
         if (generation.current === current) setLoading(false);
@@ -1689,7 +1690,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
       busy: mutationLabels.has(activePerforceId),
       busyLabel: mutationLabels.get(activePerforceId)?.label ?? "",
       busyKind: mutationLabels.get(activePerforceId)?.kind ?? null,
-      error: error === P4_MISSING ? t("desktop.dependencies.p4Missing", { lng: language }) : error ? p4DisplayError(error, language) : null,
+      error: error?.code === "p4Missing" ? t("desktop.dependencies.p4Missing", { lng: language }) : error ? p4DisplayError(error, language) : null,
       selectedChange,
       selectedFile,
       selectedShelved,

@@ -1,3 +1,4 @@
+import { activityApi } from "@/lib/activity";
 // @vitest-environment jsdom
 import { chooseChoice } from "@/test/choose-choice";
 import { act } from "react";
@@ -12,13 +13,13 @@ import type { LfsAction, LfsLocks, LfsState, LfsUpdate } from "@/types/lfs";
 import type { Activity } from "@/types/git";
 
 const model=vi.hoisted(()=>({change:vi.fn(),activities:[] as Activity[]}));
-vi.mock("@/state/git-context",()=>({useGitPick:()=>({changeLfs:model.change,activeTabId:"git:current",cancelActivity:(id:string)=>gitApi.cancelActivity(id)}),useActivities:()=>model.activities}));
+vi.mock("@/state/git-context",()=>({useGitPick:()=>({changeLfs:model.change,activeTabId:"git:current",cancelActivity:(id:string)=>activityApi.cancel(id)}),useActivities:()=>model.activities}));
 let root:Root,container:HTMLDivElement;
 function state():LfsState{return {version:"git-lfs/3.6.0",filtersConfigured:true,remotes:["origin","upstream"],fingerprint:"current-lfs",files:[{name:"assets/model.bin",size:8192,oid:"a".repeat(64),checkout:false,downloaded:true,modified:false}],patterns:[{pattern:"*.bin",source:".gitattributes",tracked:true,lockable:false,editable:true},{pattern:"*.psd",source:"media/.gitattributes",tracked:true,lockable:true,editable:true},{pattern:"*.zip",source:"global attributes",tracked:true,lockable:false,editable:false}]};}
 function deferred<T>(){let resolve!:(value:T)=>void;const promise=new Promise<T>(done=>{resolve=done;});return {promise,resolve};}
 beforeEach(()=>{
   Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});setLanguagePreference("en");vi.restoreAllMocks();model.change.mockReset();model.activities=[];
-  vi.spyOn(gitApi,"lfsState").mockResolvedValue(state());vi.spyOn(gitApi,"cancelActivity").mockResolvedValue(true);model.change.mockResolvedValue({state:state(),report:"Completed"});
+  vi.spyOn(gitApi,"lfsState").mockResolvedValue(state());vi.spyOn(activityApi,"cancel").mockResolvedValue(true);model.change.mockResolvedValue({state:state(),report:"Completed"});
   container=document.createElement("div");document.body.append(container);root=createRoot(container);
 });
 afterEach(async()=>{await act(async()=>root.unmount());container.remove();});
@@ -74,7 +75,7 @@ it("prevents double transfers, cancels only the LFS activity, and ignores a clos
   await show();
   const fetch=button("Fetch objects");await act(async()=>{fetch.click();fetch.click();});expect(model.change).toHaveBeenCalledTimes(1);expect(button("Close").disabled).toBe(true);
   model.activities=[{id:"other-job",tabId:"git:current",label:"Fetching",cancellable:true},{id:"current-job",tabId:"git:current",label:"Git LFS",cancellable:true}];
-  await show();await click("Cancel operation");expect(gitApi.cancelActivity).toHaveBeenCalledExactlyOnceWith("current-job");
+  await show();await click("Cancel operation");expect(activityApi.cancel).toHaveBeenCalledExactlyOnceWith("current-job");
   model.activities=[];await show("/work/second");await act(async()=>pending.resolve({state:{...state(),version:"old session"},report:"Old result"}));
   expect(document.body.textContent).not.toContain("Old result");expect(document.body.textContent).not.toContain("old session");
 });

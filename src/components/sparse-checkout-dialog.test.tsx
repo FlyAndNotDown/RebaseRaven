@@ -1,3 +1,4 @@
+import { activityApi } from "@/lib/activity";
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -12,7 +13,7 @@ import type { SparseCheckoutPreview, SparseCheckoutState, SparseCheckoutUpdate }
 import type { Activity } from "@/types/git";
 
 const model = vi.hoisted(() => ({change:vi.fn(), activities:[] as Activity[]}));
-vi.mock("@/state/git-context", () => ({useGitPick:() => ({changeSparseCheckout:model.change, activeTabId:"git:first",cancelActivity:(id:string)=>gitApi.cancelActivity(id)}), useActivities:() => model.activities}));
+vi.mock("@/state/git-context", () => ({useGitPick:() => ({changeSparseCheckout:model.change, activeTabId:"git:first",cancelActivity:(id:string)=>activityApi.cancel(id)}), useActivities:() => model.activities}));
 let root: Root, container: HTMLDivElement;
 function full(): SparseCheckoutState {return {enabled:false,cone:true,sparseIndex:false,rules:[],patterns:[],fingerprint:"full-checkout"};}
 function partial(): SparseCheckoutState {return {...full(),enabled:true,rules:["src"],patterns:["/*","!/*/","/src/"],fingerprint:"partial-checkout"};}
@@ -20,7 +21,7 @@ function preview(): SparseCheckoutPreview {return {fingerprint:"reviewed-scope",
 function deferred<T>() {let resolve!: (value:T) => void; const promise = new Promise<T>(done => {resolve = done;}); return {promise, resolve};}
 beforeEach(() => {
   Object.assign(globalThis, {IS_REACT_ACT_ENVIRONMENT:true}); setLanguagePreference("en");vi.restoreAllMocks();model.change.mockReset();model.activities=[];
-  vi.spyOn(gitApi,"sparseCheckoutState").mockResolvedValue(full());vi.spyOn(gitApi,"previewSparseCheckout").mockResolvedValue(preview());vi.spyOn(gitApi,"cancelActivity").mockResolvedValue(true);
+  vi.spyOn(gitApi,"sparseCheckoutState").mockResolvedValue(full());vi.spyOn(gitApi,"previewSparseCheckout").mockResolvedValue(preview());vi.spyOn(activityApi,"cancel").mockResolvedValue(true);
   model.change.mockResolvedValue({state:partial(),report:""});
   container=document.createElement("div");document.body.append(container);root=createRoot(container);
 });
@@ -112,7 +113,7 @@ it("submits once and cancels only the sparse checkout operation", async () => {
   await show();await select();await click("Preview");
   await act(async () => {button("Apply sparse checkout").click();button("Apply sparse checkout").click();});
   expect(model.change).toHaveBeenCalledOnce();await click("Cancel operation");
-  expect(gitApi.cancelActivity).toHaveBeenCalledExactlyOnceWith("checkout");
+  expect(activityApi.cancel).toHaveBeenCalledExactlyOnceWith("checkout");
   await act(async () => {root.render(null);});await act(async () => pending.resolve({state:partial(),report:""}));
   expect(gitApi.sparseCheckoutState).toHaveBeenCalledOnce();
 });

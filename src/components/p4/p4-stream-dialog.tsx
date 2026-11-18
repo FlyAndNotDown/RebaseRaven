@@ -7,7 +7,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { P4StreamSelect } from "@/components/p4/p4-stream-select";
 import { Label } from "@/components/ui/label";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import { errorMessage } from "@/lib/git";
 import { P4IntegrationFiles } from "@/components/p4/p4-integration-files";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import { useP4 } from "@/state/p4-context";
@@ -42,7 +41,7 @@ export function P4StreamDialog({ onClose, initial }: { onClose: () => void; init
       if (!mounted.current) return;
       setStreams(next);
       if (!initial) setMode(next.find((stream) => stream.path === target)?.parent?.startsWith("//") ? "merge" : "copy");
-    }).catch((caught: unknown) => { if (mounted.current) setError(p4DisplayError(errorMessage(caught))); });
+    }).catch((caught: unknown) => { if (mounted.current) setError(p4DisplayError(caught)); });
     return () => { mounted.current = false; };
   }, [listStreams, target, attempt, initial]);
 
@@ -54,7 +53,7 @@ export function P4StreamDialog({ onClose, initial }: { onClose: () => void; init
     try {
       const value = await p4.previewStream(request);
       if (mounted.current) setPreview({ key, value });
-    } catch (caught) { if (mounted.current) setError(p4DisplayError(errorMessage(caught))); }
+    } catch (caught) { if (mounted.current) setError(p4DisplayError(caught)); }
     finally { running.current = false; if (mounted.current) setBusy(null); }
   }
 
@@ -62,7 +61,7 @@ export function P4StreamDialog({ onClose, initial }: { onClose: () => void; init
     if (!approved || !preview || blocked || running.current) return;
     running.current = true; setBusy("apply"); setError(null);
     try { await p4.applyStream(request, preview.value); onClose(); }
-    catch (caught) { if (mounted.current) { setError(p4DisplayError(errorMessage(caught))); setPreview(null); } }
+    catch (caught) { if (mounted.current) { setError(p4DisplayError(caught)); setPreview(null); } }
     finally { running.current = false; if (mounted.current) setBusy(null); }
   }
 

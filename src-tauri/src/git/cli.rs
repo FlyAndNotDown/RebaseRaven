@@ -810,7 +810,7 @@ pub(super) fn run_git_stdout(root: &Path, args: &[&str]) -> AppResult<Vec<u8>> {
 }
 
 pub(super) fn require_git() -> AppResult<PathBuf> {
-    find_git().ok_or_else(|| AppError::msg(crate::error::GIT_MISSING))
+    find_git().ok_or(AppError::GitMissing)
 }
 
 struct GitBin {
@@ -926,7 +926,7 @@ pub fn validate_git_choice(path: &str) -> AppResult<()> {
         return Err(AppError::msg("Choose a file named git."));
     }
     if !crate::locate::is_executable(file) {
-        return Err(AppError::msg(crate::error::GIT_MISSING));
+        return Err(AppError::GitMissing);
     }
     Ok(())
 }
@@ -973,7 +973,7 @@ pub fn check_git_executable(path: &str) -> AppResult<()> {
     validate_git_choice(path)?;
     let path = path.trim();
     if path.is_empty() {
-        return Err(AppError::msg(crate::error::GIT_MISSING));
+        return Err(AppError::GitMissing);
     }
     let output = git_version_output(path)?;
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -1054,7 +1054,7 @@ fn git_start_error(program: &std::ffi::OsStr, error: std::io::Error) -> AppError
         std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied
     ) && !crate::locate::is_executable(Path::new(program))
     {
-        AppError::msg(crate::error::GIT_MISSING)
+        AppError::GitMissing
     } else {
         AppError::msg(format!("Could not start Git: {error}"))
     }

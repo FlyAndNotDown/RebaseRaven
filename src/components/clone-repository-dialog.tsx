@@ -1,3 +1,4 @@
+import { errorCode } from "@/lib/native-error";
 import { activityApi } from "@/lib/activity";
 import { t, useTranslation } from "@/i18n";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -25,9 +26,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { errorMessage, gitApi } from "@/lib/git";
+import { errorMessage } from "@/lib/git";
 import { createExclusiveAction, createLatestRequest } from "@/lib/async-scope";
-import { P4_LOGIN, p4Api } from "@/lib/p4";
+import { p4Api } from "@/lib/p4";
 import type { P4Auth, P4ClientOption, P4DepotEntry, P4StreamOption } from "@/types/p4";
 import { useActivities, useGitPick } from "@/state/git-context";
 
@@ -396,7 +397,7 @@ function P4CloneForm({
       (error) => {
         checkingRequest.current = false;
         const message = errorMessage(error);
-        const detail = message === P4_LOGIN ? t("desktop.cloneRepositoryDialog.enter_the_password_for_this_user_and_try") : message;
+        const detail = errorCode(error) === "p4LoginRequired" ? t("desktop.cloneRepositoryDialog.enter_the_password_for_this_user_and_try") : message;
         setCheckResult({
           scope: credentials,
           status: "error",
@@ -427,7 +428,7 @@ function P4CloneForm({
         onOpenChange(false);
       } catch (error) {
         const message = errorMessage(error);
-        toast.error(message === P4_LOGIN ? t("desktop.cloneRepositoryDialog.enter_the_password_for_this_user_and_try") : message);
+        toast.error(errorCode(error) === "p4LoginRequired" ? t("desktop.cloneRepositoryDialog.enter_the_password_for_this_user_and_try") : message);
       } finally {
         endActivity(id);
         setCloning(false);
@@ -569,7 +570,7 @@ function P4CloneForm({
               onOpenChange(false);
             } catch (error) {
               const message = errorMessage(error);
-              toast.error(message === P4_LOGIN ? t("desktop.cloneRepositoryDialog.enter_the_password_for_this_user_and_try") : message);
+              toast.error(errorCode(error) === "p4LoginRequired" ? t("desktop.cloneRepositoryDialog.enter_the_password_for_this_user_and_try") : message);
             } finally {
               endActivity(id);
               setCloning(false);

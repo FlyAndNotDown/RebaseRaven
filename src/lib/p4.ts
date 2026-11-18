@@ -44,17 +44,13 @@ import type {
   RepoDetection,
 } from "@/types/p4";
 import type { FileDiff, ImagePair } from "@/types/git";
-import { errorMessage } from "@/lib/git";
+import { errorCode } from "./native-error";
 import { pathsIgnoreCase } from "@/lib/format";
 import type { P4IntegrationRequest, P4IntegrationPreview } from "@/types/p4-integration";
 import type { P4SpecKind, P4SpecEdit, P4Spec, P4SpecPage, P4LabelFiles, P4LabelTagRequest, P4LabelTagPreview } from "@/types/p4-specs";
 import type { P4StreamWork, P4StreamWorkRequest, P4StreamWorkPreview, P4StreamDiffRequest, P4StreamSetup, P4StreamSpec, P4StreamSpecEdit } from "@/types/p4-stream-specs";
 
-/** Matches `P4_MISSING` in the Rust backend. */
-export const P4_MISSING = "p4 executable was not found. Choose one in Settings.";
-
-/** Matches `P4_LOGIN` in the Rust backend. */
-export const P4_LOGIN = "Perforce login is required.";
+export { P4_LOGIN, P4_MISSING } from "./native-error";
 
 let missingP4 = false;
 const availabilityListeners = new Set<() => void>();
@@ -79,7 +75,7 @@ function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
     if (command === "p4_open") reportP4Availability(true);
     return result;
   }).catch((error: unknown) => {
-    if (errorMessage(error) === P4_MISSING) reportP4Availability(false);
+    if (errorCode(error) === "p4Missing") reportP4Availability(false);
     throw error;
   });
 }

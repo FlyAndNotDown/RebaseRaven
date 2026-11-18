@@ -1,3 +1,4 @@
+import { errorMessage } from "@/lib/native-error";
 import type { UpdateState } from "@/types/updater";
 
 type Request = "check" | "install" | "restart";
@@ -94,7 +95,7 @@ export function createUpdateStore(client: UpdateClient) {
         await initialize();
         await action();
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = errorMessage(error);
         publish({ ...snapshot, status: snapshot.request === "restart" ? "installed" : "error", error: message.slice(0, 1_000) });
       } finally {
         operation = null;

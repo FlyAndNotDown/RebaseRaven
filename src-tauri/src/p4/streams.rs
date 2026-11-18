@@ -136,7 +136,7 @@ pub fn apply_stream(
 ) -> AppResult<String> {
     let preview = preview_stream(connection, request)?;
     if preview.fingerprint != fingerprint || preview.files.is_empty() {
-        return Err(AppError::msg(STALE));
+        return Err(AppError::StaleReview(STALE));
     }
     let (args, _) = stream_args(connection, request)?;
     let refs = args.iter().map(String::as_str).collect::<Vec<_>>();

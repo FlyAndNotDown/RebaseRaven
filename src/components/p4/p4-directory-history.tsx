@@ -2,7 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { P4Submitted, type SubmittedHistoryModel } from "@/components/p4/p4-submitted";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/i18n";
-import { errorMessage } from "@/lib/git";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import { useP4Pick } from "@/state/p4-context";
 import type { P4Changelist } from "@/types/p4";
@@ -36,7 +35,7 @@ export function P4DirectoryHistory({path}: {path:string}) {
         const known = new Set(more ? current.changes.map(change=>change.id) : []);
         return {...current,changes:[...(more ? current.changes : []),...page.changes.filter(change=>!known.has(change.id))],hasMore:page.hasMore};
       });
-    } catch (caught) {if (live.current && token === generation.current) setError(p4DisplayError(errorMessage(caught)));}
+    } catch (caught) {if (live.current && token === generation.current) setError(p4DisplayError(caught));}
     finally {if (live.current && token === generation.current) {paging.current=false;setState(current=>({...current,loading:false}));}}
   },[path,pathHistory]);
 
@@ -47,7 +46,7 @@ export function P4DirectoryHistory({path}: {path:string}) {
     try {
       const detail=await describeSubmitted(id);
       if (live.current && token === detailToken.current && scope === generation.current) setState(current=>({...current,detail}));
-    } catch (caught) {if (live.current && token === detailToken.current && scope === generation.current) setError(p4DisplayError(errorMessage(caught)));}
+    } catch (caught) {if (live.current && token === detailToken.current && scope === generation.current) setError(p4DisplayError(caught));}
     finally {if (live.current && token === detailToken.current && scope === generation.current) setState(current=>({...current,describing:false}));}
   },[describeSubmitted]);
 
@@ -62,7 +61,7 @@ export function P4DirectoryHistory({path}: {path:string}) {
     try {
       const page=await pathHistory(path,{...filterRef.current,query,before,limit,scanLimit});
       return live.current && token === generation.current ? page : null;
-    } catch (caught) {if (live.current && token === generation.current) setError(p4DisplayError(errorMessage(caught)));return null;}
+    } catch (caught) {if (live.current && token === generation.current) setError(p4DisplayError(caught));return null;}
   },[path,pathHistory]);
 
   const invalidate = useCallback(()=>{live.current=false;++generation.current;++detailToken.current;paging.current=false;},[]);

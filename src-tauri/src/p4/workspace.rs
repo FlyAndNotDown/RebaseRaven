@@ -19,7 +19,7 @@ use super::{
     sync_output::{SyncOutput, TransferProgress},
     SyncSummary,
 };
-use crate::error::{AppError, AppResult, P4_LOGIN, P4_MISSING};
+use crate::error::{AppError, AppResult};
 use crate::git::{strip_verbatim_prefix, FileDiff};
 use crate::p4::cli::{self, P4Env};
 use crate::p4::parse::{
@@ -249,7 +249,7 @@ pub fn detect_repository(path: &str) -> AppResult<RepoDetection> {
         |env, args| cli::run_p4_probe(env, args, deadline),
     ) {
         Ok(value) => value,
-        Err(err) if err.to_string() == P4_MISSING && git.is_some() => None,
+        Err(AppError::P4Missing) if git.is_some() => None,
         Err(err) => return Err(err),
     };
     let selected = start.to_string_lossy().into_owned();
@@ -300,7 +300,7 @@ pub fn open_workspace(path: &str) -> AppResult<P4Open> {
             connection,
             pending,
         }),
-        Err(err) if err.to_string() == P4_LOGIN => Ok(P4Open::Login { connection }),
+        Err(AppError::P4Login) => Ok(P4Open::Login { connection }),
         Err(err) => Err(err),
     }
 }
@@ -4110,7 +4110,7 @@ fn p4_connection_with(
 ) -> AppResult<Option<P4Connection>> {
     if !available {
         if config.as_ref().is_some_and(config_is_workspace) {
-            return Err(AppError::msg(P4_MISSING));
+            return Err(AppError::P4Missing);
         }
         return Ok(None);
     }
@@ -4272,7 +4272,7 @@ fn git_root(start: &Path) -> AppResult<Option<String>> {
 fn git_root_result(start: &Path, found: AppResult<String>) -> AppResult<Option<String>> {
     match found {
         Ok(root) => Ok(Some(root)),
-        Err(err) if err.to_string() == crate::error::GIT_MISSING => Ok(find_git_dir(start)),
+        Err(AppError::GitMissing) => Ok(find_git_dir(start)),
         Err(err)
             if err
                 .to_string()
@@ -4950,7 +4950,7 @@ mod tests {
             )
             .unwrap_err()
             .to_string(),
-            P4_MISSING
+            crate::error::P4_MISSING
         );
         let mut calls = 0;
         assert!(p4_connection_with(&temporary.0, None, true, |_, _| {
@@ -5044,7 +5044,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            git_root_result(&temporary.0, Err(AppError::msg(crate::error::GIT_MISSING)))
+            git_root_result(&temporary.0, Err(AppError::GitMissing))
                 .unwrap()
                 .unwrap(),
             temporary.0.to_string_lossy()

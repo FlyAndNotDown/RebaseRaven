@@ -5,7 +5,6 @@ import { P4ImageDiff } from "@/components/p4/p4-image-diff";
 import { isImagePath } from "@/components/image-diff";
 import { Button } from "@/components/ui/button";
 import { DiffSkeleton } from "@/components/skeletons";
-import { errorMessage } from "@/lib/git";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import { useP4 } from "@/state/p4-context";
 import type { P4Revision } from "@/types/p4";
@@ -21,7 +20,7 @@ export function P4FileView({ path }: { path: string }) {
     void filelog(path).then(page => {
       if (live) setResult({ path, attempt, revision: page.revisions[0] });
     }).catch((caught: unknown) => {
-      if (live) setResult({ path, attempt, error: p4DisplayError(errorMessage(caught)) });
+      if (live) setResult({ path, attempt, error: p4DisplayError(caught) });
     });
     return () => { live = false; };
   }, [filelog, path, attempt]);

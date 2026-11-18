@@ -226,7 +226,7 @@ pub fn apply_reconcile(
     let paths = selected_paths(files, &folders)?;
     let change = pending_change(connection, change)?;
     if workspace_fingerprint(connection, ("reconcile", &folders))? != fingerprint {
-        return Err(AppError::msg(STALE));
+        return Err(AppError::StaleReview(STALE));
     }
     let specs: Vec<_> = paths
         .iter()

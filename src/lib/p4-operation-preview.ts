@@ -1,3 +1,4 @@
+import { errorCode, errorMessage } from "./native-error";
 import type { P4Connection, P4IntegrateRequest, P4UndoRequest } from "@/types/p4";
 import { t } from "@/i18n";
 
@@ -152,16 +153,18 @@ const operationErrors: Record<string, string> = {
   "Folder not found.": "folderMissing",
 };
 
-export function p4OperationErrorKey(message: string): string | null {
-  const key = operationErrors[message];
+export function p4OperationErrorKey(error: unknown): string | null {
+  if (errorCode(error) === "staleReview") return "p4-operations.errors.stale";
+  const key = operationErrors[errorMessage(error)];
   return key ? `p4-operations.errors.${key}` : null;
 }
 
 /** Localize only exact application messages; native command diagnostics stay intact. */
-export function p4DisplayError(message: string, language?: string): string {
+export function p4DisplayError(error: unknown, language?: string): string {
+  const message = errorMessage(error);
   const field = /^Enter a valid value for (.+)\.$/.exec(message)?.[1];
   if (field) return t("p4-operations.errors.jobFieldValue", {field, lng: language});
-  const key = p4OperationErrorKey(message);
+  const key = p4OperationErrorKey(error);
   return key ? t(key, { lng: language }) : message;
 }
 

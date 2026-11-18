@@ -283,7 +283,7 @@ pub fn apply_integration(
 ) -> AppResult<String> {
     let preview = preview_integration(connection, request)?;
     if preview.files.is_empty() || preview.fingerprint != fingerprint {
-        return Err(AppError::msg(STALE));
+        return Err(AppError::StaleReview(STALE));
     }
     let change = pending_change(connection, &request.change_id)?;
     let output = run_owned(connection, &arguments(request, &change, false)?)?;

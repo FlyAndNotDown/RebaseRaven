@@ -71,23 +71,23 @@ pub fn selected_paths(files: &[FileApproval], folders: &[PathBuf]) -> AppResult<
                 || path.components().any(|part| part == Component::ParentDir)
                 || !seen.insert(path)
             {
-                return Err(AppError::msg(STALE));
+                return Err(AppError::StaleReview(STALE));
             }
             let scope = folders
                 .iter()
                 .find(|dir| dir.as_path() != path && path_is_within(dir, path))
-                .ok_or_else(|| AppError::msg(STALE))?;
+                .ok_or_else(|| AppError::StaleReview(STALE))?;
             let parent = path
                 .parent()
                 .and_then(|p| p.ancestors().find(|p| p.exists()))
-                .ok_or_else(|| AppError::msg(STALE))?;
+                .ok_or_else(|| AppError::StaleReview(STALE))?;
             if !path_is_within(&scope.canonicalize()?, &parent.canonicalize()?) {
-                return Err(AppError::msg(STALE));
+                return Err(AppError::StaleReview(STALE));
             }
             // A missing tracked file can also have missing parents. Never pass a
             // directory or a symlink to an exact-file dry run (it could recurse).
             match path.symlink_metadata() {
-                Ok(meta) if !meta.is_file() => return Err(AppError::msg(STALE)),
+                Ok(meta) if !meta.is_file() => return Err(AppError::StaleReview(STALE)),
                 Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
                 _ => {}
             }
@@ -106,7 +106,7 @@ pub fn verify_selection<'a>(
             .iter()
             .any(|item| current.get(&item.path).copied() != Some(&item.fingerprint))
     {
-        return Err(AppError::msg(STALE));
+        return Err(AppError::StaleReview(STALE));
     }
     Ok(())
 }

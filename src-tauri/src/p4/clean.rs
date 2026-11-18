@@ -112,7 +112,7 @@ fn files(scope: &Path, output: &str) -> AppResult<Vec<P4CleanFile>> {
             .cloned();
         let action = if action == "deleted" {
             if !exists || revision.is_some() {
-                return Err(AppError::msg(STALE));
+                return Err(AppError::StaleReview(STALE));
             }
             "removeUntracked"
         } else {
@@ -200,7 +200,7 @@ fn review_clean_files(
         .map(|file| {
             let details = facts.get(&file.depot_path);
             if file.revision.is_some() && details.is_none() {
-                return Err(AppError::msg(STALE));
+                return Err(AppError::StaleReview(STALE));
             }
             let identity = (&file.depot_path, &file.action, &file.revision, details);
             review_file(connection, &file.path, file.clone(), identity)
@@ -215,7 +215,7 @@ pub fn apply_clean(
     fingerprint: &str,
 ) -> AppResult<String> {
     if selected.len() > LIMIT {
-        return Err(AppError::msg(STALE));
+        return Err(AppError::StaleReview(STALE));
     }
     let folders = scan_folders(connection, &request.scopes)?;
     let paths = selected_paths(selected, &folders)?;
@@ -223,7 +223,7 @@ pub fn apply_clean(
         local_path(path)?;
     }
     if workspace_fingerprint(connection, ("clean", request))? != fingerprint {
-        return Err(AppError::msg(STALE));
+        return Err(AppError::StaleReview(STALE));
     }
     let output = run_files(connection, &arguments(request, true)?, &paths)?;
     let exact = review_clean_files(connection, files(Path::new(&connection.root), &output)?)?;

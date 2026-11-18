@@ -35,7 +35,7 @@ export function P4WorkspaceDialog() {
   useEffect(() => {live.current = true; return () => {live.current = false;};}, []);
   useEffect(() => {
     let active = true;
-    void workspaceSettings().then((value) => { if (active) { setLoaded(value); setEdit(draft(value)); setStale(false); setError(null); } }).catch((caught: unknown) => { if (active) setError(p4DisplayError(errorMessage(caught))); });
+    void workspaceSettings().then((value) => { if (active) { setLoaded(value); setEdit(draft(value)); setStale(false); setError(null); } }).catch((caught: unknown) => { if (active) setError(p4DisplayError(caught)); });
     return () => { active = false; };
   }, [workspaceSettings, attempt]);
   const blocked = saving || p4.busy;
@@ -53,7 +53,7 @@ export function P4WorkspaceDialog() {
       await saveWorkspace({...edit, view:clean(edit.view), limitView:clean(edit.limitView)}, loaded.fingerprint);
       if (live.current) p4.setWorkspaceOpen(false);
     } catch (caught) {
-      if (live.current) {setError(p4DisplayError(errorMessage(caught))); setStale(errorMessage(caught) === "The workspace changed. Reload it before saving.");}
+      if (live.current) {setError(p4DisplayError(caught)); setStale(errorMessage(caught) === "The workspace changed. Reload it before saving.");}
     } finally {running.current = false; if (live.current) setSaving(false);}
   }
   return <Dialog open onOpenChange={(open) => { if (!open && !saving) p4.setWorkspaceOpen(false); }}>

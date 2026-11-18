@@ -1,12 +1,12 @@
-import { errorMessage } from "@/lib/git";
-import { P4_LOGIN, p4Api } from "@/lib/p4";
+import { errorCode } from "@/lib/native-error";
+import { p4Api } from "@/lib/p4";
 import type { P4Changelist, P4Connection } from "@/types/p4";
 
 export async function withP4Login<T>(request: () => Promise<T>, login: () => Promise<void>): Promise<T> {
   try {
     return await request();
   } catch (error) {
-    if (errorMessage(error) !== P4_LOGIN) throw error;
+    if (errorCode(error) !== "p4LoginRequired") throw error;
     await login();
     return request();
   }

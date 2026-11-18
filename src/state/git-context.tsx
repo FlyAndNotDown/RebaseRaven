@@ -1,3 +1,4 @@
+import { errorCode } from "@/lib/native-error";
 import { ActivityProvider, useActivityActions } from "./activity-context";
 import type { RefObject } from "react";
 import { createStore, shallowEqual, type Store } from "./store";
@@ -21,7 +22,7 @@ import { joinRoot } from "@/lib/file-search";
 import { toast } from "sonner";
 import { t } from "@/i18n";
 import { emptyBinaryDiff, errorMessage, expandHistoryRevs, GIT_MISSING, gitApi, isCancelled, subscribeGitMissing } from "@/lib/git";
-import { P4_MISSING, p4Api } from "@/lib/p4";
+import { p4Api } from "@/lib/p4";
 import type { SparseCheckoutRequest, SparseCheckoutOutcome, SparseCheckoutUpdate } from "@/types/sparse-checkout";
 import type { LfsAction, LfsOutcome, LfsUpdate } from "@/types/lfs";
 import { normalizeRepoPath, sameRepoPath } from "@/lib/format";
@@ -292,9 +293,10 @@ const OPEN_SETTINGS_EVENT = "rebaseraven-open-settings";
 
 function reportError(error: unknown) {
   const message = errorMessage(error);
-  if (message === GIT_MISSING || message === P4_MISSING) {
-    toast.error(t(message === P4_MISSING ? "desktop.dependencies.p4Missing" : "desktop.dependencies.gitMissing"), {
-      id: message === P4_MISSING ? "p4-missing" : "git-missing",
+  const code = errorCode(error);
+  if (code === "gitMissing" || code === "p4Missing") {
+    toast.error(t(code === "p4Missing" ? "desktop.dependencies.p4Missing" : "desktop.dependencies.gitMissing"), {
+      id: code === "p4Missing" ? "p4-missing" : "git-missing",
       action: {
         label: t("operations.settings"),
         onClick: () => window.dispatchEvent(new Event(OPEN_SETTINGS_EVENT)),

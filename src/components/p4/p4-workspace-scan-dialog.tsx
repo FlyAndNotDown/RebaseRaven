@@ -118,7 +118,7 @@ export function P4WorkspaceScanDialog({ operation, scope, onClose }: {
         setPicked(new Set(result.files.map(file => file.path)));
       }
     } catch (caught) {
-      if (mounted.current && !controller.signal.aborted && !isCancelled(caught)) setError(p4DisplayError(errorMessage(caught)));
+      if (mounted.current && !controller.signal.aborted && !isCancelled(caught)) setError(p4DisplayError(caught));
     } finally {
       scanRef.current = null;
       if (mounted.current) setScanning(false);
@@ -139,7 +139,7 @@ export function P4WorkspaceScanDialog({ operation, scope, onClose }: {
       if (mounted.current) {
         setReview(null);
         setPicked(new Set());
-        setError(p4DisplayError(errorMessage(caught)));
+        setError(p4DisplayError(caught));
       }
     } finally {
       applyingRef.current = false;

@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { P4StreamSelect } from "@/components/p4/p4-stream-select";
-import { errorMessage } from "@/lib/git";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import { useP4 } from "@/state/p4-context";
 import type { P4StreamOption } from "@/types/p4";
@@ -27,7 +26,7 @@ export function P4SwitchDialog({ initialTarget, onClose }: { initialTarget: stri
   useEffect(() => {
     let active = true;
     void listStreams().then(value => { if (active) setStreams(value); })
-      .catch(caught => { if (active) setError(p4DisplayError(errorMessage(caught))); });
+      .catch(caught => { if (active) setError(p4DisplayError(caught)); });
     return () => { active = false; };
   }, [listStreams, attempt]);
   const blocked = busy || workspaceBusy;
@@ -35,7 +34,7 @@ export function P4SwitchDialog({ initialTarget, onClose }: { initialTarget: stri
     if (blocked || running.current || !target || target === connection?.stream) return;
     running.current = true; setBusy(true); setError(null);
     try { await applySwitch({ target }); }
-    catch (caught) { if (live.current) setError(p4DisplayError(errorMessage(caught))); }
+    catch (caught) { if (live.current) setError(p4DisplayError(caught)); }
     finally { running.current = false; if (live.current) setBusy(false); }
   }
   return <Dialog open onOpenChange={open => { if (!open && !busy) onClose(); }}>

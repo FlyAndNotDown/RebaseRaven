@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-use crate::error::{AppError, AppResult, GIT_MISSING};
+use crate::error::{AppError, AppResult};
 
 use super::cli::{git_command, git_output_error, require_git};
 use super::strip_verbatim_prefix;
@@ -119,7 +119,7 @@ fn run(command: &mut Command, args: &[&str]) -> AppResult<Output> {
             std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied
         ) && !crate::locate::is_executable(Path::new(command.get_program()))
         {
-            AppError::msg(GIT_MISSING)
+            AppError::GitMissing
         } else {
             AppError::msg(format!("Could not start Git: {error}"))
         }
@@ -306,7 +306,7 @@ mod tests {
             initialization_command(&missing, root)
         })
         .unwrap_err();
-        assert_eq!(error.to_string(), GIT_MISSING);
+        assert_eq!(error.to_string(), crate::error::GIT_MISSING);
         assert!(!root.join(".git").exists());
     }
 

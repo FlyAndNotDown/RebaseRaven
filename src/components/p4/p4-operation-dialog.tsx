@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { errorMessage } from "@/lib/git";
-import { P4_MISSING } from "@/lib/p4";
+import { errorCode } from "@/lib/native-error";
 import { createP4PreviewGate, p4OperationErrorKey, p4OperationKey, type P4OperationKind } from "@/lib/p4-operation-preview";
 import { useP4 } from "@/state/p4-context";
 import type { P4IntegrateRequest, P4OperationPreview, P4UndoRequest, P4UndoSelector } from "@/types/p4";
@@ -79,8 +79,8 @@ export function P4OperationDialog({ operation, path, depot, onClose }: {
 
   function fail(caught: unknown) {
     const message = errorMessage(caught);
-    const errorKey = p4OperationErrorKey(message);
-    setError(errorKey ? t(errorKey) : message === P4_MISSING ? t("desktop.dependencies.p4Missing") : message === "Login cancelled" ? t("p4-operations.cancelled") : message);
+    const errorKey = p4OperationErrorKey(caught);
+    setError(errorKey ? t(errorKey) : errorCode(caught) === "p4Missing" ? t("desktop.dependencies.p4Missing") : message === "Login cancelled" ? t("p4-operations.cancelled") : message);
   }
 
   async function browse() {
