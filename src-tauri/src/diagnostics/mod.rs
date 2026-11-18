@@ -201,7 +201,7 @@ pub fn record_cli(
 fn error_excerpt(error: &AppError) -> Option<String> {
     match error {
         AppError::Message(message) => excerpt(message.as_bytes()),
-        AppError::Io(error) => excerpt(error.to_string().as_bytes()),
+        other => excerpt(other.to_string().as_bytes()),
     }
 }
 

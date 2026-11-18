@@ -5,13 +5,12 @@ import { ConflictTextEditor } from "@/components/conflict-editor";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { depotBase } from "@/lib/p4";
-import { errorMessage } from "@/lib/git";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import { hasConflictMarkers, threeWayText } from "@/lib/three-way-text";
 import { useP4 } from "@/state/p4-context";
 import type { P4ManualResolve } from "@/types/p4";
 
-const displayError = (error: unknown) => p4DisplayError(errorMessage(error));
+const displayError = (error: unknown) => p4DisplayError(error);
 
 export function P4ManualResolve({ path, onClose, onBack, external = false }: { path: string; onClose: () => void; onBack: () => void; external?: boolean }) {
   const { t } = useTranslation();

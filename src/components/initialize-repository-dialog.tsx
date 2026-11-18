@@ -1,3 +1,4 @@
+import { errorCode } from "@/lib/native-error";
 import { t, useTranslation } from "@/i18n";
 import { useRef, useState } from "react";
 import { open as chooseFolder } from "@tauri-apps/plugin-dialog";
@@ -14,7 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { HoverTip } from "@/components/ui/tooltip";
-import { errorMessage, GIT_MISSING, gitApi } from "@/lib/git";
+import { errorMessage, gitApi } from "@/lib/git";
 import { useGitPick } from "@/state/git-context";
 
 export function InitializeRepositoryDialog({ open, onOpenChange }: {
@@ -46,7 +47,7 @@ function InitializeForm({ onOpenChange, onBusyChange }: {
   const [path, setPath] = useState("");
   const [branch, setBranch] = useState("main");
   const [activity, setActivity] = useState<"browse" | "initialize" | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{message: string; code?: string} | null>(null);
   const pending = useRef(false);
   const busy = activity !== null;
 
@@ -75,7 +76,7 @@ function InitializeForm({ onOpenChange, onBusyChange }: {
       });
       if (typeof selected === "string") setPath(selected);
     } catch (caught) {
-      setError(errorMessage(caught));
+      setError({message: errorMessage(caught), code: errorCode(caught)});
     } finally {
       finish();
     }
@@ -88,7 +89,7 @@ function InitializeForm({ onOpenChange, onBusyChange }: {
       onOpenChange(false);
       void openPath(initialized, "git");
     } catch (caught) {
-      setError(errorMessage(caught));
+      setError({message: errorMessage(caught), code: errorCode(caught)});
     } finally {
       finish();
     }
@@ -141,8 +142,8 @@ function InitializeForm({ onOpenChange, onBusyChange }: {
         </div>
         {error ? (
           <div id="initialize-error" role="alert" className="grid gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
-            <p className="break-words whitespace-pre-wrap">{error}</p>
-            {error === GIT_MISSING ? <Button variant="outline" size="sm" className="w-fit" onClick={() => { onOpenChange(false); setOpenPanel("settings"); }}>{t("desktop.initializeRepositoryDialog.open_settings")}</Button> : null}
+            <p className="break-words whitespace-pre-wrap">{error.message}</p>
+            {error.code === "gitMissing" ? <Button variant="outline" size="sm" className="w-fit" onClick={() => { onOpenChange(false); setOpenPanel("settings"); }}>{t("desktop.initializeRepositoryDialog.open_settings")}</Button> : null}
           </div>
         ) : null}
       </div>

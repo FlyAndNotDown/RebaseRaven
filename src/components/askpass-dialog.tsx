@@ -1,3 +1,4 @@
+import { activityApi } from "@/lib/activity";
 import { t, useTranslation } from "@/i18n";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { listen } from "@tauri-apps/api/event";
@@ -24,7 +25,7 @@ export function AskpassDialog() {
   const activities = useActivities();
   const [queue] = useState(() => createAskpassQueue(
     (id, answer) => gitApi.answerAskpass(id, answer),
-    (activityId) => gitApi.cancelActivity(activityId),
+    (activityId) => activityApi.cancel(activityId),
   ));
   const prompts = useSyncExternalStore(queue.subscribe, queue.getSnapshot, queue.getSnapshot);
 

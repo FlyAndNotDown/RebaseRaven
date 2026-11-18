@@ -8,18 +8,24 @@ pub enum AppError {
     Io(#[from] io::Error),
     #[error("{0}")]
     Message(String),
+    #[error("{CANCELLED}")]
+    Cancelled,
+    #[error("{GIT_MISSING}")]
+    GitMissing,
+    #[error("{P4_MISSING}")]
+    P4Missing,
+    #[error("{P4_LOGIN}")]
+    P4Login,
+    #[error("{0}")]
+    StaleReview(&'static str),
 }
 
-/// The frontend matches this exact text to tell a cancel from a failure.
 pub const CANCELLED: &str = "Cancelled";
 
-/// The frontend matches this exact text to open Settings.
 pub const GIT_MISSING: &str = "Git executable was not found. Choose one in Settings.";
 
-/// The frontend matches this exact text to open Settings.
 pub const P4_MISSING: &str = "p4 executable was not found. Choose one in Settings.";
 
-/// The frontend matches this exact text and asks for a Perforce password.
 pub const P4_LOGIN: &str = "Perforce login is required.";
 
 pub const GIT_BACKGROUND_TIMEOUT: &str = "Background fetch timed out. Fetch manually to retry.";
@@ -32,17 +38,30 @@ impl AppError {
     }
 
     pub fn cancelled() -> Self {
-        Self::Message(CANCELLED.to_string())
+        Self::Cancelled
     }
 
     pub fn is_cancelled(&self) -> bool {
-        matches!(self, Self::Message(message) if message == CANCELLED)
+        matches!(self, Self::Cancelled)
     }
 }
 
 impl Serialize for AppError {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&redact_credentials(&self.to_string()))
+        use serde::ser::SerializeStruct;
+        let code = match self {
+            Self::Cancelled => "cancelled",
+            Self::GitMissing => "gitMissing",
+            Self::P4Missing => "p4Missing",
+            Self::P4Login => "p4LoginRequired",
+            Self::StaleReview(_) => "staleReview",
+            Self::Io(_) => "io",
+            Self::Message(_) => "commandFailed",
+        };
+        let mut wire = serializer.serialize_struct("AppError", 2)?;
+        wire.serialize_field("code", code)?;
+        wire.serialize_field("message", &redact_credentials(&self.to_string()))?;
+        wire.end()
     }
 }
 
@@ -106,7 +125,8 @@ mod tests {
     fn serialized_errors_remove_url_credentials_and_secret_query_values() {
         let error = AppError::msg("Failed to access 'https://alice:example-secret@example.com/repo.git?private_token=example-token&ref=main'");
         let serialized = serde_json::to_value(error).unwrap();
-        let message = serialized.as_str().unwrap();
+        assert_eq!(serialized["code"], "commandFailed");
+        let message = serialized["message"].as_str().unwrap();
         assert!(!message.contains("alice"));
         assert!(!message.contains("example-secret"));
         assert!(!message.contains("example-token"));

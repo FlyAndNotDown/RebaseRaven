@@ -334,7 +334,9 @@ export function HistoryPane() {
     const key = searchKey;
     const generation = ++searchGeneration.current;
     void gitApi
-      .getCommits(repoPath, COMMIT_PAGE, 0, applied, searchRevs)
+      .getCommits(repoPath, COMMIT_PAGE, 0, applied, searchRevs, (items) => {
+        if (searchGeneration.current === generation) setSearch({ key, items, hasMore: false });
+      })
       .then((items) => {
         if (searchGeneration.current !== generation) return;
         setSearch({ key, items, hasMore: items.length === COMMIT_PAGE });
@@ -800,11 +802,11 @@ const CommitRow = memo(function CommitRow({
           <ContextMenuItem onClick={() => onAction({ type: "reset", commit })}>
             <RotateCcwIcon />{t("git.ui.reset")}</ContextMenuItem>
         ) : null}
-        {commit.onCurrentBranch ? null : (
+        {commit.onCurrentBranch !== false ? null : (
           <ContextMenuItem onClick={() => onAction({ type: "cherry-pick", commit })}>
             <CopyPlusIcon />{t("git.ui.cherry_pick")}</ContextMenuItem>
         )}
-        {canRebase && !commit.onCurrentBranch ? (
+        {canRebase && commit.onCurrentBranch === false ? (
           <ContextMenuItem onClick={() => onAction({ type: "merge", commit })}>
             <GitBranchIcon />{t("git.ui.merge")}</ContextMenuItem>
         ) : null}
@@ -812,7 +814,7 @@ const CommitRow = memo(function CommitRow({
           <ContextMenuItem onClick={() => onAction({ type: "revert", commit })}>
             <Undo2Icon />{t("git.ui.revert")}</ContextMenuItem>
         ) : null}
-        {canRebase && !commit.onCurrentBranch ? (
+        {canRebase && commit.onCurrentBranch === false ? (
           <ContextMenuItem onClick={() => onAction({ type: "rebase", commit })}>
             <GitBranchIcon />{t("git.ui.rebase_onto")}</ContextMenuItem>
         ) : null}
@@ -861,7 +863,7 @@ function MultiCommitMenu({
 }) {
   useTranslation();
   const commits = getCommits();
-  const canCherryPick = commits.every((commit) => !commit.onCurrentBranch);
+  const canCherryPick = commits.every((commit) => commit.onCurrentBranch === false);
   const canRevert = commits.every((commit) => commit.onCurrentBranch);
   return (
     <>

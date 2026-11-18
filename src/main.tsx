@@ -1,10 +1,12 @@
 import React from "react";
+import { P4TreeCacheProvider } from "@/components/p4/p4-tree-cache";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { GitProvider } from "@/state/git-context";
+import { P4DialogHost } from "@/components/p4/p4-dialog-host";
 import { P4Provider } from "@/state/p4-context";
 import { isPlatformModifier } from "@/lib/shortcuts";
 import "./index.css";
@@ -64,8 +66,9 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
       <TooltipProvider>
         <GitProvider>
           <P4Provider>
-            <App />
+            <P4TreeCacheProvider><App /></P4TreeCacheProvider>
             <Toaster position="bottom-right" />
+            <P4DialogHost />
           </P4Provider>
         </GitProvider>
       </TooltipProvider>

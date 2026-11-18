@@ -1,3 +1,7 @@
+import { errorCode } from "@/lib/native-error";
+import { ActivityProvider, useActivityActions } from "./activity-context";
+import { createStore, shallowEqual, type Store } from "./store";
+import { RepositoryOperations } from "./repository-operations";
 import {
   createContext,
   startTransition,
@@ -17,7 +21,7 @@ import { joinRoot } from "@/lib/file-search";
 import { toast } from "sonner";
 import { t } from "@/i18n";
 import { emptyBinaryDiff, errorMessage, expandHistoryRevs, GIT_MISSING, gitApi, isCancelled, subscribeGitMissing } from "@/lib/git";
-import { P4_MISSING, p4Api } from "@/lib/p4";
+import { p4Api } from "@/lib/p4";
 import type { SparseCheckoutRequest, SparseCheckoutOutcome, SparseCheckoutUpdate } from "@/types/sparse-checkout";
 import type { LfsAction, LfsOutcome, LfsUpdate } from "@/types/lfs";
 import { normalizeRepoPath, sameRepoPath } from "@/lib/format";
@@ -60,7 +64,6 @@ import {
   historyGraphChanged,
   keepRemoteBranches,
   mergeRefreshHint,
-  progressFromGitLine,
   sameDiff,
   sameRevs,
   sameSnapshot,
@@ -69,7 +72,6 @@ import {
   type RefreshHint,
 } from "@/state/snapshot-compare";
 import type {
-  Activity,
   AppPrefs,
   AppSession,
   PanelLayout,
@@ -173,6 +175,8 @@ interface GitContextValue {
   openDifftool: (source: FileSource) => Promise<void>;
   runMergetool: (path: string) => Promise<boolean>;
   ignorePaths: (patterns: string[]) => Promise<boolean>;
+  runActivity: <T>(label: string, detail: string | undefined, run: (id: string) => Promise<T>, cancellable?: boolean, tabId?: string) => Promise<T>;
+  cancelActivity: (id: string) => Promise<void>;
   beginActivity: (label: string, detail?: string, progress?: number, tabId?: string) => string;
   endActivity: (id: string) => void;
   setActiveTab: (id: string) => void;
@@ -250,8 +254,8 @@ interface GitContextValue {
   mergeRef: (onto: string, label: string) => Promise<boolean>;
   operationContinue: (message?: string) => Promise<boolean>;
   operationAbort: () => Promise<boolean>;
-  changeSparseCheckout: (repoPath: string, request: SparseCheckoutRequest, fingerprint: string, allowIgnoredRemoval: boolean) => Promise<SparseCheckoutUpdate | null>;
-  changeLfs: (repoPath: string, action: LfsAction, fingerprint: string) => Promise<LfsUpdate | null>;
+  changeSparseCheckout: (repoPath: string, request: SparseCheckoutRequest, fingerprint: string, allowIgnoredRemoval: boolean, onActivity?: (id: string) => void) => Promise<SparseCheckoutUpdate | null>;
+  changeLfs: (repoPath: string, action: LfsAction, fingerprint: string, onActivity?: (id: string) => void) => Promise<LfsUpdate | null>;
   resolveConflict: (path: string, side: "ours" | "theirs" | "both") => Promise<boolean>;
   saveConflict: (path: string, text: string) => Promise<boolean>;
   resetCommit: (oid: string, mode: ResetMode) => Promise<boolean>;
@@ -277,31 +281,6 @@ type ActionKey = {
 type GitActions = Pick<GitContextValue, ActionKey>;
 type GitState = Omit<GitContextValue, ActionKey>;
 
-interface GitStore {
-  get: () => GitState;
-  set: (next: GitState) => void;
-  subscribe: (listener: () => void) => () => void;
-}
-
-function createStore(initial: GitState): GitStore {
-  let state = initial;
-  const listeners = new Set<() => void>();
-  return {
-    get: () => state,
-    set: (next) => {
-      if (next === state) return;
-      state = next;
-      for (const listener of listeners) listener();
-    },
-    subscribe: (listener) => {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
-  };
-}
-
 const OPERATION_FINISHED: Record<string, string> = {
   get merge() { return t("operations.merge_finished"); },
   get rebase() { return t("operations.rebase_finished"); },
@@ -313,9 +292,10 @@ const OPEN_SETTINGS_EVENT = "rebaseraven-open-settings";
 
 function reportError(error: unknown) {
   const message = errorMessage(error);
-  if (message === GIT_MISSING || message === P4_MISSING) {
-    toast.error(t(message === P4_MISSING ? "desktop.dependencies.p4Missing" : "desktop.dependencies.gitMissing"), {
-      id: message === P4_MISSING ? "p4-missing" : "git-missing",
+  const code = errorCode(error);
+  if (code === "gitMissing" || code === "p4Missing") {
+    toast.error(t(code === "p4Missing" ? "desktop.dependencies.p4Missing" : "desktop.dependencies.gitMissing"), {
+      id: code === "p4Missing" ? "p4-missing" : "git-missing",
       action: {
         label: t("operations.settings"),
         onClick: () => window.dispatchEvent(new Event(OPEN_SETTINGS_EVENT)),
@@ -333,19 +313,21 @@ const WELCOME_TAB: AppTab = { id: WELCOME_TAB_ID, kind: "welcome" };
 
 // The value never changes after mount; components subscribe to the store for
 // the fields they read, so an unrelated update does not re-render them.
-const GitContext = createContext<{ store: GitStore; actions: GitActions } | null>(null);
-// Progress updates arrive many times per second; keeping them out of GitContext
-// means only the activity meter re-renders for them. Each activity names the tab
-// that started it, so one repository's bar does not show another's work.
-const ActivityContext = createContext<Activity[]>([]);
+const GitContext = createContext<{ store: Store<GitState>; actions: GitActions } | null>(null);
+export { useActivities } from "./activity-context";
 
-export function GitProvider({ children }: { children: ReactNode }) {
+export function GitProvider({children}: {children: ReactNode}) {
+  return <ActivityProvider initialOwner={WELCOME_TAB_ID}><RepositoryProvider>{children}</RepositoryProvider></ActivityProvider>;
+}
+
+function RepositoryProvider({children}: {children: ReactNode}) {
+  const activeTabIdRef = useRef(WELCOME_TAB_ID);
+  const {runActivity, beginActivity, patchActivity, cancelActivity, endActivity, setActivityOwner} = useActivityActions();
   const [recents, setRecents] = useState<RecentRepo[]>([]);
   const [tabs, setTabs] = useState<AppTab[]>([]);
   const [activeTabId, setActiveTabId] = useState(WELCOME_TAB_ID);
   const [sessions, setSessions] = useState<Record<string, RepoSession>>({});
   const [loading, setLoading] = useState(true);
-  const [activities, setActivities] = useState<Activity[]>([]);
   const [publishPrompt, setPublishPrompt] = useState<PublishPrompt | null>(null);
   const [openPanel, setOpenPanel] = useState<Panel | null>(null);
   const [prefs, setPrefs] = useState<AppPrefs>(defaultPrefs);
@@ -361,7 +343,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
 
   const tabsRef = useRef(tabs);
   const sessionsRef = useRef(sessions);
-  const activeTabIdRef = useRef(activeTabId);
+  const [operations] = useState(() => new RepositoryOperations());
   const openingPathsRef = useRef(new Set<string>());
   const historyRevsMapRef = useRef<Record<string, string[]>>({});
   const historyExpandedMapRef = useRef<Record<string, string[]>>({});
@@ -386,8 +368,9 @@ export function GitProvider({ children }: { children: ReactNode }) {
   }, []);
   const commitActiveTabId = useCallback((next: string) => {
     activeTabIdRef.current = next;
+    setActivityOwner(next);
     setActiveTabId(next);
-  }, []);
+  }, [setActivityOwner]);
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? WELCOME_TAB;
   const session = activeTab.kind === "repo" ? sessions[activeTab.id] : undefined;
@@ -445,6 +428,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       const replacement = { ...tabFromPath(path, name, tab.vcs), ...(preserveSession ? { branch: tab.branch, isDetached: tab.isDetached } : {}) };
       const duplicate = current.find((item) => item.id === replacement.id && item.id !== id);
       if (id !== replacement.id) {
+        operations.close(id);
         setPublishPrompt((prompt) => prompt?.tabId === id ? null : prompt);
       }
       const next = duplicate
@@ -459,7 +443,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
         commitActiveTabId(duplicate?.id ?? replacement.id);
       }
     },
-    [commitActiveTabId, commitSessions, commitTabs, setTabMeta],
+    [commitActiveTabId, commitSessions, commitTabs, operations, setTabMeta],
   );
 
   const patchSession = useCallback(
@@ -644,83 +628,6 @@ export function GitProvider({ children }: { children: ReactNode }) {
     persistSession(tabsRef.current, activeTabIdRef.current);
   }, [persistKey, persistSession]);
 
-  const runActivity = useCallback(
-    async <T,>(
-      label: string,
-      detail: string | undefined,
-      fn: (activityId: string) => Promise<T>,
-      cancellable = false,
-      tabId?: string,
-    ) => {
-      const id = crypto.randomUUID();
-      const owner = tabId ?? activeTabIdRef.current;
-      setActivities((current) => [...current, { id, label, detail, cancellable, tabId: owner }]);
-      try {
-        return await fn(id);
-      } finally {
-        setActivities((current) => current.filter((item) => item.id !== id));
-      }
-    },
-    [],
-  );
-
-  const beginActivity = useCallback((label: string, detail?: string, progress?: number, tabId?: string) => {
-    const id = crypto.randomUUID();
-    const owner = tabId ?? activeTabIdRef.current;
-    setActivities((current) => [...current, { id, label, detail, progress, tabId: owner }]);
-    return id;
-  }, []);
-
-  const patchActivity = useCallback(
-    (id: string, patch: Partial<Pick<Activity, "label" | "detail" | "progress">>) => {
-      setActivities((current) =>
-        current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
-      );
-    },
-    [],
-  );
-
-  const endActivity = useCallback((id: string) => {
-    setActivities((current) =>
-      current.some((item) => item.id === id) ? current.filter((item) => item.id !== id) : current,
-    );
-  }, []);
-
-  useEffect(() => {
-    let disposed = false;
-    let unlisten: (() => void) | undefined;
-    let frame = 0;
-    const latest = new Map<string, string>();
-    const flush = () => {
-      frame = 0;
-      const batch = new Map(latest);
-      latest.clear();
-      setActivities((current) =>
-        current.map((item) => {
-          const line = batch.get(item.id);
-          if (line === undefined) return item;
-          const progress = progressFromGitLine(line);
-          return { ...item, detail: line, progress: progress ?? item.progress };
-        }),
-      );
-    };
-    void listen<{ id: string; line: string }>("git-progress", (event) => {
-      latest.set(event.payload.id, event.payload.line);
-      if (!frame) frame = requestAnimationFrame(flush);
-    }).then((fn) => {
-      if (disposed) {
-        fn();
-        return;
-      }
-      unlisten = fn;
-    });
-    return () => {
-      disposed = true;
-      if (frame) cancelAnimationFrame(frame);
-      unlisten?.();
-    };
-  }, []);
-
   const hydrateRepo = useCallback(
     async (tabId: string) => {
       const tab = tabsRef.current.find((item) => item.id === tabId);
@@ -730,6 +637,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       const pendingKey = normalizeRepoPath(tab.path);
       if (openingPathsRef.current.has(pendingKey)) return;
       openingPathsRef.current.add(pendingKey);
+      const valid = operations.read(tabId);
       try {
         const snapshot = await runActivity(
           t("operations.opening_repository"),
@@ -738,7 +646,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
           false,
           tabId,
         );
-        if (!tabsRef.current.some((item) => item.id === tabId)) return;
+        if (!valid() || !tabsRef.current.some((item) => item.id === tabId)) return;
         const current = sessionsRef.current;
         commitSessions({
           ...current,
@@ -760,7 +668,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
         openingPathsRef.current.delete(pendingKey);
       }
     },
-    [commitSessions, runActivity, syncTabMeta],
+    [commitSessions, operations, runActivity, syncTabMeta],
   );
 
   const setActiveTab = useCallback(
@@ -953,6 +861,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       const current = tabsRef.current.filter((tab) => tab.kind !== "welcome");
       const closing = current.find((tab) => tab.id === id);
       if (!closing || closing.kind !== "repo") return;
+      operations.close(id);
       const index = current.findIndex((tab) => tab.id === id);
       const next = current.filter((tab) => tab.id !== id);
       if (activeTabIdRef.current === id) {
@@ -964,7 +873,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
         commitSessions(rest);
       }
     },
-    [commitActiveTabId, commitSessions, commitTabs],
+    [commitActiveTabId, commitSessions, commitTabs, operations],
   );
 
   const closeRepo = useCallback(() => {
@@ -1001,7 +910,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
     try {
       const branches = await gitApi.getBranches(repoPath);
       const snapshot = sessionsRef.current[tabId]?.snapshot;
-      if (!snapshot) return;
+      if (snapshot !== current.snapshot) return;
       patchSession(tabId, { snapshot: { ...snapshot, branches } });
     } catch (error) {
       reportError(error);
@@ -1037,7 +946,9 @@ export function GitProvider({ children }: { children: ReactNode }) {
         const page = await runActivity(
           reset ? t("operations.loading_history") : t("operations.loading_earlier_history"),
           current.snapshot?.repo.name,
-          () => gitApi.getCommits(repoPath, COMMIT_PAGE, skip, undefined, revs),
+          () => gitApi.getCommits(repoPath, COMMIT_PAGE, skip, undefined, revs, reset ? (commits) => {
+            if (historyEpochRef.current[tabId] === epoch) patchSession(tabId, { commits });
+          } : undefined),
           false,
           tabId,
         );
@@ -1185,6 +1096,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
             const tab = findRepoTab(tabsRef.current, path, "git");
             if (!tab) continue;
             const current = sessionsRef.current[tab.id];
+            const valid = operations.read(tab.id);
             const changeGeneration = readGen(changeLoadGen.current, tab.id);
             try {
               const snapshot = keepRemoteBranches(current?.snapshot, await gitApi.refreshWorkspace(path));
@@ -1207,6 +1119,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
                   if (scopeChanged) changeDiff = null;
                 }
               }
+              if (!valid()) continue;
               const snapshotSame = sameSnapshot(current?.snapshot, snapshot);
               const selectionMoved = readGen(changeLoadGen.current, tab.id) !== changeGeneration;
               const binaryRefreshed = diffReloaded && Boolean(changeDiff?.binary) && selection
@@ -1244,7 +1157,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
         }
       })();
     },
-    [invalidateHistory, patchSession, stashPatchFor],
+    [invalidateHistory, operations, patchSession, stashPatchFor],
   );
 
   const refreshRepository = useCallback(async () => {
@@ -1252,6 +1165,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
     const tab = tabsRef.current.find((item) => item.id === tabId);
     const repoPath = tab?.kind === "repo" ? tab.path : null;
     if (!repoPath) return;
+    const valid = operations.read(tabId);
     const current = sessionsRef.current[tabId];
     const changeSelection = current?.changeSelection ?? null;
     const changeGeneration = readGen(changeLoadGen.current, tabId);
@@ -1289,6 +1203,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
         false,
         tabId,
       );
+      if (!valid()) return;
       const selectionMoved = readGen(changeLoadGen.current, tabId) !== changeGeneration;
       if (!selectionMoved) bumpGen(changeLoadGen.current, tabId);
       patchSession(tabId, {
@@ -1305,7 +1220,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       reportError(error);
     }
-  }, [ensureBranches, invalidateHistory, patchSession, runActivity, stashPatchFor]);
+  }, [ensureBranches, invalidateHistory, operations, patchSession, runActivity, stashPatchFor]);
 
   const watchedKey = useMemo(
     () =>
@@ -1830,61 +1745,65 @@ export function GitProvider({ children }: { children: ReactNode }) {
       label: string,
       action: (repoPath: string, activityId: string) => Promise<WorkspaceSnapshot>,
       success?: string,
-      options?: { cancellable?: boolean; tabId?: string },
+      options?: { cancellable?: boolean; tabId?: string; onActivity?: (id: string) => void },
     ) => {
       const tabId = options?.tabId ?? activeTabIdRef.current;
       const tab = tabsRef.current.find((item) => item.id === tabId);
       const repoPath = tab?.kind === "repo" ? tab.path : null;
       if (!repoPath) return false;
-      const current = sessionsRef.current[tabId];
-      const changeSelection = current?.changeSelection ?? null;
-      const changeGeneration = readGen(changeLoadGen.current, tabId);
-      try {
-        const next = await runActivity(label, current?.snapshot?.repo.name, async (activityId) => {
-          const snapshot = keepRemoteBranches(current?.snapshot, await action(repoPath, activityId));
-          let nextSelection = reconcileChangeSelection(changeSelection, snapshot.status);
-          let changeDiff = nextSelection ? current?.changeDiff ?? null : null;
-          if (nextSelection) {
-            try {
-              changeDiff = await gitApi.getWorkdirDiff(
-                repoPath,
-                nextSelection.path,
-                nextSelection.staged,
-                prefsRef.current.diffIgnoreWhitespace,
-              );
-            } catch {
-              changeDiff = null;
-              nextSelection = null;
-            }
-          }
-          const headChanged = current?.snapshot?.repo.headId !== snapshot.repo.headId;
-          return { snapshot, changeDiff, changeSelection: nextSelection, headChanged };
-        }, options?.cancellable, tabId);
-        const selectionMoved = readGen(changeLoadGen.current, tabId) !== changeGeneration;
-        if (!selectionMoved) bumpGen(changeLoadGen.current, tabId);
-        patchSession(tabId, {
-          snapshot: next.snapshot,
-          ...(selectionMoved
-            ? {}
-            : { changeDiff: next.changeDiff, changeSelection: next.changeSelection }),
-          ...stashPatchFor(tabId, next.snapshot.stashes),
-          ...(next.headChanged
-            ? {
-                commitsLoaded: false,
-                commitsHasMore: true,
+      return operations.write(tabId, false, async (ownsSession) => {
+        const current = sessionsRef.current[tabId];
+        const changeSelection = current?.changeSelection ?? null;
+        const changeGeneration = readGen(changeLoadGen.current, tabId);
+        try {
+          const next = await runActivity(label, current?.snapshot?.repo.name, async (activityId) => {
+            options?.onActivity?.(activityId);
+            const snapshot = keepRemoteBranches(current?.snapshot, await action(repoPath, activityId));
+            let nextSelection = reconcileChangeSelection(changeSelection, snapshot.status);
+            let changeDiff = nextSelection ? current?.changeDiff ?? null : null;
+            if (nextSelection) {
+              try {
+                changeDiff = await gitApi.getWorkdirDiff(
+                  repoPath,
+                  nextSelection.path,
+                  nextSelection.staged,
+                  prefsRef.current.diffIgnoreWhitespace,
+                );
+              } catch {
+                changeDiff = null;
+                nextSelection = null;
               }
-            : {}),
-        });
-        if (next.headChanged) refetchStaleHistory(tabId);
-        if (success) toast.success(success);
-        return true;
-      } catch (error) {
-        if (isCancelled(error)) toast.info(t("operations.cancelled", { value: label }));
-        else reportError(error);
-        return false;
-      }
+            }
+            const headChanged = current?.snapshot?.repo.headId !== snapshot.repo.headId;
+            return { snapshot, changeDiff, changeSelection: nextSelection, headChanged };
+          }, options?.cancellable, tabId);
+          if (!ownsSession()) return true;
+          const selectionMoved = readGen(changeLoadGen.current, tabId) !== changeGeneration;
+          if (!selectionMoved) bumpGen(changeLoadGen.current, tabId);
+          patchSession(tabId, {
+            snapshot: next.snapshot,
+            ...(selectionMoved
+              ? {}
+              : { changeDiff: next.changeDiff, changeSelection: next.changeSelection }),
+            ...stashPatchFor(tabId, next.snapshot.stashes),
+            ...(next.headChanged
+              ? {
+                  commitsLoaded: false,
+                  commitsHasMore: true,
+                }
+              : {}),
+          });
+          if (next.headChanged) refetchStaleHistory(tabId);
+          if (success) toast.success(success);
+          return true;
+        } catch (error) {
+          if (isCancelled(error)) toast.info(t("operations.cancelled", { value: label }));
+          else reportError(error);
+          return false;
+        }
+      });
     },
-    [patchSession, refetchStaleHistory, runActivity, stashPatchFor],
+    [operations, patchSession, refetchStaleHistory, runActivity, stashPatchFor],
   );
 
   const stage = useCallback(
@@ -1904,17 +1823,19 @@ export function GitProvider({ children }: { children: ReactNode }) {
   const discard = useCallback(
     async (paths: string[]) => {
       const tabId = activeTabIdRef.current;
-      await runMutation(
+      const ownsSession = operations.owner(tabId);
+      const ok = await runMutation(
         t("operations.discarding_changes"),
         (repoPath) => gitApi.discardPaths(repoPath, paths),
         t("operations.discarded_changes"),
       );
+      if (!ok || !ownsSession()) return;
       const selected = sessionsRef.current[tabId]?.changeSelection;
       if (selected && paths.includes(selected.path)) {
         patchSession(tabId, { changeSelection: null, changeDiff: null });
       }
     },
-    [patchSession, runMutation],
+    [operations, patchSession, runMutation],
   );
 
   const applyLines = useCallback(
@@ -1933,6 +1854,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
 
   const commitDraftNonce = useRef(0);
   const undoLastCommit = useCallback(async (tabId = activeTabIdRef.current) => {
+    const ownsSession = operations.owner(tabId);
     let message = "";
     const ok = await runMutation(
       t("operations.undoing_the_last_commit"),
@@ -1944,7 +1866,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       t("operations.undid_the_last_commit_its_changes_are_staged"),
       { tabId },
     );
-    if (ok) {
+    if (ok && ownsSession()) {
       commitDraftNonce.current += 1;
       patchSession(tabId, {
         view: "changes",
@@ -1952,11 +1874,12 @@ export function GitProvider({ children }: { children: ReactNode }) {
       });
     }
     return ok;
-  }, [patchSession, runMutation]);
+  }, [operations, patchSession, runMutation]);
 
   const commit = useCallback(
     async (message: string, amend = false) => {
       const tabId = activeTabIdRef.current;
+      const ownsSession = operations.owner(tabId);
       const submission = commitEditorSubmission(sessionsRef.current[tabId], message);
       const session = sessionsRef.current[tabId];
       if (!session) return false;
@@ -1964,14 +1887,14 @@ export function GitProvider({ children }: { children: ReactNode }) {
         gitApi.commit(repoPath, message, amend),
         undefined, { tabId },
       );
-      if (ok) {
+      if (ok && ownsSession()) {
         clearSubmittedEditor(tabId, submission);
         if (amend) toast.success(t("operations.amended_commit"));
         else toast.success(t("operations.created_commit"), { action: repositoryUndoAction(tabId, undoLastCommit) });
       }
       return ok;
     },
-    [clearSubmittedEditor, runMutation, undoLastCommit],
+    [clearSubmittedEditor, operations, runMutation, undoLastCommit],
   );
 
   const updateSubmodules = useCallback(
@@ -1993,27 +1916,30 @@ export function GitProvider({ children }: { children: ReactNode }) {
   const checkoutDetached = useCallback(
     async (oid: string) => {
       const tabId = activeTabIdRef.current;
+      const ownsSession = operations.owner(tabId);
       const ok = await runMutation(
         t("operations.checking_out", { value: oid.slice(0, 7) }),
         (repoPath) => gitApi.checkoutDetached(repoPath, oid),
         t("operations.checked_out_without_a_branch", { value: oid.slice(0, 7) }),
       );
-      if (ok) {
+      if (ok && ownsSession()) {
         patchSession(tabId, { changeSelection: null, changeDiff: null });
       }
       return ok;
     },
-    [patchSession, runMutation],
+    [operations, patchSession, runMutation],
   );
 
   const checkoutBranch = useCallback(
     async (name: string) => {
       const tabId = activeTabIdRef.current;
-      await runMutation(
+      const ownsSession = operations.owner(tabId);
+      const ok = await runMutation(
         t("operations.checking_out", { value: name }),
         (repoPath) => gitApi.checkoutBranch(repoPath, name),
         t("operations.checked_out", { value: name }),
       );
+      if (!ok || !ownsSession()) return;
       patchSession(tabId, {
         changeSelection: null,
         changeDiff: null,
@@ -2022,7 +1948,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       });
       refetchStaleHistory(tabId);
     },
-    [patchSession, refetchStaleHistory, runMutation],
+    [operations, patchSession, refetchStaleHistory, runMutation],
   );
 
   const refreshAfterFetch = useCallback(
@@ -2086,36 +2012,38 @@ export function GitProvider({ children }: { children: ReactNode }) {
       if (fetchingRef.current.has(key)) return;
       fetchingRef.current.add(key);
       lastFetchRef.current[key] = Date.now();
-      try {
-        const fetched = await runActivity(
-          t("operations.fetching_in_the_background"),
-          sessionsRef.current[tabId]?.snapshot?.repo.name,
-          (activityId) =>
-            gitApi.fetchRemote(repoPath, activityId, undefined, true, {
-              prune: prefsRef.current.fetchPrune,
-              background: true,
-            }),
-          true,
-          tabId,
-        );
-        const current = sessionsRef.current[tabId];
-        if (!current) return;
-        const snapshot = keepRemoteBranches(current.snapshot, fetched);
-        const changed = !sameSnapshot(current.snapshot, snapshot);
-        if (changed) patchSession(tabId, { snapshot });
-        await ensureBranches(true, tabId);
-        if (changed || historyGraphChanged(current.snapshot, snapshot)) {
-          invalidateHistory(tabId, sessionsRef.current[tabId]?.view === "history");
+      return operations.write(tabId, undefined, async (ownsSession) => {
+        try {
+          const fetched = await runActivity(
+            t("operations.fetching_in_the_background"),
+            sessionsRef.current[tabId]?.snapshot?.repo.name,
+            (activityId) =>
+              gitApi.fetchRemote(repoPath, activityId, undefined, true, {
+                prune: prefsRef.current.fetchPrune,
+                background: true,
+              }),
+            true,
+            tabId,
+          );
+          if (!ownsSession()) return;
+          const current = sessionsRef.current[tabId];
+          if (!current) return;
+          const snapshot = keepRemoteBranches(current.snapshot, fetched);
+          const changed = !sameSnapshot(current.snapshot, snapshot);
+          if (changed) patchSession(tabId, { snapshot });
+          await ensureBranches(true, tabId);
+          if (changed || historyGraphChanged(current.snapshot, snapshot)) {
+            invalidateHistory(tabId, sessionsRef.current[tabId]?.view === "history");
+          }
+        } catch {
+          // Offline, signed out, or cancelled: the next manual fetch will say why.
         }
-      } catch {
-        // Offline, signed out, or cancelled: the next manual fetch will say why.
-      } finally {
-        // Slow or failed attempts still wait a full interval before retrying.
+      }).finally(() => {
         lastFetchRef.current[key] = Date.now();
         fetchingRef.current.delete(key);
-      }
+      });
     },
-    [ensureBranches, invalidateHistory, patchSession, runActivity],
+    [ensureBranches, invalidateHistory, operations, patchSession, runActivity],
   );
 
   useEffect(() => {
@@ -2206,6 +2134,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
 
   const commitAndPush = useCallback(async (message: string, amend = false) => {
     const tabId = activeTabIdRef.current;
+    const ownsSession = operations.owner(tabId);
     const snapshot = sessionsRef.current[tabId]?.snapshot;
     const branch = snapshot?.repo.currentBranch;
     const remote = primaryRemote(snapshot);
@@ -2217,9 +2146,9 @@ export function GitProvider({ children }: { children: ReactNode }) {
       toast.error(t("operations.add_a_remote_before_pushing"));
       return false;
     }
-    if (!await commit(message, amend)) return false;
+    if (!await commit(message, amend) || !ownsSession()) return false;
     return pushRemote({ remote, expectedBranch: branch }, tabId);
-  }, [commit, pushRemote]);
+  }, [commit, operations, pushRemote]);
 
   const dismissPublish = useCallback(() => setPublishPrompt(null), []);
 
@@ -2360,49 +2289,54 @@ export function GitProvider({ children }: { children: ReactNode }) {
       const tab = tabsRef.current.find(item => item.id === tabId);
       const repoPath = tab?.kind === "repo" ? tab.path : null;
       if (!repoPath || (owner && !sameRepoPath(repoPath, owner.repoPath))) return false;
-      const current = sessionsRef.current[tabId];
-      const wasRemote = current?.snapshot?.branches.remote.some((branch) => branch.name === name) ?? false;
-      try {
-        const snapshot = keepRemoteBranches(
-          current?.snapshot,
-          await runActivity(
-            t("operations.deleting", { value: name }),
-            current?.snapshot?.repo.name,
-            (activityId) => gitApi.deleteBranch(repoPath, name, activityId, force),
-            wasRemote,
-            tabId,
-          ),
-        );
-        patchSession(tabId, { snapshot });
-        const next = sessionsRef.current[tabId];
-        if (next?.historyRevs.includes(name)) {
-          setHistoryRevs(next.historyRevs.filter((rev) => rev !== name), tabId);
-        } else {
-          invalidateHistory(tabId, next?.view === "history");
+      return operations.write<boolean | "unmerged">(tabId, false, async (ownsSession) => {
+        const current = sessionsRef.current[tabId];
+        const wasRemote = current?.snapshot?.branches.remote.some((branch) => branch.name === name) ?? false;
+        try {
+          const snapshot = keepRemoteBranches(
+            current?.snapshot,
+            await runActivity(
+              t("operations.deleting", { value: name }),
+              current?.snapshot?.repo.name,
+              (activityId) => gitApi.deleteBranch(repoPath, name, activityId, force),
+              wasRemote,
+              tabId,
+            ),
+          );
+          if (!ownsSession()) return true;
+          patchSession(tabId, { snapshot });
+          const next = sessionsRef.current[tabId];
+          if (next?.historyRevs.includes(name)) {
+            setHistoryRevs(next.historyRevs.filter((rev) => rev !== name), tabId);
+          } else {
+            invalidateHistory(tabId, next?.view === "history");
+          }
+          if (wasRemote) await ensureBranches(true, tabId);
+          toast.success(t("operations.deleted", { value: name }));
+          return true;
+        } catch (error) {
+          const message = errorMessage(error);
+          if (!force && /not fully merged/i.test(message)) return "unmerged";
+          if (isCancelled(error)) toast.info(t("operations.cancelled_deleting", { value: name }));
+          else reportError(error);
+          return false;
         }
-        if (wasRemote) await ensureBranches(true, tabId);
-        toast.success(t("operations.deleted", { value: name }));
-        return true;
-      } catch (error) {
-        const message = errorMessage(error);
-        if (!force && /not fully merged/i.test(message)) return "unmerged";
-        if (isCancelled(error)) toast.info(t("operations.cancelled_deleting", { value: name }));
-        else reportError(error);
-        return false;
-      }
+      });
     },
-    [ensureBranches, invalidateHistory, patchSession, runActivity, setHistoryRevs],
+    [ensureBranches, invalidateHistory, operations, patchSession, runActivity, setHistoryRevs],
   );
 
   const refreshAfterReplay = useCallback(async (tabId = activeTabIdRef.current) => {
     const tab = tabsRef.current.find((item) => item.id === tabId);
     const repoPath = tab?.kind === "repo" ? tab.path : null;
     if (!repoPath) return;
+    const valid = operations.read(tabId);
     try {
       const snapshot = keepRemoteBranches(
         sessionsRef.current[tabId]?.snapshot,
         await gitApi.refreshWorkspace(repoPath),
       );
+      if (!valid()) return;
       const dirty = snapshot.status.staged.length > 0 || snapshot.status.unstaged.length > 0;
       const headChanged = sessionsRef.current[tabId]?.snapshot?.repo.headId !== snapshot.repo.headId;
       patchSession(tabId, {
@@ -2419,7 +2353,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
     } catch {
       /* the original error is already shown */
     }
-  }, [patchSession, refetchStaleHistory]);
+  }, [operations, patchSession, refetchStaleHistory]);
   useLayoutEffect(() => {
     refreshAfterReplayRef.current = refreshAfterReplay;
   }, [refreshAfterReplay]);
@@ -2579,26 +2513,26 @@ export function GitProvider({ children }: { children: ReactNode }) {
     );
   }, [runMutation]);
 
-  const changeSparseCheckout = useCallback(async (expectedPath: string, request: SparseCheckoutRequest, fingerprint: string, allowIgnoredRemoval: boolean): Promise<SparseCheckoutUpdate | null> => {
+  const changeSparseCheckout = useCallback(async (expectedPath: string, request: SparseCheckoutRequest, fingerprint: string, allowIgnoredRemoval: boolean, onActivity?: (id: string) => void): Promise<SparseCheckoutUpdate | null> => {
     const tabId = activeTabIdRef.current;
     const received: {value: SparseCheckoutOutcome | null} = {value:null};
     const ok = await runMutation(t("git.sparse.activity"), async (repoPath, activityId) => {
       if (!sameRepoPath(expectedPath, repoPath)) throw new Error(t("git.sparse.ownerChanged"));
       received.value = await gitApi.applySparseCheckout(repoPath, request, fingerprint, allowIgnoredRemoval, activityId);
       return received.value.snapshot;
-    }, undefined, {tabId, cancellable:true});
+    }, undefined, { tabId, cancellable: true, onActivity });
     if (!ok) await refreshAfterReplay(tabId);
     return ok && received.value ? {state:received.value.state, report:received.value.report} : null;
   }, [refreshAfterReplay, runMutation]);
 
-  const changeLfs = useCallback(async (expectedPath: string, action: LfsAction, fingerprint: string): Promise<LfsUpdate | null> => {
+  const changeLfs = useCallback(async (expectedPath: string, action: LfsAction, fingerprint: string, onActivity?: (id: string) => void): Promise<LfsUpdate | null> => {
     const tabId = activeTabIdRef.current;
     const received: {value:LfsOutcome | null} = {value:null};
     const ok = await runMutation(t("git.lfs.activity"), async (repoPath, activityId) => {
       if (!sameRepoPath(expectedPath, repoPath)) throw new Error(t("git.lfs.ownerChanged"));
       received.value = await gitApi.lfsAction(repoPath, action, fingerprint, activityId);
       return received.value.snapshot;
-    }, undefined, {tabId, cancellable:true});
+    }, undefined, { tabId, cancellable: action.kind !== "untrack", onActivity });
     if (!ok) await refreshAfterReplay(tabId);
     return ok && received.value ? {state:received.value.state, report:received.value.report, locks:received.value.locks} : null;
   }, [refreshAfterReplay, runMutation]);
@@ -2698,19 +2632,21 @@ export function GitProvider({ children }: { children: ReactNode }) {
   const addRemote = useCallback(
     async (name: string, url: string) => {
       const tabId = activeTabIdRef.current;
+      const ownsSession = operations.owner(tabId);
       const added = await runMutation(
         t("operations.adding", { value: name }),
         (repoPath) => gitApi.addRemote(repoPath, name, url),
         t("operations.added", { value: name }),
         { tabId },
       );
-      if (!added) return false;
+      if (!added || !ownsSession()) return false;
       await runMutation(
         t("operations.fetching_2", { value: name }),
         (repoPath, activityId) => gitApi.fetchRemote(repoPath, activityId, name),
         undefined,
         { cancellable: true, tabId },
       );
+      if (!ownsSession()) return true;
       patchSession(tabId, {
         commitsLoaded: false,
         commitsHasMore: true,
@@ -2719,7 +2655,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       await ensureBranches(true, tabId);
       return true;
     },
-    [ensureBranches, patchSession, refetchStaleHistory, runMutation],
+    [ensureBranches, operations, patchSession, refetchStaleHistory, runMutation],
   );
 
   const setRemoteUrl = useCallback(
@@ -3110,6 +3046,8 @@ export function GitProvider({ children }: { children: ReactNode }) {
       openDifftool,
       runMergetool,
       ignorePaths,
+      runActivity,
+      cancelActivity,
       beginActivity,
       endActivity,
       setActiveTab,
@@ -3214,6 +3152,8 @@ export function GitProvider({ children }: { children: ReactNode }) {
       openDifftool,
       runMergetool,
       ignorePaths,
+      runActivity,
+      cancelActivity,
       beginActivity,
       endActivity,
       setActiveTab,
@@ -3317,7 +3257,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
 
   return (
     <GitContext.Provider value={context}>
-      <ActivityContext.Provider value={activities}>{children}</ActivityContext.Provider>
+      {children}
     </GitContext.Provider>
   );
 }
@@ -3348,11 +3288,6 @@ export function useGitPick<K extends keyof GitContextValue>(keys: readonly K[]):
   return useSyncExternalStoreWithSelector(store.subscribe, store.get, store.get, select, shallowEqual);
 }
 
-function shallowEqual<T extends object>(left: T, right: T) {
-  const keys = Object.keys(left) as (keyof T)[];
-  return keys.length === Object.keys(right).length && keys.every((key) => Object.is(left[key], right[key]));
-}
-
 /**
  * Subscribes to one value derived from state. The selector must return a
  * primitive or an existing reference, since results are compared with Object.is.
@@ -3366,9 +3301,6 @@ export function useGitSelect<T>(selector: (state: GitState) => T): T {
   return useSyncExternalStoreWithSelector(store.subscribe, store.get, store.get, selector);
 }
 
-export function useActivities() {
-  return useContext(ActivityContext);
-}
 
 function patchFileName(commit: CommitSummary) {
   const slug = (commit.summary || commit.shortId)

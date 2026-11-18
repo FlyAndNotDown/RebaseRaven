@@ -1,7 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { ImageComparison } from "@/components/image-diff";
 import { createImageLoader, imageLoadKey } from "@/lib/image-load";
-import { errorMessage } from "@/lib/git";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import { p4Api } from "@/lib/p4";
 import { useP4 } from "@/state/p4-context";
@@ -13,7 +12,7 @@ export function P4ImageDiff({ source, refreshIdentity, captions, single = false 
   const sourceKey = JSON.stringify(source);
   const key = imageLoadKey(scope, source);
   const [attempt, setAttempt] = useState(0);
-  const [loader] = useState(() => createImageLoader<P4FileSource>((scope, source) => p4Api.imagePair(JSON.parse(scope) as P4Connection, source), (error) => p4DisplayError(errorMessage(error))));
+  const [loader] = useState(() => createImageLoader<P4FileSource>((scope, source) => p4Api.imagePair(JSON.parse(scope) as P4Connection, source), (error) => p4DisplayError(error)));
   const loaded = useSyncExternalStore(loader.subscribe, loader.getSnapshot, loader.getSnapshot);
   useEffect(() => {
     if (scope === "null") return;

@@ -1,4 +1,5 @@
 use super::*;
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone)]
 pub(super) struct ParsedDiff {
@@ -31,11 +32,17 @@ pub struct WorkdirDiff {
     pub fingerprint: Option<String>,
 }
 
+fn fingerprint_hasher(path: &str, staged: bool) -> Sha256 {
+    let mut digest = Sha256::new();
+    digest.update(path.as_bytes());
+    digest.update([0, u8::from(staged)]);
+    digest
+}
+
 pub(super) fn diff_fingerprint(path: &str, staged: bool, bytes: &[u8]) -> String {
-    use std::hash::{DefaultHasher, Hash, Hasher};
-    let mut hash = DefaultHasher::new();
-    (path, staged, bytes).hash(&mut hash);
-    format!("{:016x}", hash.finish())
+    let mut digest = fingerprint_hasher(path, staged);
+    digest.update(bytes);
+    format!("{:x}", digest.finalize())
 }
 
 pub fn workdir_diff(
@@ -45,19 +52,21 @@ pub fn workdir_diff(
     ignore_whitespace: bool,
 ) -> AppResult<WorkdirDiff> {
     let rel = to_git_path(path);
-    let bytes = git_diff_bytes(repo, &[], staged, ignore_whitespace, &rel)?;
-    let mut diff = file_diff_from_parsed(&parse_unified_diff(&bytes, &rel), &rel);
-    if !staged && !diff.binary && diff.lines.is_empty() && is_untracked(repo, &rel) {
+    let mut preview = tracked_diff_preview(repo, &[], staged, ignore_whitespace, &rel)?;
+    if !staged
+        && !preview.diff.truncated
+        && !preview.diff.binary
+        && preview.diff.lines.is_empty()
+        && is_untracked(repo, &rel)
+    {
         let (bytes, truncated) = untracked_diff_bytes(repo, &rel, ignore_whitespace)?;
-        diff = file_diff_from_parsed(&parse_unified_diff(&bytes, &rel), &rel);
+        let mut diff = file_diff_from_parsed(&parse_unified_diff(&bytes, &rel), &rel);
         diff.truncated |= truncated;
         let fingerprint =
             (!ignore_whitespace && !diff.binary).then(|| diff_fingerprint(&rel, false, &bytes));
-        return Ok(WorkdirDiff { diff, fingerprint });
+        preview = WorkdirDiff { diff, fingerprint };
     }
-    let fingerprint =
-        (!ignore_whitespace && !diff.binary).then(|| diff_fingerprint(&rel, staged, &bytes));
-    Ok(WorkdirDiff { diff, fingerprint })
+    Ok(preview)
 }
 
 /// Git normalizes the new file exactly as it will be stored in the index. The
@@ -223,11 +232,83 @@ pub(super) fn diff_between(
     ignore_whitespace: bool,
 ) -> AppResult<FileDiff> {
     let rel = to_git_path(path);
-    let stdout = git_diff_bytes(repo, &[base, head], false, ignore_whitespace, &rel)?;
-    Ok(file_diff_from_parsed(
-        &parse_unified_diff(&stdout, &rel),
-        &rel,
-    ))
+    Ok(tracked_diff_preview(repo, &[base, head], false, ignore_whitespace, &rel)?.diff)
+}
+
+fn tracked_diff_preview(
+    repo: &Repository,
+    revisions: &[&str],
+    staged: bool,
+    ignore_whitespace: bool,
+    path: &str,
+) -> AppResult<WorkdirDiff> {
+    let args = tracked_diff_args(revisions, staged, ignore_whitespace, path);
+    let mut child = spawn_git_stdout(workdir(repo)?, &args)?;
+    let reader = child
+        .stdout
+        .take()
+        .ok_or_else(|| AppError::msg("Could not read Git diff"))?;
+    let result = read_diff_preview(
+        reader,
+        path,
+        staged,
+        revisions.is_empty() && !ignore_whitespace,
+    )?;
+    child.wait_checked("Could not read Git diff")?;
+    Ok(result)
+}
+
+/// Retain complete preview lines only. Feed the entire patch to the review
+/// fingerprint, including bytes beyond the visible prefix.
+fn read_diff_preview(
+    mut reader: impl Read,
+    path: &str,
+    staged: bool,
+    fingerprint: bool,
+) -> AppResult<WorkdirDiff> {
+    let mut digest = fingerprint.then(|| fingerprint_hasher(path, staged));
+    let mut preview = Vec::new();
+    let mut buffer = [0u8; 32 * 1024];
+    let mut lines = 0;
+    let mut truncated = false;
+    loop {
+        let count = reader.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        let chunk = &buffer[..count];
+        if let Some(hash) = digest.as_mut() {
+            hash.update(chunk);
+        }
+        if truncated {
+            continue;
+        }
+        // Allow space for patch headers and missing-newline markers as well as displayed rows.
+        for part in chunk.split_inclusive(|byte| *byte == b'\n') {
+            if lines >= 2 * MAX_DIFF_LINES + 16
+                || preview.len() + part.len() > MAX_TEXT_BYTES as usize
+            {
+                truncated = true;
+                if !preview.ends_with(b"\n") {
+                    preview.truncate(
+                        preview
+                            .iter()
+                            .rposition(|b| *b == b'\n')
+                            .map_or(0, |end| end + 1),
+                    );
+                }
+                break;
+            }
+            preview.extend_from_slice(part);
+            lines += usize::from(part.ends_with(b"\n"));
+        }
+    }
+    let mut diff = file_diff_from_parsed(&parse_unified_diff(&preview, path), path);
+    diff.truncated |= truncated;
+    let fingerprint = digest
+        .filter(|_| !diff.binary)
+        .map(|digest| format!("{:x}", digest.finalize()));
+    Ok(WorkdirDiff { diff, fingerprint })
 }
 
 pub(super) fn git_diff_bytes(
@@ -237,6 +318,18 @@ pub(super) fn git_diff_bytes(
     ignore_whitespace: bool,
     path: &str,
 ) -> AppResult<Vec<u8>> {
+    run_git_stdout(
+        repo.workdir(),
+        &tracked_diff_args(revisions, staged, ignore_whitespace, path),
+    )
+}
+
+fn tracked_diff_args<'a>(
+    revisions: &[&'a str],
+    staged: bool,
+    ignore_whitespace: bool,
+    path: &'a str,
+) -> Vec<&'a str> {
     let mut args = diff_args(ignore_whitespace);
     if staged {
         args.push("--cached");
@@ -244,7 +337,7 @@ pub(super) fn git_diff_bytes(
     args.extend_from_slice(revisions);
     args.push("--");
     args.push(path);
-    run_git_stdout(repo.workdir(), &args)
+    args
 }
 
 fn diff_args(ignore_whitespace: bool) -> Vec<&'static str> {
@@ -533,6 +626,27 @@ fn unquote_git_path(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::parse_unified_diff;
+
+    #[test]
+    fn preview_hashes_the_full_patch_with_bounded_display_lines() {
+        let mut patch = b"@@ -0,0 +1,400000 @@\n".to_vec();
+        for _ in 0..400_000 {
+            patch.extend_from_slice(b"+example setting is enabled\n");
+        }
+        let preview =
+            super::read_diff_preview(patch.as_slice(), "example.txt", false, true).unwrap();
+        assert_eq!(preview.diff.lines.len(), super::MAX_DIFF_LINES);
+        assert!(preview.diff.truncated);
+        assert_eq!(
+            preview.fingerprint.as_deref(),
+            Some(super::diff_fingerprint("example.txt", false, &patch).as_str())
+        );
+        patch.push(b'!');
+        assert_ne!(
+            preview.fingerprint.unwrap(),
+            super::diff_fingerprint("example.txt", false, &patch)
+        );
+    }
 
     #[test]
     fn unified_diff_keeps_line_numbers_and_a_missing_newline() {

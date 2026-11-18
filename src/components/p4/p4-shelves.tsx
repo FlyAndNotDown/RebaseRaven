@@ -16,7 +16,6 @@ import { HoverTip } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
-import { errorMessage } from "@/lib/git";
 import { changeSummary, p4ActionStatus } from "@/lib/p4";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import { cn } from "@/lib/utils";
@@ -69,7 +68,7 @@ function ShelfBrowser() {
         filter.current = { user: owner, client: workspace };
         setPage(old => before && old ? { ...next, changes: [...old.changes, ...next.changes.filter(item => !old.changes.some(previous => item.id === previous.id))] } : next);
       }
-    } catch (caught) { if (mounted.current && token === generation.current) setError(p4DisplayError(errorMessage(caught))); }
+    } catch (caught) { if (mounted.current && token === generation.current) setError(p4DisplayError(caught)); }
     finally { if (mounted.current && token === generation.current) setLoading(false); }
   }, [listShelves]);
 
@@ -89,7 +88,7 @@ function ShelfBrowser() {
       if (!mounted.current || token !== detailGeneration.current) return;
       setDetail(next); setFile(next.files[0]?.depotPath ?? null);
       if (direct) setPage(old => ({ changes: [next, ...(old?.changes.filter(entry => entry.id !== next.id) ?? [])], hasMore: old?.hasMore ?? false, scannedThrough: old?.scannedThrough ?? null }));
-    } catch (caught) { if (mounted.current && token === detailGeneration.current) setError(p4DisplayError(errorMessage(caught))); }
+    } catch (caught) { if (mounted.current && token === detailGeneration.current) setError(p4DisplayError(caught)); }
     finally { if (mounted.current && token === detailGeneration.current) setDetailLoading(false); }
   }
 
@@ -97,7 +96,7 @@ function ShelfBrowser() {
     if (!detailId || !file) return;
     let live = true;
     void shelfDiff(file, detailId).then(value => { if (live) setDiffResult({ key: diffKey, value }); })
-      .catch((caught: unknown) => { if (live) { setError(p4DisplayError(errorMessage(caught))); setDiffResult({ key: diffKey, value: null }); } });
+      .catch((caught: unknown) => { if (live) { setError(p4DisplayError(caught)); setDiffResult({ key: diffKey, value: null }); } });
     return () => { live = false; };
   }, [file, detailId, diffKey, shelfDiff]);
 
@@ -185,7 +184,7 @@ export function RestoreShelfDialog({ detail, onClose }: { detail: P4Changelist; 
     if (!picked.size || blocked || running.current) return;
     running.current = true; setBusy("preview"); setError(null); setPreview(null);
     try { const value = await previewUnshelve(request); if (mounted.current) setPreview({ key, value }); }
-    catch (caught) { if (mounted.current) setError(p4DisplayError(errorMessage(caught))); }
+    catch (caught) { if (mounted.current) setError(p4DisplayError(caught)); }
     finally { running.current = false; if (mounted.current) setBusy(null); }
   }
 
@@ -193,7 +192,7 @@ export function RestoreShelfDialog({ detail, onClose }: { detail: P4Changelist; 
     if (!preview || preview.key !== key || blocked || running.current) return;
     running.current = true; setBusy("restore"); setError(null);
     try { await restoreShelf(request, preview.value); if (mounted.current) { onClose(); setView("pending"); } }
-    catch (caught) { if (mounted.current) { setError(p4DisplayError(errorMessage(caught))); setPreview(null); } }
+    catch (caught) { if (mounted.current) { setError(p4DisplayError(caught)); setPreview(null); } }
     finally { running.current = false; if (mounted.current) setBusy(null); }
   }
 

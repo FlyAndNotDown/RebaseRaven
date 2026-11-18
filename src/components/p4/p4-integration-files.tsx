@@ -2,9 +2,9 @@ import { LoaderCircleIcon } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { relativeToRoot } from "@/lib/p4";
 import { useWindowedRows } from "@/lib/use-windowed-rows";
-import type { P4ReconcilePreview } from "@/types/p4";
+import type { P4ChangePreview } from "@/types/p4";
 
-export function P4IntegrationFiles({files,root,previewed,loading}: {files:P4ReconcilePreview["files"];root:string;previewed:boolean;loading:boolean}) {
+export function P4IntegrationFiles({files,root,previewed,loading}: {files:P4ChangePreview["files"];root:string;previewed:boolean;loading:boolean}) {
   const {t} = useTranslation();
   const {viewportRef,start,end,before,after} = useWindowedRows(files.length,32);
   return <div className="flex min-h-24 flex-col overflow-hidden rounded-md border">

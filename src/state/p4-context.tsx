@@ -1,3 +1,8 @@
+import { errorCode } from "@/lib/native-error";
+import { useActivityActions } from "./activity-context";
+import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
+import { createStore, shallowEqual, type Store } from "./store";
+import { P4DialogContext, type P4Dialogs } from "./p4-dialogs";
 import { t, useTranslation } from "@/i18n";
 import {
   createContext,
@@ -8,20 +13,14 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
-import { P4ConnectionDialog } from "@/components/p4/p4-connection-dialog";
-import { P4StreamDialog } from "@/components/p4/p4-stream-dialog";
-import { P4ReconcileDialog } from "@/components/p4/p4-reconcile-dialog";
-import { P4CleanDialog } from "@/components/p4/p4-clean-dialog";
-import { P4LoginDialog } from "@/components/p4/p4-login-dialog";
-import { P4SwitchDialog, P4SwitchUpdateDialog } from "@/components/p4/p4-switch-dialog";
-import { P4IntegrationDialog } from "@/components/p4/p4-integration-dialog";
+import { abortableScan } from "@/lib/p4-workspace-scan";
 import type { P4IntegrationInitial, P4IntegrationRequest, P4IntegrationPreview } from "@/types/p4-integration";
-import { P4WorkspaceDialog } from "@/components/p4/p4-workspace-dialog";
-import { errorMessage } from "@/lib/git";
-import { depotBase, P4_LOGIN, P4_MISSING, p4Api } from "@/lib/p4";
+import { errorMessage, isCancelled } from "@/lib/git";
+import { depotBase, P4_LOGIN, p4Api } from "@/lib/p4";
 import { notifyP4Error, p4SyncNotice } from "@/lib/p4-output-notice";
 import { sameRepoPath } from "@/lib/format";
 import { useGitPick } from "@/state/git-context";
@@ -32,6 +31,7 @@ import { acquireP4Mutation, invalidateP4Session } from "@/state/p4-mutations";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import type { FileDiff } from "@/types/git";
 import type {
+  P4FileApproval,
   P4CleanRequest,
   P4CleanPreview,
   P4UnshelveRequest,
@@ -149,14 +149,14 @@ interface P4ContextValue {
   resolveAccept: (path: string, mode: "yours" | "theirs" | "merge") => Promise<boolean>;
   revertUnchanged: (scope?: {changeId?:string; paths?:string[]}) => Promise<void>;
   sync: (paths?: string[]) => Promise<void>;
-  getRevision: (request: P4GetRevision) => Promise<string | null>;
+  getRevision: (request: P4GetRevision, onActivity?: (id: string) => void) => Promise<string | null>;
   filesEpoch: number;
   reconcile: (scope?: string) => Promise<void>;
   openClean: (scope?: string) => void;
-  previewClean: (request: P4CleanRequest) => Promise<P4CleanPreview>;
-  applyClean: (request: P4CleanRequest, paths: string[], fingerprint: string) => Promise<void>;
-  previewReconcile: (scope?: string) => Promise<P4ReconcilePreview>;
-  applyReconcile: (paths: string[], changeId: string, fingerprint: string, scope?: string) => Promise<void>;
+  previewClean: (request: P4CleanRequest, signal: AbortSignal, onFolder: (path: string) => void) => Promise<P4CleanPreview>;
+  applyClean: (request: P4CleanRequest, files: P4FileApproval[], fingerprint: string) => Promise<void>;
+  previewReconcile: (scopes: string[], signal: AbortSignal, onFolder: (path: string) => void) => Promise<P4ReconcilePreview>;
+  applyReconcile: (files: P4FileApproval[], changeId: string, fingerprint: string, scopes: string[]) => Promise<void>;
   fileAction: (action: "edit" | "add" | "delete", paths: string[]) => Promise<void>;
   loadSubmitted: (more?: boolean) => Promise<void>;
   submittedUser: string;
@@ -193,16 +193,15 @@ interface P4ContextValue {
   saveWorkspace: (edit: P4WorkspaceEdit, fingerprint: string) => Promise<void>;
 }
 
-const P4Context = createContext<P4ContextValue | null>(null);
-const P4ViewContext = createContext<P4View | null>(null);
+const P4Context = createContext<Store<P4ContextValue> | null>(null);
+
 
 export function P4Provider({ children }: { children: ReactNode }) {
   const language = useTranslation().i18n.resolvedLanguage;
-  const { activeTab, tabs, beginActivity, endActivity, setTabMeta, retargetRepoTab, refreshRecents, prefs } = useGitPick([
+  const {runActivity, beginActivity, endActivity} = useActivityActions();
+  const { activeTab, tabs, setTabMeta, retargetRepoTab, refreshRecents, prefs } = useGitPick([
     "activeTab",
     "tabs",
-    "beginActivity",
-    "endActivity",
     "setTabMeta",
     "retargetRepoTab",
     "refreshRecents",
@@ -210,7 +209,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
   ]);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{message: string; code?: string} | null>(null);
   const [submittedBusy, setSubmittedBusy] = useState<ReadonlySet<string>>(() => new Set());
   const [mutationLabels, setMutationLabels] = useState<ReadonlyMap<string, { label: string; kind: "submit" | null }>>(() => new Map());
   const mutationOwners = useRef(new Set<string>());
@@ -239,8 +238,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
   const [streamInitial, setStreamInitial] = useState<Pick<P4StreamRequest,"mode"|"source"> | null>(null);
   const setStreamOpen = useCallback((open: boolean) => {setStreamInitial(null);updateStreamOpen(open);},[]);
   const openStreamIntegration = useCallback((mode:P4StreamRequest["mode"],source:string) => {setStreamInitial({mode,source});updateStreamOpen(true);},[]);
-  const [reconcileTarget, setReconcileTarget] = useState<{ connection: P4Connection; scope?: string } | null>(null);
-  const [cleanTarget, setCleanTarget] = useState<{connection: P4Connection; scope: string} | null>(null);
+  const [scanTarget, setScanTarget] = useState<{ operation: "clean" | "reconcile"; connection: P4Connection; scope?: string; tabId: string } | null>(null);
   const [switchTarget, setSwitchTarget] = useState<string | null>(null);
   const [switchOutcome, setSwitchOutcome] = useState<{ tabId: string; connection: P4Connection } | null>(null);
   const switchStream = useCallback((target = "") => setSwitchTarget(target), []);
@@ -258,7 +256,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
   const activeTabRef = useRef(activeTab);
   const reconnectTabs = useRef(new Set<string>());
   const activePerforceId = activeTab.kind === "repo" && activeTab.vcs === "perforce" ? activeTab.id : "";
-  const visibleSession = usableP4Session(session, activePerforceId, loading, error);
+  const visibleSession = usableP4Session(session, activePerforceId, loading, error?.message ?? null);
   const submittedLoading = submittedBusy.has(`${activePerforceId}:list`) || submittedBusy.has(`${activePerforceId}:detail`);
   const [attempt, setAttempt] = useState(0);
   const [loginTarget, setLoginTarget] = useState({ client: "", port: "" });
@@ -283,7 +281,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
   useLayoutEffect(() => {
     activeTabRef.current = activeTab;
     const candidate = session?.tabId === activePerforceId ? session : cache.current.get(activePerforceId) ?? null;
-    sessionRef.current = usableP4Session(candidate, activePerforceId, loading, error);
+    sessionRef.current = usableP4Session(candidate, activePerforceId, loading, error?.message ?? null);
   }, [activePerforceId, activeTab, error, loading, session]);
 
   const askPassword = useCallback((connection: P4Connection) => {
@@ -321,7 +319,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
     if (caught instanceof LoginCancelled) return;
     const message = errorMessage(caught);
     if (!message) return;
-    if (message === P4_MISSING) {
+    if (errorCode(caught) === "p4Missing") {
       toast.error(t("desktop.dependencies.p4Missing"), {
         id: "p4-missing",
         action: {
@@ -454,7 +452,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
           const password = await askPassword(opened.connection);
           if (generation.current !== current) return;
           if (!password) {
-            setError(P4_LOGIN);
+            setError({message: P4_LOGIN, code: "p4LoginRequired"});
             setLoading(false);
             return;
           }
@@ -508,7 +506,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
         setError(null);
       } catch (caught) {
         if (generation.current !== current) return;
-        setError(errorMessage(caught));
+        setError({message: errorMessage(caught), code: errorCode(caught)});
         report(caught);
       } finally {
         if (generation.current === current) setLoading(false);
@@ -1182,41 +1180,59 @@ export function P4Provider({ children }: { children: ReactNode }) {
     }
   }, [lockMutation, beginActivity, endActivity, guard, reloadPending, report]);
 
+  const finishCancelledSync = useCallback((current: Session, label: string, refresh: boolean) => {
+    toast.info(t("operations.cancelled", { value: label }));
+    if (!refresh) return;
+    // A stalled server can also stall the refresh. Release the mutation so
+    // the user can retry while this read checks for partial updates.
+    bumpFiles();
+    void reloadPending(current, undefined, true).catch(() => {});
+  }, [bumpFiles, reloadPending]);
+
   const sync = useCallback(
     async (paths: string[] = []) => {
       const current = sessionRef.current;
       if (!current) return;
-      const release = lockMutation(current, t("p4.gettingLatest"));
+      const label = t("p4.gettingLatest");
+      const release = lockMutation(current, label);
       if (!release) return;
-      const id = beginActivity(t("p4.gettingLatest"), current.connection.client);
       try {
-        const output = await guard(current.connection, () => p4Api.sync(current.connection, paths, id, prefs.p4AutoResolveAfterSync));
+        const output = await guard(current.connection, () =>
+          runActivity(label, current.connection.client, id =>
+            p4Api.sync(current.connection, paths, id, prefs.p4AutoResolveAfterSync), true, current.tabId),
+        );
         const notice = p4SyncNotice(output.output, output.autoResolve);
         toast[notice.kind](notice.message);
         await reloadPending(current);
         bumpFiles();
       } catch (caught) {
+        if (isCancelled(caught)) {
+          finishCancelledSync(current, t("p4.getLatest"), true);
+          return;
+        }
         await reloadPending(current).catch(() => {});
         bumpFiles();
         report(caught);
       } finally {
-        endActivity(id);
         release();
       }
     },
-    [lockMutation, beginActivity, bumpFiles, endActivity, guard, reloadPending, report, prefs.p4AutoResolveAfterSync],
+    [lockMutation, runActivity, bumpFiles, finishCancelledSync, guard, reloadPending, report, prefs.p4AutoResolveAfterSync],
   );
 
   const getRevision = useCallback(
-    async (request: P4GetRevision) => {
+    async (request: P4GetRevision, onActivity?: (id: string) => void) => {
       const current = sessionRef.current;
       if (!current) return null;
-      const release = lockMutation(current, request.preview ? t("p4.previewingRevision") : t("p4.gettingRevision"));
+      const label = request.preview ? t("p4.previewingRevision") : t("p4.gettingRevision");
+      const release = lockMutation(current, label);
       if (!release) return null;
-      const id = beginActivity(request.preview ? t("p4.previewingRevision") : t("p4.gettingRevision"));
       try {
         const output = await guard(current.connection, () =>
-          p4Api.getRevision(current.connection, request, id),
+          runActivity(label, current.connection.client, id => {
+            onActivity?.(id);
+            return p4Api.getRevision(current.connection, request, id);
+          }, true, current.tabId),
         );
         if (!request.preview) {
           const notice = p4SyncNotice(output);
@@ -1224,8 +1240,12 @@ export function P4Provider({ children }: { children: ReactNode }) {
           await reloadPending(current);
           bumpFiles();
         }
-        return output;
+        return typeof output === "string" ? output : output.failed ? null : "";
       } catch (caught) {
+        if (isCancelled(caught)) {
+          finishCancelledSync(current, t(request.preview ? "p4.preview" : "p4.getRevision"), !request.preview);
+          return null;
+        }
         if (!request.preview) {
           await reloadPending(current).catch(() => {});
           bumpFiles();
@@ -1233,55 +1253,57 @@ export function P4Provider({ children }: { children: ReactNode }) {
         report(caught);
         throw caught;
       } finally {
-        endActivity(id);
         release();
       }
     },
-    [lockMutation, beginActivity, bumpFiles, endActivity, guard, reloadPending, report],
+    [lockMutation, runActivity, bumpFiles, finishCancelledSync, guard, reloadPending, report],
   );
 
   const reconcile = useCallback(async (scope?: string) => {
     const current = sessionRef.current;
-    if (current) setReconcileTarget({ connection: current.connection, scope });
+    if (current) setScanTarget({ operation: "reconcile", connection: current.connection, scope, tabId: current.tabId });
   }, []);
 
   const openClean = useCallback((scope?: string) => {
     const current=sessionRef.current;
-    if (current) setCleanTarget({connection:current.connection,scope:scope || current.connection.root});
+    if (current) setScanTarget({ operation: "clean", connection: current.connection, scope, tabId: current.tabId });
   },[]);
-  const previewClean = useCallback(async (request: P4CleanRequest) => {
-    const current=sessionRef.current;
+  const scanWorkspace = useCallback(async <T,>(signal: AbortSignal, read: (connection: P4Connection, id: string) => Promise<T>) => {
+    const current = sessionRef.current;
     if (!current) throw new Error(t("p4-operations.connectionRequired"));
-    return guard(current.connection,()=>p4Api.previewClean(current.connection,request));
-  },[guard]);
-  const applyClean = useCallback(async (request: P4CleanRequest, paths: string[], fingerprint: string) => {
+    return guard(current.connection, () => {
+      if (signal.aborted) throw new Error("Cancelled");
+      return runActivity(t("p4.scan.scanning"), current.connection.client,
+        id => abortableScan(signal, id, () => read(current.connection, id)), true, current.tabId);
+    });
+  }, [guard, runActivity]);
+  const previewClean = useCallback((request: P4CleanRequest, signal: AbortSignal, onFolder: (path: string) => void) =>
+    scanWorkspace(signal, (connection, id) => p4Api.previewClean(connection, request, id, onFolder)), [scanWorkspace]);
+  const applyClean = useCallback(async (request: P4CleanRequest, files: P4FileApproval[], fingerprint: string) => {
     const current=sessionRef.current;
     if (!current) throw new Error(t("p4-operations.connectionRequired"));
     const release=lockMutation(current,t("p4.clean.cleaning"));
     if (!release) throw new Error(t("p4-operations.workspaceBusy"));
     const activity=beginActivity(t("p4.clean.cleaning"),current.connection.client);
     try {
-      await guard(current.connection,()=>p4Api.applyClean(current.connection,request,paths,fingerprint));
+      await guard(current.connection,()=>p4Api.applyClean(current.connection,request,files,fingerprint));
       toast.success(t("p4.clean.cleaned"));
     } finally {
       await reloadPending(current).catch(report); bumpFiles();endActivity(activity);release();
     }
   },[guard,lockMutation,beginActivity,endActivity,reloadPending,bumpFiles,report]);
 
-  const previewReconcile = useCallback(async (scope?: string) => {
-    const current = sessionRef.current;
-    if (!current) throw new Error(t("p4-operations.connectionRequired"));
-    return guard(current.connection, () => p4Api.previewReconcile(current.connection, scope));
-  }, [guard]);
+  const previewReconcile = useCallback((scopes: string[], signal: AbortSignal, onFolder: (path: string) => void) =>
+    scanWorkspace(signal, (connection, id) => p4Api.previewReconcile(connection, scopes, id, onFolder)), [scanWorkspace]);
 
-  const applyReconcile = useCallback(async (paths: string[], changeId: string, fingerprint: string, scope?: string) => {
+  const applyReconcile = useCallback(async (files: P4FileApproval[], changeId: string, fingerprint: string, scopes: string[]) => {
     const current = sessionRef.current;
     if (!current) throw new Error(t("p4-operations.connectionRequired"));
     const release = lockMutation(current, t("p4.reconciling"));
     if (!release) throw new Error(t("p4-operations.workspaceBusy"));
     const activity = beginActivity(t("p4.reconciling"), current.connection.client);
     try {
-      await guard(current.connection, () => p4Api.applyReconcile(current.connection, paths, changeId, fingerprint, scope));
+      await guard(current.connection, () => p4Api.applyReconcile(current.connection, files, changeId, fingerprint, scopes));
       toast.success(t("p4.reconciled"));
     } finally {
       await reloadPending(current, changeId).catch(report);
@@ -1668,7 +1690,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
       busy: mutationLabels.has(activePerforceId),
       busyLabel: mutationLabels.get(activePerforceId)?.label ?? "",
       busyKind: mutationLabels.get(activePerforceId)?.kind ?? null,
-      error: error === P4_MISSING ? t("desktop.dependencies.p4Missing", { lng: language }) : error ? p4DisplayError(error, language) : null,
+      error: error?.code === "p4Missing" ? t("desktop.dependencies.p4Missing", { lng: language }) : error ? p4DisplayError(error, language) : null,
       selectedChange,
       selectedFile,
       selectedShelved,
@@ -1858,51 +1880,62 @@ export function P4Provider({ children }: { children: ReactNode }) {
     ],
   );
 
-  return (
-    <P4Context.Provider value={value}>
-      <P4ViewContext.Provider value={value.view}>
-        {children}
-        <P4ConnectionDialog />
-        {workspaceOpen && connection ? <P4WorkspaceDialog key={JSON.stringify(connection)} /> : null}
-        {integrationInitial && connection ? <P4IntegrationDialog key={JSON.stringify([connection,integrationInitial])} initial={integrationInitial} onClose={() => setIntegrationInitial(null)} /> : null}
-        {streamOpen && connection ? <P4StreamDialog initial={streamInitial} key={JSON.stringify([connection,streamInitial])} onClose={() => setStreamOpen(false)} /> : null}
-        {reconcileTarget && connection && sameP4Connection(reconcileTarget.connection, connection) ? <P4ReconcileDialog key={JSON.stringify(reconcileTarget)} scope={reconcileTarget.scope} onClose={() => setReconcileTarget(current => current === reconcileTarget ? null : current)} /> : null}
-        {cleanTarget && connection && sameP4Connection(cleanTarget.connection,connection) ? <P4CleanDialog key={JSON.stringify(cleanTarget)} scope={cleanTarget.scope} onClose={()=>setCleanTarget(current=>current===cleanTarget ? null : current)} /> : null}
-        {switchTarget !== null && connection ? <P4SwitchDialog key={JSON.stringify([connection,switchTarget])} initialTarget={switchTarget} onClose={() => setSwitchTarget(null)} /> : null}
-        {switchOutcome && activePerforceId === switchOutcome.tabId ? <P4SwitchUpdateDialog
-          stream={switchOutcome.connection.stream ?? ""}
-          disabled={loading || mutationLabels.has(activePerforceId) || !connection || !sameP4Connection(connection, switchOutcome.connection)}
-          onClose={() => setSwitchOutcome(null)}
-          onUpdate={() => {
-            const current = sessionRef.current;
-            if (!current || current.tabId !== switchOutcome.tabId || !sameP4Connection(current.connection, switchOutcome.connection)) return;
-            setSwitchOutcome(null);
-            setView("pending");
-            void sync();
-          }}
-        /> : null}
-        <P4LoginDialog
-          open={loginOpen}
-          client={loginTarget.client}
-          port={loginTarget.port}
-          onCancel={() => finishLogin(null)}
-          onSubmit={(password) => finishLogin(password)}
-        />
-      </P4ViewContext.Provider>
-    </P4Context.Provider>
-  );
+  const dialogs = useMemo<P4Dialogs>(() => ({
+    integration: integrationInitial && connection ? {initial: integrationInitial, close: () => setIntegrationInitial(null)} : null,
+    stream: streamOpen && connection ? {initial: streamInitial, close: () => setStreamOpen(false)} : null,
+    scan: scanTarget && activePerforceId === scanTarget.tabId && connection && sameP4Connection(scanTarget.connection, connection) ? {
+      key: JSON.stringify(scanTarget), operation: scanTarget.operation, scope: scanTarget.scope,
+      close: () => setScanTarget(current => current === scanTarget ? null : current),
+    } : null,
+    switchStream: switchTarget !== null && connection ? {target: switchTarget, close: () => setSwitchTarget(null)} : null,
+    update: switchOutcome && activePerforceId === switchOutcome.tabId ? {
+      stream: switchOutcome.connection.stream ?? "",
+      disabled: loading || mutationLabels.has(activePerforceId) || !connection || !sameP4Connection(connection, switchOutcome.connection),
+      close: () => setSwitchOutcome(null),
+      apply: () => {
+        const current = sessionRef.current;
+        if (!current || current.tabId !== switchOutcome.tabId || !sameP4Connection(current.connection, switchOutcome.connection)) return;
+        setSwitchOutcome(null);
+        setView("pending");
+        void sync();
+      },
+    } : null,
+    login: {open: loginOpen, ...loginTarget, finish: finishLogin},
+  }), [activePerforceId, connection, finishLogin, integrationInitial, loading, loginOpen, loginTarget, mutationLabels, scanTarget, setStreamOpen, setView, streamInitial, streamOpen, switchOutcome, switchTarget, sync]);
+
+  return <P4StateProvider value={value}>
+    <P4DialogContext.Provider value={dialogs}>{children}</P4DialogContext.Provider>
+  </P4StateProvider>;
+}
+
+function P4StateProvider({value, children}: {value: P4ContextValue; children: ReactNode}) {
+  const [store] = useState(() => createStore(value));
+  useLayoutEffect(() => { store.set(value); }, [store, value]);
+  return <P4Context.Provider value={store}>{children}</P4Context.Provider>;
+}
+
+function useP4Store() {
+  const store = useContext(P4Context);
+  if (!store) throw new Error("useP4 must be used within P4Provider");
+  return store;
 }
 
 export function useP4() {
-  const value = useContext(P4Context);
-  if (!value) throw new Error("useP4 must be used within P4Provider");
-  return value;
+  const store = useP4Store();
+  return useSyncExternalStore(store.subscribe, store.get, store.get);
+}
+
+export function useP4Pick<K extends keyof P4ContextValue>(keys: readonly K[]): Pick<P4ContextValue, K> {
+  const store = useP4Store();
+  return useSyncExternalStoreWithSelector(store.subscribe, store.get, store.get, value => {
+    const picked = {} as Pick<P4ContextValue, K>;
+    for (const key of keys) picked[key] = value[key];
+    return picked;
+  }, shallowEqual);
 }
 
 export function useP4View() {
-  const view = useContext(P4ViewContext);
-  if (view === null) throw new Error("useP4View must be used within P4Provider");
-  return view;
+  return useP4Pick(["view"]).view;
 }
 
 function groupPaths(files: { change: string; path: string }[]) {

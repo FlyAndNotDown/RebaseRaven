@@ -29,7 +29,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { changeSummary, depotBase, p4ActionStatus } from "@/lib/p4";
 import { cn } from "@/lib/utils";
-import { useP4 } from "@/state/p4-context";
+import { useP4Pick } from "@/state/p4-context";
 import { useP4PendingExpansion } from "@/state/use-p4-pending-expansion";
 import { pendingChangeDescription } from "@/state/p4-session";
 import type { P4Changelist } from "@/types/p4";
@@ -37,7 +37,14 @@ import { t, useTranslation } from "@/i18n";
 
 export function P4Pending() {
   const { t } = useTranslation();
-  const p4 = useP4();
+  const p4 = useP4Pick([
+    "busy", "connection", "createChange", "deleteChange", "deleteSelectedShelf",
+    "description", "diff", "diffLoading", "dismissResolveRequest", "loadPendingShelf",
+    "pending", "pendingShelves", "placeFiles", "resolveRequest", "revertPaths",
+    "revertUnchanged", "saveChange", "selectChange", "selectFile", "selectedChange",
+    "selectedFile", "selectedShelved", "shelveFiles", "shelveSelected", "submitChange",
+    "submitShelf", "unshelveSelected",
+  ]);
   const [streamWorkOpen, setStreamWorkOpen] = useState(false);
   const [streamDiff, setStreamDiff] = useState<P4StreamDiffRequest | null>(null);
   const [creating, setCreating] = useState(false);

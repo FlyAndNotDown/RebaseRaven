@@ -204,7 +204,7 @@ export interface P4ManualResolve {
   fingerprint: string;
 }
 
-export interface P4ReconcilePreview {
+export interface P4ChangePreview {
   files: { path: string; depotPath: string; action: string }[];
   fingerprint: string;
 }
@@ -214,7 +214,12 @@ export interface P4StreamRequest {
   source: string;
   changeId: string;
 }
-export type P4StreamPreview = P4ReconcilePreview;
+export type P4StreamPreview = P4ChangePreview;
+export interface P4FileApproval { path: string; fingerprint: string }
+export interface P4ReconcilePreview {
+  files: (P4ChangePreview["files"][number] & P4FileApproval)[];
+  fingerprint: string;
+}
 
 export interface P4UnshelveRequest {
   changeId: string;
@@ -246,14 +251,25 @@ export interface P4WorkspaceSettings extends P4WorkspaceEdit { stream: string; l
 export interface P4SwitchRequest { target: string }
 
 export interface P4CleanRequest {
-  scope: string;
+  scopes: string[];
   restoreModified: boolean;
   restoreMissing: boolean;
   removeUntracked: boolean;
   includeIgnored: boolean;
 }
-export interface P4CleanFile {path: string; depotPath: string; action: "restoreModified" | "restoreMissing" | "removeUntracked"; revision: string | null}
+export interface P4CleanFile extends P4FileApproval { depotPath: string; action: "restoreModified" | "restoreMissing" | "removeUntracked"; revision: string | null}
 export interface P4CleanPreview {files: P4CleanFile[]; fingerprint: string}
 
 export interface P4AutoResolveSummary { resolved: number; remaining: number; failed: boolean }
-export interface P4SyncResult { output: string; autoResolve: P4AutoResolveSummary | null }
+export interface P4SyncSummary {
+  failed: boolean;
+  updated: number;
+  added: number;
+  deleted: number;
+  unchanged: boolean;
+  warnings: Partial<Record<"writable" | "modified" | "opened" | "resolve" | "outsideView", number>>;
+  diagnostics: number;
+  firstDiagnostic: string;
+}
+
+export interface P4SyncResult { output: P4SyncSummary; autoResolve: P4AutoResolveSummary | null }

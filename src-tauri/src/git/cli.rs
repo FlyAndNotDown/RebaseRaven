@@ -1,9 +1,9 @@
 use super::*;
 
+use crate::activity::current_cancel;
 use crate::diagnostics::{self, Capture, Code, CommandOutput, CommandTrace, LoggedChild, Status};
 use crate::error::GIT_BACKGROUND_TIMEOUT as BACKGROUND_TIMEOUT;
 
-use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Instant, SystemTime};
@@ -11,13 +11,7 @@ use std::time::{Instant, SystemTime};
 const MAX_DIAGNOSTIC_BYTES: usize = 64 * 1024;
 const MAX_PROGRESS_LINES: usize = 8;
 
-fn cancel_tokens() -> &'static Mutex<HashMap<String, Arc<AtomicBool>>> {
-    static TOKENS: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
-    TOKENS.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
 thread_local! {
-    static CURRENT_CANCEL: RefCell<Option<(String, Arc<AtomicBool>)>> = const { RefCell::new(None) };
     static BACKGROUND: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
@@ -37,53 +31,6 @@ pub fn with_background<T>(background: bool, f: impl FnOnce() -> T) -> T {
     BACKGROUND.with(|flag| flag.set(true));
     let _reset = Reset;
     f()
-}
-
-struct CancelScope {
-    id: String,
-}
-
-impl Drop for CancelScope {
-    fn drop(&mut self) {
-        CURRENT_CANCEL.with(|current| *current.borrow_mut() = None);
-        cancel_tokens()
-            .lock()
-            .unwrap_or_else(|err| err.into_inner())
-            .remove(&self.id);
-    }
-}
-
-/// Runs `f` so that `cancel_activity(activity_id)` stops the git process it is
-/// waiting on. Without an id the work cannot be cancelled.
-pub fn with_cancel<T>(activity_id: Option<&str>, f: impl FnOnce() -> T) -> T {
-    let Some(id) = activity_id.filter(|id| !id.is_empty()) else {
-        return f();
-    };
-    let token = Arc::new(AtomicBool::new(false));
-    cancel_tokens()
-        .lock()
-        .unwrap_or_else(|err| err.into_inner())
-        .insert(id.to_string(), token.clone());
-    CURRENT_CANCEL.with(|current| *current.borrow_mut() = Some((id.to_string(), token)));
-    let _scope = CancelScope { id: id.to_string() };
-    f()
-}
-
-pub fn cancel_activity(id: &str) -> bool {
-    let tokens = cancel_tokens()
-        .lock()
-        .unwrap_or_else(|err| err.into_inner());
-    match tokens.get(id) {
-        Some(token) => {
-            token.store(true, Ordering::Relaxed);
-            true
-        }
-        None => false,
-    }
-}
-
-fn current_cancel() -> Option<(String, Arc<AtomicBool>)> {
-    CURRENT_CANCEL.with(|current| current.borrow().clone())
 }
 
 /// `cmd\git.exe` on Windows is a launcher, so killing it alone would leave the
@@ -608,6 +555,12 @@ fn run_progress_command(
     on_progress: &mut (impl FnMut(&str) + Send),
     capture: Option<&mut ProgressCapture>,
 ) -> AppResult<()> {
+    if cancel
+        .as_ref()
+        .is_some_and(|token| token.load(Ordering::Relaxed))
+    {
+        return Err(AppError::cancelled());
+    }
     let (child, tree) = if limits.is_some() {
         let (child, tree) = crate::platform::spawn_probe_command(command)
             .map_err(|err| git_start_error(command.get_program(), err))?;
@@ -857,7 +810,7 @@ pub(super) fn run_git_stdout(root: &Path, args: &[&str]) -> AppResult<Vec<u8>> {
 }
 
 pub(super) fn require_git() -> AppResult<PathBuf> {
-    find_git().ok_or_else(|| AppError::msg(crate::error::GIT_MISSING))
+    find_git().ok_or(AppError::GitMissing)
 }
 
 struct GitBin {
@@ -973,7 +926,7 @@ pub fn validate_git_choice(path: &str) -> AppResult<()> {
         return Err(AppError::msg("Choose a file named git."));
     }
     if !crate::locate::is_executable(file) {
-        return Err(AppError::msg(crate::error::GIT_MISSING));
+        return Err(AppError::GitMissing);
     }
     Ok(())
 }
@@ -1020,7 +973,7 @@ pub fn check_git_executable(path: &str) -> AppResult<()> {
     validate_git_choice(path)?;
     let path = path.trim();
     if path.is_empty() {
-        return Err(AppError::msg(crate::error::GIT_MISSING));
+        return Err(AppError::GitMissing);
     }
     let output = git_version_output(path)?;
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -1101,7 +1054,7 @@ fn git_start_error(program: &std::ffi::OsStr, error: std::io::Error) -> AppError
         std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied
     ) && !crate::locate::is_executable(Path::new(program))
     {
-        AppError::msg(crate::error::GIT_MISSING)
+        AppError::GitMissing
     } else {
         AppError::msg(format!("Could not start Git: {error}"))
     }

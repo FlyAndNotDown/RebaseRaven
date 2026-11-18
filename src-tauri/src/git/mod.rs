@@ -10,6 +10,8 @@ use std::time::Duration;
 
 use serde::Serialize;
 
+#[cfg(test)]
+use crate::activity::{cancel_activity, with_cancel};
 use crate::error::{AppError, AppResult};
 
 // Submodules share this module's imports and helpers through `use super::*`.
@@ -49,8 +51,8 @@ mod tools;
 pub use changes::*;
 use cli::*;
 pub use cli::{
-    active_git, cancel_activity, check_git_executable, git_on_path, prepare_git_prefs,
-    set_git_executable, with_background, with_cancel,
+    active_git, check_git_executable, git_on_path, prepare_git_prefs, set_git_executable,
+    with_background,
 };
 pub use conflicts::*;
 pub use diff::*;

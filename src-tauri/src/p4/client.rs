@@ -1,6 +1,6 @@
 //! Workspace settings preserve server-managed and unexposed form fields.
 use super::parse::{parse_ztag, set_spec_field, spec_field};
-use super::review::{allow_empty, preview_reconcile, run};
+use super::review::{allow_empty, run};
 use super::workspace::{connection_after_create, env_for, update_config_file, P4Connection};
 use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
@@ -192,7 +192,13 @@ pub fn save_workspace(
     if moving {
         let scope = format!("//{}/...", connection.client);
         let opened = allow_empty(run(connection, &["-ztag", "opened", &scope]))?;
-        if !parse_ztag(&opened).is_empty() || !preview_reconcile(connection, None)?.files.is_empty()
+        if !parse_ztag(&opened).is_empty()
+            || !allow_empty(run(
+                connection,
+                &["-ztag", "reconcile", "-n", "-e", "-a", "-d", &scope],
+            ))?
+            .trim()
+            .is_empty()
         {
             return Err(AppError::msg("Submit, shelve and revert local changes before changing workspace mappings or root."));
         }

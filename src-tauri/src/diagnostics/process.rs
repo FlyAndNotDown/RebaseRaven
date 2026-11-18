@@ -14,7 +14,7 @@ use super::{
 };
 use crate::error::{AppError, AppResult};
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct Capture {
     head: Vec<u8>,
     tail: VecDeque<u8>,
@@ -175,6 +175,7 @@ impl CommandTrace {
                 });
                 let stderr = child.stderr.take();
                 let streams = Arc::clone(&trace.streams);
+                let (done, stderr_done) = std::sync::mpsc::channel();
                 std::thread::spawn(move || {
                     if let Some(mut pipe) = stderr {
                         let mut bytes = [0; 8192];
@@ -188,9 +189,11 @@ impl CommandTrace {
                             }
                         }
                     }
+                    let _ = done.send(());
                 });
                 Ok(LoggedChild {
                     child,
+                    stderr_done,
                     stdout,
                     trace,
                 })
@@ -227,6 +230,7 @@ impl<R: Read> Read for LoggedReader<R> {
 }
 pub(crate) struct LoggedChild {
     child: Child,
+    stderr_done: std::sync::mpsc::Receiver<()>,
     pub(crate) stdout: Option<LoggedReader<ChildStdout>>,
     trace: CommandTrace,
 }
@@ -252,6 +256,32 @@ impl LoggedChild {
         let status = self.child.wait()?;
         self.completed(status);
         Ok(status)
+    }
+    pub(crate) fn wait_checked(&mut self, fallback: &str) -> AppResult<()> {
+        let status = self.child.wait()?;
+        if status.success() {
+            self.completed(status);
+            return Ok(());
+        }
+        // A helper may inherit stderr. Keep a failed command from waiting on it indefinitely.
+        let _ = self
+            .stderr_done
+            .recv_timeout(std::time::Duration::from_millis(100));
+        let stderr = self
+            .trace
+            .streams
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .stderr
+            .clone()
+            .take();
+        self.completed(status);
+        let message = String::from_utf8_lossy(&stderr);
+        Err(AppError::msg(if message.trim().is_empty() {
+            fallback
+        } else {
+            message.trim()
+        }))
     }
     pub(crate) fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
         let status = self.child.try_wait()?;

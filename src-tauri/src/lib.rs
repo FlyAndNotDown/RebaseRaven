@@ -1,3 +1,4 @@
+mod activity;
 mod askpass;
 mod avatars;
 mod diagnostics;
@@ -173,7 +174,7 @@ async fn clone_repository(
     app: AppHandle,
 ) -> AppResult<String> {
     blocking(move || {
-        git::with_cancel(activity_id.as_deref(), || {
+        activity::with_cancel(activity_id.as_deref(), || {
             git::clone_repository(
                 &url,
                 &destination,
@@ -185,8 +186,15 @@ async fn clone_repository(
 }
 
 #[tauri::command]
+fn reserve_activity(webview: tauri::Webview, id: String) -> AppResult<tauri::ResourceId> {
+    Ok(webview
+        .resources_table()
+        .add(activity::Reservation::new(id)?))
+}
+
+#[tauri::command]
 fn cancel_activity(id: String) -> bool {
-    git::cancel_activity(&id)
+    activity::cancel_activity(&id)
 }
 
 #[tauri::command]
@@ -235,7 +243,10 @@ async fn get_commits(
     skip: Option<usize>,
     query: Option<String>,
     rev: Option<Vec<String>>,
+    preview: Option<tauri::ipc::JavaScriptChannelId>,
+    webview: tauri::Webview,
 ) -> AppResult<Vec<CommitSummary>> {
+    let preview = preview.map(|id| id.channel_on(webview));
     with_repo_diagnostic(repo_path, diagnostics::Code::GitHistory, move |repo| {
         git::commits(
             repo,
@@ -243,6 +254,11 @@ async fn get_commits(
             skip.unwrap_or(0),
             query.as_deref(),
             rev.as_deref().unwrap_or(&[]),
+            |items| {
+                if let Some(channel) = preview {
+                    let _ = channel.send(items.to_vec());
+                }
+            },
         )
     })
     .await
@@ -455,7 +471,7 @@ async fn add_submodule(
     app: AppHandle,
 ) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, move |repo| {
-        git::with_cancel(activity_id.as_deref(), || {
+        activity::with_cancel(activity_id.as_deref(), || {
             git::add_submodule(
                 repo,
                 &request,
@@ -529,7 +545,7 @@ async fn update_submodules(
     app: AppHandle,
 ) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, move |repo| {
-        git::with_cancel(activity_id.as_deref(), || {
+        activity::with_cancel(activity_id.as_deref(), || {
             if options.is_some() {
                 git::update_submodules_with_options(
                     repo,
@@ -660,7 +676,7 @@ async fn fetch_remote(
 ) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, move |repo| {
         git::with_background(background.unwrap_or(false), || {
-            git::with_cancel(activity_id.as_deref(), || {
+            activity::with_cancel(activity_id.as_deref(), || {
                 git::fetch_remote(
                     repo,
                     remote.as_deref(),
@@ -684,7 +700,7 @@ async fn pull_remote(
 ) -> AppResult<WorkspaceSnapshot> {
     let rebase = rebase.unwrap_or(false);
     with_repo_async(repo_path, move |repo| {
-        git::with_cancel(activity_id.as_deref(), || {
+        activity::with_cancel(activity_id.as_deref(), || {
             git::pull_remote(
                 repo,
                 remote.as_deref(),
@@ -709,7 +725,7 @@ async fn push_remote(
     let force = force.unwrap_or(false);
     let set_upstream = set_upstream.unwrap_or(false);
     with_repo_async(repo_path, move |repo| {
-        git::with_cancel(activity_id.as_deref(), || {
+        activity::with_cancel(activity_id.as_deref(), || {
             git::push_remote(
                 repo,
                 remote.as_deref(),
@@ -778,7 +794,7 @@ async fn push_tag(
     app: AppHandle,
 ) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, move |repo| {
-        git::with_cancel(activity_id.as_deref(), || {
+        activity::with_cancel(activity_id.as_deref(), || {
             git::push_tag(
                 repo,
                 &remote,
@@ -800,7 +816,7 @@ async fn delete_remote_tag(
     app: AppHandle,
 ) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, move |repo| {
-        git::with_cancel(activity_id.as_deref(), || {
+        activity::with_cancel(activity_id.as_deref(), || {
             git::delete_remote_tag(
                 repo,
                 &remote,
@@ -862,7 +878,7 @@ async fn delete_branch(
 ) -> AppResult<WorkspaceSnapshot> {
     let force = force.unwrap_or(false);
     with_repo_async(repo_path, move |repo| {
-        git::with_cancel(activity_id.as_deref(), || {
+        activity::with_cancel(activity_id.as_deref(), || {
             git::delete_branch(
                 repo,
                 &name,
@@ -961,7 +977,7 @@ async fn git_lfs_action(
     app: AppHandle,
 ) -> AppResult<git::LfsOutcome> {
     with_repo_async(repo_path, move |repo| {
-        git::with_cancel(activity_id.as_deref(), || {
+        activity::with_cancel(activity_id.as_deref(), || {
             git::lfs_action(
                 repo,
                 &action,
@@ -995,7 +1011,7 @@ async fn apply_sparse_checkout(
     app: AppHandle,
 ) -> AppResult<git::SparseCheckoutOutcome> {
     with_repo_async(repo_path, move |repo| {
-        git::with_cancel(activity_id.as_deref(), || {
+        activity::with_cancel(activity_id.as_deref(), || {
             git::apply_sparse_checkout(
                 repo,
                 &request,
@@ -1590,11 +1606,32 @@ async fn p4_cancel_depot_search(connection: p4::P4Connection) -> AppResult<()> {
 }
 
 #[tauri::command]
-async fn p4_search_files(
+fn p4_open_workspace_search(
+    webview: tauri::Webview,
     connection: p4::P4Connection,
     query: String,
+) -> tauri::ResourceId {
+    webview
+        .resources_table()
+        .add(p4::WorkspaceSearch::new(connection, &query))
+}
+
+#[tauri::command]
+async fn p4_search_files(
+    webview: tauri::Webview,
+    rid: tauri::ResourceId,
+    names: tauri::ipc::Channel<p4::P4FileSearch>,
 ) -> AppResult<p4::P4FileSearch> {
-    blocking(move || p4::search_files(&connection, &query)).await
+    let search = webview
+        .resources_table()
+        .get::<p4::WorkspaceSearch>(rid)
+        .map_err(|_| AppError::cancelled())?;
+    blocking(move || {
+        search.page(|page| {
+            let _ = names.send(page.clone());
+        })
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1950,13 +1987,15 @@ async fn p4_get_revision(
     request: p4::P4GetRevision,
     activity_id: Option<String>,
     app: AppHandle,
-) -> AppResult<String> {
+) -> AppResult<p4::RevisionOutput> {
     blocking(move || {
-        p4::get_revision(
-            &connection,
-            &request,
-            progress_sink(&app, activity_id.as_deref()),
-        )
+        activity::with_cancel(activity_id.as_deref(), || {
+            p4::get_revision(
+                &connection,
+                &request,
+                progress_sink(&app, activity_id.as_deref()),
+            )
+        })
     })
     .await
 }
@@ -1970,12 +2009,14 @@ async fn p4_sync(
     app: AppHandle,
 ) -> AppResult<p4::P4SyncResult> {
     blocking(move || {
-        p4::sync(
-            &connection,
-            &paths,
-            auto_resolve,
-            progress_sink(&app, activity_id.as_deref()),
-        )
+        activity::with_cancel(activity_id.as_deref(), || {
+            p4::sync(
+                &connection,
+                &paths,
+                auto_resolve,
+                progress_sink(&app, activity_id.as_deref()),
+            )
+        })
     })
     .await
 }
@@ -1983,47 +2024,57 @@ async fn p4_sync(
 #[tauri::command]
 async fn p4_preview_reconcile(
     connection: p4::P4Connection,
-    scope: Option<String>,
+    scopes: Vec<String>,
+    activity_id: String,
+    folder: tauri::ipc::Channel<String>,
 ) -> AppResult<p4::P4ReconcilePreview> {
-    blocking(move || p4::preview_reconcile(&connection, scope.as_deref())).await
+    blocking(move || {
+        activity::with_cancel(Some(&activity_id), || {
+            p4::preview_reconcile(&connection, &scopes, |dir| {
+                let _ = folder.send(dir.to_string_lossy().into_owned());
+            })
+        })
+    })
+    .await
 }
 
 #[tauri::command]
 async fn p4_preview_clean(
     connection: p4::P4Connection,
     request: p4::P4CleanRequest,
+    activity_id: String,
+    folder: tauri::ipc::Channel<String>,
 ) -> AppResult<p4::P4CleanPreview> {
-    blocking(move || p4::preview_clean(&connection, &request)).await
+    blocking(move || {
+        activity::with_cancel(Some(&activity_id), || {
+            p4::preview_clean(&connection, &request, |dir| {
+                let _ = folder.send(dir.to_string_lossy().into_owned());
+            })
+        })
+    })
+    .await
 }
 
 #[tauri::command]
 async fn p4_apply_clean(
     connection: p4::P4Connection,
     request: p4::P4CleanRequest,
-    paths: Vec<String>,
+    files: Vec<p4::FileApproval>,
     fingerprint: String,
 ) -> AppResult<String> {
-    blocking(move || p4::apply_clean(&connection, &request, &paths, &fingerprint)).await
+    blocking(move || p4::apply_clean(&connection, &request, &files, &fingerprint)).await
 }
 
 #[tauri::command]
 async fn p4_apply_reconcile(
     connection: p4::P4Connection,
-    paths: Vec<String>,
+    files: Vec<p4::FileApproval>,
     change_id: String,
     fingerprint: String,
-    scope: Option<String>,
+    scopes: Vec<String>,
 ) -> AppResult<String> {
-    blocking(move || {
-        p4::apply_reconcile(
-            &connection,
-            &paths,
-            &change_id,
-            &fingerprint,
-            scope.as_deref(),
-        )
-    })
-    .await
+    blocking(move || p4::apply_reconcile(&connection, &files, &change_id, &fingerprint, &scopes))
+        .await
 }
 
 #[tauri::command]
@@ -2473,6 +2524,7 @@ pub fn run() {
             load_session,
             save_session,
             clone_repository,
+            reserve_activity,
             cancel_activity,
             answer_askpass,
             open_repository,
@@ -2607,6 +2659,7 @@ pub fn run() {
             p4_listing_status,
             p4_search_depot,
             p4_cancel_depot_search,
+            p4_open_workspace_search,
             p4_search_files,
             p4_search_submitted,
             p4_save_workspace,

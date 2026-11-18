@@ -65,11 +65,12 @@ pub fn commits(
     skip: usize,
     query: Option<&str>,
     revs: &[String],
+    preview: impl FnOnce(&[CommitSummary]),
 ) -> AppResult<Vec<CommitSummary>> {
     let query = query.map(str::trim).filter(|value| !value.is_empty());
     let revs = normalize_revs(revs);
     if let Some(query) = query {
-        return search_commits(repo, limit, skip, query, &revs);
+        return search_commits(repo, limit, skip, query, &revs, preview);
     }
     let root = workdir(repo)?;
     // Committer-date order, unlike author-date order, lets git stream from
@@ -78,17 +79,22 @@ pub fn commits(
         &revs,
         &["-c", "log.showSignature=false", "log", "--date-order"],
     );
-    let warming = if skip == 0 {
-        warm_reachable(repo)
-    } else {
-        Vec::new()
-    };
-    let page = log_page(root, &args, skip, limit);
-    for handle in warming {
-        let _ = handle.join();
+    let labels = collect_ref_labels(repo);
+    let tips = BranchTips::read(repo);
+    // With all branch tips in the log, its existing child-before-parent walk
+    // can carry both membership bits across pages without a second process.
+    let in_log = revs.is_empty()
+        && tips.head.iter().chain(&tips.upstream).all(|tip| {
+            labels
+                .get(tip)
+                .is_some_and(|refs| refs.iter().any(|r| r.kind == "branch"))
+        });
+    let mut items = log_page(root, &args, skip, limit, in_log.then_some(&tips))?;
+    apply_ref_labels(&mut items, &labels);
+    if !in_log {
+        preview(&items);
+        mark_on_current_branch(repo, &tips, &mut items)?;
     }
-    let mut items = parse_git_log(&page?)?;
-    decorate_commits(repo, &mut items);
     Ok(items)
 }
 
@@ -236,6 +242,7 @@ pub(super) fn search_commits(
     skip: usize,
     query: &str,
     revs: &[String],
+    preview: impl FnOnce(&[CommitSummary]),
 ) -> AppResult<Vec<CommitSummary>> {
     let parsed = parse_search_query(query);
     let needle = parsed.text.to_lowercase();
@@ -271,7 +278,8 @@ pub(super) fn search_commits(
     }
 
     apply_ref_labels(&mut items, &labels);
-    mark_on_current_branch(repo, &mut items);
+    preview(&items);
+    mark_on_current_branch(repo, &BranchTips::read(repo), &mut items)?;
     Ok(items)
 }
 
@@ -342,231 +350,123 @@ pub(super) fn commit_matches(
     })
 }
 
-pub(super) fn parse_git_log(bytes: &[u8]) -> AppResult<Vec<CommitSummary>> {
+pub(super) fn parse_log_row(bytes: &[u8]) -> Option<CommitSummary> {
     let text = String::from_utf8_lossy(bytes);
-    let mut items = Vec::new();
-    for line in text.split('\n') {
-        if line.is_empty() {
-            continue;
+    let mut fields = text.split('\0');
+    Some(CommitSummary {
+        id: fields.next()?.to_owned(),
+        short_id: fields.next()?.to_owned(),
+        summary: fields.next()?.to_owned(),
+        body: String::new(),
+        author_name: fields.next()?.to_owned(),
+        author_email: fields.next()?.to_owned(),
+        timestamp: fields.next()?.parse().unwrap_or(0),
+        parents: fields
+            .next()
+            .unwrap_or("")
+            .split_whitespace()
+            .map(str::to_owned)
+            .collect(),
+        refs: Vec::new(),
+        on_current_branch: true,
+        on_tracking_branch: false,
+        path: None,
+    })
+}
+
+#[derive(Clone, PartialEq)]
+pub(super) struct BranchTips {
+    pub(super) head: Option<String>,
+    pub(super) upstream: Option<String>,
+}
+
+impl BranchTips {
+    fn read(repo: &Repository) -> Self {
+        Self {
+            head: head_oid(repo),
+            upstream: rev_parse(repo, "@{upstream}"),
         }
-        let mut fields = line.split('\0');
-        let Some(id) = fields.next() else { continue };
-        let Some(short_id) = fields.next() else {
-            continue;
-        };
-        let Some(summary) = fields.next() else {
-            continue;
-        };
-        let Some(author_name) = fields.next() else {
-            continue;
-        };
-        let Some(author_email) = fields.next() else {
-            continue;
-        };
-        let Some(timestamp) = fields.next() else {
-            continue;
-        };
-        let parents = fields.next().unwrap_or("");
-        items.push(CommitSummary {
-            id: id.to_string(),
-            short_id: short_id.to_string(),
-            summary: summary.to_string(),
-            body: String::new(),
-            author_name: author_name.to_string(),
-            author_email: author_email.to_string(),
-            timestamp: timestamp.parse().unwrap_or(0),
-            parents: if parents.is_empty() {
-                Vec::new()
-            } else {
-                parents.split_whitespace().map(str::to_string).collect()
-            },
-            refs: Vec::new(),
-            on_current_branch: true,
-            on_tracking_branch: false,
-            path: None,
-        });
     }
-    Ok(items)
-}
 
-pub(super) fn decorate_commits(repo: &Repository, commits: &mut [CommitSummary]) {
-    let labels = collect_ref_labels(repo);
-    apply_ref_labels(commits, &labels);
-    mark_on_current_branch(repo, commits);
-}
-
-pub(super) fn mark_on_current_branch(repo: &Repository, commits: &mut [CommitSummary]) {
-    let head = head_oid(repo);
-    let upstream = if symbolic_branch(repo).is_some() {
-        rev_parse(repo, "@{upstream}")
-    } else {
-        None
-    };
-    let on_head = head.as_ref().and_then(|id| reachable_commits(repo, id));
-    let on_upstream = upstream.as_ref().and_then(|id| reachable_commits(repo, id));
-    let head_too_big = head.is_some() && on_head.is_none();
-    let upstream_too_big = upstream.is_some() && on_upstream.is_none();
-    for commit in commits.iter_mut() {
-        commit.on_current_branch = if head_too_big {
-            is_ancestor(repo, &commit.id, head.as_deref())
-        } else {
-            on_head.as_ref().is_some_and(|set| set.contains(&commit.id))
-        };
-        commit.on_tracking_branch = if upstream_too_big {
-            is_ancestor(repo, &commit.id, upstream.as_deref())
-        } else {
-            on_upstream
-                .as_ref()
-                .is_some_and(|set| set.contains(&commit.id))
-        };
-    }
-}
-
-/// `git rev-list` already reads the commit-graph. The walk starts while `git log`
-/// is still running so the two overlap.
-fn warm_reachable(repo: &Repository) -> Vec<thread::JoinHandle<()>> {
-    let mut tips = Vec::new();
-    if let Some(head) = head_oid(repo) {
-        tips.push(head);
-    }
-    if symbolic_branch(repo).is_some() {
-        if let Some(upstream) = rev_parse(repo, "@{upstream}") {
-            if !tips.contains(&upstream) {
-                tips.push(upstream);
+    pub(super) fn frontier(&self) -> HashMap<String, u8> {
+        let mut frontier = HashMap::new();
+        for (tip, mask) in [(&self.head, 1), (&self.upstream, 2)] {
+            if let Some(id) = tip {
+                *frontier.entry(id.clone()).or_default() |= mask;
             }
         }
+        frontier
     }
-    tips.into_iter()
-        .map(|tip| {
-            let repo = repo.clone();
-            thread::spawn(move || {
-                let _ = reachable_commits(&repo, &tip);
-            })
-        })
-        .collect()
 }
 
-pub(super) fn reachable_commits(repo: &Repository, tip: &str) -> Option<Arc<HashSet<String>>> {
-    #[derive(PartialEq)]
-    struct Key {
-        root: PathBuf,
-        tip: String,
-        shallow: Option<Vec<u8>>,
-    }
-
-    enum Cached {
-        Set(Arc<HashSet<String>>),
-        TooBig,
-    }
-    const MAX_REACHABLE: usize = 2_000_000;
-    const MAX_SHALLOW_KEY_BYTES: u64 = 64 * 1024;
-    // A shallow boundary can change without moving the tip when fetching more
-    // history. Include its bytes, but avoid allocating an unbounded cache key.
-    let shallow = match fs::File::open(repo.commondir().join("shallow")) {
-        Ok(file) => {
-            let mut bytes = Vec::new();
-            if file
-                .take(MAX_SHALLOW_KEY_BYTES + 1)
-                .read_to_end(&mut bytes)
-                .is_err()
-                || bytes.len() as u64 > MAX_SHALLOW_KEY_BYTES
-            {
-                return walk_reachable(repo, tip, MAX_REACHABLE).map(Arc::new);
-            }
-            Some(bytes)
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-        Err(_) => return walk_reachable(repo, tip, MAX_REACHABLE).map(Arc::new),
-    };
-    let key = Key {
-        root: repo.commondir().to_path_buf(),
-        tip: tip.to_string(),
-        shallow,
-    };
-    static CACHE: OnceLock<Mutex<Vec<(Key, Cached)>>> = OnceLock::new();
-    let cache = CACHE.get_or_init(|| Mutex::new(Vec::new()));
-    if let Ok(guard) = cache.lock() {
-        if let Some((_, cached)) = guard.iter().find(|(entry, _)| entry == &key) {
-            return match cached {
-                Cached::Set(set) => Some(Arc::clone(set)),
-                Cached::TooBig => None,
-            };
+pub(super) fn propagate_membership<'a>(
+    frontier: &mut HashMap<String, u8>,
+    id: &str,
+    parents: impl Iterator<Item = &'a str>,
+) -> u8 {
+    let mask = frontier.remove(id).unwrap_or_default();
+    if mask != 0 {
+        for parent in parents {
+            *frontier.entry(parent.to_owned()).or_default() |= mask;
         }
     }
-
-    let cached = match walk_reachable(repo, tip, MAX_REACHABLE) {
-        Some(set) => Cached::Set(Arc::new(set)),
-        None => Cached::TooBig,
-    };
-    let result = match &cached {
-        Cached::Set(set) => Some(Arc::clone(set)),
-        Cached::TooBig => None,
-    };
-    if let Ok(mut guard) = cache.lock() {
-        guard.retain(|(entry, _)| entry != &key);
-        guard.push((key, cached));
-        if guard.len() > 4 {
-            let extra = guard.len() - 4;
-            guard.drain(0..extra);
-        }
-    }
-    result
+    mask
 }
 
-pub(super) fn walk_reachable(
+fn mark_on_current_branch(
     repo: &Repository,
-    tip: &str,
-    limit: usize,
-) -> Option<HashSet<String>> {
-    let mut child = spawn_git_stdout(repo.workdir(), &["rev-list", tip]).ok()?;
-    let result = (|| {
-        let mut reader = BufReader::new(child.stdout.take()?);
-        let mut line = Vec::new();
-        let mut set = HashSet::new();
-        while read_git_line(&mut reader, &mut line).ok()? {
-            let text = String::from_utf8_lossy(&line);
-            let id = text.trim();
-            if id.is_empty() {
-                continue;
-            }
-            set.insert(id.to_string());
-            if set.len() > limit {
-                return None;
-            }
-        }
-        if set.is_empty() {
-            None
-        } else {
-            Some(set)
-        }
-    })();
-    if result.is_none() {
-        stop_child(&mut child);
-        return None;
-    }
-    match child.wait() {
-        Ok(status) if status.success() => result,
-        Ok(_) => None,
-        Err(_) => {
-            stop_child(&mut child);
-            None
+    tips: &BranchTips,
+    commits: &mut [CommitSummary],
+) -> AppResult<()> {
+    // Children precede every parent, including across merges with skewed dates.
+    // Walking the requested commits as additional tips lets us resolve negative
+    // answers as soon as we encounter them, even on unrelated branches.
+    for page in commits.chunks_mut(80) {
+        let ids = page.iter().map(|c| c.id.as_str()).collect::<Vec<_>>();
+        let membership = page_membership(repo, tips, &ids)?;
+        for commit in page {
+            let mask = membership.get(&commit.id).copied().unwrap_or_default();
+            commit.on_current_branch = mask & 1 != 0;
+            commit.on_tracking_branch = mask & 2 != 0;
         }
     }
+    Ok(())
 }
 
-fn is_ancestor(repo: &Repository, commit: &str, tip: Option<&str>) -> bool {
-    let Some(tip) = tip else {
-        return false;
-    };
-    if commit == tip {
-        return true;
+pub(super) fn page_membership(
+    repo: &Repository,
+    tips: &BranchTips,
+    ids: &[&str],
+) -> AppResult<HashMap<String, u8>> {
+    let mut frontier = tips.frontier();
+    let mut wanted = ids.iter().copied().collect::<HashSet<_>>();
+    let mut result = HashMap::new();
+    if wanted.is_empty() || frontier.is_empty() {
+        return Ok(result);
     }
-    run_git(
-        repo.workdir(),
-        &["merge-base", "--is-ancestor", commit, tip],
-    )
-    .ok()
-    .is_some_and(|output| output.status.success())
+    let mut args = vec!["rev-list", "--topo-order", "--parents"];
+    args.extend(tips.head.as_deref());
+    args.extend(tips.upstream.as_deref());
+    args.extend(wanted.iter().copied());
+    let mut child = spawn_git_stdout(repo.workdir(), &args)?;
+    let mut reader = BufReader::new(child.stdout.take().expect("piped Git output"));
+    let mut line = Vec::new();
+    while read_git_line(&mut reader, &mut line)? {
+        let row = String::from_utf8_lossy(&line);
+        let mut fields = row.split_ascii_whitespace();
+        let Some(id) = fields.next() else { continue };
+        let mask = propagate_membership(&mut frontier, id, fields);
+        if wanted.remove(id) {
+            result.insert(id.to_string(), mask);
+            if wanted.is_empty() {
+                break;
+            }
+        }
+    }
+    if !wanted.is_empty() && !child.wait()?.success() {
+        return Err(AppError::msg("Could not read commit ancestry"));
+    }
+    Ok(result)
 }
 
 pub(super) fn apply_ref_labels(

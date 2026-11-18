@@ -72,3 +72,10 @@ describe("Perforce credential retries", () => {
     expect(expired).toHaveBeenCalledOnce();
   });
 });
+
+it("requests login from the native error code regardless of diagnostic wording", async () => {
+  const request = vi.fn().mockRejectedValueOnce({code:"p4LoginRequired", message:"Ticket expired"}).mockResolvedValue("done");
+  const login = vi.fn(async () => {});
+  await expect(withP4Login(request, login)).resolves.toBe("done");
+  expect(login).toHaveBeenCalledOnce();
+});

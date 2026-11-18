@@ -11,7 +11,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { HoverTip } from "@/components/ui/tooltip";
-import { errorMessage } from "@/lib/git";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import { useP4 } from "@/state/p4-context";
 import type { P4IntegrationInitial, P4IntegrationPreview, P4IntegrationRequest } from "@/types/p4-integration";
@@ -45,7 +44,7 @@ export function P4IntegrationDialog({initial,onClose}: {initial:P4IntegrationIni
     if (method !== "branch") return;
     let live = true;
     const timer = window.setTimeout(() => {
-      void p4.specs.list("branch",branchQuery,"").then(value => {if (live) setBranches({query:branchQuery,value});}).catch((caught:unknown) => {if (live) setBranchError({query:branchQuery,value:p4DisplayError(errorMessage(caught))});});
+      void p4.specs.list("branch",branchQuery,"").then(value => {if (live) setBranches({query:branchQuery,value});}).catch((caught:unknown) => {if (live) setBranchError({query:branchQuery,value:p4DisplayError(caught)});});
     },200);
     return () => {live = false; window.clearTimeout(timer);};
   }, [p4.specs,method,branchQuery]);
@@ -63,7 +62,7 @@ export function P4IntegrationDialog({initial,onClose}: {initial:P4IntegrationIni
     try {
       if (apply && preview) {await p4.applyIntegration(request,preview.value); onClose();}
       else {setPreview(null); const value=await p4.previewIntegration(request); if (mounted.current) setPreview({key,value});}
-    } catch (caught) {if (mounted.current) {setPreview(null); setError(p4DisplayError(errorMessage(caught))); setApplyFailed(apply);}}
+    } catch (caught) {if (mounted.current) {setPreview(null); setError(p4DisplayError(caught)); setApplyFailed(apply);}}
     finally {running.current = false; if (mounted.current) setBusy(null);}
   }
   const matches = branches?.query === branchQuery ? branches.value : null;

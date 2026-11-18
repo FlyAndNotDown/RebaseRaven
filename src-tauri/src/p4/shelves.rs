@@ -239,7 +239,7 @@ pub fn restore_shelf(
     fingerprint: &str,
 ) -> AppResult<String> {
     if preview_unshelve(connection, request)?.fingerprint != fingerprint {
-        return Err(AppError::msg(STALE));
+        return Err(AppError::StaleReview(STALE));
     }
     let (args, _) = unshelve_args(connection, request)?;
     let refs = args.iter().map(String::as_str).collect::<Vec<_>>();

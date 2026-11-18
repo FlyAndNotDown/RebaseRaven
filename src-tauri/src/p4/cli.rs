@@ -13,8 +13,9 @@ use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::activity;
 use crate::diagnostics::{Code, CommandOutput, CommandTrace, Status};
-use crate::error::{AppError, AppResult, P4_LOGIN, P4_MISSING, P4_PROBE_TIMEOUT as PROBE_TIMEOUT};
+use crate::error::{AppError, AppResult, P4_PROBE_TIMEOUT as PROBE_TIMEOUT};
 
 struct P4Bin {
     selected: String,
@@ -92,7 +93,7 @@ pub fn active_p4() -> Option<String> {
 }
 
 pub fn require_p4() -> AppResult<PathBuf> {
-    find_p4().ok_or_else(|| AppError::msg(P4_MISSING))
+    find_p4().ok_or(AppError::P4Missing)
 }
 
 fn is_p4_executable_name(path: &Path) -> bool {
@@ -129,7 +130,7 @@ pub fn validate_p4_choice(path: &str) -> AppResult<()> {
         return Err(AppError::msg("Choose a file named p4."));
     }
     if !crate::locate::is_executable(file) {
-        return Err(AppError::msg(P4_MISSING));
+        return Err(AppError::P4Missing);
     }
     Ok(())
 }
@@ -174,7 +175,7 @@ pub fn check_p4_executable(path: &str) -> AppResult<()> {
     validate_p4_choice(path)?;
     let path = path.trim();
     if path.is_empty() {
-        return Err(AppError::msg(P4_MISSING));
+        return Err(AppError::P4Missing);
     }
     let output = p4_version_output(path)?;
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -445,15 +446,15 @@ pub(super) fn run_p4_probe(env: &P4Env, args: &[&str], deadline: Instant) -> App
     output.and_then(finish)
 }
 
-/// Own the child until its result is collected, so a deadline never targets a
+/// Own the child until its result is collected, so a stop never targets a
 /// recycled PID after an exited parent leaves its helpers holding the pipes.
-struct ProbeProcess {
+struct OwnedChild {
     child: Child,
     tree: crate::platform::ProbeProcessTreeGuard,
     reaped: bool,
 }
 
-impl Drop for ProbeProcess {
+impl Drop for OwnedChild {
     fn drop(&mut self) {
         if !self.reaped {
             self.tree.terminate(self.child.id());
@@ -506,7 +507,7 @@ fn capture_child(
     deadline: Instant,
     limits: CaptureLimits,
 ) -> AppResult<std::process::Output> {
-    let mut process = ProbeProcess {
+    let mut process = OwnedChild {
         child,
         tree,
         reaped: false,
@@ -678,32 +679,44 @@ fn finish_diff(ok: bool, stdout: String, stderr: String) -> AppResult<String> {
 pub fn run_p4_stream(
     env: &P4Env,
     args: &[&str],
-    mut on_line: impl FnMut(String),
-) -> AppResult<String> {
-    let command = prepared(require_p4()?, env, args);
+    mut on_line: impl FnMut(&str) -> bool,
+) -> AppResult<bool> {
+    let mut command = prepared(require_p4()?, env, args);
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     let mut trace = CommandTrace::new(diagnostic_code(args), &command);
-    match stream_once(env, args, &mut on_line) {
-        Ok((status, stdout, stderr)) => {
-            trace.finish(
-                if status.success() {
-                    Status::Success
-                } else {
-                    Status::Failure
-                },
-                CommandOutput {
-                    status: Some(status),
-                    stdout: stdout.as_bytes(),
-                    stderr: stderr.as_bytes(),
-                },
-                None,
-            );
-            finish_parts(status.success(), stdout, stderr)
+    let mut auth_error = None;
+    let result = collect_activity_output(
+        &mut command,
+        Some(&mut |line| {
+            if on_line(line) {
+                return;
+            }
+            if let Err(error) = reject_untrusted_server(line) {
+                auth_error = Some(error);
+            } else if auth_error.is_none() && needs_login(line) {
+                auth_error = Some(AppError::P4Login);
+            }
+        }),
+    );
+    trace.output(&result);
+    let output = result?;
+    if !output.status.success() {
+        if let Some(error) = auth_error {
+            return Err(error);
         }
-        Err(error) => {
-            trace.finish(Status::Failure, CommandOutput::default(), Some(&error));
-            Err(error)
+        let message = combine(
+            &String::from_utf8_lossy(&output.stderr),
+            &String::from_utf8_lossy(&output.stdout),
+        );
+        reject_untrusted_server(&message)?;
+        if needs_login(&message) {
+            return Err(AppError::P4Login);
         }
     }
+    Ok(output.status.success())
 }
 
 fn finish(output: std::process::Output) -> AppResult<String> {
@@ -718,7 +731,7 @@ fn finish_parts(ok: bool, stdout: String, stderr: String) -> AppResult<String> {
         reject_untrusted_server(&message)?;
     }
     if !ok && needs_login(&message) {
-        return Err(AppError::msg(P4_LOGIN));
+        return Err(AppError::P4Login);
     }
     if !ok {
         return Err(AppError::msg(if message.is_empty() {
@@ -740,6 +753,13 @@ fn run_once(env: &P4Env, args: &[&str], input: Option<&str>) -> AppResult<std::p
     });
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut trace = CommandTrace::new(diagnostic_code(args), &command);
+    // Sync estimates, revision lookups and auto-resolve run inside the same
+    // scope as the transfer. They have no input and must stop with it.
+    if input.is_none() && activity::current_cancel().is_some() {
+        let result = collect_activity_output(&mut command, None);
+        trace.output(&result);
+        return result;
+    }
     let result = (|| {
         let mut child = command
             .spawn()
@@ -758,56 +778,120 @@ fn run_once(env: &P4Env, args: &[&str], input: Option<&str>) -> AppResult<std::p
     trace.output(&result);
     result
 }
-fn stream_once(
-    env: &P4Env,
-    args: &[&str],
-    on_line: &mut dyn FnMut(String),
-) -> AppResult<(std::process::ExitStatus, String, String)> {
-    let program = require_p4()?;
-    let mut command = prepared(program, env, args);
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let mut child = command
-        .spawn()
+
+enum ActivityOutput {
+    Bytes { stdout: bool, bytes: Vec<u8> },
+    End,
+}
+
+fn collect_activity_output(
+    command: &mut Command,
+    mut on_line: Option<&mut dyn FnMut(&str)>,
+) -> AppResult<std::process::Output> {
+    activity::check_cancelled()?;
+    let (child, tree) = crate::platform::spawn_probe_command(command)
         .map_err(|err| p4_start_error(command.get_program(), err))?;
-    let stderr = child.stderr.take();
-    let stderr_thread = thread::spawn(move || {
-        let mut buf = Vec::new();
-        if let Some(mut pipe) = stderr {
-            let _ = pipe.read_to_end(&mut buf);
-        }
-        buf
-    });
-    let mut stdout_text = String::new();
-    if let Some(stdout) = child.stdout.take() {
-        let mut reader = BufReader::new(stdout);
-        let mut buf = Vec::new();
-        loop {
-            buf.clear();
-            let read = reader
-                .read_until(b'\n', &mut buf)
-                .map_err(|err| AppError::msg(err.to_string()))?;
-            if read == 0 {
-                break;
+    let mut process = OwnedChild {
+        child,
+        tree,
+        reaped: false,
+    };
+    let (sender, receiver) = mpsc::sync_channel(32);
+    // Read both pipes without blocking the loop that checks cancellation.
+    for (stdout, pipe) in [
+        (
+            true,
+            Box::new(process.child.stdout.take().expect("piped stdout")) as Box<dyn Read + Send>,
+        ),
+        (
+            false,
+            Box::new(process.child.stderr.take().expect("piped stderr")) as Box<dyn Read + Send>,
+        ),
+    ] {
+        let sender = sender.clone();
+        let lines = on_line.is_some();
+        thread::spawn(move || {
+            let mut reader = BufReader::new(pipe);
+            let mut read = || -> std::io::Result<()> {
+                loop {
+                    let bytes = if lines {
+                        let mut line = Vec::new();
+                        reader.read_until(b'\n', &mut line)?;
+                        line
+                    } else {
+                        let chunk = reader.fill_buf()?.to_vec();
+                        reader.consume(chunk.len());
+                        chunk
+                    };
+                    if bytes.is_empty()
+                        || sender
+                            .send(Ok(ActivityOutput::Bytes { stdout, bytes }))
+                            .is_err()
+                    {
+                        return Ok(());
+                    }
+                }
+            };
+            let _ = sender.send(read().map(|()| ActivityOutput::End));
+        });
+    }
+    drop(sender);
+
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let mut stdout_excerpt = crate::diagnostics::Capture::default();
+    let mut stderr_excerpt = crate::diagnostics::Capture::default();
+    let poll = Duration::from_millis(30);
+    let mut streams = 2;
+    while streams > 0 {
+        activity::check_cancelled()?;
+        match receiver.recv_timeout(poll) {
+            Ok(Ok(ActivityOutput::Bytes {
+                stdout: is_stdout,
+                bytes,
+            })) => {
+                if let Some(on_line) = on_line.as_mut() {
+                    let excerpt = if is_stdout {
+                        &mut stdout_excerpt
+                    } else {
+                        &mut stderr_excerpt
+                    };
+                    excerpt.append(&bytes);
+                    let line = String::from_utf8_lossy(&bytes);
+                    on_line(line.trim_end_matches(['\r', '\n']));
+                } else if is_stdout {
+                    stdout.extend(bytes);
+                } else {
+                    stderr.extend(bytes);
+                }
             }
-            while matches!(buf.last(), Some(b'\n' | b'\r')) {
-                buf.pop();
+            Ok(Ok(ActivityOutput::End)) => streams -= 1,
+            Ok(Err(error)) => return Err(error.into()),
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                return Err(AppError::msg("Could not read Perforce output."));
             }
-            let line = String::from_utf8_lossy(&buf).into_owned();
-            if line.is_empty() {
-                continue;
-            }
-            stdout_text.push_str(&line);
-            stdout_text.push('\n');
-            on_line(crate::error::redact_credentials(&line));
         }
     }
-    let status = child.wait().map_err(|err| AppError::msg(err.to_string()))?;
-    let stderr_bytes = stderr_thread.join().unwrap_or_default();
-    let stderr_text = String::from_utf8_lossy(&stderr_bytes).into_owned();
-    Ok((status, stdout_text, stderr_text))
+    // Keep the launcher unreaped while a helper can still own either pipe.
+    let status = loop {
+        if let Some(status) = process.child.try_wait()? {
+            process.reaped = true;
+            break status;
+        }
+        activity::check_cancelled()?;
+        thread::sleep(poll);
+    };
+    process.tree.disarm()?;
+    if on_line.is_some() {
+        stdout = stdout_excerpt.take();
+        stderr = stderr_excerpt.take();
+    }
+    Ok(std::process::Output {
+        status,
+        stdout,
+        stderr,
+    })
 }
 
 // Windows CLI runtimes can expand bare wildcards before p4 parses its options.
@@ -876,7 +960,7 @@ fn p4_start_error(program: &std::ffi::OsStr, error: std::io::Error) -> AppError 
         std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied
     ) && !crate::locate::is_executable(Path::new(program))
     {
-        AppError::msg(P4_MISSING)
+        AppError::P4Missing
     } else {
         AppError::msg(format!("Could not start Perforce: {error}"))
     }
@@ -952,12 +1036,22 @@ fn looks_like_diff(text: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use super::collect_activity_output;
     use super::{
         is_p4_executable_name, normalize_extra_p4_paths, prepared, validate_p4_choice, P4Env,
         P4Jobs,
     };
+    #[cfg(unix)]
+    use crate::activity;
     use std::path::Path;
+    #[cfg(unix)]
+    use std::process::Stdio;
     use std::sync::Arc;
+    #[cfg(unix)]
+    use std::thread;
+    #[cfg(unix)]
+    use std::time::{Duration, Instant};
 
     #[test]
     fn windows_patterns_stay_one_quoted_argument() {
@@ -1049,6 +1143,81 @@ mod tests {
             !marker.exists(),
             "the probe left its pipe-holding helper running"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn activity_cancellation_stops_a_transfer_with_a_silent_pipe_holder() {
+        let temporary = tempfile::tempdir().unwrap();
+        let survived = temporary.path().join("helper-survived");
+        let mut command = crate::platform::background_command("/bin/sh");
+        command
+            .args([
+                "-c",
+                "(sleep 1; printf orphan > \"$1\") & printf 'Syncing one file\\r\\n'; exit 0",
+                "transfer-fixture",
+            ])
+            .arg(&survived)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let id = "test-p4-transfer";
+        let mut lines = Vec::new();
+        let result = activity::with_cancel(Some(id), || {
+            let result = collect_activity_output(
+                &mut command,
+                Some(&mut |line| {
+                    lines.push(line.to_string());
+                    assert!(activity::cancel_activity(id));
+                }),
+            );
+            assert!(result.unwrap_err().is_cancelled());
+            // A later stage must not start after the transfer was cancelled.
+            let mut next = crate::platform::background_command("not-an-executable");
+            collect_activity_output(&mut next, None)
+        });
+        assert_eq!(lines, ["Syncing one file"]);
+        assert!(result.unwrap_err().is_cancelled());
+        assert!(!activity::cancel_activity(id));
+        std::thread::sleep(Duration::from_millis(1100));
+        assert!(!survived.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn activity_cancellation_stops_a_silent_sync_estimate() {
+        let temporary = tempfile::tempdir().unwrap();
+        let started = temporary.path().join("started");
+        let mut command = crate::platform::background_command("/bin/sh");
+        command
+            .args(["-c", "touch \"$1\"; sleep 5", "estimate-fixture"])
+            .arg(&started)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let id = "test-p4-estimate";
+        let other = "test-independent-activity";
+        let result = activity::with_cancel(Some(other), || {
+            let result = activity::with_cancel(Some(id), || {
+                let cancel = thread::spawn(move || {
+                    let deadline = Instant::now() + Duration::from_secs(2);
+                    while !started.exists() && Instant::now() < deadline {
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                    assert!(started.exists());
+                    assert!(activity::cancel_activity(id));
+                });
+                let start = Instant::now();
+                let result = collect_activity_output(&mut command, None);
+                cancel.join().unwrap();
+                assert!(start.elapsed() < Duration::from_secs(4));
+                result
+            });
+            assert!(result.unwrap_err().is_cancelled());
+            assert!(!activity::cancel_activity(id));
+            activity::check_cancelled()
+        });
+        assert!(result.is_ok());
     }
 
     #[cfg(unix)]

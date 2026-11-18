@@ -1,4 +1,5 @@
-import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { errorCode } from "./native-error";
+import { Channel, invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type { LfsState, LfsAction, LfsOutcome } from "@/types/lfs";
 import type { SparseCheckoutState, SparseCheckoutRequest, SparseCheckoutPreview, SparseCheckoutOutcome } from "@/types/sparse-checkout";
 import type {
@@ -75,25 +76,13 @@ export function emptyBinaryDiff(path: string, oldPath: string | null = null): Fi
   };
 }
 
-export function errorMessage(error: unknown): string {
-  if (typeof error === "string") return error;
-  if (error instanceof Error) return error.message;
-  return String(error);
-}
-
-/** Matches `CANCELLED` in the Rust backend. */
-export function isCancelled(error: unknown) {
-  return errorMessage(error) === "Cancelled";
-}
-
-/** Matches `GIT_MISSING` in the Rust backend. */
-export const GIT_MISSING = "Git executable was not found. Choose one in Settings.";
+export { errorMessage, isCancelled, GIT_MISSING } from "./native-error";
 
 const GIT_MISSING_EVENT = "rebaseraven-git-missing";
 
 function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   return tauriInvoke<T>(command, args).catch((error: unknown) => {
-    if (typeof window !== "undefined" && errorMessage(error) === GIT_MISSING) {
+    if (typeof window !== "undefined" && errorCode(error) === "gitMissing") {
       window.dispatchEvent(new Event(GIT_MISSING_EVENT));
     }
     throw error;
@@ -128,19 +117,22 @@ export const gitApi = {
       destination,
       activityId: activityId || null,
     }),
-  cancelActivity: (id: string) => call<boolean>("cancel_activity", { id }),
   answerAskpass: (id: number, answer: string | null) =>
     call<void>("answer_askpass", { id, answer }),
   refreshWorkspace: (repoPath: string) =>
     call<WorkspaceSnapshot>("refresh_workspace", { repoPath }),
-  getCommits: (repoPath: string, limit = 80, skip = 0, query?: string, revs?: string[] | null) =>
-    call<CommitSummary[]>("get_commits", {
-      repoPath,
-      limit,
-      skip,
-      query: query || null,
-      rev: revs?.length ? revs : null,
-    }),
+  getCommits: async (repoPath: string, limit = 80, skip = 0, query?: string, revs?: string[] | null, onPreview?: (items: CommitSummary[]) => void) => {
+    const preview = onPreview ? new Channel<CommitSummary[]>() : null;
+    let pending = true;
+    if (preview) preview.onmessage = (items) => {
+      if (pending) onPreview?.(items.map(item => ({...item, onCurrentBranch: null, onTrackingBranch: null})));
+    };
+    try {
+      return await call<CommitSummary[]>("get_commits", { repoPath, limit, skip, query: query || null, rev: revs?.length ? revs : null, preview });
+    } finally {
+      pending = false;
+    }
+  },
   getBranches: (repoPath: string) => call<BranchList>("get_branches", { repoPath }),
   getWorkdirDiff: (repoPath: string, path: string, staged: boolean, ignoreWhitespace = false) =>
     call<FileDiff>("get_workdir_diff", { repoPath, path, staged, ignoreWhitespace }),

@@ -25,10 +25,11 @@ export function LfsDialog({open, onOpenChange}: {open:boolean; onOpenChange:(ope
 
 export function LfsSession({repoPath,onClose}: {repoPath:string;onClose:()=>void}) {
   const {t}=useTranslation();
-  const {changeLfs,activeTabId}=useGitPick(["changeLfs","activeTabId"]);
+  const {changeLfs,activeTabId,cancelActivity}=useGitPick(["changeLfs","activeTabId","cancelActivity"]);
   const activities=useActivities();
   const [request]=useState(createLatestRequest), [mutation]=useState(createExclusiveAction);
-  const [state,setState]=useState<LfsState|null>(null), [loading,setLoading]=useState(true), [busy,setBusy]=useState(false), [cancelling,setCancelling]=useState(false);
+  const [state,setState]=useState<LfsState|null>(null), [loading,setLoading]=useState(true), [busy,setBusy]=useState(false);
+  const [activityId, setActivityId] = useState<string | null>(null);
   const [error,setError]=useState(""), [report,setReport]=useState(""), [attempt,setAttempt]=useState(0);
   const [locks,setLocks]=useState<LfsLocks|null>(null);
   const [pane,setPane]=useState("files"), [query,setQuery]=useState(""), [remote,setRemote]=useState("");
@@ -45,27 +46,23 @@ export function LfsSession({repoPath,onClose}: {repoPath:string;onClose:()=>void
     cancelLoad.current=cancel;
     return ()=>{live.current=false;cancel();};
   },[repoPath,request,attempt]);
-  const ownerBusy=activities.some(activity=>activity.tabId===activeTabId), cancellable=activities.find(activity=>activity.tabId===activeTabId && activity.cancellable);
+  const ownerBusy=activities.some(activity=>activity.tabId===activeTabId);
+  const activity = activities.find(item => item.id === activityId && item.cancellable);
   const blocked=loading || busy || ownerBusy;
   const available=Boolean(state?.version);
   function reload(){if(blocked || mutation.busy)return;setLoading(true);setLocks(null);setError("");setReport("");setAttempt(value=>value+1);}
   function run(action:LfsAction){
     if(!state || blocked || !available)return;
     void mutation.run(async()=>{
-      cancelLoad.current?.();setBusy(true);setCancelling(false);setError("");setReport("");
+      cancelLoad.current?.();setBusy(true);setError("");setReport("");
       try {
-        const result=await changeLfs(repoPath,action,state.fingerprint);
+        const result=await changeLfs(repoPath,action,state.fingerprint,setActivityId);
         if(!live.current)return;
         if(result){receive(result.state);setLocks(result.locks ?? null);setReport(result.report || t("git.lfs.completed"));if(action.kind==="track")setPattern("");}
         else {setLocks(null);setError(t("git.lfs.failed"));const value=await gitApi.lfsState(repoPath);if(live.current)receive(value);}
       }catch(caught){if(live.current){setLocks(null);setError(lfsError(caught));}}
-      finally{if(live.current)setBusy(false);}
+      finally{if(live.current){setBusy(false);setActivityId(null);}}
     });
-  }
-  async function cancel(){
-    if(!cancellable || cancelling)return;setCancelling(true);
-    try{if(!await gitApi.cancelActivity(cancellable.id) && live.current)setCancelling(false);}
-    catch(caught){if(live.current){setCancelling(false);setError(lfsError(caught));}}
   }
   const files=state?.files.filter(file=>file.name.toLowerCase().includes(query.toLowerCase())) ?? [];
   const patterns=state?.patterns.filter(rule=>rule.tracked || rule.lockable) ?? [];
@@ -96,7 +93,11 @@ export function LfsSession({repoPath,onClose}: {repoPath:string;onClose:()=>void
       {report ? <pre role="status" className="max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-md border bg-muted/10 p-3 font-mono text-xs leading-relaxed">{report}</pre> : null}
       {error ? <p role="alert" className="whitespace-pre-wrap text-xs text-destructive">{error}</p> : null}
     </div>
-    <DialogFooter>{busy ? <Button variant="outline" className="sm:mr-auto" disabled={!cancellable || cancelling} onClick={()=>void cancel()}>{t(cancelling ? "git.sparse.cancelling" : "git.sparse.cancel")}</Button> : !state && error ? <Button variant="ghost" className="sm:mr-auto" onClick={reload}>{t("common.retry")}</Button> : null}<Button variant="outline" disabled={busy} onClick={onClose}>{t("common.close")}</Button></DialogFooter>
+    <DialogFooter>
+      {busy && activity ? <Button variant="outline" className="sm:mr-auto" disabled={activity.cancelling} onClick={() => void cancelActivity(activity.id)}>{t(activity.cancelling ? "desktop.activityMeter.stopping" : "git.sparse.cancel")}</Button>
+        : !state && error ? <Button variant="ghost" className="sm:mr-auto" onClick={reload}>{t("common.retry")}</Button> : null}
+      <Button variant="outline" disabled={busy} onClick={onClose}>{t("common.close")}</Button>
+    </DialogFooter>
   </DialogContent>;
 }
 

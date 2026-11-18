@@ -9,7 +9,7 @@ import type { FileDiff } from "@/types/git";
 import type { P4Changelist, P4HistoryCursor, P4Revision } from "@/types/p4";
 
 const calls = vi.hoisted(() => ({ filelog: vi.fn(), revisionDiff: vi.fn(), describeSubmitted: vi.fn(), selectSubmitted: vi.fn(), setView: vi.fn() }));
-vi.mock("@/state/p4-context", () => ({ useP4: () => calls }));
+vi.mock("@/state/p4-context", () => ({ useP4Pick: () => calls }));
 vi.mock("@/components/p4/p4-diff", () => ({ P4Diff: ({ diff, fileSource }: { diff: FileDiff | null; fileSource?: { path: string; revision: string } }) => <div data-diff-source={JSON.stringify(fileSource)}>{diff?.path}</div> }));
 vi.mock("@/components/p4/p4-get-revision-dialog", () => ({ P4GetRevisionDialog: () => null }));
 vi.mock("@/components/author-avatar", () => ({ AuthorAvatar: () => <span /> }));

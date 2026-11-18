@@ -330,6 +330,15 @@
     "confirmExternal": "确认合并完成",
     "externalConfirmHint": "检查合并结果后，确认合并完成。关闭外部工具不会直接解决此文件。"
   },
+  "scan": {
+    "folders": "扫描目录",
+    "addFolders": "添加目录",
+    "choose": "请选择一个或多个工作区目录。",
+    "outside": "请选择当前工作区内的目录。",
+    "remove": "移除 {{folder}}",
+    "start": "扫描",
+    "scanning": "正在扫描目录…"
+  },
   "clean": {
     "menu": "清理",
     "review_one": "确认 {{count}} 个文件",
@@ -376,6 +385,8 @@
     "edit": "修改",
     "delete": "删除",
     "hint": "仅将勾选文件加入目标变更列表，遵循忽略规则；不会自动提交。",
+    "apply_one": "整理 {{count}} 个文件",
+    "apply_other": "整理 {{count}} 个文件",
     "apply": "整理 {{count}} 个文件"
   },
   "streams": {

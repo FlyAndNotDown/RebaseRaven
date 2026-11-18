@@ -31,6 +31,7 @@ import { useRepoChanged } from "@/state/use-repo-changed";
 import type { BlameHunk, CommitSummary, DirEntry, FileDiff } from "@/types/git";
 
 const PAGE = 80;
+const relativePath = (relative: string) => relative;
 
 function ancestorDirs(path: string): string[] {
   const parts = path.split("/").slice(0, -1);
@@ -215,9 +216,9 @@ export function FilesBrowser() {
                 <FileTreeSkeleton fill />
               ) : (
                 <FilteredFileTree
-                  virtualized
+                  key={JSON.stringify([repoPath, query.trim()])}
                   nodes={searchNodes}
-                  toPath={(relative) => relative}
+                  toPath={relativePath}
                   selected={path}
                   menu={fileMenu}
                   onOpenFile={(next) => {

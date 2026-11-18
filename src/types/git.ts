@@ -87,8 +87,8 @@ export interface CommitSummary {
   timestamp: number;
   parents: string[];
   refs: CommitRef[];
-  onCurrentBranch: boolean;
-  onTrackingBranch: boolean;
+  onCurrentBranch: boolean | null;
+  onTrackingBranch: boolean | null;
   /** The file's name at this commit; only set by per-file history. */
   path?: string;
 }
@@ -428,8 +428,9 @@ export interface Activity {
   label: string;
   detail?: string;
   progress?: number;
-  /** The activity id was handed to a git process that `cancel_activity` can stop. */
+  /** The native operation supports stopping this activity by id. */
   cancellable?: boolean;
+  cancelling?: boolean;
 }
 
 export interface RecentRepo {

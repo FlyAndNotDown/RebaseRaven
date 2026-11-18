@@ -9,7 +9,7 @@ import type { P4Changelist, P4ChangePage } from "@/types/p4";
 
 const actions=vi.hoisted(()=>({history:vi.fn(),describe:vi.fn(),globalLoad:vi.fn()}));
 let model:SubmittedHistoryModel,scope:string | undefined,root:Root,container:HTMLDivElement;
-vi.mock("@/state/p4-context",()=>({useP4:()=>({pathHistory:actions.history,describeSubmitted:actions.describe,loadSubmitted:actions.globalLoad})}));
+vi.mock("@/state/p4-context",()=>({useP4Pick:()=>({pathHistory:actions.history,describeSubmitted:actions.describe,loadSubmitted:actions.globalLoad})}));
 vi.mock("./p4-submitted",()=>({P4Submitted:({history,historyScope}:{history:SubmittedHistoryModel;historyScope?:string})=>{model=history;scope=historyScope;return <div>{history.submitted.map(change=><span key={change.id}>{change.id}</span>)}<p>{history.submittedDetail?.description}</p></div>;}}));
 function change(id:string):P4Changelist {return {id,user:"alice",client:"work",status:"submitted",description:`Change ${id}`,time:1,shelved:false,files:[]};}
 function page(ids:string[],hasMore=false):P4ChangePage {return {changes:ids.map(change),hasMore,scannedThrough:ids.length ? Number(ids.at(-1)) : null};}

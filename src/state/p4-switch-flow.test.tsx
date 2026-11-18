@@ -2,6 +2,7 @@
 import { act, useLayoutEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, it, expect, vi } from "vitest";
+import { P4DialogHost } from "@/components/p4/p4-dialog-host";
 import { P4Provider, useP4 } from "./p4-context";
 import { p4Api } from "@/lib/p4";
 import { defaultPrefs } from "@/lib/prefs";
@@ -12,9 +13,15 @@ import type { P4Connection } from "@/types/p4";
 vi.mock("@tauri-apps/api/event", () => ({listen:vi.fn(async () => () => {})}));
 vi.mock("@/components/p4/p4-connection-dialog", () => ({P4ConnectionDialog:() => null}));
 const tab={id:"p4:/workspace",kind:"repo",vcs:"perforce",path:"/workspace",name:"example"};
-const model={activeTab:tab,tabs:[tab],beginActivity:vi.fn(() => "activity"),endActivity:vi.fn(),setTabMeta:vi.fn(),retargetRepoTab:vi.fn(),refreshRecents:vi.fn(),prefs:{...defaultPrefs,p4RefreshMinutes:0}};
+const model={
+  activeTab:tab,tabs:[tab],beginActivity:vi.fn(() => "activity"),endActivity:vi.fn(),
+  runActivity:vi.fn(async (_label: string, _detail: string, run: (id: string) => Promise<unknown>) => run("activity")),
+  setTabMeta:vi.fn(),retargetRepoTab:vi.fn(),refreshRecents:vi.fn(),prefs:{...defaultPrefs,p4RefreshMinutes:0},
+};
+vi.mock("@/state/activity-context", () => ({useActivityActions: () => model}));
 vi.mock("@/state/git-context", () => ({useGitPick:() => model}));
 let state: ReturnType<typeof useP4>, root:Root, host:HTMLDivElement, current:P4Connection;
+const upToDate = {failed:false, updated:0, added:0, deleted:0, unchanged:true, warnings:{}, diagnostics:0, firstDiagnostic:""};
 function Capture() {const value=useP4();useLayoutEffect(() => {state=value;});return <div data-view={value.view} />;}
 function button(text: string) {const el=[...document.querySelectorAll("button")].find(el => el.textContent?.trim()===text);if(!el)throw new Error(text);return el;}
 async function click(text: string) {await act(async () => button(text).click());}
@@ -25,9 +32,9 @@ beforeEach(async () => {
   vi.spyOn(p4Api,"refreshPending").mockResolvedValue([]);
   vi.spyOn(p4Api,"listStreams").mockResolvedValue([{path:"//project/main",kind:"mainline"},{path:"//project/dev",kind:"development"}]);
   vi.spyOn(p4Api,"applySwitch").mockImplementation(async (_connection,request) => {current={...current,stream:request.target};return current;});
-  vi.spyOn(p4Api,"sync").mockResolvedValue({output:"up to date",autoResolve:null});
+  vi.spyOn(p4Api,"sync").mockResolvedValue({output:upToDate,autoResolve:null});
   host=document.createElement("div");document.body.append(host);root=createRoot(host);
-  await act(async () => root.render(<TooltipProvider><P4Provider><Capture /></P4Provider></TooltipProvider>));
+  await act(async () => root.render(<TooltipProvider><P4Provider><P4DialogHost /><Capture /></P4Provider></TooltipProvider>));
 });
 afterEach(async () => {await act(async () => root.unmount());host.remove();vi.restoreAllMocks();});
 async function switchStream() {
@@ -44,7 +51,7 @@ it("switches without syncing and allows skipping the subsequent update", async (
 it("returns to Pending and runs the normal update flow only after opting in", async () => {
   await switchStream();expect(button("Get latest").disabled).toBe(false);
   let updateView="";
-  vi.mocked(p4Api.sync).mockImplementation(async () => {updateView=state.view;return {output:"up to date",autoResolve:null};});
+  vi.mocked(p4Api.sync).mockImplementation(async () => {updateView=state.view;return {output:upToDate,autoResolve:null};});
   await click("Get latest");
   expect(updateView).toBe("pending");
   expect(p4Api.sync).toHaveBeenCalledWith(expect.objectContaining({stream:"//project/dev"}),[],"activity",defaultPrefs.p4AutoResolveAfterSync);

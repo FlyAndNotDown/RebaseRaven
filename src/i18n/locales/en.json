@@ -494,7 +494,9 @@
       "running_one": "{{count}} running",
       "running_other": "{{count}} running",
       "cancelling": "Cancelling: {{name}}",
-      "cancelNamed": "Cancel {{name}}"
+      "stopping": "Cancelling…",
+      "cancelNamed": "Cancel {{name}}",
+      "cancelUnavailable": "Could not cancel the operation. Try again."
     },
     "skeletons": {
       "loading_history": "Loading history",
