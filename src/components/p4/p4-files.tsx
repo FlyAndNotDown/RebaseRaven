@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { ArrowRightLeftIcon, BrushCleaningIcon, DownloadIcon, FilePenIcon, FolderIcon, FolderOpenIcon, FolderSearchIcon, FolderTreeIcon, GitMergeIcon, HistoryIcon, ListChecksIcon, PlusIcon, Trash2Icon, Undo2Icon } from "lucide-react";
 import { toast } from "sonner";
-import { FileTree, FileTreeFilter, FileTreeRoot, FilteredFileTree, type FileTreeEntry } from "@/components/file-tree";
+import { VirtualFileTree, FileTreeFilter, FileTreeRoot, FilteredFileTree, type FileTreeEntry } from "@/components/file-tree";
 import { FileStatusIcon } from "@/components/p4/file-status-icon";
 import { FileStatusTip } from "@/components/p4/file-status-tip";
 import { P4GetRevisionDialog, type P4RevisionTarget } from "@/components/p4/p4-get-revision-dialog";
@@ -86,6 +86,7 @@ export function P4Files() {
       }))
       .filter((node) => node.relative);
   }, [fileQuery.result, mode, root]);
+  const searchPath = useCallback((relative: string) => mode === "depot" ? depotPath(relative) : joinRoot(root, relative), [mode, root]);
   const [seenModes, setSeenModes] = useState(() => new Set<"workspace" | "depot">([mode]));
   if (!seenModes.has(mode)) setSeenModes((current) => new Set(current).add(mode));
   const [revisionTarget, setRevisionTarget] = useState<Extract<P4RevisionTarget, { path: string }> | null>(null);
@@ -215,10 +216,10 @@ export function P4Files() {
             placeholder={mode === "depot" ? t("p4.nameOrDepotname") : t("p4.filterFiles")}
             leading={<TreeMode mode={mode} onMode={setMode} />}
           />
-          <div className="relative min-h-0 flex-1 overflow-auto py-1">
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden py-1">
             {root ? (
               <>
-                <div className={fileQuery.active || mode !== "workspace" ? "hidden" : undefined}>
+                <div className={fileQuery.active || mode !== "workspace" ? "hidden" : "flex min-h-0 flex-1 flex-col"}>
                   {seenModes.has("workspace") ? (
                     <FileTreeRoot key={root} entry={workspaceRoot} selected={selected} onOpenDirectory={chooseDirectory} menu={fileMenu} revealKey={reveal?.mode === "workspace" ? reveal.id : undefined}>
                     <WorkspaceTree
@@ -233,7 +234,7 @@ export function P4Files() {
                     </FileTreeRoot>
                   ) : null}
                 </div>
-                <div className={fileQuery.active || mode !== "depot" ? "hidden" : undefined}>
+                <div className={fileQuery.active || mode !== "depot" ? "hidden" : "flex min-h-0 flex-1 flex-col"}>
                   {seenModes.has("depot") ? (
                     <FileTreeRoot key={`${connection?.port ?? ""}:${connection?.client ?? ""}`} entry={depotRoot} selected={selected} onOpenDirectory={chooseDirectory} menu={fileMenu} revealKey={reveal?.mode === "depot" ? reveal.id : undefined}>
                     <DepotTree
@@ -267,17 +268,14 @@ export function P4Files() {
                         ) : null
                       ) : (
                       <FilteredFileTree
+                        key={JSON.stringify([connectionKey,mode,query.trim()])}
                         depth={1}
                         nodes={searchNodes}
-                        toPath={(relative) => (mode === "depot" ? depotPath(relative) : joinRoot(root, relative))}
+                        toPath={searchPath}
                         selected={selected}
                         onOpenFile={choose}
                         onOpenDirectory={chooseDirectory}
-                        decorate={(node, entry) => ({
-                          ...entry,
-                          icon: node.dir ? undefined : <FileStatusIcon status={node.status} />,
-                          iconTitle: node.detail ? <FileStatusTip text={node.detail} /> : undefined,
-                        })}
+                        decorate={decorateSearchEntry}
                         onLoadDir={async (path) => {
                           if (!connection) return null;
                           try {
@@ -463,9 +461,10 @@ function WorkspaceTree({
     return <FileTreeSkeleton fill label={t("p4.loadingWorkspace")} />;
   }
   return (
-    <FileTree
+    <VirtualFileTree
       dir=""
       depth={1}
+      revealKey={reveal?.id}
       entries={displayedEntries}
       open={open}
       selected={selected}
@@ -583,9 +582,10 @@ function DepotTree({
     return <FileTreeSkeleton fill label={t("p4.loadingDepot")} />;
   }
   return (
-    <FileTree
+    <VirtualFileTree
       dir=""
       depth={1}
+      revealKey={reveal?.id}
       entries={entries}
       open={open}
       selected={selected}
@@ -678,7 +678,6 @@ function useRevealTree(
         });
         expandedRef.current?.(Object.keys(result.entries));
         if (result.path !== reveal.path) resolvedRef.current(result.path);
-        scrollTreePath(result.path);
       })
       .catch(() => {});
     return () => {
@@ -728,14 +727,6 @@ async function expandTree(
     current = next.path;
   }
   return { entries, open, path: target };
-}
-
-function scrollTreePath(path: string) {
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      document.querySelector(`[data-tree-path="${CSS.escape(path)}"]`)?.scrollIntoView({ block: "nearest" });
-    });
-  });
 }
 
 type TreeSnapshot = {
@@ -843,6 +834,11 @@ function includeVersionedParents(entries: Record<string, P4TreeEntry[]>) {
   return Object.fromEntries(Object.entries(entries).map(([directory, children]) => [directory, children.map(entry =>
     entry.dir && entry.ignored && parents.has(normalizeRepoPath(entry.path)) ? { ...entry, ignored: false } : entry,
   )]));
+}
+
+function decorateSearchEntry(node: SearchNode, entry: FileTreeEntry): FileTreeEntry {
+  return { ...entry, icon: node.dir ? undefined : <FileStatusIcon status={node.status} />,
+    iconTitle: node.detail ? <FileStatusTip text={node.detail} /> : undefined };
 }
 
 function presentFile(entry: P4DirEntry): P4TreeEntry {

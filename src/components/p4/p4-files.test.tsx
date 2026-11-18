@@ -20,6 +20,7 @@ function entry(name:string,dir=false,ignored=false):P4DirEntry {return {name:nam
 function rows(path:string) {return [...container.querySelectorAll<HTMLButtonElement>('button[data-tree-path]')].filter(row=>row.dataset.treePath===path);}
 async function render() {await act(async()=>root.render(<TooltipProvider><P4Files/></TooltipProvider>));}
 beforeEach(()=>{
+  vi.stubGlobal("ResizeObserver",class {observe(){} unobserve(){} disconnect(){}});
   Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});setLanguagePreference("en");vi.resetAllMocks();actions.epoch=0;actions.connection={...actions.connection,root:"/workspace",client:`client-${++sequence}`};
   actions.listDir.mockImplementation(async (relative:string)=>relative ? [entry(`${relative}/child.txt`)] : [entry("cache",true,true),entry("output.tmp",false,true)]);actions.status.mockResolvedValue([]);actions.cancel.mockResolvedValue(undefined);
   actions.listDepot.mockResolvedValue([]);

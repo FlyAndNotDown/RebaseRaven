@@ -33,6 +33,7 @@ interface FileTreeProps {
   trailing?: (entry: FileTreeEntry) => ReactNode;
   menu?: (entry: FileTreeEntry) => ReactNode;
   loading?: ReadonlySet<string>;
+  revealKey?: number;
 }
 
 /** A selectable root folder that keeps its lazily loaded children mounted. */
@@ -56,27 +57,8 @@ export function FileTreeRoot({
     <TreeRow item={entry} depth={0} expanded={expanded} selected={selected}
       onToggle={() => setExpanded(current => !current)} onOpenDirectory={onOpenDirectory}
       onOpenFile={onOpenDirectory} menu={menu} />
-    <div hidden={!expanded}>{children}</div>
+    <div hidden={!expanded} className={expanded ? "flex min-h-0 flex-1 flex-col" : undefined}>{children}</div>
   </>;
-}
-
-export function FileTree(props: FileTreeProps) {
-  const { dir, depth, entries, open } = props;
-  const items = entries[dir];
-  if (!items) return null;
-  return (
-    <>
-      {items.map((item) => {
-        const expanded = item.dir && open.has(item.path);
-        return (
-          <div key={item.path}>
-            <TreeRow {...props} item={item} depth={depth} expanded={expanded} />
-            {expanded ? <FileTree {...props} dir={item.path} depth={depth + 1} /> : null}
-          </div>
-        );
-      })}
-    </>
-  );
 }
 
 /** A scrolling tree that mounts one screen of rows, regardless of folder size. */
@@ -84,7 +66,7 @@ export function VirtualFileTree(props: FileTreeProps) {
   const { dir, depth, entries, open, selected } = props;
   const rows = useMemo(() => fileTreeRows(entries, open, dir, depth), [entries, open, dir, depth]);
   const windowed = useWindowedRows(rows.length, 28, 10, 640);
-  const revealed = useRef<string | null>(null);
+  const revealed = useRef<{path: string; key?: number} | null>(null);
   const viewportHeight = windowed.viewport?.clientHeight ?? 0;
   useLayoutEffect(() => {
     const viewport = windowed.viewport;
@@ -92,16 +74,16 @@ export function VirtualFileTree(props: FileTreeProps) {
       revealed.current = null;
       return;
     }
-    if (!viewport || viewportHeight === 0 || selected === revealed.current) return;
+    if (!viewport || viewportHeight === 0 || (selected === revealed.current?.path && props.revealKey === revealed.current.key)) return;
     const index = rows.findIndex((row) => row.entry.path === selected);
     if (index < 0) return;
-    revealed.current = selected;
+    revealed.current = {path: selected, key: props.revealKey};
     const top = index * 28;
     if (top < viewport.scrollTop) viewport.scrollTo({ top });
     else if (top + 28 > viewport.scrollTop + viewport.clientHeight) {
       viewport.scrollTo({ top: top + 28 - viewport.clientHeight });
     }
-  }, [rows, selected, windowed.viewport, viewportHeight]);
+  }, [rows, selected, props.revealKey, windowed.viewport, viewportHeight]);
   return (
     <ScrollArea className="min-h-0 flex-1" viewportRef={windowed.viewportRef} scrollbars="vertical">
       <div style={{ paddingTop: windowed.before, paddingBottom: windowed.after }}>
@@ -269,7 +251,6 @@ export function FilteredFileTree({
   onLoadDir,
   menu,
   decorate,
-  virtualized = false,
   depth = 0,
 }: {
   nodes: SearchNode[];
@@ -280,57 +261,47 @@ export function FilteredFileTree({
   onLoadDir?: (path: string) => Promise<FileTreeEntry[] | null>;
   menu?: (entry: FileTreeEntry) => ReactNode;
   decorate?: (node: SearchNode, entry: FileTreeEntry) => FileTreeEntry;
-  virtualized?: boolean;
   depth?: number;
 }) {
   useTranslation();
-  const [seen, setSeen] = useState(nodes);
-  const [generation, setGeneration] = useState(0);
-  const generationRef = useRef(generation);
-  const requests = useRef(new Map<string, number>());
+  const source = useMemo(() => buildFilteredTree(nodes, toPath, decorate), [nodes, toPath, decorate]);
+  const [overrides, setOverrides] = useState(() => new Map<string, boolean>());
+  const [loaded, setLoaded] = useState<Record<string, FileTreeEntry[]>>({});
   const [loading, setLoading] = useState<ReadonlySet<string>>(() => new Set());
-  const [tree, setTree] = useState(() => buildFilteredTree(nodes, toPath, decorate));
-  if (seen !== nodes) {
-    setSeen(nodes);
-    setGeneration((current) => current + 1);
-    setTree(buildFilteredTree(nodes, toPath, decorate));
-    setLoading(new Set());
-  }
-  useLayoutEffect(() => {
-    generationRef.current = generation;
-    return () => {
-      generationRef.current = generation + 1;
-    };
-  }, [generation]);
+  const inflight = useRef(new Set<string>());
+  const open = useMemo(() => {
+    const result = new Set(source.open);
+    for (const [path, expanded] of overrides) {
+      if (expanded) result.add(path);
+      else result.delete(path);
+    }
+    return result;
+  }, [source.open, overrides]);
+  const entries = useMemo(() => {
+    const result = {...source.entries};
+    for (const [path, children] of Object.entries(loaded)) {
+      const matches = new Map(source.entries[path]?.map(entry => [entry.path, entry]));
+      result[path] = children.map(entry => {
+        const match = matches.get(entry.path);
+        matches.delete(entry.path);
+        return match ?? entry;
+      }).concat([...matches.values()]);
+    }
+    return result;
+  }, [source.entries, loaded]);
 
   async function toggle(path: string) {
-    if (tree.open.has(path)) {
-      setTree((current) => {
-        const open = new Set(current.open);
-        open.delete(path);
-        return { ...current, open };
-      });
-      return;
-    }
-    setTree((current) => ({ ...current, open: new Set(current.open).add(path) }));
-    if (!tree.entries[path] && onLoadDir && requests.current.get(path) !== generation) {
-      const token = generation;
-      requests.current.set(path, token);
-      setLoading((current) => new Set(current).add(path));
-      try {
-        const children = await onLoadDir(path);
-        if (token !== generationRef.current || !children) return;
-        setTree((current) => ({ ...current, entries: { ...current.entries, [path]: children } }));
-      } finally {
-        if (requests.current.get(path) === token) requests.current.delete(path);
-        if (token === generationRef.current) {
-          setLoading((current) => {
-            const next = new Set(current);
-            next.delete(path);
-            return next;
-          });
-        }
-      }
+    const expand = !open.has(path);
+    setOverrides(current => new Map(current).set(path, expand));
+    if (!expand || entries[path] || !onLoadDir || inflight.current.has(path)) return;
+    inflight.current.add(path);
+    setLoading(new Set(inflight.current));
+    try {
+      const children = await onLoadDir(path);
+      if (children) setLoaded(current => ({ ...current, [path]: children }));
+    } finally {
+      inflight.current.delete(path);
+      setLoading(new Set(inflight.current));
     }
   }
 
@@ -338,13 +309,12 @@ export function FilteredFileTree({
     return <p className="px-3 py-2 text-xs text-muted-foreground">{t("git-files.noMatches")}</p>;
   }
 
-  const Tree = virtualized ? VirtualFileTree : FileTree;
   return (
-    <Tree
+    <VirtualFileTree
       dir={toPath("")}
       depth={depth}
-      entries={tree.entries}
-      open={tree.open}
+      entries={entries}
+      open={open}
       selected={selected}
       onToggle={(path) => void toggle(path)}
       onOpenFile={onOpenFile}
