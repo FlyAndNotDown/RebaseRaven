@@ -1,15 +1,15 @@
 {
-  "version": "0.1.21",
-  "notes": "- Correct ignored file and folder styling in Perforce workspaces on Windows, keeping tracked files and their parent folders visible.\n- Prevent Get latest option tooltips from opening automatically.\n- Show the File / History selector only when a file is selected.\n- Handle ordinary Git rebases directly, including fast-forwarding to fetched remote references, without an upfront commit-history scan.\n- Generate sitemap modification dates for both language pages and retain the dates when unchanged pages are republished.\n",
-  "pub_date": "2026-11-17T09:51:37.189Z",
+  "version": "0.1.22",
+  "notes": "- Cancel Perforce sync and revision downloads from the activity meter, and stop workspace scans even while a worker is starting.\n- Choose one or more folders before scanning for Perforce Reconcile or Clean. Applying the selection rechecks only those files and respects changes made since the scan.\n- Speed up Perforce browsing in large workspaces with virtualized file trees, paginated searches, and streamed sync summaries.\n- Keep expanded folders with their Perforce connection so switching streams or reconnecting clears stale listings.\n- Load Git history membership by page and bound diff previews for large changes.\n- Serialize Git writes per repository and keep late refreshes or completed operations from updating a reopened tab.\n",
+  "pub_date": "2026-11-18T10:22:02.763Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUK0hSbWZEbkU5REd4SzlEWWN0QVBURkpsUlFVNVVIaDlwK25aa0RjQlNobkk2R09FWkJUOXE5dDc3UHFaR3A3eGx4OUV0d0NJSmZKWnYzdHVIaUx2Y0VUL3VkREo4RkFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTA5MDgxCWZpbGU6UmViYXNlUmF2ZW5fMC4xLjIxX3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjEuMjEKemMyVVpMK3JLQ1R3WmhsM0gxTmpXT3FSK3NKcFdObUR5WTZwWGVwNG5teHRWT3RkU01BajV6T1dyMlJVaVdMNU51YnVmV096QU9FbXNvcFZTNmtKQlE9PQo=",
-      "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v0.1.21/RebaseRaven_v0.1.21_windows_x64.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUK0hSbWZEbkU5REp2c2dDOU9zelRrNEtoNGJETzNXOG1Tb0ltY05sSlJkRVhlcDdHUnk3SXp2bkJsWGFlb0Z6amQ3SUgySkg0MXN6aFM0N0Z2M3ZkQ1RNYStLYzZTUGdnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTk3MzA3CWZpbGU6UmViYXNlUmF2ZW5fMC4xLjIyX3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjEuMjIKTHBhVmtTZWZpNDh4SUM1MXhIMTk0UlJQTmFWYzJqSVNVYmNkTDB2dVNZenBnL0ZYTy9QbTB6cnlNUmNMZERuTnE1dmFoaVZLLzhaZmpkN0ZtYTRCQnc9PQo=",
+      "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v0.1.22/RebaseRaven_v0.1.22_windows_x64.exe"
     },
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUK0hSbWZEbkU5REFyZVhFblVUcnA3UEZoRXlEV3FGYTJGd2MzK3IvTk9WdTc3YitrZEdKRnNrOFZRSmdBcHVsQjR3Vk92ZEloNkh4SFVQZ0dhWmpKbVV1OUIxTGdHdkFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTA5MDI1CWZpbGU6UmViYXNlUmF2ZW4uYXBwLnRhci5negl2ZXJzaW9uOjAuMS4yMQpFNXhjYWphOHFyVFFmTFcrblczeG1VM0IzNmkrSVJ2QnkzdE1HbEhlMGgvRjgzYW52TldqRDkrNnR4UkFQaWlRUFR3OFBqd2tXUDEzS3ZWbGptS1NCQT09Cg==",
-      "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v0.1.21/RebaseRaven_v0.1.21_macos_arm64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUK0hSbWZEbkU5RE1qemFSRjE0dUNNY20xV28vTFNGV2FUbisvVEFKaVZxODBSbGFYTzkzSVpweTdPbzVvTzdEQytxWGo3WnRlVm1QbTliU2laK0VZYUNTVEMxNktlVFFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTk3MDc0CWZpbGU6UmViYXNlUmF2ZW4uYXBwLnRhci5negl2ZXJzaW9uOjAuMS4yMgpaVlBQbWRGQkZ6aUlwQkZueDR2U0JwVkFubStIOWFhSXBkMVVheU16VWt0U2ptdWNCMjl6TU9kNmZrYzdGR2ZsZEorRC9USHhsOW9IMzY0YURWOHlCUT09Cg==",
+      "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v0.1.22/RebaseRaven_v0.1.22_macos_arm64.app.tar.gz"
     }
   }
 }
