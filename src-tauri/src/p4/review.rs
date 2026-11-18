@@ -1,16 +1,18 @@
 //! Read-only previews and explicit selection for workspace reconciliation.
 
-use std::collections::hash_map::DefaultHasher;
+use std::collections::{hash_map::DefaultHasher, HashSet};
 use std::fs;
 use std::hash::{Hash, Hasher};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 use super::cli;
 use super::parse::{parse_ztag, path_is_within, spec_field};
-use super::workspace::{env_for, workspace_directory_path, workspace_file_spec, P4Connection};
+use super::workspace::{
+    env_for, revision_file_spec, workspace_directory_path, workspace_file_spec, P4Connection,
+};
 use crate::error::{AppError, AppResult};
 
 pub(super) const STALE: &str =
@@ -61,6 +63,7 @@ pub(super) fn number(value: &str) -> AppResult<String> {
 }
 
 pub(super) fn hash_file(root: &str, path: &Path, hash: &mut DefaultHasher) -> AppResult<()> {
+    crate::activity::check_cancelled()?;
     if !path.is_absolute() {
         return Err(AppError::msg("Choose a local workspace file."));
     }
@@ -82,6 +85,7 @@ pub(super) fn hash_file(root: &str, path: &Path, hash: &mut DefaultHasher) -> Ap
             let mut file = fs::File::open(path)?;
             let mut buffer = [0u8; 65_536];
             loop {
+                crate::activity::check_cancelled()?;
                 let count = file.read(&mut buffer)?;
                 if count == 0 {
                     break;
@@ -111,30 +115,59 @@ pub struct P4ReconcilePreview {
     pub fingerprint: String,
 }
 
-fn reconcile_scope(connection: &P4Connection, scope: Option<&str>) -> AppResult<String> {
-    let Some(scope) = scope else {
-        return Ok(format!("//{}/...", connection.client));
-    };
-    let directory = PathBuf::from(scope);
-    if !directory.is_absolute() || scope.contains("...") || scope.chars().any(char::is_control) {
-        return Err(AppError::msg(
-            "Choose a local workspace folder without wildcards or control characters.",
-        ));
+/// Validate every folder before starting a scan. A parent already covers its descendants.
+pub(super) fn scan_folders(
+    connection: &P4Connection,
+    scopes: &[String],
+) -> AppResult<Vec<PathBuf>> {
+    if scopes.is_empty() {
+        return Err(AppError::msg("Choose at least one workspace folder."));
     }
-    let directory = workspace_directory_path(Path::new(&connection.root), directory)?;
-    let spec = workspace_file_spec(&connection.root, &directory.to_string_lossy());
-    Ok(format!("{}/...", spec.trim_end_matches(['/', '\\'])))
+    let mut folders: Vec<PathBuf> = Vec::new();
+    for scope in scopes {
+        crate::activity::check_cancelled()?;
+        let directory = PathBuf::from(scope);
+        if !directory.is_absolute()
+            || scope.contains("...")
+            || scope.chars().any(char::is_control)
+            || directory
+                .components()
+                .any(|part| part == std::path::Component::ParentDir)
+        {
+            return Err(AppError::msg(
+                "Choose a local workspace folder without wildcards or control characters.",
+            ));
+        }
+        let dir = workspace_directory_path(Path::new(&connection.root), directory)?;
+        if !folders.iter().any(|parent| path_is_within(parent, &dir)) {
+            folders.retain(|child| !path_is_within(&dir, child));
+            folders.push(dir);
+        }
+    }
+    folders.sort();
+    Ok(folders)
+}
+
+pub(super) fn scan_folder(
+    connection: &P4Connection,
+    folder: &Path,
+    args: &[&str],
+) -> AppResult<String> {
+    crate::activity::check_cancelled()?;
+    let spec = revision_file_spec(&connection.root, &folder.to_string_lossy(), true, "")?;
+    let mut args = args.to_vec();
+    args.push(&spec);
+    let mut env = env_for(connection);
+    env.cwd = folder.to_owned();
+    cli::run_p4_ok(&env, &args, None)
 }
 
 pub fn preview_reconcile(
     connection: &P4Connection,
-    scope: Option<&str>,
+    scopes: &[String],
+    mut on_folder: impl FnMut(&Path),
 ) -> AppResult<P4ReconcilePreview> {
-    let spec = reconcile_scope(connection, scope)?;
-    let output = allow_empty(run(
-        connection,
-        &["-ztag", "reconcile", "-n", "-e", "-a", "-d", &spec],
-    ))?;
+    let folders = scan_folders(connection, scopes)?;
     let mut hash = DefaultHasher::new();
     (
         &connection.port,
@@ -142,32 +175,37 @@ pub fn preview_reconcile(
         &connection.client,
         &connection.root,
         &connection.charset,
-        &spec,
-        &output,
+        &folders,
     )
         .hash(&mut hash);
     let mut files = Vec::new();
-    for record in parse_ztag(&output) {
-        let get = |name: &str| record.get(name).cloned().unwrap_or_default();
-        let action = get("action");
-        if !matches!(action.as_str(), "add" | "edit" | "delete") {
-            continue;
+    for dir in folders {
+        on_folder(&dir);
+        let output = allow_empty(scan_folder(
+            connection,
+            &dir,
+            &["-ztag", "reconcile", "-n", "-e", "-a", "-d"],
+        ))?;
+        output.hash(&mut hash);
+        for record in parse_ztag(&output) {
+            let get = |name: &str| record.get(name).cloned().unwrap_or_default();
+            let action = get("action");
+            if !matches!(action.as_str(), "add" | "edit" | "delete") {
+                continue;
+            }
+            let path = get("clientFile");
+            if !path_is_within(&dir, Path::new(&path)) {
+                return Err(AppError::msg(
+                    "P4 returned a file outside the selected workspace folder.",
+                ));
+            }
+            hash_file(&connection.root, &PathBuf::from(&path), &mut hash)?;
+            files.push(P4ReconcileFile {
+                path,
+                depot_path: get("depotFile"),
+                action,
+            });
         }
-        let path = get("clientFile");
-        if !path_is_within(
-            Path::new(scope.unwrap_or(&connection.root)),
-            Path::new(&path),
-        ) {
-            return Err(AppError::msg(
-                "P4 returned a file outside the selected workspace folder.",
-            ));
-        }
-        hash_file(&connection.root, &PathBuf::from(&path), &mut hash)?;
-        files.push(P4ReconcileFile {
-            path,
-            depot_path: get("depotFile"),
-            action,
-        });
     }
     Ok(P4ReconcilePreview {
         files,
@@ -180,21 +218,18 @@ pub fn apply_reconcile(
     paths: &[String],
     change: &str,
     fingerprint: &str,
-    scope: Option<&str>,
+    scopes: &[String],
 ) -> AppResult<String> {
     if paths.is_empty() {
         return Err(AppError::msg("Choose a file."));
     }
     let change = pending_change(connection, change)?;
-    let preview = preview_reconcile(connection, scope)?;
-    if preview.fingerprint != fingerprint
-        || paths
-            .iter()
-            .any(|path| !preview.files.iter().any(|file| &file.path == path))
-    {
+    let preview = preview_reconcile(connection, scopes, |_| {})?;
+    let reviewed: HashSet<_> = preview.files.iter().map(|file| &file.path).collect();
+    if preview.fingerprint != fingerprint || paths.iter().any(|path| !reviewed.contains(path)) {
         return Err(AppError::msg(STALE));
     }
-    let mut args = vec![
+    let args = vec![
         "reconcile".to_string(),
         "-e".into(),
         "-a".into(),
@@ -202,13 +237,35 @@ pub fn apply_reconcile(
         "-c".into(),
         change,
     ];
-    args.extend(
-        paths
-            .iter()
-            .map(|path| workspace_file_spec(&connection.root, path)),
-    );
-    let refs: Vec<_> = args.iter().map(String::as_str).collect();
-    run(connection, &refs)
+    let specs = paths
+        .iter()
+        .map(|path| workspace_file_spec(&connection.root, path))
+        .collect::<Vec<_>>();
+    run_files(connection, &args, &specs)
+}
+
+pub(super) fn run_files(
+    connection: &P4Connection,
+    args: &[String],
+    paths: &[String],
+) -> AppResult<String> {
+    let mut list = tempfile::NamedTempFile::new()?;
+    for path in paths {
+        if path.contains("...") || path.chars().any(char::is_control) {
+            return Err(AppError::msg(
+                "Choose a workspace file without wildcards or control characters.",
+            ));
+        }
+        writeln!(list, "{path}")?;
+    }
+    list.flush()?;
+    let list = list.into_temp_path();
+    let file = list
+        .to_str()
+        .ok_or_else(|| AppError::msg("Cleanup requires a UTF-8 temporary file path."))?;
+    let mut refs = vec!["-x", file];
+    refs.extend(args.iter().map(String::as_str));
+    cli::run_p4_ok(&env_for(connection), &refs, None)
 }
 
 #[cfg(test)]
@@ -233,26 +290,57 @@ mod tests {
         let directory = root.path().join("folder #@% name");
         fs::create_dir(&directory).unwrap();
         let connection = connection(root.path());
-        assert_eq!(reconcile_scope(&connection, None).unwrap(), "//example/...");
-        assert_eq!(
-            reconcile_scope(&connection, directory.to_str()).unwrap(),
-            format!(
-                "{}/...",
-                root.path().join("folder %23%40%25 name").display()
-            )
-        );
-        let nested = root.path().join("folder #@% name").join("nested");
+        let nested = directory.join("nested");
         fs::create_dir(&nested).unwrap();
-        assert_eq!(
-            reconcile_scope(&connection, nested.to_str()).unwrap(),
-            format!(
-                "{}/...",
-                root.path()
-                    .join("folder %23%40%25 name")
-                    .join("nested")
-                    .display()
-            )
-        );
+        let other = root.path().join("other");
+        fs::create_dir(&other).unwrap();
+        let paths =
+            [&nested, &other, &directory, &other].map(|path| path.to_string_lossy().into_owned());
+        let folders = scan_folders(&connection, &paths).unwrap();
+        assert_eq!(folders, [directory.clone(), other]);
+        let spec =
+            revision_file_spec(&connection.root, directory.to_str().unwrap(), true, "").unwrap();
+        assert!(spec.ends_with(if cfg!(windows) {
+            r"folder %23%40%25 name\..."
+        } else {
+            "folder %23%40%25 name/..."
+        }));
+        assert!(scan_folders(&connection, &[]).is_err());
+    }
+
+    #[test]
+    fn cancelling_a_folder_scan_stops_before_starting_another_command() {
+        let root = tempfile::tempdir().unwrap();
+        let conn = connection(root.path());
+        let scopes = ["first", "second"].map(|name| {
+            let path = root.path().join(name);
+            fs::create_dir(&path).unwrap();
+            path.to_string_lossy().into_owned()
+        });
+        for clean in [false, true] {
+            let mut visited = 0;
+            let id = "review-cancellation-test";
+            let result = crate::activity::with_cancel(Some(id), || {
+                let mut stop = |_: &Path| {
+                    visited += 1;
+                    assert!(crate::activity::cancel_activity(id));
+                };
+                if clean {
+                    let request = super::super::clean::P4CleanRequest {
+                        scopes: scopes.to_vec(),
+                        restore_modified: true,
+                        restore_missing: true,
+                        remove_untracked: true,
+                        include_ignored: false,
+                    };
+                    super::super::clean::preview_clean(&conn, &request, &mut stop).map(|_| ())
+                } else {
+                    preview_reconcile(&conn, &scopes, &mut stop).map(|_| ())
+                }
+            });
+            assert!(result.unwrap_err().is_cancelled());
+            assert_eq!(visited, 1);
+        }
     }
 
     #[test]
@@ -267,13 +355,13 @@ mod tests {
             root.path().join("missing").to_str().unwrap(),
             root.path().join("a...b").to_str().unwrap(),
         ] {
-            assert!(reconcile_scope(&connection, Some(scope)).is_err());
+            assert!(scan_folders(&connection, &[scope.to_owned()]).is_err());
         }
         #[cfg(unix)]
         {
             let link = root.path().join("outside");
             std::os::unix::fs::symlink(outside.path(), &link).unwrap();
-            assert!(reconcile_scope(&connection, link.to_str()).is_err());
+            assert!(scan_folders(&connection, &[link.to_string_lossy().into_owned()]).is_err());
         }
     }
 }

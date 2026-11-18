@@ -2,16 +2,14 @@
 use std::collections::{hash_map::DefaultHasher, HashSet};
 use std::fs;
 use std::hash::{Hash, Hasher};
-use std::io::Write;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use super::cli;
 use super::client::stable_spec;
 use super::parse::{parse_ztag, path_is_within};
-use super::review::{hash_file, run, STALE};
-use super::workspace::{env_for, workspace_directory_path, workspace_file_spec, P4Connection};
+use super::review::{hash_file, run, run_files, scan_folder, scan_folders, STALE};
+use super::workspace::{workspace_file_spec, P4Connection};
 use crate::error::{AppError, AppResult};
 
 const LIMIT: usize = 2000;
@@ -19,7 +17,7 @@ const LIMIT: usize = 2000;
 #[derive(Clone, Debug, Deserialize, Serialize, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct P4CleanRequest {
-    pub scope: String,
+    pub scopes: Vec<String>,
     pub restore_modified: bool,
     pub restore_missing: bool,
     pub remove_untracked: bool,
@@ -82,6 +80,7 @@ fn files(scope: &Path, output: &str) -> AppResult<Vec<P4CleanFile>> {
     let mut files = Vec::new();
     let mut seen = HashSet::new();
     for record in parse_ztag(output) {
+        crate::activity::check_cancelled()?;
         let action = record.get("action").map(String::as_str).unwrap_or_default();
         let path = record.get("clientFile").cloned().unwrap_or_default();
         if path.is_empty() || !matches!(action, "refreshed" | "deleted") {
@@ -140,40 +139,33 @@ fn files(scope: &Path, output: &str) -> AppResult<Vec<P4CleanFile>> {
     Ok(files)
 }
 
-fn run_files(connection: &P4Connection, args: &[String], paths: &[String]) -> AppResult<String> {
-    let mut list = tempfile::NamedTempFile::new()?;
-    for path in paths {
-        writeln!(list, "{path}")?;
-    }
-    list.flush()?;
-    let list = list.into_temp_path();
-    let file = list
-        .to_str()
-        .ok_or_else(|| AppError::msg("Cleanup requires a UTF-8 temporary file path."))?;
-    let mut refs = vec!["-x", file];
-    refs.extend(args.iter().map(String::as_str));
-    cli::run_p4_ok(&env_for(connection), &refs, None)
-}
-
 pub fn preview_clean(
     connection: &P4Connection,
     request: &P4CleanRequest,
+    mut on_folder: impl FnMut(&Path),
 ) -> AppResult<P4CleanPreview> {
-    let mut args = arguments(request, true)?;
-    let scope = workspace_directory_path(
-        Path::new(&connection.root),
-        local_path(&request.scope)?.to_path_buf(),
-    )?;
-    // Wildcard folder scopes need P4 escaping; individual clean operands use local literals.
-    let spec = workspace_file_spec(&connection.root, &scope.to_string_lossy());
-    args.push(format!("{}/...", spec.trim_end_matches(['/', '\\'])));
-    let output = run(
-        connection,
-        &args.iter().map(String::as_str).collect::<Vec<_>>(),
-    )?;
-    let files = files(&scope, &output)?;
-    let client = run(connection, &["client", "-o", &connection.client])?;
+    let args = arguments(request, true)?;
+    let args = args.iter().map(String::as_str).collect::<Vec<_>>();
+    let folders = scan_folders(connection, &request.scopes)?;
     let mut hash = DefaultHasher::new();
+    let mut scanned = Vec::new();
+    for folder in folders {
+        on_folder(&folder);
+        let output = scan_folder(connection, &folder, &args)?;
+        output.hash(&mut hash);
+        scanned.extend(files(&folder, &output)?);
+        if scanned.len() > LIMIT {
+            return Err(AppError::msg("Cleanup preview exceeds 2000 files. Choose a smaller folder or fewer cleanup actions."));
+        }
+    }
+    let files = scanned;
+    if files.is_empty() {
+        return Ok(P4CleanPreview {
+            files,
+            fingerprint: String::new(),
+        });
+    }
+    let client = run(connection, &["client", "-o", &connection.client])?;
     (
         &connection.root,
         &connection.port,
@@ -182,7 +174,6 @@ pub fn preview_clean(
         &connection.charset,
         request,
         stable_spec(&client),
-        &output,
     )
         .hash(&mut hash);
     for file in &files {
@@ -220,12 +211,13 @@ pub fn apply_clean(
     {
         return Err(AppError::msg("Choose each cleanup file at most once."));
     }
-    let preview = preview_clean(connection, request)?;
-    if preview.fingerprint != fingerprint
-        || paths
-            .iter()
-            .any(|path| !preview.files.iter().any(|file| &file.path == path))
-    {
+    let preview = preview_clean(connection, request, |_| {})?;
+    let reviewed: std::collections::HashMap<_, _> = preview
+        .files
+        .iter()
+        .map(|file| (&file.path, file))
+        .collect();
+    if preview.fingerprint != fingerprint || paths.iter().any(|path| !reviewed.contains_key(path)) {
         return Err(AppError::msg(STALE));
     }
     // Never rerun a recursive scope when applying: unreviewed new files stay untouched.
@@ -246,11 +238,7 @@ pub fn apply_clean(
     }
     let mut tracked = Vec::new();
     for path in paths {
-        let file = preview
-            .files
-            .iter()
-            .find(|file| &file.path == path)
-            .ok_or_else(incomplete)?;
+        let file = reviewed.get(path).ok_or_else(incomplete)?;
         let metadata = fs::symlink_metadata(path);
         if file.action == "removeUntracked" {
             if !metadata.is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound) {
@@ -296,7 +284,7 @@ mod tests {
     use super::*;
     fn request(scope: &Path) -> P4CleanRequest {
         P4CleanRequest {
-            scope: scope.to_string_lossy().into_owned(),
+            scopes: vec![scope.to_string_lossy().into_owned()],
             restore_modified: true,
             restore_missing: true,
             remove_untracked: true,

@@ -330,6 +330,15 @@
     "confirmExternal": "Mark merge complete",
     "externalConfirmHint": "Review the result, then mark the merge complete. Closing the external tool does not resolve the file."
   },
+  "scan": {
+    "folders": "Folders to scan",
+    "addFolders": "Add folders",
+    "choose": "Choose one or more workspace folders.",
+    "outside": "Choose folders inside this workspace.",
+    "remove": "Remove {{folder}}",
+    "start": "Scan",
+    "scanning": "Scanning folders…"
+  },
   "clean": {
     "menu": "Clean",
     "review_one": "Review {{count}} file",
@@ -376,6 +385,8 @@
     "edit": "Edit",
     "delete": "Delete",
     "hint": "Only selected files will be opened in the target changelist. Ignore rules are respected; files are not submitted.",
+    "apply_one": "Reconcile {{count}} file",
+    "apply_other": "Reconcile {{count}} files",
     "apply": "Reconcile {{count}} files"
   },
   "streams": {

@@ -3087,7 +3087,12 @@ pub(super) fn workspace_file_spec(root: &str, path: &str) -> String {
     file_spec(&workspace_cli_path(root, path))
 }
 
-fn revision_file_spec(root: &str, path: &str, recursive: bool, suffix: &str) -> AppResult<String> {
+pub(super) fn revision_file_spec(
+    root: &str,
+    path: &str,
+    recursive: bool,
+    suffix: &str,
+) -> AppResult<String> {
     let path = workspace_cli_path(root, path);
     if !path.starts_with("//") && !Path::new(&path).is_absolute() {
         return Err(AppError::msg("Choose a file or folder."));

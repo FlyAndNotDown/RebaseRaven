@@ -246,7 +246,7 @@ export interface P4WorkspaceSettings extends P4WorkspaceEdit { stream: string; l
 export interface P4SwitchRequest { target: string }
 
 export interface P4CleanRequest {
-  scope: string;
+  scopes: string[];
   restoreModified: boolean;
   restoreMissing: boolean;
   removeUntracked: boolean;

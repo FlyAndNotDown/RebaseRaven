@@ -13,8 +13,8 @@ import {
 import { toast } from "sonner";
 import { P4ConnectionDialog } from "@/components/p4/p4-connection-dialog";
 import { P4StreamDialog } from "@/components/p4/p4-stream-dialog";
-import { P4ReconcileDialog } from "@/components/p4/p4-reconcile-dialog";
-import { P4CleanDialog } from "@/components/p4/p4-clean-dialog";
+import { P4WorkspaceScanDialog } from "@/components/p4/p4-workspace-scan-dialog";
+import { abortableScan } from "@/lib/p4-workspace-scan";
 import { P4LoginDialog } from "@/components/p4/p4-login-dialog";
 import { P4SwitchDialog, P4SwitchUpdateDialog } from "@/components/p4/p4-switch-dialog";
 import { P4IntegrationDialog } from "@/components/p4/p4-integration-dialog";
@@ -153,10 +153,10 @@ interface P4ContextValue {
   filesEpoch: number;
   reconcile: (scope?: string) => Promise<void>;
   openClean: (scope?: string) => void;
-  previewClean: (request: P4CleanRequest) => Promise<P4CleanPreview>;
+  previewClean: (request: P4CleanRequest, signal: AbortSignal, onFolder: (path: string) => void) => Promise<P4CleanPreview>;
   applyClean: (request: P4CleanRequest, paths: string[], fingerprint: string) => Promise<void>;
-  previewReconcile: (scope?: string) => Promise<P4ReconcilePreview>;
-  applyReconcile: (paths: string[], changeId: string, fingerprint: string, scope?: string) => Promise<void>;
+  previewReconcile: (scopes: string[], signal: AbortSignal, onFolder: (path: string) => void) => Promise<P4ReconcilePreview>;
+  applyReconcile: (paths: string[], changeId: string, fingerprint: string, scopes: string[]) => Promise<void>;
   fileAction: (action: "edit" | "add" | "delete", paths: string[]) => Promise<void>;
   loadSubmitted: (more?: boolean) => Promise<void>;
   submittedUser: string;
@@ -240,8 +240,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
   const [streamInitial, setStreamInitial] = useState<Pick<P4StreamRequest,"mode"|"source"> | null>(null);
   const setStreamOpen = useCallback((open: boolean) => {setStreamInitial(null);updateStreamOpen(open);},[]);
   const openStreamIntegration = useCallback((mode:P4StreamRequest["mode"],source:string) => {setStreamInitial({mode,source});updateStreamOpen(true);},[]);
-  const [reconcileTarget, setReconcileTarget] = useState<{ connection: P4Connection; scope?: string } | null>(null);
-  const [cleanTarget, setCleanTarget] = useState<{connection: P4Connection; scope: string} | null>(null);
+  const [scanTarget, setScanTarget] = useState<{ operation: "clean" | "reconcile"; connection: P4Connection; scope?: string; tabId: string } | null>(null);
   const [switchTarget, setSwitchTarget] = useState<string | null>(null);
   const [switchOutcome, setSwitchOutcome] = useState<{ tabId: string; connection: P4Connection } | null>(null);
   const switchStream = useCallback((target = "") => setSwitchTarget(target), []);
@@ -1264,18 +1263,24 @@ export function P4Provider({ children }: { children: ReactNode }) {
 
   const reconcile = useCallback(async (scope?: string) => {
     const current = sessionRef.current;
-    if (current) setReconcileTarget({ connection: current.connection, scope });
+    if (current) setScanTarget({ operation: "reconcile", connection: current.connection, scope, tabId: current.tabId });
   }, []);
 
   const openClean = useCallback((scope?: string) => {
     const current=sessionRef.current;
-    if (current) setCleanTarget({connection:current.connection,scope:scope || current.connection.root});
+    if (current) setScanTarget({ operation: "clean", connection: current.connection, scope, tabId: current.tabId });
   },[]);
-  const previewClean = useCallback(async (request: P4CleanRequest) => {
-    const current=sessionRef.current;
+  const scanWorkspace = useCallback(async <T,>(signal: AbortSignal, read: (connection: P4Connection, id: string) => Promise<T>) => {
+    const current = sessionRef.current;
     if (!current) throw new Error(t("p4-operations.connectionRequired"));
-    return guard(current.connection,()=>p4Api.previewClean(current.connection,request));
-  },[guard]);
+    return guard(current.connection, () => {
+      if (signal.aborted) throw new Error("Cancelled");
+      return runActivity(t("p4.scan.scanning"), current.connection.client,
+        id => abortableScan(signal, id, () => read(current.connection, id)), true, current.tabId);
+    });
+  }, [guard, runActivity]);
+  const previewClean = useCallback((request: P4CleanRequest, signal: AbortSignal, onFolder: (path: string) => void) =>
+    scanWorkspace(signal, (connection, id) => p4Api.previewClean(connection, request, id, onFolder)), [scanWorkspace]);
   const applyClean = useCallback(async (request: P4CleanRequest, paths: string[], fingerprint: string) => {
     const current=sessionRef.current;
     if (!current) throw new Error(t("p4-operations.connectionRequired"));
@@ -1290,20 +1295,17 @@ export function P4Provider({ children }: { children: ReactNode }) {
     }
   },[guard,lockMutation,beginActivity,endActivity,reloadPending,bumpFiles,report]);
 
-  const previewReconcile = useCallback(async (scope?: string) => {
-    const current = sessionRef.current;
-    if (!current) throw new Error(t("p4-operations.connectionRequired"));
-    return guard(current.connection, () => p4Api.previewReconcile(current.connection, scope));
-  }, [guard]);
+  const previewReconcile = useCallback((scopes: string[], signal: AbortSignal, onFolder: (path: string) => void) =>
+    scanWorkspace(signal, (connection, id) => p4Api.previewReconcile(connection, scopes, id, onFolder)), [scanWorkspace]);
 
-  const applyReconcile = useCallback(async (paths: string[], changeId: string, fingerprint: string, scope?: string) => {
+  const applyReconcile = useCallback(async (paths: string[], changeId: string, fingerprint: string, scopes: string[]) => {
     const current = sessionRef.current;
     if (!current) throw new Error(t("p4-operations.connectionRequired"));
     const release = lockMutation(current, t("p4.reconciling"));
     if (!release) throw new Error(t("p4-operations.workspaceBusy"));
     const activity = beginActivity(t("p4.reconciling"), current.connection.client);
     try {
-      await guard(current.connection, () => p4Api.applyReconcile(current.connection, paths, changeId, fingerprint, scope));
+      await guard(current.connection, () => p4Api.applyReconcile(current.connection, paths, changeId, fingerprint, scopes));
       toast.success(t("p4.reconciled"));
     } finally {
       await reloadPending(current, changeId).catch(report);
@@ -1888,8 +1890,10 @@ export function P4Provider({ children }: { children: ReactNode }) {
         {workspaceOpen && connection ? <P4WorkspaceDialog key={JSON.stringify(connection)} /> : null}
         {integrationInitial && connection ? <P4IntegrationDialog key={JSON.stringify([connection,integrationInitial])} initial={integrationInitial} onClose={() => setIntegrationInitial(null)} /> : null}
         {streamOpen && connection ? <P4StreamDialog initial={streamInitial} key={JSON.stringify([connection,streamInitial])} onClose={() => setStreamOpen(false)} /> : null}
-        {reconcileTarget && connection && sameP4Connection(reconcileTarget.connection, connection) ? <P4ReconcileDialog key={JSON.stringify(reconcileTarget)} scope={reconcileTarget.scope} onClose={() => setReconcileTarget(current => current === reconcileTarget ? null : current)} /> : null}
-        {cleanTarget && connection && sameP4Connection(cleanTarget.connection,connection) ? <P4CleanDialog key={JSON.stringify(cleanTarget)} scope={cleanTarget.scope} onClose={()=>setCleanTarget(current=>current===cleanTarget ? null : current)} /> : null}
+        {scanTarget && activePerforceId === scanTarget.tabId && connection && sameP4Connection(scanTarget.connection, connection) ? (
+          <P4WorkspaceScanDialog key={JSON.stringify(scanTarget)} operation={scanTarget.operation} scope={scanTarget.scope}
+            onClose={() => setScanTarget(current => current === scanTarget ? null : current)} />
+        ) : null}
         {switchTarget !== null && connection ? <P4SwitchDialog key={JSON.stringify([connection,switchTarget])} initialTarget={switchTarget} onClose={() => setSwitchTarget(null)} /> : null}
         {switchOutcome && activePerforceId === switchOutcome.tabId ? <P4SwitchUpdateDialog
           stream={switchOutcome.connection.stream ?? ""}

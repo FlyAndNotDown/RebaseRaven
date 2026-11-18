@@ -2017,17 +2017,35 @@ async fn p4_sync(
 #[tauri::command]
 async fn p4_preview_reconcile(
     connection: p4::P4Connection,
-    scope: Option<String>,
+    scopes: Vec<String>,
+    activity_id: String,
+    folder: tauri::ipc::Channel<String>,
 ) -> AppResult<p4::P4ReconcilePreview> {
-    blocking(move || p4::preview_reconcile(&connection, scope.as_deref())).await
+    blocking(move || {
+        activity::with_cancel(Some(&activity_id), || {
+            p4::preview_reconcile(&connection, &scopes, |dir| {
+                let _ = folder.send(dir.to_string_lossy().into_owned());
+            })
+        })
+    })
+    .await
 }
 
 #[tauri::command]
 async fn p4_preview_clean(
     connection: p4::P4Connection,
     request: p4::P4CleanRequest,
+    activity_id: String,
+    folder: tauri::ipc::Channel<String>,
 ) -> AppResult<p4::P4CleanPreview> {
-    blocking(move || p4::preview_clean(&connection, &request)).await
+    blocking(move || {
+        activity::with_cancel(Some(&activity_id), || {
+            p4::preview_clean(&connection, &request, |dir| {
+                let _ = folder.send(dir.to_string_lossy().into_owned());
+            })
+        })
+    })
+    .await
 }
 
 #[tauri::command]
@@ -2046,18 +2064,10 @@ async fn p4_apply_reconcile(
     paths: Vec<String>,
     change_id: String,
     fingerprint: String,
-    scope: Option<String>,
+    scopes: Vec<String>,
 ) -> AppResult<String> {
-    blocking(move || {
-        p4::apply_reconcile(
-            &connection,
-            &paths,
-            &change_id,
-            &fingerprint,
-            scope.as_deref(),
-        )
-    })
-    .await
+    blocking(move || p4::apply_reconcile(&connection, &paths, &change_id, &fingerprint, &scopes))
+        .await
 }
 
 #[tauri::command]
