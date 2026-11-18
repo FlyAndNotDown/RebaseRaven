@@ -30,6 +30,8 @@ import { errorMessage, gitApi, isCancelled } from "@/lib/git";
 import { joinRoot, type SearchNode } from "@/lib/file-search";
 import { p4Api, relativeToRoot } from "@/lib/p4";
 import { p4DisplayText } from "@/lib/p4-display";
+import { useWorkspaceSearch } from "./use-workspace-search";
+import { Button } from "@/components/ui/button";
 import { useFileQuery } from "@/lib/use-file-query";
 import { useP4 } from "@/state/p4-context";
 import { setAnalyticsP4FilesMode } from "@/state/analytics-screen";
@@ -55,23 +57,22 @@ export function P4Files() {
     async (needle: string) => {
       if (!connection) return { hits: [], truncated: false, scope: "" };
       try {
-        return mode === "depot"
-          ? await p4Api.searchDepot(connection, needle)
-          : await p4Api.searchFiles(connection, needle);
+        return await p4Api.searchDepot(connection, needle);
       } catch (caught) {
         const message = errorMessage(caught);
         if (message && message !== "Login cancelled" && !isCancelled(caught)) notifyP4Error(message);
         throw caught;
       }
     },
-    [connection, mode],
+    [connection],
   );
-  const fileQuery = useFileQuery(`${mode}:${connectionKey}`, query, searchFiles, mode === "depot" ? 450 : 200);
+  const depotQuery = useFileQuery(connectionKey, mode === "depot" ? query : "", searchFiles, 450);
+  const workspaceQuery = useWorkspaceSearch(mode === "workspace" ? connection : null, query);
+  const fileQuery = mode === "depot" ? depotQuery : workspaceQuery;
   useEffect(() => {
     const target = JSON.parse(connectionKey) as P4Connection | null;
-    if (!target) return;
+    if (!target || mode !== "depot" || !query.trim()) return;
     const cancel = () => { void p4Api.cancelDepotSearch(target).catch(() => {}); };
-    if (mode !== "depot" || !query.trim()) cancel();
     return cancel;
   }, [connectionKey, mode, query]);
   const searchNodes = useMemo<SearchNode[]>(() => {
@@ -259,7 +260,7 @@ export function P4Files() {
                       {fileQuery.result?.scope ? (
                         <p className="px-3 py-1 text-[11px] text-muted-foreground">{p4DisplayText(fileQuery.result.scope)}</p>
                       ) : null}
-                      {fileQuery.result?.truncated ? (
+                      {mode === "depot" && fileQuery.result?.truncated ? (
                         <p className="px-3 py-1 text-[11px] text-muted-foreground">{t("p4.showingTheFirst200Matches")}</p>
                       ) : null}
                       {fileQuery.result && fileQuery.result.hits.length === 0 ? (
@@ -299,6 +300,7 @@ export function P4Files() {
                         menu={fileMenu}
                       />
                       )}
+                      {mode === "workspace" && fileQuery.result?.truncated && <Button size="xs" variant="ghost" disabled={!workspaceQuery.next} onClick={workspaceQuery.next}>{t("p4.loadMoreRevisions")}</Button>}
                     </>
                   )
                   }

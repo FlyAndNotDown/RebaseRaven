@@ -4,6 +4,9 @@
 //! root. History lives on the server, so reads go through `p4` rather than a
 //! local commit graph.
 
+mod search;
+pub use search::WorkspaceSearch;
+
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::fs;
 use std::io::Read;
@@ -1430,61 +1433,6 @@ fn mark_clean_checkout(status: &mut String, detail: &mut String) {
     *detail = detail.replacen("Checked out for edit", "Checked out, no changes", 1);
 }
 
-pub fn search_files(connection: &P4Connection, query: &str) -> AppResult<P4FileSearch> {
-    let needle = query.trim().to_lowercase();
-    if needle.is_empty() {
-        return Ok(P4FileSearch {
-            hits: Vec::new(),
-            truncated: false,
-            scope: String::new(),
-        });
-    }
-    let root = PathBuf::from(&connection.root);
-    if !root.is_dir() {
-        return Err(AppError::msg("Workspace folder was not found."));
-    }
-    let mut hits = match_workspace_files(&root, &needle);
-    include_search_parents(&root, &mut hits);
-    annotate_ignored(&env_for(connection), &mut hits);
-    let files: Vec<String> = hits
-        .iter()
-        .filter(|entry| !entry.dir)
-        .map(|entry| entry.path.clone())
-        .collect();
-    let mut annotated = files
-        .iter()
-        .map(|path| P4DirEntry {
-            ignored: false,
-            name: Path::new(path)
-                .file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-                .unwrap_or_default(),
-            path: path.clone(),
-            dir: false,
-            status: String::new(),
-            detail: String::new(),
-        })
-        .collect::<Vec<_>>();
-    annotate_paths(connection, &mut annotated);
-    let mut files_done = 0usize;
-    for hit in &mut hits {
-        if hit.dir {
-            continue;
-        }
-        if let Some(file) = annotated.get(files_done) {
-            hit.status.clone_from(&file.status);
-            hit.detail.clone_from(&file.detail);
-        }
-        files_done += 1;
-    }
-    clear_versioned_ignores(&mut hits);
-    Ok(P4FileSearch {
-        hits,
-        truncated: false,
-        scope: String::new(),
-    })
-}
-
 fn clear_versioned_ignores(entries: &mut [P4DirEntry]) {
     let parents = entries
         .iter()
@@ -1523,66 +1471,6 @@ fn include_search_parents(root: &Path, hits: &mut Vec<P4DirEntry>) {
             }
         }
     }
-}
-
-fn match_workspace_files(root: &Path, needle: &str) -> Vec<P4DirEntry> {
-    let mut hits = Vec::new();
-    let mut queue = VecDeque::new();
-    queue.push_back(root.to_path_buf());
-    while let Some(dir) = queue.pop_front() {
-        let Ok(read) = fs::read_dir(&dir) else {
-            continue;
-        };
-        let mut children = Vec::new();
-        for entry in read.flatten() {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if name == "." || name == ".." {
-                continue;
-            }
-            let Ok(file_type) = entry.file_type() else {
-                continue;
-            };
-            if file_type.is_symlink() {
-                continue;
-            }
-            children.push((entry.path(), name, file_type.is_dir()));
-        }
-        children.sort_by(|left, right| {
-            right
-                .2
-                .cmp(&left.2)
-                .then_with(|| generated_dir(&left.1).cmp(&generated_dir(&right.1)))
-                .then_with(|| left.1.to_lowercase().cmp(&right.1.to_lowercase()))
-        });
-        for (path, name, is_dir) in children {
-            let matched = name.to_lowercase().contains(needle);
-            if is_dir {
-                if generated_dir(&name) {
-                    if matched {
-                        hits.push(plain_dir(&name, &path));
-                    }
-                    continue;
-                }
-                if matched {
-                    hits.push(plain_dir(&name, &path));
-                }
-                queue.push_back(path);
-                continue;
-            }
-            if !matched {
-                continue;
-            }
-            hits.push(P4DirEntry {
-                ignored: false,
-                name,
-                path: path.to_string_lossy().into_owned(),
-                dir: false,
-                status: String::new(),
-                detail: String::new(),
-            });
-        }
-    }
-    hits
 }
 
 fn plain_dir(name: &str, path: &Path) -> P4DirEntry {
@@ -5940,6 +5828,12 @@ Description:
         .unwrap();
         fs::create_dir_all(root.join(".cache")).unwrap();
 
+        let match_workspace_files = |root: &Path, query| {
+            search::Walker::new(root.to_owned(), query)
+                .page(&false.into())
+                .unwrap()
+                .0
+        };
         let hits = match_workspace_files(&root, "notes");
         assert!(hits.iter().any(|hit| !hit.dir && hit.name == "notes.bat"));
         assert!(hits.iter().all(|hit| !hit.path.contains("secret.txt")));

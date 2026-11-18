@@ -1,5 +1,5 @@
 import { p4ComparisonDiff, type P4Comparison } from "@/lib/p4-comparison";
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, Resource, invoke } from "@tauri-apps/api/core";
 import { t } from "@/i18n";
 import type {
   P4CleanRequest,
@@ -160,8 +160,20 @@ export const p4Api = {
   searchDepot: (connection: P4Connection, query: string) =>
     call<P4FileSearch>("p4_search_depot", { connection, query }),
   cancelDepotSearch: (connection: P4Connection) => call<void>("p4_cancel_depot_search", { connection }),
-  searchFiles: (connection: P4Connection, query: string) =>
-    call<P4FileSearch>("p4_search_files", { connection, query }),
+  openWorkspaceSearch: async (connection: P4Connection, query: string) => {
+    const rid = await call<number>("p4_open_workspace_search", {connection, query});
+    const resource = new Resource(rid);
+    return {
+      close: () => resource.close(),
+      page: async (onNames: (page: P4FileSearch) => void) => {
+        const names = new Channel<P4FileSearch>();
+        let pending = true;
+        names.onmessage = page => { if (pending) onNames(page); };
+        try { return await call<P4FileSearch>("p4_search_files", {rid, names}); }
+        finally { pending = false; }
+      },
+    };
+  },
   applySwitch: (connection: P4Connection, request: P4SwitchRequest) => call<P4Connection>("p4_apply_switch", {connection, request}),
   workspaceSettings: (connection: P4Connection) => call<P4WorkspaceSettings>("p4_workspace_settings", {connection}),
   saveWorkspace: (connection: P4Connection, edit: P4WorkspaceEdit, fingerprint: string) =>

@@ -5,12 +5,12 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { P4Files } from "./p4-files";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { setLanguagePreference } from "@/i18n";
-import type { P4DirEntry, P4EntryStatus } from "@/types/p4";
+import type { P4DirEntry, P4EntryStatus, P4FileSearch } from "@/types/p4";
 import { analyticsP4FilesMode } from "@/state/analytics-screen";
 
-const actions=vi.hoisted(()=>({listDir:vi.fn(),listDepot:vi.fn(),status:vi.fn(),search:vi.fn(),cancel:vi.fn(),reconcile:vi.fn(),openClean:vi.fn(),epoch:0,connection:{root:"/workspace",port:"server:1666",user:"alice",client:"client",stream:""}}));
+const actions=vi.hoisted(()=>({listDir:vi.fn(),listDepot:vi.fn(),status:vi.fn(),search:vi.fn(),closeSearch:vi.fn(),cancel:vi.fn(),reconcile:vi.fn(),openClean:vi.fn(),epoch:0,connection:{root:"/workspace",port:"server:1666",user:"alice",client:"client",stream:""}}));
 vi.mock("@/state/p4-context",()=>({useP4:()=>({connection:actions.connection,listDir:actions.listDir,listDepot:actions.listDepot,reconcile:actions.reconcile,openClean:actions.openClean,filesEpoch:actions.epoch,busy:false})}));
-vi.mock("@/lib/p4",async importOriginal=>({...await importOriginal<typeof import("@/lib/p4")>(),p4Api:{listingStatus:actions.status,searchFiles:actions.search,cancelDepotSearch:actions.cancel}}));
+vi.mock("@/lib/p4",async importOriginal=>({...await importOriginal<typeof import("@/lib/p4")>(),p4Api:{listingStatus:actions.status,openWorkspaceSearch:async()=>({page:actions.search,close:actions.closeSearch}),cancelDepotSearch:actions.cancel}}));
 vi.mock("@/components/p4/p4-file-history",()=>({P4FileHistory:({path}:{path:string})=><div data-file-history={path}/> }));
 vi.mock("@/components/p4/p4-file-view",()=>({P4FileView:({path}:{path:string})=><div data-file-view={path}/> }));
 vi.mock("@/components/p4/p4-directory-history",()=>({P4DirectoryHistory:({path}:{path:string})=><div data-directory-history={path}/> }));
@@ -24,6 +24,7 @@ beforeEach(()=>{
   Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});setLanguagePreference("en");vi.resetAllMocks();actions.epoch=0;actions.connection={...actions.connection,root:"/workspace",client:`client-${++sequence}`};
   actions.listDir.mockImplementation(async (relative:string)=>relative ? [entry(`${relative}/child.txt`)] : [entry("cache",true,true),entry("output.tmp",false,true)]);actions.status.mockResolvedValue([]);actions.cancel.mockResolvedValue(undefined);
   actions.listDepot.mockResolvedValue([]);
+  actions.closeSearch.mockResolvedValue(undefined);
   container=document.createElement("div");document.body.append(container);root=createRoot(container);
 });
 afterEach(async()=>{await act(async()=>root.unmount());container.remove();vi.useRealTimers();vi.restoreAllMocks();});
@@ -105,6 +106,32 @@ it("keeps ignored directories, files, and exclusions distinct in filtered result
   expect(rows("/workspace/cache").at(-1)!.classList.contains("text-muted-foreground")).toBe(true);
   expect(rows("/workspace/cache/output.tmp").at(-1)!.classList.contains("text-muted-foreground")).toBe(true);
   expect(rows("/workspace/cache/keep.txt").at(-1)!.classList.contains("text-muted-foreground")).toBe(false);
+});
+
+it("shows names before status arrives and discards results after a query change", async () => {
+  vi.useFakeTimers();
+  const page = (name: string): P4FileSearch => ({ hits: [entry(name)], truncated: false, scope: "" });
+  let finish!: (page: P4FileSearch) => void;
+  actions.search.mockImplementationOnce((names: (page: P4FileSearch) => void) => {
+    names(page("first-hit"));
+    return new Promise<P4FileSearch>(resolve => { finish = resolve; });
+  }).mockResolvedValueOnce(page("second-hit"));
+  await render();
+  const input = container.querySelector<HTMLInputElement>('input[placeholder="Filter files"]')!;
+  async function query(term: string) {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, term);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(250));
+  }
+  await query("first");
+  expect(rows("/workspace/first-hit")).toHaveLength(1);
+  await query("second");
+  expect(actions.closeSearch).toHaveBeenCalledTimes(2);
+  await act(async () => finish(page("stale-hit")));
+  expect(rows("/workspace/second-hit")).toHaveLength(1);
+  expect(rows("/workspace/stale-hit")).toHaveLength(0);
 });
 
 it("recognizes versioned Windows paths despite different casing and separators",async()=>{

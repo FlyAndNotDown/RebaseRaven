@@ -1599,11 +1599,32 @@ async fn p4_cancel_depot_search(connection: p4::P4Connection) -> AppResult<()> {
 }
 
 #[tauri::command]
-async fn p4_search_files(
+fn p4_open_workspace_search(
+    webview: tauri::Webview,
     connection: p4::P4Connection,
     query: String,
+) -> tauri::ResourceId {
+    webview
+        .resources_table()
+        .add(p4::WorkspaceSearch::new(connection, &query))
+}
+
+#[tauri::command]
+async fn p4_search_files(
+    webview: tauri::Webview,
+    rid: tauri::ResourceId,
+    names: tauri::ipc::Channel<p4::P4FileSearch>,
 ) -> AppResult<p4::P4FileSearch> {
-    blocking(move || p4::search_files(&connection, &query)).await
+    let search = webview
+        .resources_table()
+        .get::<p4::WorkspaceSearch>(rid)
+        .map_err(|_| AppError::cancelled())?;
+    blocking(move || {
+        search.page(|page| {
+            let _ = names.send(page.clone());
+        })
+    })
+    .await
 }
 
 #[tauri::command]
@@ -2620,6 +2641,7 @@ pub fn run() {
             p4_listing_status,
             p4_search_depot,
             p4_cancel_depot_search,
+            p4_open_workspace_search,
             p4_search_files,
             p4_search_submitted,
             p4_save_workspace,
