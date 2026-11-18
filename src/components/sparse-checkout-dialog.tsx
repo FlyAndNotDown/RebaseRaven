@@ -22,7 +22,7 @@ export function SparseCheckoutDialog({open, onOpenChange}: {open:boolean; onOpen
 
 export function SparseCheckoutSession({repoPath, onClose}: {repoPath:string; onClose:()=>void}) {
   const {t} = useTranslation();
-  const {changeSparseCheckout, activeTabId} = useGitPick(["changeSparseCheckout", "activeTabId"]);
+  const {changeSparseCheckout, activeTabId, cancelActivity} = useGitPick(["changeSparseCheckout", "activeTabId", "cancelActivity"]);
   const activities = useActivities();
   const [state, setState] = useState<SparseCheckoutState | null>(null);
   const [enabled, setEnabled] = useState(false);
@@ -32,7 +32,7 @@ export function SparseCheckoutSession({repoPath, onClose}: {repoPath:string; onC
   const [patterns, setPatterns] = useState("");
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState<"preview" | "apply" | null>(null);
-  const [cancelling, setCancelling] = useState(false);
+  const [activityId, setActivityId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState("");
   const [reviewed, setReviewed] = useState<{key:string; request:SparseCheckoutRequest; value:SparseCheckoutPreview} | null>(null);
@@ -53,7 +53,7 @@ export function SparseCheckoutSession({repoPath, onClose}: {repoPath:string; onC
     return () => {active = false; live.current = false;};
   }, [repoPath, attempt]);
   const ownerBusy = activities.some(activity => activity.tabId === activeTabId);
-  const cancellable = activities.find(activity => activity.tabId === activeTabId && activity.cancellable);
+  const activity = activities.find(item => item.id === activityId && item.cancellable);
   const blocked = loading || working === "apply" || ownerBusy;
   const accepted = reviewed?.key === key ? reviewed : null;
   const dirty = Boolean(state && (enabled !== state.enabled || enabled && (cone !== state.cone || sparseIndex !== state.sparseIndex || (cone ? directories : patterns) !== state.rules.join("\n"))));
@@ -72,9 +72,9 @@ export function SparseCheckoutSession({repoPath, onClose}: {repoPath:string; onC
   }
   async function apply() {
     if (!accepted || blocked || running.current || accepted.value.ignoredCount > 0 && !allowIgnored) return;
-    running.current = true; setWorking("apply"); setCancelling(false); setError(null);
+    running.current = true; setWorking("apply"); setError(null);
     try {
-      const result = await changeSparseCheckout(repoPath, accepted.request, accepted.value.fingerprint, allowIgnored);
+      const result = await changeSparseCheckout(repoPath, accepted.request, accepted.value.fingerprint, allowIgnored, setActivityId);
       if (!live.current) return;
       if (result) {receive(result.state); setReport(result.report || t("git.sparse.completed"));}
       else {
@@ -83,13 +83,13 @@ export function SparseCheckoutSession({repoPath, onClose}: {repoPath:string; onC
         if (live.current) receive(latest, false);
       }
     } catch (caught) {if (live.current) setError(sparseCheckoutError(caught));}
-    finally {running.current = false; if (live.current) setWorking(null);}
-  }
-  async function cancel() {
-    if (!cancellable || cancelling) return;
-    setCancelling(true);
-    try {if (!await gitApi.cancelActivity(cancellable.id) && live.current) setCancelling(false);}
-    catch (caught) {if (live.current) {setCancelling(false); setError(sparseCheckoutError(caught));}}
+    finally {
+      running.current = false;
+      if (live.current) {
+        setWorking(null);
+        setActivityId(null);
+      }
+    }
   }
   return <DialogContent className="flex max-h-[88vh] flex-col sm:max-w-2xl" showCloseButton={working !== "apply"} onEscapeKeyDown={event => {if (working === "apply") event.preventDefault();}} onInteractOutside={event => {if (working === "apply") event.preventDefault();}}>
     <DialogHeader><DialogTitle>{t("git.sparse.title")}</DialogTitle><DialogDescription>{t("git.sparse.description")}</DialogDescription></DialogHeader>
@@ -113,7 +113,15 @@ export function SparseCheckoutSession({repoPath, onClose}: {repoPath:string; onC
       </> : null}
       {error ? <p role="alert" className="whitespace-pre-wrap text-xs text-destructive">{error}</p> : null}
     </div>
-    <DialogFooter className="flex-wrap">{working === "apply" ? <Button variant="outline" className="sm:mr-auto" disabled={!cancellable || cancelling} onClick={() => void cancel()}>{t(cancelling ? "git.sparse.cancelling" : "git.sparse.cancel")}</Button> : state?.enabled ? <Button variant="ghost" disabled={blocked || Boolean(working) || dirty} className="sm:mr-auto" onClick={() => void preview(true)}>{t("git.sparse.previewReapply")}</Button> : !state && error ? <Button variant="ghost" onClick={reload}>{t("common.retry")}</Button> : null}<Button variant="outline" disabled={working === "apply"} onClick={onClose}>{t("common.close")}</Button><Button variant="outline" disabled={blocked || Boolean(working) || !state || !dirty} onClick={() => void preview()}>{working === "preview" ? <LoaderCircleIcon className="animate-spin" /> : null}{t("git.sparse.preview")}</Button><Button disabled={blocked || Boolean(working) || !accepted || accepted.value.ignoredCount > 0 && !allowIgnored} onClick={() => void apply()}>{working === "apply" ? <LoaderCircleIcon className="animate-spin" /> : null}{t(accepted?.request.kind === "reapply" ? "git.sparse.reapply" : !enabled ? "git.sparse.restore" : "git.sparse.apply")}</Button></DialogFooter>
+    <DialogFooter className="flex-wrap">
+      {working === "apply"
+        ? <Button variant="outline" className="sm:mr-auto" disabled={!activity || activity.cancelling} onClick={() => {if (activity) void cancelActivity(activity.id);}}>{t(activity?.cancelling ? "desktop.activityMeter.stopping" : "git.sparse.cancel")}</Button>
+        : state?.enabled ? <Button variant="ghost" disabled={blocked || Boolean(working) || dirty} className="sm:mr-auto" onClick={() => void preview(true)}>{t("git.sparse.previewReapply")}</Button>
+          : !state && error ? <Button variant="ghost" onClick={reload}>{t("common.retry")}</Button> : null}
+      <Button variant="outline" disabled={working === "apply"} onClick={onClose}>{t("common.close")}</Button>
+      <Button variant="outline" disabled={blocked || Boolean(working) || !state || !dirty} onClick={() => void preview()}>{working === "preview" ? <LoaderCircleIcon className="animate-spin" /> : null}{t("git.sparse.preview")}</Button>
+      <Button disabled={blocked || Boolean(working) || !accepted || accepted.value.ignoredCount > 0 && !allowIgnored} onClick={() => void apply()}>{working === "apply" ? <LoaderCircleIcon className="animate-spin" /> : null}{t(accepted?.request.kind === "reapply" ? "git.sparse.reapply" : !enabled ? "git.sparse.restore" : "git.sparse.apply")}</Button>
+    </DialogFooter>
   </DialogContent>;
 }
 

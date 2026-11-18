@@ -1,3 +1,4 @@
+mod activity;
 mod askpass;
 mod avatars;
 mod diagnostics;
@@ -173,7 +174,7 @@ async fn clone_repository(
     app: AppHandle,
 ) -> AppResult<String> {
     blocking(move || {
-        git::with_cancel(activity_id.as_deref(), || {
+        activity::with_cancel(activity_id.as_deref(), || {
             git::clone_repository(
                 &url,
                 &destination,
@@ -186,7 +187,7 @@ async fn clone_repository(
 
 #[tauri::command]
 fn cancel_activity(id: String) -> bool {
-    git::cancel_activity(&id)
+    activity::cancel_activity(&id)
 }
 
 #[tauri::command]
@@ -455,7 +456,7 @@ async fn add_submodule(
     app: AppHandle,
 ) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, move |repo| {
-        git::with_cancel(activity_id.as_deref(), || {
+        activity::with_cancel(activity_id.as_deref(), || {
             git::add_submodule(
                 repo,
                 &request,
@@ -529,7 +530,7 @@ async fn update_submodules(
     app: AppHandle,
 ) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, move |repo| {
-        git::with_cancel(activity_id.as_deref(), || {
+        activity::with_cancel(activity_id.as_deref(), || {
             if options.is_some() {
                 git::update_submodules_with_options(
                     repo,
@@ -660,7 +661,7 @@ async fn fetch_remote(
 ) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, move |repo| {
         git::with_background(background.unwrap_or(false), || {
-            git::with_cancel(activity_id.as_deref(), || {
+            activity::with_cancel(activity_id.as_deref(), || {
                 git::fetch_remote(
                     repo,
                     remote.as_deref(),
@@ -684,7 +685,7 @@ async fn pull_remote(
 ) -> AppResult<WorkspaceSnapshot> {
     let rebase = rebase.unwrap_or(false);
     with_repo_async(repo_path, move |repo| {
-        git::with_cancel(activity_id.as_deref(), || {
+        activity::with_cancel(activity_id.as_deref(), || {
             git::pull_remote(
                 repo,
                 remote.as_deref(),
@@ -709,7 +710,7 @@ async fn push_remote(
     let force = force.unwrap_or(false);
     let set_upstream = set_upstream.unwrap_or(false);
     with_repo_async(repo_path, move |repo| {
-        git::with_cancel(activity_id.as_deref(), || {
+        activity::with_cancel(activity_id.as_deref(), || {
             git::push_remote(
                 repo,
                 remote.as_deref(),
@@ -778,7 +779,7 @@ async fn push_tag(
     app: AppHandle,
 ) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, move |repo| {
-        git::with_cancel(activity_id.as_deref(), || {
+        activity::with_cancel(activity_id.as_deref(), || {
             git::push_tag(
                 repo,
                 &remote,
@@ -800,7 +801,7 @@ async fn delete_remote_tag(
     app: AppHandle,
 ) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, move |repo| {
-        git::with_cancel(activity_id.as_deref(), || {
+        activity::with_cancel(activity_id.as_deref(), || {
             git::delete_remote_tag(
                 repo,
                 &remote,
@@ -862,7 +863,7 @@ async fn delete_branch(
 ) -> AppResult<WorkspaceSnapshot> {
     let force = force.unwrap_or(false);
     with_repo_async(repo_path, move |repo| {
-        git::with_cancel(activity_id.as_deref(), || {
+        activity::with_cancel(activity_id.as_deref(), || {
             git::delete_branch(
                 repo,
                 &name,
@@ -961,7 +962,7 @@ async fn git_lfs_action(
     app: AppHandle,
 ) -> AppResult<git::LfsOutcome> {
     with_repo_async(repo_path, move |repo| {
-        git::with_cancel(activity_id.as_deref(), || {
+        activity::with_cancel(activity_id.as_deref(), || {
             git::lfs_action(
                 repo,
                 &action,
@@ -995,7 +996,7 @@ async fn apply_sparse_checkout(
     app: AppHandle,
 ) -> AppResult<git::SparseCheckoutOutcome> {
     with_repo_async(repo_path, move |repo| {
-        git::with_cancel(activity_id.as_deref(), || {
+        activity::with_cancel(activity_id.as_deref(), || {
             git::apply_sparse_checkout(
                 repo,
                 &request,
@@ -1952,11 +1953,13 @@ async fn p4_get_revision(
     app: AppHandle,
 ) -> AppResult<String> {
     blocking(move || {
-        p4::get_revision(
-            &connection,
-            &request,
-            progress_sink(&app, activity_id.as_deref()),
-        )
+        activity::with_cancel(activity_id.as_deref(), || {
+            p4::get_revision(
+                &connection,
+                &request,
+                progress_sink(&app, activity_id.as_deref()),
+            )
+        })
     })
     .await
 }
@@ -1970,12 +1973,14 @@ async fn p4_sync(
     app: AppHandle,
 ) -> AppResult<p4::P4SyncResult> {
     blocking(move || {
-        p4::sync(
-            &connection,
-            &paths,
-            auto_resolve,
-            progress_sink(&app, activity_id.as_deref()),
-        )
+        activity::with_cancel(activity_id.as_deref(), || {
+            p4::sync(
+                &connection,
+                &paths,
+                auto_resolve,
+                progress_sink(&app, activity_id.as_deref()),
+            )
+        })
     })
     .await
 }

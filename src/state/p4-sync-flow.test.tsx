@@ -7,6 +7,7 @@ import { setLanguagePreference } from "@/i18n";
 import { p4Api } from "@/lib/p4";
 import { defaultPrefs } from "@/lib/prefs";
 import { P4Provider, useP4 } from "./p4-context";
+import type { P4Changelist } from "@/types/p4";
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 vi.mock("@/components/p4/p4-connection-dialog", () => ({ P4ConnectionDialog: () => null }));
@@ -14,6 +15,7 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), info: vi.fn(), warning: vi
 const tab = { id: "p4:/workspace", kind: "repo", vcs: "perforce", path: "/workspace", name: "example" };
 const model = {
   activeTab: tab, tabs: [tab], beginActivity: vi.fn(() => "activity"), endActivity: vi.fn(),
+  runActivity: vi.fn(async (_label: string, _detail: string, run: (id: string) => Promise<unknown>) => run("activity")),
   setTabMeta: vi.fn(), retargetRepoTab: vi.fn(), refreshRecents: vi.fn(),
   prefs: { ...defaultPrefs, p4RefreshMinutes: 0 },
 };
@@ -50,7 +52,9 @@ it("reports partial sync as one warning and finishes refreshing and releasing th
   expect(toast.warning).toHaveBeenCalledExactlyOnceWith("Skipped 2 writable files");
   expect(toast.error).not.toHaveBeenCalled(); expect(toast.success).not.toHaveBeenCalled();
   expect(p4Api.refreshPending).toHaveBeenCalled();
-  expect(model.endActivity).toHaveBeenCalledWith("activity"); expect(state.busy).toBe(false);
+  expect(model.runActivity).toHaveBeenCalledExactlyOnceWith("Getting latest", "example", expect.any(Function), true, tab.id);
+  expect(p4Api.sync).toHaveBeenCalledWith(expect.objectContaining({ client: "example" }), [], "activity", false);
+  expect(state.busy).toBe(false);
 });
 
 it("uses the same skipped-file warning for revision updates", async () => {
@@ -76,4 +80,37 @@ it("summarizes successful revision updates instead of showing the last file path
     changelistFilesOnly: false, removeNotInLabel: true, preview: false,
   }); });
   expect(toast.success).toHaveBeenCalledExactlyOnceWith("Updated 1 file.");
+});
+
+it("refreshes after cancelling Get latest and unlocks the workspace for a retry", async () => {
+  let finishRefresh!: (changes: P4Changelist[]) => void;
+  vi.mocked(p4Api.refreshPending).mockReturnValueOnce(new Promise(resolve => { finishRefresh = resolve; }));
+  vi.mocked(p4Api.sync).mockRejectedValueOnce("Cancelled");
+  await act(async () => state.sync());
+  expect(toast.info).toHaveBeenCalledExactlyOnceWith("Cancelled: Get latest");
+  expect(toast.error).not.toHaveBeenCalled();
+  expect(toast.success).not.toHaveBeenCalled();
+  expect(p4Api.refreshPending).toHaveBeenCalledOnce();
+  expect(state.busy).toBe(false);
+  await act(async () => state.sync());
+  expect(p4Api.sync).toHaveBeenCalledTimes(2);
+  await act(async () => finishRefresh([]));
+});
+
+it.each([false, true])("cancels Get Revision (preview: %s) without dismissing its form", async (preview) => {
+  vi.mocked(p4Api.getRevision).mockRejectedValueOnce("Cancelled");
+  const onActivity = vi.fn();
+  await act(async () => {
+    await expect(state.getRevision({
+      paths: ["//depot/a.txt"], mode: "latest", value: "", force: false, safe: false,
+      changelistFilesOnly: false, removeNotInLabel: true, preview,
+    }, onActivity)).resolves.toBeNull();
+  });
+  expect(onActivity).toHaveBeenCalledExactlyOnceWith("activity");
+  expect(model.runActivity).toHaveBeenCalledExactlyOnceWith(
+    preview ? "Previewing revision" : "Getting revision", "example", expect.any(Function), true, tab.id,
+  );
+  expect(p4Api.refreshPending).toHaveBeenCalledTimes(preview ? 0 : 1);
+  expect(toast.error).not.toHaveBeenCalled();
+  expect(state.busy).toBe(false);
 });

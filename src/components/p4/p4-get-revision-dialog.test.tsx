@@ -6,14 +6,20 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { P4GetRevisionDialog, type P4RevisionTarget } from "@/components/p4/p4-get-revision-dialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { setLanguagePreference } from "@/i18n";
+import type { Activity } from "@/types/git";
 
-const actions = vi.hoisted(() => ({getRevision:vi.fn(),revisionTargets:vi.fn(),closed:vi.fn(),connection:{root:"/workspace"}}));
+const actions = vi.hoisted(() => ({
+  getRevision: vi.fn(), revisionTargets: vi.fn(), cancelActivity: vi.fn(), closed: vi.fn(),
+  connection: { root: "/workspace" }, activities: [] as Activity[],
+}));
 vi.mock("@/state/p4-context", () => ({useP4:() => ({connection:actions.connection,busy:false,getRevision:actions.getRevision})}));
+vi.mock("@/state/git-context", () => ({useGitPick:() => ({cancelActivity:actions.cancelActivity}),useActivities:() => actions.activities}));
 vi.mock("@/lib/p4", () => ({p4Api:{revisionTargets:actions.revisionTargets},relativeToRoot:(_root:string,path:string) => path}));
 vi.mock("@/components/p4/p4-revision-picker", () => ({P4RevisionPicker:() => null}));
 let root:Root, container:HTMLDivElement;
 beforeEach(() => {
   Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});setLanguagePreference("en");vi.resetAllMocks();
+  actions.activities = [];
   actions.getRevision.mockResolvedValue("Preview result");actions.revisionTargets.mockResolvedValue(["//depot/a.txt"]);
   container=document.createElement("div");document.body.append(container);root=createRoot(container);
 });
@@ -34,12 +40,12 @@ it("preselects a changelist and previews mixed file and folder targets before sy
   const add=[...document.querySelectorAll("button")].filter(item => item.textContent?.trim() === "Add").at(-1)!;
   await act(async () => add.click());
   await click("Preview");
-  expect(actions.getRevision).toHaveBeenLastCalledWith(expect.objectContaining({targets:[{path:"//depot/a.txt",recursive:false},{path:"//depot/docs",recursive:true}],paths:[],mode:"changelist",value:"1200",preview:true}));
+  expect(actions.getRevision).toHaveBeenLastCalledWith(expect.objectContaining({targets:[{path:"//depot/a.txt",recursive:false},{path:"//depot/docs",recursive:true}],paths:[],mode:"changelist",value:"1200",preview:true}), expect.any(Function));
   expect(actions.closed).not.toHaveBeenCalled();expect(document.querySelector('[role="status"]')?.textContent).toBe("Preview result");
   await change("At changelist","before",true);
   expect(document.querySelector('[role="status"]')).toBeNull();
   await click("Get revision");
-  expect(actions.getRevision).toHaveBeenLastCalledWith(expect.objectContaining({mode:"beforeChangelist",value:"1200",changelistFilesOnly:false,preview:false}));
+  expect(actions.getRevision).toHaveBeenLastCalledWith(expect.objectContaining({mode:"beforeChangelist",value:"1200",changelistFilesOnly:false,preview:false}), expect.any(Function));
   expect(actions.closed).toHaveBeenCalledOnce();
 });
 
@@ -53,5 +59,26 @@ it("opens file revisions directly and keeps force and safe update mutually exclu
   await render({path:"//depot/a.txt",recursive:false,revision:"4"});
   const checks=() => [...document.querySelectorAll<HTMLButtonElement>('[role="checkbox"]')];
   await act(async () => checks()[0].click());await act(async () => checks()[1].click());
-  await click("Preview");expect(actions.getRevision).toHaveBeenCalledWith(expect.objectContaining({mode:"revision",value:"4",safe:true,force:false}));
+  await click("Preview");expect(actions.getRevision).toHaveBeenCalledWith(expect.objectContaining({mode:"revision",value:"4",safe:true,force:false}), expect.any(Function));
+});
+
+it("cancels its own revision request while preserving the selected targets and revision", async () => {
+  let finish!: (value: null) => void;
+  const pending = new Promise<null>(resolve => { finish = resolve; });
+  actions.getRevision.mockImplementationOnce((_request, onActivity: (id: string) => void) => {
+    actions.activities = [
+      { id: "other", tabId: "p4:/workspace", label: "Getting latest", cancellable: true },
+      { id: "revision", tabId: "p4:/workspace", label: "Getting revision", cancellable: true },
+    ];
+    onActivity("revision");
+    return pending;
+  });
+  await render({ path: "//depot/a.txt", recursive: false, revision: "4" });
+  await click("Get revision");
+  await click("Cancel");
+  expect(actions.cancelActivity).toHaveBeenCalledExactlyOnceWith("revision");
+  await act(async () => finish(null));
+  expect(actions.closed).not.toHaveBeenCalled();
+  expect((document.querySelector('input[aria-label="Revision"]') as HTMLInputElement).value).toBe("4");
+  expect(button("Get revision").disabled).toBe(false);
 });

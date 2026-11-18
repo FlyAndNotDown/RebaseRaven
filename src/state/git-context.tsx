@@ -173,6 +173,8 @@ interface GitContextValue {
   openDifftool: (source: FileSource) => Promise<void>;
   runMergetool: (path: string) => Promise<boolean>;
   ignorePaths: (patterns: string[]) => Promise<boolean>;
+  runActivity: <T>(label: string, detail: string | undefined, run: (id: string) => Promise<T>, cancellable?: boolean, tabId?: string) => Promise<T>;
+  cancelActivity: (id: string) => Promise<void>;
   beginActivity: (label: string, detail?: string, progress?: number, tabId?: string) => string;
   endActivity: (id: string) => void;
   setActiveTab: (id: string) => void;
@@ -250,8 +252,8 @@ interface GitContextValue {
   mergeRef: (onto: string, label: string) => Promise<boolean>;
   operationContinue: (message?: string) => Promise<boolean>;
   operationAbort: () => Promise<boolean>;
-  changeSparseCheckout: (repoPath: string, request: SparseCheckoutRequest, fingerprint: string, allowIgnoredRemoval: boolean) => Promise<SparseCheckoutUpdate | null>;
-  changeLfs: (repoPath: string, action: LfsAction, fingerprint: string) => Promise<LfsUpdate | null>;
+  changeSparseCheckout: (repoPath: string, request: SparseCheckoutRequest, fingerprint: string, allowIgnoredRemoval: boolean, onActivity?: (id: string) => void) => Promise<SparseCheckoutUpdate | null>;
+  changeLfs: (repoPath: string, action: LfsAction, fingerprint: string, onActivity?: (id: string) => void) => Promise<LfsUpdate | null>;
   resolveConflict: (path: string, side: "ours" | "theirs" | "both") => Promise<boolean>;
   saveConflict: (path: string, text: string) => Promise<boolean>;
   resetCommit: (oid: string, mode: ResetMode) => Promise<boolean>;
@@ -346,6 +348,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<Record<string, RepoSession>>({});
   const [loading, setLoading] = useState(true);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const activityStops = useRef(new Map<string, "ready" | "requested">());
   const [publishPrompt, setPublishPrompt] = useState<PublishPrompt | null>(null);
   const [openPanel, setOpenPanel] = useState<Panel | null>(null);
   const [prefs, setPrefs] = useState<AppPrefs>(defaultPrefs);
@@ -654,10 +657,12 @@ export function GitProvider({ children }: { children: ReactNode }) {
     ) => {
       const id = crypto.randomUUID();
       const owner = tabId ?? activeTabIdRef.current;
+      if (cancellable) activityStops.current.set(id, "ready");
       setActivities((current) => [...current, { id, label, detail, cancellable, tabId: owner }]);
       try {
         return await fn(id);
       } finally {
+        activityStops.current.delete(id);
         setActivities((current) => current.filter((item) => item.id !== id));
       }
     },
@@ -672,13 +677,24 @@ export function GitProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const patchActivity = useCallback(
-    (id: string, patch: Partial<Pick<Activity, "label" | "detail" | "progress">>) => {
+    (id: string, patch: Partial<Pick<Activity, "label" | "detail" | "progress" | "cancelling">>) => {
       setActivities((current) =>
         current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
       );
     },
     [],
   );
+
+  const cancelActivity = useCallback(async (id: string) => {
+    if (activityStops.current.get(id) !== "ready") return;
+    activityStops.current.set(id, "requested");
+    patchActivity(id, { cancelling: true });
+    const accepted = await gitApi.cancelActivity(id).catch(() => false);
+    if (accepted || !activityStops.current.has(id)) return;
+    activityStops.current.set(id, "ready");
+    patchActivity(id, { cancelling: false });
+    toast.warning(t("desktop.activityMeter.cancelUnavailable"));
+  }, [patchActivity]);
 
   const endActivity = useCallback((id: string) => {
     setActivities((current) =>
@@ -1830,7 +1846,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       label: string,
       action: (repoPath: string, activityId: string) => Promise<WorkspaceSnapshot>,
       success?: string,
-      options?: { cancellable?: boolean; tabId?: string },
+      options?: { cancellable?: boolean; tabId?: string; onActivity?: (id: string) => void },
     ) => {
       const tabId = options?.tabId ?? activeTabIdRef.current;
       const tab = tabsRef.current.find((item) => item.id === tabId);
@@ -1841,6 +1857,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
       const changeGeneration = readGen(changeLoadGen.current, tabId);
       try {
         const next = await runActivity(label, current?.snapshot?.repo.name, async (activityId) => {
+          options?.onActivity?.(activityId);
           const snapshot = keepRemoteBranches(current?.snapshot, await action(repoPath, activityId));
           let nextSelection = reconcileChangeSelection(changeSelection, snapshot.status);
           let changeDiff = nextSelection ? current?.changeDiff ?? null : null;
@@ -2579,26 +2596,26 @@ export function GitProvider({ children }: { children: ReactNode }) {
     );
   }, [runMutation]);
 
-  const changeSparseCheckout = useCallback(async (expectedPath: string, request: SparseCheckoutRequest, fingerprint: string, allowIgnoredRemoval: boolean): Promise<SparseCheckoutUpdate | null> => {
+  const changeSparseCheckout = useCallback(async (expectedPath: string, request: SparseCheckoutRequest, fingerprint: string, allowIgnoredRemoval: boolean, onActivity?: (id: string) => void): Promise<SparseCheckoutUpdate | null> => {
     const tabId = activeTabIdRef.current;
     const received: {value: SparseCheckoutOutcome | null} = {value:null};
     const ok = await runMutation(t("git.sparse.activity"), async (repoPath, activityId) => {
       if (!sameRepoPath(expectedPath, repoPath)) throw new Error(t("git.sparse.ownerChanged"));
       received.value = await gitApi.applySparseCheckout(repoPath, request, fingerprint, allowIgnoredRemoval, activityId);
       return received.value.snapshot;
-    }, undefined, {tabId, cancellable:true});
+    }, undefined, { tabId, cancellable: true, onActivity });
     if (!ok) await refreshAfterReplay(tabId);
     return ok && received.value ? {state:received.value.state, report:received.value.report} : null;
   }, [refreshAfterReplay, runMutation]);
 
-  const changeLfs = useCallback(async (expectedPath: string, action: LfsAction, fingerprint: string): Promise<LfsUpdate | null> => {
+  const changeLfs = useCallback(async (expectedPath: string, action: LfsAction, fingerprint: string, onActivity?: (id: string) => void): Promise<LfsUpdate | null> => {
     const tabId = activeTabIdRef.current;
     const received: {value:LfsOutcome | null} = {value:null};
     const ok = await runMutation(t("git.lfs.activity"), async (repoPath, activityId) => {
       if (!sameRepoPath(expectedPath, repoPath)) throw new Error(t("git.lfs.ownerChanged"));
       received.value = await gitApi.lfsAction(repoPath, action, fingerprint, activityId);
       return received.value.snapshot;
-    }, undefined, {tabId, cancellable:true});
+    }, undefined, { tabId, cancellable: action.kind !== "untrack", onActivity });
     if (!ok) await refreshAfterReplay(tabId);
     return ok && received.value ? {state:received.value.state, report:received.value.report, locks:received.value.locks} : null;
   }, [refreshAfterReplay, runMutation]);
@@ -3110,6 +3127,8 @@ export function GitProvider({ children }: { children: ReactNode }) {
       openDifftool,
       runMergetool,
       ignorePaths,
+      runActivity,
+      cancelActivity,
       beginActivity,
       endActivity,
       setActiveTab,
@@ -3214,6 +3233,8 @@ export function GitProvider({ children }: { children: ReactNode }) {
       openDifftool,
       runMergetool,
       ignorePaths,
+      runActivity,
+      cancelActivity,
       beginActivity,
       endActivity,
       setActiveTab,

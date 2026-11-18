@@ -20,7 +20,7 @@ import { P4SwitchDialog, P4SwitchUpdateDialog } from "@/components/p4/p4-switch-
 import { P4IntegrationDialog } from "@/components/p4/p4-integration-dialog";
 import type { P4IntegrationInitial, P4IntegrationRequest, P4IntegrationPreview } from "@/types/p4-integration";
 import { P4WorkspaceDialog } from "@/components/p4/p4-workspace-dialog";
-import { errorMessage } from "@/lib/git";
+import { errorMessage, isCancelled } from "@/lib/git";
 import { depotBase, P4_LOGIN, P4_MISSING, p4Api } from "@/lib/p4";
 import { notifyP4Error, p4SyncNotice } from "@/lib/p4-output-notice";
 import { sameRepoPath } from "@/lib/format";
@@ -149,7 +149,7 @@ interface P4ContextValue {
   resolveAccept: (path: string, mode: "yours" | "theirs" | "merge") => Promise<boolean>;
   revertUnchanged: (scope?: {changeId?:string; paths?:string[]}) => Promise<void>;
   sync: (paths?: string[]) => Promise<void>;
-  getRevision: (request: P4GetRevision) => Promise<string | null>;
+  getRevision: (request: P4GetRevision, onActivity?: (id: string) => void) => Promise<string | null>;
   filesEpoch: number;
   reconcile: (scope?: string) => Promise<void>;
   openClean: (scope?: string) => void;
@@ -198,9 +198,10 @@ const P4ViewContext = createContext<P4View | null>(null);
 
 export function P4Provider({ children }: { children: ReactNode }) {
   const language = useTranslation().i18n.resolvedLanguage;
-  const { activeTab, tabs, beginActivity, endActivity, setTabMeta, retargetRepoTab, refreshRecents, prefs } = useGitPick([
+  const { activeTab, tabs, runActivity, beginActivity, endActivity, setTabMeta, retargetRepoTab, refreshRecents, prefs } = useGitPick([
     "activeTab",
     "tabs",
+    "runActivity",
     "beginActivity",
     "endActivity",
     "setTabMeta",
@@ -1182,41 +1183,59 @@ export function P4Provider({ children }: { children: ReactNode }) {
     }
   }, [lockMutation, beginActivity, endActivity, guard, reloadPending, report]);
 
+  const finishCancelledSync = useCallback((current: Session, label: string, refresh: boolean) => {
+    toast.info(t("operations.cancelled", { value: label }));
+    if (!refresh) return;
+    // A stalled server can also stall the refresh. Release the mutation so
+    // the user can retry while this read checks for partial updates.
+    bumpFiles();
+    void reloadPending(current, undefined, true).catch(() => {});
+  }, [bumpFiles, reloadPending]);
+
   const sync = useCallback(
     async (paths: string[] = []) => {
       const current = sessionRef.current;
       if (!current) return;
-      const release = lockMutation(current, t("p4.gettingLatest"));
+      const label = t("p4.gettingLatest");
+      const release = lockMutation(current, label);
       if (!release) return;
-      const id = beginActivity(t("p4.gettingLatest"), current.connection.client);
       try {
-        const output = await guard(current.connection, () => p4Api.sync(current.connection, paths, id, prefs.p4AutoResolveAfterSync));
+        const output = await guard(current.connection, () =>
+          runActivity(label, current.connection.client, id =>
+            p4Api.sync(current.connection, paths, id, prefs.p4AutoResolveAfterSync), true, current.tabId),
+        );
         const notice = p4SyncNotice(output.output, output.autoResolve);
         toast[notice.kind](notice.message);
         await reloadPending(current);
         bumpFiles();
       } catch (caught) {
+        if (isCancelled(caught)) {
+          finishCancelledSync(current, t("p4.getLatest"), true);
+          return;
+        }
         await reloadPending(current).catch(() => {});
         bumpFiles();
         report(caught);
       } finally {
-        endActivity(id);
         release();
       }
     },
-    [lockMutation, beginActivity, bumpFiles, endActivity, guard, reloadPending, report, prefs.p4AutoResolveAfterSync],
+    [lockMutation, runActivity, bumpFiles, finishCancelledSync, guard, reloadPending, report, prefs.p4AutoResolveAfterSync],
   );
 
   const getRevision = useCallback(
-    async (request: P4GetRevision) => {
+    async (request: P4GetRevision, onActivity?: (id: string) => void) => {
       const current = sessionRef.current;
       if (!current) return null;
-      const release = lockMutation(current, request.preview ? t("p4.previewingRevision") : t("p4.gettingRevision"));
+      const label = request.preview ? t("p4.previewingRevision") : t("p4.gettingRevision");
+      const release = lockMutation(current, label);
       if (!release) return null;
-      const id = beginActivity(request.preview ? t("p4.previewingRevision") : t("p4.gettingRevision"));
       try {
         const output = await guard(current.connection, () =>
-          p4Api.getRevision(current.connection, request, id),
+          runActivity(label, current.connection.client, id => {
+            onActivity?.(id);
+            return p4Api.getRevision(current.connection, request, id);
+          }, true, current.tabId),
         );
         if (!request.preview) {
           const notice = p4SyncNotice(output);
@@ -1226,6 +1245,10 @@ export function P4Provider({ children }: { children: ReactNode }) {
         }
         return output;
       } catch (caught) {
+        if (isCancelled(caught)) {
+          finishCancelledSync(current, t(request.preview ? "p4.preview" : "p4.getRevision"), !request.preview);
+          return null;
+        }
         if (!request.preview) {
           await reloadPending(current).catch(() => {});
           bumpFiles();
@@ -1233,11 +1256,10 @@ export function P4Provider({ children }: { children: ReactNode }) {
         report(caught);
         throw caught;
       } finally {
-        endActivity(id);
         release();
       }
     },
-    [lockMutation, beginActivity, bumpFiles, endActivity, guard, reloadPending, report],
+    [lockMutation, runActivity, bumpFiles, finishCancelledSync, guard, reloadPending, report],
   );
 
   const reconcile = useCallback(async (scope?: string) => {

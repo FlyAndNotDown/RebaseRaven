@@ -13,6 +13,7 @@ import { P4RevisionPicker } from "@/components/p4/p4-revision-picker";
 import { p4Api, relativeToRoot } from "@/lib/p4";
 import { errorMessage } from "@/lib/git";
 import { cn } from "@/lib/utils";
+import { useActivities, useGitPick } from "@/state/git-context";
 import { useP4 } from "@/state/p4-context";
 import type { P4RevisionMode, P4RevisionPath } from "@/types/p4";
 
@@ -23,6 +24,7 @@ export function P4GetRevisionDialog({ target, onClose }: { target: P4RevisionTar
   useTranslation();
   const group = useId();
   const { connection, getRevision, busy: workspaceBusy } = useP4();
+  const { cancelActivity } = useGitPick(["cancelActivity"]);
   const path = "path" in target ? target.path : null;
   const recursive = "recursive" in target && target.recursive;
   const changeId = "changeId" in target ? target.changeId : null;
@@ -41,6 +43,8 @@ export function P4GetRevisionDialog({ target, onClose }: { target: P4RevisionTar
   const [removeMissing, setRemoveMissing] = useState(true);
   const [preview, setPreview] = useState("");
   const [busy, setBusy] = useState<"preview" | "sync" | null>(null);
+  const [activityId, setActivityId] = useState<string | null>(null);
+  const activity = useActivities().find(item => item.id === activityId && item.cancellable);
   const [adding, setAdding] = useState(false);
   const [newPath, setNewPath] = useState("");
   const [folder, setFolder] = useState(false);
@@ -80,11 +84,11 @@ export function P4GetRevisionDialog({ target, onClose }: { target: P4RevisionTar
     if (running.current || blocked || invalid) return;
     running.current = true;setBusy(previewing ? "preview" : "sync");invalidate();
     try {
-      const output = await getRevision({paths:[],targets,mode:latest ? "latest" : kind === "changelist" && before ? "beforeChangelist" : kind,value:latest ? "" : value.trim(),force,safe,changelistFilesOnly:!latest && kind === "changelist" && !before && filesOnly,removeNotInLabel:latest || kind !== "label" || removeMissing,preview:previewing});
+      const output = await getRevision({paths:[],targets,mode:latest ? "latest" : kind === "changelist" && before ? "beforeChangelist" : kind,value:latest ? "" : value.trim(),force,safe,changelistFilesOnly:!latest && kind === "changelist" && !before && filesOnly,removeNotInLabel:latest || kind !== "label" || removeMissing,preview:previewing}, setActivityId);
       if (output === null) return;
       if (previewing) setPreview(output.trim() || t("p4.upToDate"));else onClose();
     } catch { /* The operation reports errors. */ }
-    finally {running.current=false;setBusy(null);}
+    finally {running.current=false;setBusy(null);setActivityId(null);}
   }
   return <Dialog open onOpenChange={open => {if (!open && !running.current) onClose();}}>
     <DialogContent className="max-h-[90vh] overflow-auto sm:max-w-2xl" showCloseButton={!busy}>
@@ -119,7 +123,16 @@ export function P4GetRevisionDialog({ target, onClose }: { target: P4RevisionTar
         </fieldset>
         {preview ? <pre role="status" tabIndex={0} className="max-h-44 overflow-auto rounded-lg border bg-background/40 p-3 font-mono text-[11px] whitespace-pre-wrap">{preview}</pre> : null}
       </div>
-      <DialogFooter className="sm:justify-between"><Button variant="outline" disabled={blocked || invalid} onClick={() => void run(true)}>{busy === "preview" ? <Loader2Icon className="animate-spin" /> : null}{t("p4.preview")}</Button><div className="flex gap-2"><Button variant="outline" disabled={busy !== null} onClick={onClose}>{t("p4.cancel")}</Button><Button disabled={blocked || invalid} onClick={() => void run(false)}>{busy === "sync" ? <Loader2Icon className="animate-spin" /> : null}{t("p4.getRevision")}</Button></div></DialogFooter>
+      <DialogFooter className="sm:justify-between">
+        <Button variant="outline" disabled={blocked || invalid} onClick={() => void run(true)}>{busy === "preview" ? <Loader2Icon className="animate-spin" /> : null}{t("p4.preview")}</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" disabled={busy !== null && (!activity || activity.cancelling)} onClick={() => {
+            if (!busy) onClose();
+            else if (activity) void cancelActivity(activity.id);
+          }}>{t(activity?.cancelling ? "desktop.activityMeter.stopping" : "p4.cancel")}</Button>
+          <Button disabled={blocked || invalid} onClick={() => void run(false)}>{busy === "sync" ? <Loader2Icon className="animate-spin" /> : null}{t("p4.getRevision")}</Button>
+        </div>
+      </DialogFooter>
       {browsing && canBrowse ? <P4RevisionPicker kind={kind} onSelect={value => {setValue(value);invalidate();}} onClose={() => setBrowsing(false)} /> : null}
     </DialogContent>
   </Dialog>;

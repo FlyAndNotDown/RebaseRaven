@@ -12,7 +12,11 @@ import type { P4Connection } from "@/types/p4";
 vi.mock("@tauri-apps/api/event", () => ({listen:vi.fn(async () => () => {})}));
 vi.mock("@/components/p4/p4-connection-dialog", () => ({P4ConnectionDialog:() => null}));
 const tab={id:"p4:/workspace",kind:"repo",vcs:"perforce",path:"/workspace",name:"example"};
-const model={activeTab:tab,tabs:[tab],beginActivity:vi.fn(() => "activity"),endActivity:vi.fn(),setTabMeta:vi.fn(),retargetRepoTab:vi.fn(),refreshRecents:vi.fn(),prefs:{...defaultPrefs,p4RefreshMinutes:0}};
+const model={
+  activeTab:tab,tabs:[tab],beginActivity:vi.fn(() => "activity"),endActivity:vi.fn(),
+  runActivity:vi.fn(async (_label: string, _detail: string, run: (id: string) => Promise<unknown>) => run("activity")),
+  setTabMeta:vi.fn(),retargetRepoTab:vi.fn(),refreshRecents:vi.fn(),prefs:{...defaultPrefs,p4RefreshMinutes:0},
+};
 vi.mock("@/state/git-context", () => ({useGitPick:() => model}));
 let state: ReturnType<typeof useP4>, root:Root, host:HTMLDivElement, current:P4Connection;
 function Capture() {const value=useP4();useLayoutEffect(() => {state=value;});return <div data-view={value.view} />;}

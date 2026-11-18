@@ -3271,10 +3271,11 @@ fn sync_paths(
         return run_owned(env, &sync_args(paths, false, false, flags), None);
     }
     progress("Counting files");
-    let total = run_owned(env, &sync_args(paths, false, true, flags), None)
-        .ok()
-        .as_deref()
-        .and_then(sync_estimate_files);
+    let total = match run_owned(env, &sync_args(paths, false, true, flags), None) {
+        Ok(estimate) => sync_estimate_files(&estimate),
+        Err(error) if error.is_cancelled() => return Err(error),
+        Err(_) => None,
+    };
     if total.is_some_and(|count| count > 0) {
         progress("0% Syncing");
     }
@@ -3316,8 +3317,8 @@ fn run_sync(
 ) -> AppResult<String> {
     let args = sync_args(paths, parallel, false, flags);
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    cli::run_p4_stream(env, &refs, &mut |line: String| {
-        progress(&sync_progress_line(&line, total, transferred));
+    cli::run_p4_stream(env, &refs, |line| {
+        progress(&sync_progress_line(line, total, transferred));
     })
 }
 

@@ -12,7 +12,7 @@ import type { SparseCheckoutPreview, SparseCheckoutState, SparseCheckoutUpdate }
 import type { Activity } from "@/types/git";
 
 const model = vi.hoisted(() => ({change:vi.fn(), activities:[] as Activity[]}));
-vi.mock("@/state/git-context", () => ({useGitPick:() => ({changeSparseCheckout:model.change, activeTabId:"git:first"}), useActivities:() => model.activities}));
+vi.mock("@/state/git-context", () => ({useGitPick:() => ({changeSparseCheckout:model.change, activeTabId:"git:first",cancelActivity:(id:string)=>gitApi.cancelActivity(id)}), useActivities:() => model.activities}));
 let root: Root, container: HTMLDivElement;
 function full(): SparseCheckoutState {return {enabled:false,cone:true,sparseIndex:false,rules:[],patterns:[],fingerprint:"full-checkout"};}
 function partial(): SparseCheckoutState {return {...full(),enabled:true,rules:["src"],patterns:["/*","!/*/","/src/"],fingerprint:"partial-checkout"};}
@@ -47,7 +47,7 @@ it("requires a preview and submits the reviewed request, repository and fingerpr
   expect(button("Apply sparse checkout").disabled).toBe(true);await click("Preview");
   expect(gitApi.previewSparseCheckout).toHaveBeenCalledWith("/work/project",{kind:"set",cone:true,sparseIndex:false,rules:["src"]},"full-checkout");
   await click("Apply sparse checkout");
-  expect(model.change).toHaveBeenCalledExactlyOnceWith("/work/project",{kind:"set",cone:true,sparseIndex:false,rules:["src"]},"reviewed-scope",false);
+  expect(model.change).toHaveBeenCalledExactlyOnceWith("/work/project",{kind:"set",cone:true,sparseIndex:false,rules:["src"]},"reviewed-scope",false,expect.any(Function));
   expect(document.body.textContent).toContain("Working tree updated.");
 });
 
@@ -57,7 +57,7 @@ it("ignores an older preview when the rules are edited while it is loading", asy
   await act(async () => pending.resolve(preview()));
   expect(button("Apply sparse checkout").disabled).toBe(true);expect(model.change).not.toHaveBeenCalled();
   await click("Preview");await click("Apply sparse checkout");
-  expect(model.change).toHaveBeenLastCalledWith("/work/project",expect.objectContaining({rules:["docs"]}),"reviewed-scope",false);
+  expect(model.change).toHaveBeenLastCalledWith("/work/project",expect.objectContaining({rules:["docs"]}),"reviewed-scope",false,expect.any(Function));
 });
 
 it("requires explicit ignored-file approval and clears it when the selection changes", async () => {
@@ -67,7 +67,7 @@ it("requires explicit ignored-file approval and clears it when the selection cha
   await rules("docs");expect(button("Apply sparse checkout").disabled).toBe(true);
   await click("Preview");expect(button("Apply sparse checkout").disabled).toBe(true);
   await check("Allow Git to remove all 2 ignored paths");await click("Apply sparse checkout");
-  expect(model.change).toHaveBeenLastCalledWith("/work/project",expect.objectContaining({rules:["docs"]}),"reviewed-scope",true);
+  expect(model.change).toHaveBeenLastCalledWith("/work/project",expect.objectContaining({rules:["docs"]}),"reviewed-scope",true,expect.any(Function));
 });
 
 it("passes arbitrary pattern rules to Git and disables sparse indexes in pattern mode", async () => {
@@ -91,17 +91,24 @@ it("preserves the draft after a stale preview and reloads only on an explicit ac
 it("previews reapply separately and restores the full checkout through the same review flow", async () => {
   vi.mocked(gitApi.sparseCheckoutState).mockResolvedValue(partial());await show();
   expect(button("Preview").disabled).toBe(true);await click("Preview reapply");await click("Reapply rules");
-  expect(model.change).toHaveBeenLastCalledWith("/work/project",{kind:"reapply"},"reviewed-scope",false);
+  expect(model.change).toHaveBeenLastCalledWith("/work/project",{kind:"reapply"},"reviewed-scope",false,expect.any(Function));
   await check("Use sparse checkout");await click("Preview");
   expect(gitApi.previewSparseCheckout).toHaveBeenLastCalledWith("/work/project",{kind:"disable"},"partial-checkout");
   model.change.mockResolvedValue({state:full(),report:""});await click("Restore full checkout");
-  expect(model.change).toHaveBeenLastCalledWith("/work/project",{kind:"disable"},"reviewed-scope",false);
+  expect(model.change).toHaveBeenLastCalledWith("/work/project",{kind:"disable"},"reviewed-scope",false,expect.any(Function));
   expect(document.getElementById("sparse-checkout-rules")).toBeNull();
 });
 
-it("submits once and cancels only the current repository operation", async () => {
+it("submits once and cancels only the sparse checkout operation", async () => {
   const pending=deferred<SparseCheckoutUpdate>();
-  model.change.mockImplementation(() => {model.activities=[{id:"other",tabId:"git:second",label:"Other operation",cancellable:true},{id:"checkout",tabId:"git:first",label:"Sparse checkout",cancellable:true}];return pending.promise;});
+  model.change.mockImplementation((_path, _request, _fingerprint, _allowIgnored, receive: (id: string) => void) => {
+    model.activities=[
+      {id:"fetch",tabId:"git:first",label:"Fetching",cancellable:true},
+      {id:"checkout",tabId:"git:first",label:"Sparse checkout",cancellable:true},
+    ];
+    receive("checkout");
+    return pending.promise;
+  });
   await show();await select();await click("Preview");
   await act(async () => {button("Apply sparse checkout").click();button("Apply sparse checkout").click();});
   expect(model.change).toHaveBeenCalledOnce();await click("Cancel operation");
