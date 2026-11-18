@@ -1,4 +1,4 @@
-import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { Channel, invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type { LfsState, LfsAction, LfsOutcome } from "@/types/lfs";
 import type { SparseCheckoutState, SparseCheckoutRequest, SparseCheckoutPreview, SparseCheckoutOutcome } from "@/types/sparse-checkout";
 import type {
@@ -133,14 +133,18 @@ export const gitApi = {
     call<void>("answer_askpass", { id, answer }),
   refreshWorkspace: (repoPath: string) =>
     call<WorkspaceSnapshot>("refresh_workspace", { repoPath }),
-  getCommits: (repoPath: string, limit = 80, skip = 0, query?: string, revs?: string[] | null) =>
-    call<CommitSummary[]>("get_commits", {
-      repoPath,
-      limit,
-      skip,
-      query: query || null,
-      rev: revs?.length ? revs : null,
-    }),
+  getCommits: async (repoPath: string, limit = 80, skip = 0, query?: string, revs?: string[] | null, onPreview?: (items: CommitSummary[]) => void) => {
+    const preview = onPreview ? new Channel<CommitSummary[]>() : null;
+    let pending = true;
+    if (preview) preview.onmessage = (items) => {
+      if (pending) onPreview?.(items.map(item => ({...item, onCurrentBranch: null, onTrackingBranch: null})));
+    };
+    try {
+      return await call<CommitSummary[]>("get_commits", { repoPath, limit, skip, query: query || null, rev: revs?.length ? revs : null, preview });
+    } finally {
+      pending = false;
+    }
+  },
   getBranches: (repoPath: string) => call<BranchList>("get_branches", { repoPath }),
   getWorkdirDiff: (repoPath: string, path: string, staged: boolean, ignoreWhitespace = false) =>
     call<FileDiff>("get_workdir_diff", { repoPath, path, staged, ignoreWhitespace }),

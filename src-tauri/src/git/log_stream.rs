@@ -10,6 +10,8 @@ const STREAM_IDLE: Duration = Duration::from_secs(120);
 
 struct LogStream {
     args: Vec<String>,
+    tips: Option<BranchTips>,
+    frontier: HashMap<String, u8>,
     child: LoggedChild,
     reader: BufReader<LoggedReader<ChildStdout>>,
     position: usize,
@@ -86,13 +88,14 @@ pub(super) fn log_page(
     args: &[String],
     skip: usize,
     limit: usize,
-) -> AppResult<Vec<u8>> {
+    tips: Option<&BranchTips>,
+) -> AppResult<Vec<CommitSummary>> {
     let slot = slot_for(root);
     let mut guard = slot.lock().unwrap_or_else(|err| err.into_inner());
     let reusable = skip > 0
-        && guard
-            .as_ref()
-            .is_some_and(|stream| stream.args == args && stream.position == skip);
+        && guard.as_ref().is_some_and(|stream| {
+            stream.args == args && stream.position == skip && stream.tips.as_ref() == tips
+        });
     if !reusable {
         *guard = None;
         let argv: Vec<&str> = args.iter().map(String::as_str).collect();
@@ -103,6 +106,8 @@ pub(super) fn log_page(
             .ok_or_else(|| AppError::msg("Could not read git log"))?;
         *guard = Some(LogStream {
             args: args.to_vec(),
+            tips: tips.cloned(),
+            frontier: tips.map(BranchTips::frontier).unwrap_or_default(),
             child,
             reader: BufReader::new(stdout),
             position: 0,
@@ -111,27 +116,34 @@ pub(super) fn log_page(
     }
     let stream = guard.as_mut().expect("stream was just opened");
     let mut line = Vec::new();
-    // A fresh stream asked for a later page catches up by reading through.
-    while stream.position < skip {
-        if !read_git_line(&mut stream.reader, &mut line)? {
-            break;
-        }
-        stream.position += 1;
-    }
     let mut page = Vec::new();
-    let mut count = 0;
     let mut ended = false;
-    while count < limit {
+    while stream.position < skip.saturating_add(limit) {
         if !read_git_line(&mut stream.reader, &mut line)? {
             ended = true;
             break;
         }
-        page.extend_from_slice(&line);
-        page.push(b'\n');
-        count += 1;
+        let include = stream.position >= skip;
+        stream.position += 1;
+        if !include && tips.is_none() {
+            continue;
+        }
+        if let Some(mut commit) = parse_log_row(&line) {
+            if tips.is_some() {
+                let mask = propagate_membership(
+                    &mut stream.frontier,
+                    &commit.id,
+                    commit.parents.iter().map(String::as_str),
+                );
+                commit.on_current_branch = mask & 1 != 0;
+                commit.on_tracking_branch = mask & 2 != 0;
+            }
+            if include {
+                page.push(commit);
+            }
+        }
     }
     stream.child.checkpoint();
-    stream.position += count;
     stream.used = Instant::now();
     if ended {
         let status = stream.child.wait()?;

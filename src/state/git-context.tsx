@@ -1053,7 +1053,9 @@ export function GitProvider({ children }: { children: ReactNode }) {
         const page = await runActivity(
           reset ? t("operations.loading_history") : t("operations.loading_earlier_history"),
           current.snapshot?.repo.name,
-          () => gitApi.getCommits(repoPath, COMMIT_PAGE, skip, undefined, revs),
+          () => gitApi.getCommits(repoPath, COMMIT_PAGE, skip, undefined, revs, reset ? (commits) => {
+            if (historyEpochRef.current[tabId] === epoch) patchSession(tabId, { commits });
+          } : undefined),
           false,
           tabId,
         );

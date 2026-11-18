@@ -976,7 +976,10 @@ fn staged_rename_is_listed_under_its_new_name() {
 fn git_log_parser_reads_fields_and_parents() {
     let raw = b"aaaaaaa1\0aaaaaaa\0Merge side\0Ann\0ann@x\x001700000000\0bbbbbbb1 ccccccc1\n\
                 bbbbbbb1\0bbbbbbb\0Root\0Bob\0bob@x\x001600000000\0\n";
-    let commits = parse_git_log(raw).unwrap();
+    let commits: Vec<_> = raw
+        .split(|&byte| byte == b'\n')
+        .filter_map(parse_log_row)
+        .collect();
     assert_eq!(commits.len(), 2);
     assert_eq!(commits[0].summary, "Merge side");
     assert_eq!(commits[0].parents, vec!["bbbbbbb1", "ccccccc1"]);
@@ -1020,7 +1023,7 @@ fn blame_parser_keeps_author_names_that_start_with_metadata_words() {
 }
 
 #[test]
-fn reachable_history_respects_its_limit_and_shallow_boundary_changes() {
+fn page_membership_respects_changing_shallow_boundaries() {
     let (root, repo) = temp_repo();
     commit_file(&repo, &root, "file.txt", "first\n", "first");
     let first = head_id(&repo);
@@ -1029,29 +1032,47 @@ fn reachable_history_respects_its_limit_and_shallow_boundary_changes() {
     commit_file(&repo, &root, "file.txt", "third\n", "third");
     let third = head_id(&repo);
 
-    assert!(walk_reachable(&repo, &third, 0).is_none());
-    assert!(walk_reachable(&repo, &third, 2).is_none());
-    assert_eq!(walk_reachable(&repo, &third, 3).unwrap().len(), 3);
-
+    let membership = || {
+        page_membership(
+            &repo,
+            &BranchTips {
+                head: Some(third.clone()),
+                upstream: Some(second.clone()),
+            },
+            &[&first, &second, &third],
+        )
+        .unwrap()
+    };
     let shallow = repo.commondir().join("shallow");
     fs::write(&shallow, format!("{third}\n")).unwrap();
-    assert_eq!(reachable_commits(&repo, &third).unwrap().len(), 1);
+    assert_eq!(membership()[&first], 2);
     fs::write(&shallow, format!("{second}\n")).unwrap();
-    assert_eq!(reachable_commits(&repo, &third).unwrap().len(), 2);
+    assert_eq!(membership()[&first], 0);
     fs::remove_file(&shallow).unwrap();
-    let complete = reachable_commits(&repo, &third).unwrap();
-    assert_eq!(complete.len(), 3);
-    assert!(complete.contains(&first));
+    let result = membership();
+    assert_eq!((result[&first], result[&second], result[&third]), (3, 3, 1));
     let _ = fs::remove_dir_all(&root);
 }
 
 #[test]
-fn reachable_history_cache_keeps_repository_specific_replacements_separate() {
+fn page_membership_respects_repository_specific_replacements() {
     let (root, repo) = temp_repo();
     commit_file(&repo, &root, "file.txt", "first\n", "first");
+    let first = head_id(&repo);
     commit_file(&repo, &root, "file.txt", "second\n", "second");
     let tip = head_id(&repo);
-    assert_eq!(reachable_commits(&repo, &tip).unwrap().len(), 2);
+    assert_eq!(
+        page_membership(
+            &repo,
+            &BranchTips {
+                head: Some(tip.clone()),
+                upstream: None
+            },
+            &[&first]
+        )
+        .unwrap()[&first],
+        1
+    );
 
     let (other_root, other_repo) = temp_repo();
     run_git_stdout(
@@ -1060,8 +1081,30 @@ fn reachable_history_cache_keeps_repository_specific_replacements_separate() {
     )
     .unwrap();
     run_git_stdout(&other_root, &["replace", "--graft", &tip]).unwrap();
-    assert_eq!(reachable_commits(&other_repo, &tip).unwrap().len(), 1);
-    assert_eq!(reachable_commits(&repo, &tip).unwrap().len(), 2);
+    assert_eq!(
+        page_membership(
+            &other_repo,
+            &BranchTips {
+                head: Some(tip.clone()),
+                upstream: None
+            },
+            &[&first]
+        )
+        .unwrap()[&first],
+        0
+    );
+    assert_eq!(
+        page_membership(
+            &repo,
+            &BranchTips {
+                head: Some(tip.clone()),
+                upstream: None
+            },
+            &[&first]
+        )
+        .unwrap()[&first],
+        1
+    );
     let _ = fs::remove_dir_all(&root);
     let _ = fs::remove_dir_all(&other_root);
 }
@@ -1115,7 +1158,7 @@ fn history_pages_are_contiguous_whether_or_not_the_stream_is_reused() {
         );
     }
     let page = |skip| {
-        commits(&repo, 3, skip, None, &[])
+        commits(&repo, 3, skip, None, &[], |_| {})
             .unwrap()
             .into_iter()
             .map(|commit| commit.summary)
@@ -1136,6 +1179,41 @@ fn history_pages_are_contiguous_whether_or_not_the_stream_is_reused() {
     let _ = fs::remove_dir_all(&root);
 }
 
+#[test]
+fn history_pages_preserve_divergent_and_merged_branch_membership() {
+    let (root, repo) = temp_repo();
+    commit_file(&repo, &root, "base", "base", "common");
+    run_git_stdout(&root, &["checkout", "-b", "upstream"]).unwrap();
+    commit_file(&repo, &root, "theirs", "theirs", "upstream only");
+    run_git_stdout(&root, &["checkout", "-b", "work", "HEAD~1"]).unwrap();
+    run_git_stdout(&root, &["branch", "--set-upstream-to", "upstream"]).unwrap();
+    commit_file(&repo, &root, "ours", "ours", "local only");
+    let check = |count: usize, revs: &[String]| {
+        for skip in (0..count).chain([0, count - 1]) {
+            let page = commits(&repo, 1, skip, None, revs, |_| {}).unwrap();
+            let item = &page[0];
+            for (tip, actual) in [
+                ("HEAD", item.on_current_branch),
+                ("upstream", item.on_tracking_branch),
+            ] {
+                let expected =
+                    run_git_stdout(&root, &["merge-base", "--is-ancestor", &item.id, tip]).is_ok();
+                assert_eq!(actual, expected, "{} on {tip}", item.summary);
+            }
+        }
+    };
+    check(3, &[]);
+    check(2, &["upstream".into()]);
+    run_git_stdout(
+        &root,
+        &["merge", "--no-ff", "-m", "merge upstream", "upstream"],
+    )
+    .unwrap();
+    check(4, &[]);
+    assert!(commits(&repo, 1, 4, None, &[], |_| {}).unwrap().is_empty());
+    fs::remove_dir_all(root).unwrap();
+}
+
 /// `REBASERAVEN_BENCH_REPO=<path> cargo test bench_history_pages -- --ignored --nocapture`
 #[test]
 #[ignore]
@@ -1146,7 +1224,7 @@ fn bench_history_pages() {
     let mut repo = open_at(Path::new(&path)).unwrap();
     for skip in [0, 80, 160, 240] {
         let started = std::time::Instant::now();
-        let items = commits(&repo, 80, skip, None, &[]).unwrap();
+        let items = commits(&repo, 80, skip, None, &[], |_| {}).unwrap();
         println!(
             "skip={skip}: {} commits in {:?}",
             items.len(),
@@ -2261,7 +2339,7 @@ fn history_search_filters_by_author_path_and_content() {
     commit_as("Alice", "b.txt", "has the needle\nmore\n", "alice edits b");
 
     let summaries = |query: &str| {
-        commits(&repo, 20, 0, Some(query), &[])
+        commits(&repo, 20, 0, Some(query), &[], |_| {})
             .unwrap()
             .into_iter()
             .map(|commit| commit.summary)

@@ -236,7 +236,10 @@ async fn get_commits(
     skip: Option<usize>,
     query: Option<String>,
     rev: Option<Vec<String>>,
+    preview: Option<tauri::ipc::JavaScriptChannelId>,
+    webview: tauri::Webview,
 ) -> AppResult<Vec<CommitSummary>> {
+    let preview = preview.map(|id| id.channel_on(webview));
     with_repo_diagnostic(repo_path, diagnostics::Code::GitHistory, move |repo| {
         git::commits(
             repo,
@@ -244,6 +247,11 @@ async fn get_commits(
             skip.unwrap_or(0),
             query.as_deref(),
             rev.as_deref().unwrap_or(&[]),
+            |items| {
+                if let Some(channel) = preview {
+                    let _ = channel.send(items.to_vec());
+                }
+            },
         )
     })
     .await

@@ -87,8 +87,8 @@ export interface CommitSummary {
   timestamp: number;
   parents: string[];
   refs: CommitRef[];
-  onCurrentBranch: boolean;
-  onTrackingBranch: boolean;
+  onCurrentBranch: boolean | null;
+  onTrackingBranch: boolean | null;
   /** The file's name at this commit; only set by per-file history. */
   path?: string;
 }

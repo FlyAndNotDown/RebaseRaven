@@ -671,5 +671,5 @@ it("reloads visible history after deleting an unfiltered branch", async () => {
   await act(async () => {model.setView("history");});
   vi.mocked(gitApi.getCommits).mockClear();
   await act(async () => {expect(await model.deleteBranch("reviewed")).toBe(true);});
-  expect(gitApi.getCommits).toHaveBeenCalledWith(A,expect.any(Number),0,undefined,[]);
+  expect(gitApi.getCommits).toHaveBeenCalledWith(A,expect.any(Number),0,undefined,[],expect.any(Function));
 });
