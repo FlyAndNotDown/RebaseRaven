@@ -1,3 +1,4 @@
+import { useActivityActions } from "./activity-context";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import { createStore, shallowEqual, type Store } from "./store";
 import { P4DialogContext, type P4Dialogs } from "./p4-dialogs";
@@ -196,12 +197,10 @@ const P4Context = createContext<Store<P4ContextValue> | null>(null);
 
 export function P4Provider({ children }: { children: ReactNode }) {
   const language = useTranslation().i18n.resolvedLanguage;
-  const { activeTab, tabs, runActivity, beginActivity, endActivity, setTabMeta, retargetRepoTab, refreshRecents, prefs } = useGitPick([
+  const {runActivity, beginActivity, endActivity} = useActivityActions();
+  const { activeTab, tabs, setTabMeta, retargetRepoTab, refreshRecents, prefs } = useGitPick([
     "activeTab",
     "tabs",
-    "runActivity",
-    "beginActivity",
-    "endActivity",
     "setTabMeta",
     "retargetRepoTab",
     "refreshRecents",

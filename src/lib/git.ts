@@ -128,7 +128,6 @@ export const gitApi = {
       destination,
       activityId: activityId || null,
     }),
-  cancelActivity: (id: string) => call<boolean>("cancel_activity", { id }),
   answerAskpass: (id: number, answer: string | null) =>
     call<void>("answer_askpass", { id, answer }),
   refreshWorkspace: (repoPath: string) =>

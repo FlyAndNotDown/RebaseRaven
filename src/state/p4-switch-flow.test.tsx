@@ -18,6 +18,7 @@ const model={
   runActivity:vi.fn(async (_label: string, _detail: string, run: (id: string) => Promise<unknown>) => run("activity")),
   setTabMeta:vi.fn(),retargetRepoTab:vi.fn(),refreshRecents:vi.fn(),prefs:{...defaultPrefs,p4RefreshMinutes:0},
 };
+vi.mock("@/state/activity-context", () => ({useActivityActions: () => model}));
 vi.mock("@/state/git-context", () => ({useGitPick:() => model}));
 let state: ReturnType<typeof useP4>, root:Root, host:HTMLDivElement, current:P4Connection;
 const upToDate = {failed:false, updated:0, added:0, deleted:0, unchanged:true, warnings:{}, diagnostics:0, firstDiagnostic:""};

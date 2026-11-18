@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 import { setLanguagePreference } from "@/i18n";
+import { activityApi } from "@/lib/activity";
 import { gitApi } from "@/lib/git";
 import { defaultPrefs } from "@/lib/prefs";
 import { GitProvider, useGitPick } from "@/state/git-context";
@@ -32,6 +33,7 @@ it("cancels only the chosen activity, offers a retry, and keeps pending state on
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   setLanguagePreference("en");
+  vi.spyOn(activityApi, "reserve").mockResolvedValue({close: vi.fn(async () => {})});
   vi.spyOn(gitApi, "getPrefs").mockResolvedValue(defaultPrefs);
   vi.spyOn(gitApi, "listRecents").mockResolvedValue([]);
   vi.spyOn(gitApi, "loadSession").mockResolvedValue({
@@ -41,7 +43,7 @@ it("cancels only the chosen activity, offers a retry, and keeps pending state on
   });
   vi.spyOn(gitApi, "saveSession").mockImplementation(async session => session);
   vi.spyOn(gitApi, "gitExecutables").mockResolvedValue({ pathGit: "/bin/git", active: "/bin/git" });
-  const cancel = vi.spyOn(gitApi, "cancelActivity").mockResolvedValueOnce(false).mockResolvedValue(true);
+  const cancel = vi.spyOn(activityApi, "cancel").mockResolvedValueOnce(false).mockResolvedValue(true);
   let model!: ReturnType<typeof useModel>;
   function Harness() {
     const value = useModel();

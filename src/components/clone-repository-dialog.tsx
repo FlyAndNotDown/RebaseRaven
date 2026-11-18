@@ -1,3 +1,4 @@
+import { activityApi } from "@/lib/activity";
 import { t, useTranslation } from "@/i18n";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -284,7 +285,7 @@ function GitCloneActivity({ activityId, cloning, canClone, incomplete, onClose }
     setCancelError(null);
     let accepted = false;
     try {
-      accepted = await gitApi.cancelActivity(id);
+      accepted = await activityApi.cancel(id);
       if (liveId.current !== id) return;
       if (!accepted) {
         setCancellingId(null);

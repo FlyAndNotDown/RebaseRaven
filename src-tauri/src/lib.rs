@@ -186,6 +186,13 @@ async fn clone_repository(
 }
 
 #[tauri::command]
+fn reserve_activity(webview: tauri::Webview, id: String) -> AppResult<tauri::ResourceId> {
+    Ok(webview
+        .resources_table()
+        .add(activity::Reservation::new(id)?))
+}
+
+#[tauri::command]
 fn cancel_activity(id: String) -> bool {
     activity::cancel_activity(&id)
 }
@@ -2517,6 +2524,7 @@ pub fn run() {
             load_session,
             save_session,
             clone_repository,
+            reserve_activity,
             cancel_activity,
             answer_askpass,
             open_repository,

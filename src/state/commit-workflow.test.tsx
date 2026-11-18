@@ -15,6 +15,7 @@ import { ChangesPane } from "@/components/changes-pane";
 import { AppToolbar } from "@/components/app-toolbar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { resolveCommitEditor } from "@/state/commit-editor";
+import { activityApi } from "@/lib/activity";
 import { gitApi } from "@/lib/git";
 import { defaultPrefs } from "@/lib/prefs";
 import { setLanguagePreference } from "@/i18n";
@@ -225,6 +226,7 @@ beforeEach(async () => {
   setLanguagePreference("en");
   snapshots = { [A]: initial(A), [B]: initial(B) };
   pending = [];
+  vi.spyOn(activityApi, "reserve").mockResolvedValue({close: vi.fn(async () => {})});
   vi.spyOn(gitApi, "getPrefs").mockResolvedValue({
     ...defaultPrefs,
     analyticsEnabled: false,

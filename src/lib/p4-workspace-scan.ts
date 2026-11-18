@@ -1,4 +1,4 @@
-import { gitApi } from "@/lib/git";
+import { activityApi } from "./activity";
 import { normalizeRepoPath, pathsIgnoreCase } from "@/lib/format";
 
 function containsFolder(parent: string, folder: string) {
@@ -23,23 +23,11 @@ export function addScanFolders(root: string, current: string[], chosen: string[]
 
 export async function abortableScan<T>(signal: AbortSignal, id: string, read: () => Promise<T>) {
   signal.throwIfAborted();
-  let finished = false;
-  let retry: ReturnType<typeof setTimeout> | undefined;
-  // Closing immediately can race the worker that registers the native activity.
-  async function stop() {
-    if (finished) return;
-    const accepted = await gitApi.cancelActivity(id).catch(() => false);
-    if (!accepted && !finished) {
-      retry = setTimeout(() => void stop(), 100);
-    }
-  }
-  const abort = () => { void stop(); };
+  const abort = () => { void activityApi.cancel(id).catch(() => {}); };
   signal.addEventListener("abort", abort, {once: true});
   try {
     return await read();
   } finally {
-    finished = true;
-    clearTimeout(retry);
     signal.removeEventListener("abort", abort);
   }
 }

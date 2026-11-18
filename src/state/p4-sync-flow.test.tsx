@@ -19,6 +19,7 @@ const model = {
   setTabMeta: vi.fn(), retargetRepoTab: vi.fn(), refreshRecents: vi.fn(),
   prefs: { ...defaultPrefs, p4RefreshMinutes: 0 },
 };
+vi.mock("@/state/activity-context", () => ({useActivityActions: () => model}));
 vi.mock("@/state/git-context", () => ({ useGitPick: () => model }));
 let state: ReturnType<typeof useP4>, root: Root, host: HTMLDivElement;
 const historyRender = vi.fn();

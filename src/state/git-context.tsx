@@ -1,3 +1,5 @@
+import { ActivityProvider, useActivityActions } from "./activity-context";
+import type { RefObject } from "react";
 import { createStore, shallowEqual, type Store } from "./store";
 import { RepositoryOperations } from "./repository-operations";
 import {
@@ -62,7 +64,6 @@ import {
   historyGraphChanged,
   keepRemoteBranches,
   mergeRefreshHint,
-  progressFromGitLine,
   sameDiff,
   sameRevs,
   sameSnapshot,
@@ -71,7 +72,6 @@ import {
   type RefreshHint,
 } from "@/state/snapshot-compare";
 import type {
-  Activity,
   AppPrefs,
   AppSession,
   PanelLayout,
@@ -313,19 +313,21 @@ const WELCOME_TAB: AppTab = { id: WELCOME_TAB_ID, kind: "welcome" };
 // The value never changes after mount; components subscribe to the store for
 // the fields they read, so an unrelated update does not re-render them.
 const GitContext = createContext<{ store: Store<GitState>; actions: GitActions } | null>(null);
-// Progress updates arrive many times per second; keeping them out of GitContext
-// means only the activity meter re-renders for them. Each activity names the tab
-// that started it, so one repository's bar does not show another's work.
-const ActivityContext = createContext<Activity[]>([]);
+export { useActivities } from "./activity-context";
 
-export function GitProvider({ children }: { children: ReactNode }) {
+export function GitProvider({children}: {children: ReactNode}) {
+  const owner = useRef(WELCOME_TAB_ID);
+  return <ActivityProvider owner={owner}><RepositoryProvider owner={owner}>{children}</RepositoryProvider></ActivityProvider>;
+}
+
+function RepositoryProvider({owner, children}: {owner: RefObject<string>; children: ReactNode}) {
+  const activeTabIdRef = useRef(WELCOME_TAB_ID);
+  const {runActivity, beginActivity, patchActivity, cancelActivity, endActivity} = useActivityActions();
   const [recents, setRecents] = useState<RecentRepo[]>([]);
   const [tabs, setTabs] = useState<AppTab[]>([]);
   const [activeTabId, setActiveTabId] = useState(WELCOME_TAB_ID);
   const [sessions, setSessions] = useState<Record<string, RepoSession>>({});
   const [loading, setLoading] = useState(true);
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const activityStops = useRef(new Map<string, "ready" | "requested">());
   const [publishPrompt, setPublishPrompt] = useState<PublishPrompt | null>(null);
   const [openPanel, setOpenPanel] = useState<Panel | null>(null);
   const [prefs, setPrefs] = useState<AppPrefs>(defaultPrefs);
@@ -341,7 +343,6 @@ export function GitProvider({ children }: { children: ReactNode }) {
 
   const tabsRef = useRef(tabs);
   const sessionsRef = useRef(sessions);
-  const activeTabIdRef = useRef(activeTabId);
   const [operations] = useState(() => new RepositoryOperations());
   const openingPathsRef = useRef(new Set<string>());
   const historyRevsMapRef = useRef<Record<string, string[]>>({});
@@ -367,8 +368,9 @@ export function GitProvider({ children }: { children: ReactNode }) {
   }, []);
   const commitActiveTabId = useCallback((next: string) => {
     activeTabIdRef.current = next;
+    owner.current = next;
     setActiveTabId(next);
-  }, []);
+  }, [owner]);
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? WELCOME_TAB;
   const session = activeTab.kind === "repo" ? sessions[activeTab.id] : undefined;
@@ -625,96 +627,6 @@ export function GitProvider({ children }: { children: ReactNode }) {
     if (!restoredRef.current) return;
     persistSession(tabsRef.current, activeTabIdRef.current);
   }, [persistKey, persistSession]);
-
-  const runActivity = useCallback(
-    async <T,>(
-      label: string,
-      detail: string | undefined,
-      fn: (activityId: string) => Promise<T>,
-      cancellable = false,
-      tabId?: string,
-    ) => {
-      const id = crypto.randomUUID();
-      const owner = tabId ?? activeTabIdRef.current;
-      if (cancellable) activityStops.current.set(id, "ready");
-      setActivities((current) => [...current, { id, label, detail, cancellable, tabId: owner }]);
-      try {
-        return await fn(id);
-      } finally {
-        activityStops.current.delete(id);
-        setActivities((current) => current.filter((item) => item.id !== id));
-      }
-    },
-    [],
-  );
-
-  const beginActivity = useCallback((label: string, detail?: string, progress?: number, tabId?: string) => {
-    const id = crypto.randomUUID();
-    const owner = tabId ?? activeTabIdRef.current;
-    setActivities((current) => [...current, { id, label, detail, progress, tabId: owner }]);
-    return id;
-  }, []);
-
-  const patchActivity = useCallback(
-    (id: string, patch: Partial<Pick<Activity, "label" | "detail" | "progress" | "cancelling">>) => {
-      setActivities((current) =>
-        current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
-      );
-    },
-    [],
-  );
-
-  const cancelActivity = useCallback(async (id: string) => {
-    if (activityStops.current.get(id) !== "ready") return;
-    activityStops.current.set(id, "requested");
-    patchActivity(id, { cancelling: true });
-    const accepted = await gitApi.cancelActivity(id).catch(() => false);
-    if (accepted || !activityStops.current.has(id)) return;
-    activityStops.current.set(id, "ready");
-    patchActivity(id, { cancelling: false });
-    toast.warning(t("desktop.activityMeter.cancelUnavailable"));
-  }, [patchActivity]);
-
-  const endActivity = useCallback((id: string) => {
-    setActivities((current) =>
-      current.some((item) => item.id === id) ? current.filter((item) => item.id !== id) : current,
-    );
-  }, []);
-
-  useEffect(() => {
-    let disposed = false;
-    let unlisten: (() => void) | undefined;
-    let frame = 0;
-    const latest = new Map<string, string>();
-    const flush = () => {
-      frame = 0;
-      const batch = new Map(latest);
-      latest.clear();
-      setActivities((current) =>
-        current.map((item) => {
-          const line = batch.get(item.id);
-          if (line === undefined) return item;
-          const progress = progressFromGitLine(line);
-          return { ...item, detail: line, progress: progress ?? item.progress };
-        }),
-      );
-    };
-    void listen<{ id: string; line: string }>("git-progress", (event) => {
-      latest.set(event.payload.id, event.payload.line);
-      if (!frame) frame = requestAnimationFrame(flush);
-    }).then((fn) => {
-      if (disposed) {
-        fn();
-        return;
-      }
-      unlisten = fn;
-    });
-    return () => {
-      disposed = true;
-      if (frame) cancelAnimationFrame(frame);
-      unlisten?.();
-    };
-  }, []);
 
   const hydrateRepo = useCallback(
     async (tabId: string) => {
@@ -3335,7 +3247,7 @@ export function GitProvider({ children }: { children: ReactNode }) {
 
   return (
     <GitContext.Provider value={context}>
-      <ActivityContext.Provider value={activities}>{children}</ActivityContext.Provider>
+      {children}
     </GitContext.Provider>
   );
 }
@@ -3379,9 +3291,6 @@ export function useGitSelect<T>(selector: (state: GitState) => T): T {
   return useSyncExternalStoreWithSelector(store.subscribe, store.get, store.get, selector);
 }
 
-export function useActivities() {
-  return useContext(ActivityContext);
-}
 
 function patchFileName(commit: CommitSummary) {
   const slug = (commit.summary || commit.shortId)
