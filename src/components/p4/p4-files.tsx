@@ -361,8 +361,8 @@ function WorkspaceTree({
   useTranslation();
   const { connection, listDir, filesEpoch } = useP4Pick(["connection", "listDir", "filesEpoch"]);
   const root = connection?.root ?? "";
-  const cache = useTreeCache(connection);
-  const cached = cache?.workspace;
+  const cache = useTreeCache("workspace");
+  const cached = connection ? cache?.get(connection) : undefined;
   const [entries, setEntries] = useState<Record<string, P4TreeEntry[]>>(() => cached?.epoch === filesEpoch ? cached.entries : {});
   const displayedEntries = useMemo(() => includeVersionedParents(entries), [entries]);
   const [open, setOpen] = useState<Set<string>>(() => new Set(cached?.open ?? []));
@@ -382,8 +382,8 @@ function WorkspaceTree({
     };
   }, []);
   useEffect(() => {
-    if (cache && entries[""]) cache.workspace = { entries, open: [...open], epoch: filesEpoch };
-  }, [cache, entries, filesEpoch, open]);
+    if (connection && entries[""]) cache?.set(connection, {entries, open: [...open], epoch: filesEpoch});
+  }, [cache, connection, entries, filesEpoch, open]);
 
   useEffect(() => {
     let live = true;
@@ -498,8 +498,8 @@ function DepotTree({
 }) {
   useTranslation();
   const { connection, listDepot, filesEpoch } = useP4Pick(["connection", "listDepot", "filesEpoch"]);
-  const cache = useTreeCache(connection);
-  const cached = cache?.depot;
+  const cache = useTreeCache("depot");
+  const cached = connection ? cache?.get(connection) : undefined;
   const [entries, setEntries] = useState<Record<string, P4TreeEntry[]>>(() => cached?.epoch === filesEpoch ? cached.entries : {});
   const [open, setOpen] = useState<Set<string>>(() => new Set(cached?.open ?? []));
   const [failed, setFailed] = useState(false);
@@ -518,8 +518,8 @@ function DepotTree({
     };
   }, []);
   useEffect(() => {
-    if (cache && entries[""]) cache.depot = { entries, open: [...open], epoch: filesEpoch };
-  }, [cache, entries, filesEpoch, open]);
+    if (connection && entries[""]) cache?.set(connection, {entries, open: [...open], epoch: filesEpoch});
+  }, [cache, connection, entries, filesEpoch, open]);
 
   useEffect(() => {
     let live = true;
