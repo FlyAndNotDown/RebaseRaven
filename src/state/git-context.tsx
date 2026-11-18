@@ -1823,17 +1823,19 @@ function RepositoryProvider({children}: {children: ReactNode}) {
   const discard = useCallback(
     async (paths: string[]) => {
       const tabId = activeTabIdRef.current;
-      await runMutation(
+      const ownsSession = operations.owner(tabId);
+      const ok = await runMutation(
         t("operations.discarding_changes"),
         (repoPath) => gitApi.discardPaths(repoPath, paths),
         t("operations.discarded_changes"),
       );
+      if (!ok || !ownsSession()) return;
       const selected = sessionsRef.current[tabId]?.changeSelection;
       if (selected && paths.includes(selected.path)) {
         patchSession(tabId, { changeSelection: null, changeDiff: null });
       }
     },
-    [patchSession, runMutation],
+    [operations, patchSession, runMutation],
   );
 
   const applyLines = useCallback(
@@ -1852,6 +1854,7 @@ function RepositoryProvider({children}: {children: ReactNode}) {
 
   const commitDraftNonce = useRef(0);
   const undoLastCommit = useCallback(async (tabId = activeTabIdRef.current) => {
+    const ownsSession = operations.owner(tabId);
     let message = "";
     const ok = await runMutation(
       t("operations.undoing_the_last_commit"),
@@ -1863,7 +1866,7 @@ function RepositoryProvider({children}: {children: ReactNode}) {
       t("operations.undid_the_last_commit_its_changes_are_staged"),
       { tabId },
     );
-    if (ok) {
+    if (ok && ownsSession()) {
       commitDraftNonce.current += 1;
       patchSession(tabId, {
         view: "changes",
@@ -1871,11 +1874,12 @@ function RepositoryProvider({children}: {children: ReactNode}) {
       });
     }
     return ok;
-  }, [patchSession, runMutation]);
+  }, [operations, patchSession, runMutation]);
 
   const commit = useCallback(
     async (message: string, amend = false) => {
       const tabId = activeTabIdRef.current;
+      const ownsSession = operations.owner(tabId);
       const submission = commitEditorSubmission(sessionsRef.current[tabId], message);
       const session = sessionsRef.current[tabId];
       if (!session) return false;
@@ -1883,14 +1887,14 @@ function RepositoryProvider({children}: {children: ReactNode}) {
         gitApi.commit(repoPath, message, amend),
         undefined, { tabId },
       );
-      if (ok) {
+      if (ok && ownsSession()) {
         clearSubmittedEditor(tabId, submission);
         if (amend) toast.success(t("operations.amended_commit"));
         else toast.success(t("operations.created_commit"), { action: repositoryUndoAction(tabId, undoLastCommit) });
       }
       return ok;
     },
-    [clearSubmittedEditor, runMutation, undoLastCommit],
+    [clearSubmittedEditor, operations, runMutation, undoLastCommit],
   );
 
   const updateSubmodules = useCallback(
@@ -1912,27 +1916,30 @@ function RepositoryProvider({children}: {children: ReactNode}) {
   const checkoutDetached = useCallback(
     async (oid: string) => {
       const tabId = activeTabIdRef.current;
+      const ownsSession = operations.owner(tabId);
       const ok = await runMutation(
         t("operations.checking_out", { value: oid.slice(0, 7) }),
         (repoPath) => gitApi.checkoutDetached(repoPath, oid),
         t("operations.checked_out_without_a_branch", { value: oid.slice(0, 7) }),
       );
-      if (ok) {
+      if (ok && ownsSession()) {
         patchSession(tabId, { changeSelection: null, changeDiff: null });
       }
       return ok;
     },
-    [patchSession, runMutation],
+    [operations, patchSession, runMutation],
   );
 
   const checkoutBranch = useCallback(
     async (name: string) => {
       const tabId = activeTabIdRef.current;
-      await runMutation(
+      const ownsSession = operations.owner(tabId);
+      const ok = await runMutation(
         t("operations.checking_out", { value: name }),
         (repoPath) => gitApi.checkoutBranch(repoPath, name),
         t("operations.checked_out", { value: name }),
       );
+      if (!ok || !ownsSession()) return;
       patchSession(tabId, {
         changeSelection: null,
         changeDiff: null,
@@ -1941,7 +1948,7 @@ function RepositoryProvider({children}: {children: ReactNode}) {
       });
       refetchStaleHistory(tabId);
     },
-    [patchSession, refetchStaleHistory, runMutation],
+    [operations, patchSession, refetchStaleHistory, runMutation],
   );
 
   const refreshAfterFetch = useCallback(
@@ -2127,6 +2134,7 @@ function RepositoryProvider({children}: {children: ReactNode}) {
 
   const commitAndPush = useCallback(async (message: string, amend = false) => {
     const tabId = activeTabIdRef.current;
+    const ownsSession = operations.owner(tabId);
     const snapshot = sessionsRef.current[tabId]?.snapshot;
     const branch = snapshot?.repo.currentBranch;
     const remote = primaryRemote(snapshot);
@@ -2138,9 +2146,9 @@ function RepositoryProvider({children}: {children: ReactNode}) {
       toast.error(t("operations.add_a_remote_before_pushing"));
       return false;
     }
-    if (!await commit(message, amend)) return false;
+    if (!await commit(message, amend) || !ownsSession()) return false;
     return pushRemote({ remote, expectedBranch: branch }, tabId);
-  }, [commit, pushRemote]);
+  }, [commit, operations, pushRemote]);
 
   const dismissPublish = useCallback(() => setPublishPrompt(null), []);
 
@@ -2624,19 +2632,21 @@ function RepositoryProvider({children}: {children: ReactNode}) {
   const addRemote = useCallback(
     async (name: string, url: string) => {
       const tabId = activeTabIdRef.current;
+      const ownsSession = operations.owner(tabId);
       const added = await runMutation(
         t("operations.adding", { value: name }),
         (repoPath) => gitApi.addRemote(repoPath, name, url),
         t("operations.added", { value: name }),
         { tabId },
       );
-      if (!added) return false;
+      if (!added || !ownsSession()) return false;
       await runMutation(
         t("operations.fetching_2", { value: name }),
         (repoPath, activityId) => gitApi.fetchRemote(repoPath, activityId, name),
         undefined,
         { cancellable: true, tabId },
       );
+      if (!ownsSession()) return true;
       patchSession(tabId, {
         commitsLoaded: false,
         commitsHasMore: true,
@@ -2645,7 +2655,7 @@ function RepositoryProvider({children}: {children: ReactNode}) {
       await ensureBranches(true, tabId);
       return true;
     },
-    [ensureBranches, patchSession, refetchStaleHistory, runMutation],
+    [ensureBranches, operations, patchSession, refetchStaleHistory, runMutation],
   );
 
   const setRemoteUrl = useCallback(

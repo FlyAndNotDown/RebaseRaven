@@ -511,6 +511,18 @@ it("skips the push if the originating tab closes while its commit is pending", a
   expect(gitApi.pushRemote).not.toHaveBeenCalled();
 });
 
+it("does not push from a reopened session after its previous commit completes", async () => {
+  await enablePush();
+  await type("Commit before reopening");
+  const operation = await startPush();
+  await open(B);
+  await act(async () => model.closeTab("repo:" + A));
+  await open(A);
+  await finish();
+  expect(await operation.result).toBe(false);
+  expect(gitApi.pushRemote).not.toHaveBeenCalled();
+});
+
 it("stops a delayed push after the originating repository changes branch", async () => {
   await enablePush();
   await type("Commit on main");

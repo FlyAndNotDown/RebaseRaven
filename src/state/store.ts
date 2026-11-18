@@ -27,4 +27,3 @@ export function shallowEqual<T extends object>(left: T, right: T) {
   const keys = Object.keys(left) as (keyof T)[];
   return keys.length === Object.keys(right).length && keys.every((key) => Object.is(left[key], right[key]));
 }
-

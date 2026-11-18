@@ -17,6 +17,11 @@ export class RepositoryOperations {
     this.sessions.delete(id);
   }
 
+  owner(id: string) {
+    const session = this.session(id);
+    return () => this.sessions.get(id) === session;
+  }
+
   read(id: string) {
     const session = this.session(id);
     const revision = ++session.revision;
