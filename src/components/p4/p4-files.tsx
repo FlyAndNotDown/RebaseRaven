@@ -37,7 +37,7 @@ import { useP4 } from "@/state/p4-context";
 import { setAnalyticsP4FilesMode } from "@/state/analytics-screen";
 import type { P4Connection, P4DirEntry, P4EntryStatus } from "@/types/p4";
 
-type P4TreeEntry = FileTreeEntry & { ruleIgnored: boolean; p4Status: string };
+import { useTreeCache, type P4TreeEntry } from "./p4-tree-cache";
 
 export function P4Files() {
   const { t } = useTranslation();
@@ -222,9 +222,9 @@ export function P4Files() {
               <>
                 <div className={fileQuery.active || mode !== "workspace" ? "hidden" : "flex min-h-0 flex-1 flex-col"}>
                   {seenModes.has("workspace") ? (
-                    <FileTreeRoot key={root} entry={workspaceRoot} selected={selected} onOpenDirectory={chooseDirectory} menu={fileMenu} revealKey={reveal?.mode === "workspace" ? reveal.id : undefined}>
+                    <FileTreeRoot key={connectionKey} entry={workspaceRoot} selected={selected} onOpenDirectory={chooseDirectory} menu={fileMenu} revealKey={reveal?.mode === "workspace" ? reveal.id : undefined}>
                     <WorkspaceTree
-                      key={root}
+                      key={connectionKey}
                       selected={selected}
                       onSelect={choose}
                       onSelectDirectory={chooseDirectory}
@@ -237,9 +237,9 @@ export function P4Files() {
                 </div>
                 <div className={fileQuery.active || mode !== "depot" ? "hidden" : "flex min-h-0 flex-1 flex-col"}>
                   {seenModes.has("depot") ? (
-                    <FileTreeRoot key={`${connection?.port ?? ""}:${connection?.client ?? ""}`} entry={depotRoot} selected={selected} onOpenDirectory={chooseDirectory} menu={fileMenu} revealKey={reveal?.mode === "depot" ? reveal.id : undefined}>
+                    <FileTreeRoot key={connectionKey} entry={depotRoot} selected={selected} onOpenDirectory={chooseDirectory} menu={fileMenu} revealKey={reveal?.mode === "depot" ? reveal.id : undefined}>
                     <DepotTree
-                      key={`${connection?.port ?? ""}:${connection?.client ?? ""}`}
+                      key={connectionKey}
                       selected={selected}
                       onSelect={choose}
                       onSelectDirectory={chooseDirectory}
@@ -358,16 +358,16 @@ function WorkspaceTree({
   useTranslation();
   const { connection, listDir, filesEpoch } = useP4();
   const root = connection?.root ?? "";
-  const cacheKey = treeCacheKey("workspace", connection);
-  const cached = cacheKey ? treeSnapshots.get(cacheKey) : undefined;
-  const [entries, setEntries] = useState<Record<string, P4TreeEntry[]>>(() => cached?.entries ?? {});
+  const cache = useTreeCache(connection);
+  const cached = cache?.workspace;
+  const [entries, setEntries] = useState<Record<string, P4TreeEntry[]>>(() => cached?.epoch === filesEpoch ? cached.entries : {});
   const displayedEntries = useMemo(() => includeVersionedParents(entries), [entries]);
   const [open, setOpen] = useState<Set<string>>(() => new Set(cached?.open ?? []));
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState<ReadonlySet<string>>(() => new Set());
   const pending = useRef(new Set<string>());
   const openRef = useRef(open);
-  const epochRef = useRef(filesEpoch);
+  const epochRef = useRef(cached?.epoch ?? filesEpoch);
   const liveRef = useRef(true);
   useEffect(() => {
     openRef.current = open;
@@ -379,9 +379,8 @@ function WorkspaceTree({
     };
   }, []);
   useEffect(() => {
-    if (!cacheKey || !entries[""]) return;
-    treeSnapshots.set(cacheKey, { entries, open: [...open] });
-  }, [cacheKey, entries, open]);
+    if (cache && entries[""]) cache.workspace = { entries, open: [...open], epoch: filesEpoch };
+  }, [cache, entries, filesEpoch, open]);
 
   useEffect(() => {
     let live = true;
@@ -496,15 +495,15 @@ function DepotTree({
 }) {
   useTranslation();
   const { connection, listDepot, filesEpoch } = useP4();
-  const cacheKey = treeCacheKey("depot", connection);
-  const cached = cacheKey ? treeSnapshots.get(cacheKey) : undefined;
-  const [entries, setEntries] = useState<Record<string, P4TreeEntry[]>>(() => cached?.entries ?? {});
+  const cache = useTreeCache(connection);
+  const cached = cache?.depot;
+  const [entries, setEntries] = useState<Record<string, P4TreeEntry[]>>(() => cached?.epoch === filesEpoch ? cached.entries : {});
   const [open, setOpen] = useState<Set<string>>(() => new Set(cached?.open ?? []));
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState<ReadonlySet<string>>(() => new Set());
   const pending = useRef(new Set<string>());
   const openRef = useRef(open);
-  const epochRef = useRef(filesEpoch);
+  const epochRef = useRef(cached?.epoch ?? filesEpoch);
   const liveRef = useRef(true);
   useEffect(() => {
     openRef.current = open;
@@ -516,9 +515,8 @@ function DepotTree({
     };
   }, []);
   useEffect(() => {
-    if (!cacheKey || !entries[""]) return;
-    treeSnapshots.set(cacheKey, { entries, open: [...open] });
-  }, [cacheKey, entries, open]);
+    if (cache && entries[""]) cache.depot = { entries, open: [...open], epoch: filesEpoch };
+  }, [cache, entries, filesEpoch, open]);
 
   useEffect(() => {
     let live = true;
@@ -729,18 +727,6 @@ async function expandTree(
     current = next.path;
   }
   return { entries, open, path: target };
-}
-
-type TreeSnapshot = {
-  entries: Record<string, P4TreeEntry[]>;
-  open: string[];
-};
-
-const treeSnapshots = new Map<string, TreeSnapshot>();
-
-function treeCacheKey(mode: "workspace" | "depot", connection: P4Connection | null) {
-  if (!connection) return "";
-  return `${mode}\0${connection.port}\0${connection.client}\0${connection.root}`;
 }
 
 function publishDirectory(

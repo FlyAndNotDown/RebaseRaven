@@ -2,6 +2,7 @@
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { P4TreeCacheProvider } from "./p4-tree-cache";
 import { P4Files } from "./p4-files";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { setLanguagePreference } from "@/i18n";
@@ -18,7 +19,7 @@ vi.mock("@/components/ui/resizable",()=>({ResizablePanelGroup:({children}:{child
 let root:Root,container:HTMLDivElement,sequence=0;
 function entry(name:string,dir=false,ignored=false):P4DirEntry {return {name:name.split("/").at(-1)!,path:`/workspace/${name}`,dir,ignored,status:"",detail:""};}
 function rows(path:string) {return [...container.querySelectorAll<HTMLButtonElement>('button[data-tree-path]')].filter(row=>row.dataset.treePath===path);}
-async function render() {await act(async()=>root.render(<TooltipProvider><P4Files/></TooltipProvider>));}
+async function render(visible = true) {await act(async()=>root.render(<TooltipProvider><P4TreeCacheProvider>{visible && <P4Files/>}</P4TreeCacheProvider></TooltipProvider>));}
 beforeEach(()=>{
   vi.stubGlobal("ResizeObserver",class {observe(){} unobserve(){} disconnect(){}});
   Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});setLanguagePreference("en");vi.resetAllMocks();actions.epoch=0;actions.connection={...actions.connection,root:"/workspace",client:`client-${++sequence}`};
@@ -241,4 +242,16 @@ it("shows the view switch only for files and preserves their selected mode acros
   const finalHistory = [...container.querySelectorAll<HTMLButtonElement>('[role="group"][aria-label="File view"] button')].find(button => button.textContent === "History")!;
   expect(finalHistory.getAttribute("aria-pressed")).toBe("true");
   expect(container.querySelector('[data-file-history="/workspace/output.tmp"]')).not.toBeNull();
+});
+
+it("restores expanded folders only for the same session connection", async () => {
+  await render();
+  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Expand cache"]')!.click());
+  await render(false);
+  await render();
+  expect(rows("/workspace/cache/child.txt")).toHaveLength(1);
+  actions.connection = {...actions.connection, stream: "//example/next"};
+  await render();
+  expect(rows("/workspace/cache/child.txt")).toHaveLength(0);
+  expect(rows("/workspace/cache")[0].getAttribute("aria-expanded")).toBe("false");
 });

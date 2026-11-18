@@ -1,4 +1,5 @@
 import React from "react";
+import { P4TreeCacheProvider } from "@/components/p4/p4-tree-cache";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -64,7 +65,7 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
       <TooltipProvider>
         <GitProvider>
           <P4Provider>
-            <App />
+            <P4TreeCacheProvider><App /></P4TreeCacheProvider>
             <Toaster position="bottom-right" />
           </P4Provider>
         </GitProvider>
