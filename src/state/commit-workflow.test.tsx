@@ -94,6 +94,7 @@ function useModel() {
     "setView",
     "setCommitEditor",
     "commit",
+    "stage",
     "deleteBranch",
     "commitAndPush",
     "pushRemote",
@@ -672,4 +673,32 @@ it("reloads visible history after deleting an unfiltered branch", async () => {
   vi.mocked(gitApi.getCommits).mockClear();
   await act(async () => {expect(await model.deleteBranch("reviewed")).toBe(true);});
   expect(gitApi.getCommits).toHaveBeenCalledWith(A,expect.any(Number),0,undefined,[],expect.any(Function));
+});
+
+it("serializes index writes while allowing a different repository to stage", async () => {
+  const stage = vi.spyOn(gitApi, "stagePaths").mockImplementation(path =>
+    new Promise((resolve, reject) => pending.push({path, resolve, reject})));
+  let first!: Promise<void>, second!: Promise<void>, other!: Promise<void>;
+  await act(async () => { first = model.stage(["a"]); second = model.stage(["b"]); });
+  expect(stage.mock.calls).toEqual([[A, ["a"]]]);
+  await open(B);
+  await act(async () => { other = model.stage(["c"]); });
+  expect(stage).toHaveBeenCalledWith(B, ["c"]);
+  await act(async () => { pending[1].resolve(snapshots[B]); await other; });
+  await act(async () => { pending[0].resolve(snapshots[A]); await first; });
+  expect(stage.mock.calls.at(-1)).toEqual([A, ["b"]]);
+  await act(async () => { pending[2].resolve(snapshots[A]); await second; });
+});
+
+it("ignores a refresh snapshot that arrives after staging completes", async () => {
+  const original = snapshots[A];
+  const staged = {...original, status: {...original.status, staged: []}};
+  vi.spyOn(gitApi, "stagePaths").mockResolvedValue(staged);
+  vi.mocked(gitApi.refreshWorkspace).mockImplementation(path =>
+    new Promise((resolve, reject) => pending.push({path, resolve, reject})));
+  let refresh!: Promise<void>;
+  await act(async () => { refresh = model.refreshRepository(); });
+  await act(async () => { await model.stage(["edited"]); });
+  await act(async () => { pending[0].resolve(original); await refresh; });
+  expect(model.snapshot?.status.staged).toEqual([]);
 });
