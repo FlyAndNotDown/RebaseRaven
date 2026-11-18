@@ -256,4 +256,15 @@ export interface P4CleanFile {path: string; depotPath: string; action: "restoreM
 export interface P4CleanPreview {files: P4CleanFile[]; fingerprint: string}
 
 export interface P4AutoResolveSummary { resolved: number; remaining: number; failed: boolean }
-export interface P4SyncResult { output: string; autoResolve: P4AutoResolveSummary | null }
+export interface P4SyncSummary {
+  failed: boolean;
+  updated: number;
+  added: number;
+  deleted: number;
+  unchanged: boolean;
+  warnings: Partial<Record<"writable" | "modified" | "opened" | "resolve" | "outsideView", number>>;
+  diagnostics: number;
+  firstDiagnostic: string;
+}
+
+export interface P4SyncResult { output: P4SyncSummary; autoResolve: P4AutoResolveSummary | null }

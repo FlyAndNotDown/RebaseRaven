@@ -1,8 +1,8 @@
 import { toast } from "sonner";
 import { t } from "@/i18n";
-import { syncSummary } from "@/lib/p4";
+import { formatSyncCounts, syncSummary } from "@/lib/p4";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
-import type { P4AutoResolveSummary } from "@/types/p4";
+import type { P4AutoResolveSummary, P4SyncSummary } from "@/types/p4";
 
 type WarningKind = "writable" | "modified" | "opened" | "resolve" | "outsideView";
 export interface P4OutputNotice {
@@ -74,9 +74,14 @@ function outputNotice(output: string, succeeded: boolean, autoResolve?: P4AutoRe
       errors += 1;
     }
   }
+  return formatNotice(Object.fromEntries([...files].map(([kind,entries]) => [kind,entries.size])), errors, firstError, unchanged, succeeded, () => syncSummary(output), autoResolve);
+}
+
+function formatNotice(warnings: P4SyncSummary["warnings"], errors: number, firstError: string, unchanged: boolean,
+  succeeded: boolean, counts: () => string, autoResolve?: P4AutoResolveSummary | null): P4OutputNotice {
   const messages = warningKinds.flatMap(kind => {
     if (autoResolve && kind === "resolve") return [];
-    const count = files.get(kind)!.size;
+    const count = warnings[kind] ?? 0;
     return count ? [t(`p4.feedback.${kind}`, { count })] : [];
   });
   if (errors > 0) {
@@ -93,7 +98,7 @@ function outputNotice(output: string, succeeded: boolean, autoResolve?: P4AutoRe
     };
   }
   if (messages.length) return { kind: "warning", message: messages.join(" · ") };
-  if (succeeded) return { kind: "success", message: syncSummary(output) };
+  if (succeeded) return { kind: "success", message: counts() };
   if (unchanged) return { kind: "info", message: t("p4.feedback.noChanges") };
   return { kind: "error", message: t("p4.feedback.failed") };
 }
@@ -102,8 +107,10 @@ export function p4ErrorNotice(output: string): P4OutputNotice {
   return outputNotice(output, false);
 }
 
-export function p4SyncNotice(output: string, autoResolve?: P4AutoResolveSummary | null): P4OutputNotice {
-  return outputNotice(output, true, autoResolve);
+export function p4SyncNotice(output: P4SyncSummary | string, autoResolve?: P4AutoResolveSummary | null): P4OutputNotice {
+  if (typeof output === "string") return outputNotice(output, true, autoResolve);
+  return formatNotice(output.warnings, output.diagnostics, shortReason(output.firstDiagnostic), output.unchanged,
+    !output.failed, () => formatSyncCounts(output), autoResolve);
 }
 
 export function notifyP4Error(message: string): void {

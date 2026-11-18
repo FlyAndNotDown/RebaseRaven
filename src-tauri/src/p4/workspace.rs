@@ -15,6 +15,10 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
+use super::{
+    sync_output::{SyncOutput, TransferProgress},
+    SyncSummary,
+};
 use crate::error::{AppError, AppResult, P4_LOGIN, P4_MISSING};
 use crate::git::{strip_verbatim_prefix, FileDiff};
 use crate::p4::cli::{self, P4Env};
@@ -22,8 +26,8 @@ use crate::p4::parse::{
     blank_change_spec, classic_client_spec, created_change_id, file_type_is_binary, indexed_groups,
     known_p4_value, normalize_charset, parse_p4_set, parse_p4config, parse_single_diff,
     parse_unchanged_diff_paths, parse_ztag, path_depth, path_is_within, read_description,
-    set_description, set_spec_field, spec_field, sync_estimate_files, sync_reports_a_file,
-    valid_client_name, valid_depot_path, ZtagRecord,
+    set_description, set_spec_field, spec_field, sync_estimate_files, valid_client_name,
+    valid_depot_path, ZtagRecord,
 };
 
 #[derive(Debug, Clone, Deserialize)]
@@ -2733,7 +2737,7 @@ pub struct P4AutoResolveSummary {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct P4SyncResult {
-    pub output: String,
+    pub output: SyncSummary,
     pub auto_resolve: Option<P4AutoResolveSummary>,
 }
 
@@ -2789,23 +2793,31 @@ pub fn sync(
         .map(|path| workspace_file_spec(&connection.root, path))
         .collect();
     let env = env_for(connection);
-    let output = sync_paths(&env, &paths, SyncFlags::default(), progress)?;
-    let auto_resolve = if auto_resolve {
+    let mut output = SyncOutput::default();
+    let success = sync_paths(&env, &paths, SyncFlags::default(), progress, &mut output)?;
+    let auto_resolve = if success && auto_resolve {
         Some(auto_resolve_files(&env, &connection.client)?)
     } else {
         None
     };
     Ok(P4SyncResult {
-        output,
+        output: output.finish(success),
         auto_resolve,
     })
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+pub enum RevisionOutput {
+    Preview(String),
+    Summary(SyncSummary),
 }
 
 pub fn get_revision(
     connection: &P4Connection,
     request: &P4GetRevision,
     mut progress: impl FnMut(&str),
-) -> AppResult<String> {
+) -> AppResult<RevisionOutput> {
     if request.force && request.safe {
         return Err(AppError::msg(
             "Choose either force overwrite or safe update.",
@@ -2858,6 +2870,8 @@ pub fn get_revision(
         preview: request.preview,
     };
     let mut output = String::new();
+    let mut summary = SyncOutput::default();
+    let mut success = true;
     // Keep argument lists short even for large changelists on Windows.
     let mut remaining = paths.as_slice();
     while !remaining.is_empty() {
@@ -2872,8 +2886,9 @@ pub fn get_revision(
             .max(1);
         let (chunk, rest) = remaining.split_at(count);
         remaining = rest;
-        let text = sync_paths(&env, chunk, flags, &mut progress)?;
         if request.preview {
+            progress("Previewing");
+            let text = run_owned(&env, &sync_args(chunk, false, false, flags), None)?;
             output.push_str(&text);
             if output.lines().count() > REVISION_PREVIEW_LINES {
                 output = output
@@ -2884,14 +2899,18 @@ pub fn get_revision(
                 output.push_str("\nPreview truncated.");
                 break;
             }
-        } else if !text.trim().is_empty() {
-            output = text;
+        } else if !sync_paths(&env, chunk, flags, &mut progress, &mut summary)? {
+            success = false;
+            break;
         }
+    }
+    if !request.preview {
+        return Ok(RevisionOutput::Summary(summary.finish(success)));
     }
     if output.trim().is_empty() {
         output = "Up to date.".to_string();
     }
-    Ok(output)
+    Ok(RevisionOutput::Preview(output))
 }
 
 pub fn revision_targets(connection: &P4Connection, id: &str) -> AppResult<Vec<String>> {
@@ -3153,11 +3172,8 @@ fn sync_paths(
     paths: &[String],
     flags: SyncFlags,
     mut progress: impl FnMut(&str),
-) -> AppResult<String> {
-    if flags.preview {
-        progress("Previewing");
-        return run_owned(env, &sync_args(paths, false, false, flags), None);
-    }
+    output: &mut SyncOutput,
+) -> AppResult<bool> {
     progress("Counting files");
     let total = match run_owned(env, &sync_args(paths, false, true, flags), None) {
         Ok(estimate) => sync_estimate_files(&estimate),
@@ -3170,55 +3186,41 @@ fn sync_paths(
     // P4V transfers several files at once. Four threads is its usual default.
     // Progress is counted from the file lines, because asking p4 for its own
     // progress indicator turns parallel transfer off.
-    let mut transferred = 0_u64;
-    let mut progress = progress;
-    match run_sync(
-        env,
-        paths,
-        true,
-        total,
-        flags,
-        &mut transferred,
-        &mut progress,
-    ) {
-        Err(err) if transferred == 0 && parallel_rejected(&err.to_string()) => run_sync(
-            env,
-            paths,
-            false,
-            total,
-            flags,
-            &mut transferred,
-            &mut progress,
-        ),
-        result => result,
-    }
-}
-
-fn run_sync(
-    env: &P4Env,
-    paths: &[String],
-    parallel: bool,
-    total: Option<u64>,
-    flags: SyncFlags,
-    transferred: &mut u64,
-    progress: &mut dyn FnMut(&str),
-) -> AppResult<String> {
-    let args = sync_args(paths, parallel, false, flags);
-    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    cli::run_p4_stream(env, &refs, |line| {
-        progress(&sync_progress_line(line, total, transferred));
-    })
-}
-
-fn sync_progress_line(line: &str, total: Option<u64>, transferred: &mut u64) -> String {
-    if sync_reports_a_file(line) {
-        *transferred = transferred.saturating_add(1);
-        if let Some(total) = total.filter(|count| *count > 0) {
-            let percent = (transferred.saturating_mul(100) / total).min(100);
-            return format!("{percent}% {line}");
+    for parallel in [true, false] {
+        let args = sync_args(paths, parallel, false, flags);
+        let refs: Vec<_> = args.iter().map(String::as_str).collect();
+        let mut batch = SyncOutput::default();
+        let mut transfer = TransferProgress::default();
+        let mut retry = false;
+        let mut emit = |line: &str, count: u64| {
+            let line = crate::error::redact_credentials(line);
+            if let Some(total) = total.filter(|n| *n > 0) {
+                progress(&format!(
+                    "{}% {line}",
+                    (count.saturating_mul(100) / total).min(100)
+                ));
+            } else {
+                progress(&line);
+            }
+        };
+        let success = cli::run_p4_stream(env, &refs, |line| {
+            if !batch.record(line) {
+                if transfer.transferred == 0 && parallel {
+                    retry |= parallel_rejected(line);
+                }
+                return false;
+            }
+            transfer.record(line, Instant::now(), &mut emit);
+            true
+        })?;
+        transfer.finish(&mut emit);
+        if !success && parallel && retry && transfer.transferred == 0 {
+            continue;
         }
+        output.append(batch);
+        return Ok(success);
     }
-    line.to_string()
+    unreachable!("the serial transfer always returns")
 }
 
 fn sync_args(paths: &[String], parallel: bool, estimate: bool, flags: SyncFlags) -> Vec<String> {

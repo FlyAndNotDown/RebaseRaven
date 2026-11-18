@@ -1243,7 +1243,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
           await reloadPending(current);
           bumpFiles();
         }
-        return output;
+        return typeof output === "string" ? output : output.failed ? null : "";
       } catch (caught) {
         if (isCancelled(caught)) {
           finishCancelledSync(current, t(request.preview ? "p4.preview" : "p4.getRevision"), !request.preview);

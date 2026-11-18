@@ -679,17 +679,44 @@ fn finish_diff(ok: bool, stdout: String, stderr: String) -> AppResult<String> {
 pub fn run_p4_stream(
     env: &P4Env,
     args: &[&str],
-    mut on_line: impl FnMut(&str),
-) -> AppResult<String> {
+    mut on_line: impl FnMut(&str) -> bool,
+) -> AppResult<bool> {
     let mut command = prepared(require_p4()?, env, args);
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut trace = CommandTrace::new(diagnostic_code(args), &command);
-    let result = collect_activity_output(&mut command, Some(&mut on_line));
+    let mut auth_error = None;
+    let result = collect_activity_output(
+        &mut command,
+        Some(&mut |line| {
+            if on_line(line) {
+                return;
+            }
+            if let Err(error) = reject_untrusted_server(line) {
+                auth_error = Some(error);
+            } else if auth_error.is_none() && needs_login(line) {
+                auth_error = Some(AppError::msg(P4_LOGIN));
+            }
+        }),
+    );
     trace.output(&result);
-    result.and_then(finish)
+    let output = result?;
+    if !output.status.success() {
+        if let Some(error) = auth_error {
+            return Err(error);
+        }
+        let message = combine(
+            &String::from_utf8_lossy(&output.stderr),
+            &String::from_utf8_lossy(&output.stdout),
+        );
+        reject_untrusted_server(&message)?;
+        if needs_login(&message) {
+            return Err(AppError::msg(P4_LOGIN));
+        }
+    }
+    Ok(output.status.success())
 }
 
 fn finish(output: std::process::Output) -> AppResult<String> {
@@ -782,7 +809,7 @@ fn collect_activity_output(
         ),
     ] {
         let sender = sender.clone();
-        let lines = stdout && on_line.is_some();
+        let lines = on_line.is_some();
         thread::spawn(move || {
             let mut reader = BufReader::new(pipe);
             let mut read = || -> std::io::Result<()> {
@@ -812,29 +839,30 @@ fn collect_activity_output(
 
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
+    let mut stdout_excerpt = crate::diagnostics::Capture::default();
+    let mut stderr_excerpt = crate::diagnostics::Capture::default();
     let poll = Duration::from_millis(30);
     let mut streams = 2;
     while streams > 0 {
         activity::check_cancelled()?;
         match receiver.recv_timeout(poll) {
             Ok(Ok(ActivityOutput::Bytes {
-                stdout: false,
-                bytes,
-            })) => stderr.extend(bytes),
-            Ok(Ok(ActivityOutput::Bytes {
-                stdout: true,
+                stdout: is_stdout,
                 bytes,
             })) => {
                 if let Some(on_line) = on_line.as_mut() {
+                    let excerpt = if is_stdout {
+                        &mut stdout_excerpt
+                    } else {
+                        &mut stderr_excerpt
+                    };
+                    excerpt.append(&bytes);
                     let line = String::from_utf8_lossy(&bytes);
-                    let line = line.trim_end_matches(['\n', '\r']);
-                    if !line.is_empty() {
-                        stdout.extend_from_slice(line.as_bytes());
-                        stdout.push(b'\n');
-                        on_line(&crate::error::redact_credentials(line));
-                    }
-                } else {
+                    on_line(line.trim_end_matches(['\r', '\n']));
+                } else if is_stdout {
                     stdout.extend(bytes);
+                } else {
+                    stderr.extend(bytes);
                 }
             }
             Ok(Ok(ActivityOutput::End)) => streams -= 1,
@@ -855,6 +883,10 @@ fn collect_activity_output(
         thread::sleep(poll);
     };
     process.tree.disarm()?;
+    if on_line.is_some() {
+        stdout = stdout_excerpt.take();
+        stderr = stderr_excerpt.take();
+    }
     Ok(std::process::Output {
         status,
         stdout,

@@ -1980,7 +1980,7 @@ async fn p4_get_revision(
     request: p4::P4GetRevision,
     activity_id: Option<String>,
     app: AppHandle,
-) -> AppResult<String> {
+) -> AppResult<p4::RevisionOutput> {
     blocking(move || {
         activity::with_cancel(activity_id.as_deref(), || {
             p4::get_revision(

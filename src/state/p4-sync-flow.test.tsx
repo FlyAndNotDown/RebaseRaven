@@ -26,12 +26,10 @@ function Capture() {
   useLayoutEffect(() => { state = value; });
   return null;
 }
-const skipped = [
-  "Can't clobber writable file C:\\work\\a.txt",
-  "Can't clobber writable file C:\\work\\b.txt",
-  "//depot/a.txt#2 - updating C:\\work\\a.txt",
-  "//depot/b.txt#2 - added as C:\\work\\b.txt",
-].join("\n");
+const skipped = {
+  failed: true, updated: 1, added: 1, deleted: 0, unchanged: false,
+  warnings: {writable: 2}, diagnostics: 0, firstDiagnostic: "",
+};
 
 beforeEach(async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -40,8 +38,8 @@ beforeEach(async () => {
     root: "/workspace", client: "example", port: "perforce.example.com:1666", user: "alice", charset: "", stream: null, server: "",
   }, pending: [] });
   vi.spyOn(p4Api, "refreshPending").mockResolvedValue([]);
-  vi.spyOn(p4Api, "sync").mockRejectedValue(skipped);
-  vi.spyOn(p4Api, "getRevision").mockRejectedValue(skipped);
+  vi.spyOn(p4Api, "sync").mockResolvedValue({ output: skipped, autoResolve: null });
+  vi.spyOn(p4Api, "getRevision").mockResolvedValue(skipped);
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => root.render(<P4Provider><Capture /></P4Provider>));
 });
@@ -67,14 +65,14 @@ it("uses the same skipped-file warning for revision updates", async () => {
 });
 
 it("keeps a mixed transport failure as an error", async () => {
-  vi.mocked(p4Api.sync).mockRejectedValueOnce(`${skipped}\nTCP receive failed.`);
+  vi.mocked(p4Api.sync).mockResolvedValueOnce({ output: { ...skipped, diagnostics: 1, firstDiagnostic: "TCP receive failed." }, autoResolve: null });
   await act(async () => state.sync());
   expect(toast.error).toHaveBeenCalledExactlyOnceWith("TCP receive failed. · Skipped 2 writable files");
   expect(toast.warning).not.toHaveBeenCalled(); expect(state.busy).toBe(false);
 });
 
 it("summarizes successful revision updates instead of showing the last file path", async () => {
-  vi.mocked(p4Api.getRevision).mockResolvedValueOnce("//depot/a.txt#2 - updating C:\\work\\a.txt");
+  vi.mocked(p4Api.getRevision).mockResolvedValueOnce({...skipped, failed:false, added:0, warnings:{}});
   await act(async () => { await state.getRevision({
     paths: ["//depot/a.txt"], mode: "latest", value: "", force: false, safe: false,
     changelistFilesOnly: false, removeNotInLabel: true, preview: false,

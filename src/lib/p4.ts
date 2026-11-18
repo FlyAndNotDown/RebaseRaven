@@ -33,6 +33,7 @@ import type {
   P4OpenResult,
   P4ResolveView,
   P4SyncResult,
+  P4SyncSummary,
   P4CompareRequest,
   P4BlameLine,
   P4FileSource,
@@ -212,7 +213,7 @@ export const p4Api = {
   sync: (connection: P4Connection, paths: string[], activityId?: string, autoResolve = false) =>
     call<P4SyncResult>("p4_sync", { connection, paths, autoResolve, activityId: activityId ?? null }),
   getRevision: (connection: P4Connection, request: P4GetRevision, activityId?: string) =>
-    call<string>("p4_get_revision", { connection, request, activityId: activityId ?? null }),
+    call<string | P4SyncSummary>("p4_get_revision", { connection, request, activityId: activityId ?? null }),
   listShelves: (connection: P4Connection, user: string, client: string, before: number | null) => call<P4ChangePage>("p4_list_shelves", { connection, user, client, before }),
   shelfDetail: (connection: P4Connection, changeId: string, pending = false) => call<P4Changelist>("p4_shelf_detail", { connection, changeId, pending }),
   previewUnshelve: (connection: P4Connection, request: P4UnshelveRequest) => call<P4OperationPreview>("p4_preview_unshelve", { connection, request }),
@@ -268,6 +269,10 @@ export function syncSummary(output: string): string {
       deleted += 1;
     }
   }
+  return formatSyncCounts({updated, added, deleted});
+}
+
+export function formatSyncCounts({updated, added, deleted}: Pick<P4SyncSummary, "updated" | "added" | "deleted">): string {
   if (updated + added + deleted === 0) return t("p4.status.current");
   const parts: string[] = [];
   if (updated > 0) parts.push(t("p4.sync.updated", { count: updated }));

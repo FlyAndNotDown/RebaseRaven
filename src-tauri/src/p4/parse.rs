@@ -599,17 +599,6 @@ pub fn sync_estimate_files(text: &str) -> Option<u64> {
     Some(total)
 }
 
-pub fn sync_reports_a_file(line: &str) -> bool {
-    const MARKERS: [&str; 5] = [
-        " - updating ",
-        " - added ",
-        " - deleted ",
-        " - refreshing ",
-        " - moved ",
-    ];
-    MARKERS.iter().any(|marker| line.contains(marker))
-}
-
 fn body_is_binary(body: &str) -> bool {
     let lower = body.to_ascii_lowercase();
     !lower.contains("@@")
@@ -876,10 +865,6 @@ error: something failed for //depot/main/Other.ini#1
             sync_estimate_files("files added/updated/deleted=1/2/3, bytes added/updated=4/5"),
             Some(6)
         );
-        assert!(sync_reports_a_file("//depot/a#2 - updating E:\\a"));
-        assert!(!sync_reports_a_file(
-            "//depot/a#2 - is opened and not being changed"
-        ));
     }
 
     #[test]
