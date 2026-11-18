@@ -76,11 +76,11 @@ pub fn selected_paths(files: &[FileApproval], folders: &[PathBuf]) -> AppResult<
             let scope = folders
                 .iter()
                 .find(|dir| dir.as_path() != path && path_is_within(dir, path))
-                .ok_or_else(|| AppError::StaleReview(STALE))?;
+                .ok_or(AppError::StaleReview(STALE))?;
             let parent = path
                 .parent()
                 .and_then(|p| p.ancestors().find(|p| p.exists()))
-                .ok_or_else(|| AppError::StaleReview(STALE))?;
+                .ok_or(AppError::StaleReview(STALE))?;
             if !path_is_within(&scope.canonicalize()?, &parent.canonicalize()?) {
                 return Err(AppError::StaleReview(STALE));
             }
