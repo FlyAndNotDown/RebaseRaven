@@ -1,4 +1,4 @@
-import type { P4ReconcilePreview } from "@/types/p4";
+import type { P4ChangePreview } from "@/types/p4";
 
 export interface P4IntegrationInitial { branch?: string; source?: string; target?: string }
 export interface P4IntegrationRequest {
@@ -11,4 +11,4 @@ export interface P4IntegrationRequest {
   force: boolean;
   changeId: string;
 }
-export interface P4IntegrationPreview { files: P4ReconcilePreview["files"]; fingerprint: string }
+export interface P4IntegrationPreview { files: P4ChangePreview["files"]; fingerprint: string }

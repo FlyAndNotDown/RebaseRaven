@@ -1,8 +1,8 @@
 //! Read-only previews and explicit selection for workspace reconciliation.
 
-use std::collections::{hash_map::DefaultHasher, HashSet};
+use std::collections::hash_map::DefaultHasher;
 use std::fs;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
@@ -10,6 +10,9 @@ use serde::{Deserialize, Serialize};
 
 use super::cli;
 use super::parse::{parse_ztag, path_is_within, spec_field};
+use super::scan_review::{
+    review_file, selected_paths, verify_selection, workspace_fingerprint, FileApproval, Reviewed,
+};
 use super::workspace::{
     env_for, revision_file_spec, workspace_directory_path, workspace_file_spec, P4Connection,
 };
@@ -111,7 +114,7 @@ pub struct P4ReconcileFile {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct P4ReconcilePreview {
-    pub files: Vec<P4ReconcileFile>,
+    pub files: Vec<Reviewed<P4ReconcileFile>>,
     pub fingerprint: String,
 }
 
@@ -168,67 +171,76 @@ pub fn preview_reconcile(
     mut on_folder: impl FnMut(&Path),
 ) -> AppResult<P4ReconcilePreview> {
     let folders = scan_folders(connection, scopes)?;
-    let mut hash = DefaultHasher::new();
-    (
-        &connection.port,
-        &connection.user,
-        &connection.client,
-        &connection.root,
-        &connection.charset,
-        &folders,
-    )
-        .hash(&mut hash);
     let mut files = Vec::new();
-    for dir in folders {
-        on_folder(&dir);
-        let output = allow_empty(scan_folder(
-            connection,
-            &dir,
-            &["-ztag", "reconcile", "-n", "-e", "-a", "-d"],
-        ))?;
-        output.hash(&mut hash);
-        for record in parse_ztag(&output) {
-            let get = |name: &str| record.get(name).cloned().unwrap_or_default();
-            let action = get("action");
-            if !matches!(action.as_str(), "add" | "edit" | "delete") {
-                continue;
-            }
-            let path = get("clientFile");
-            if !path_is_within(&dir, Path::new(&path)) {
-                return Err(AppError::msg(
-                    "P4 returned a file outside the selected workspace folder.",
-                ));
-            }
-            hash_file(&connection.root, &PathBuf::from(&path), &mut hash)?;
-            files.push(P4ReconcileFile {
-                path,
-                depot_path: get("depotFile"),
-                action,
-            });
-        }
+    for dir in &folders {
+        on_folder(dir);
+        let output = allow_empty(scan_folder(connection, dir, &RECONCILE_PREVIEW))?;
+        files.extend(review_reconcile_output(connection, dir, &output)?);
     }
-    Ok(P4ReconcilePreview {
-        files,
-        fingerprint: format!("{:016x}", hash.finish()),
-    })
+    let fingerprint = if files.is_empty() {
+        String::new()
+    } else {
+        workspace_fingerprint(connection, ("reconcile", &folders))?
+    };
+    Ok(P4ReconcilePreview { files, fingerprint })
+}
+
+const RECONCILE_PREVIEW: [&str; 6] = ["-ztag", "reconcile", "-n", "-e", "-a", "-d"];
+
+fn review_reconcile_output(
+    connection: &P4Connection,
+    scope: &Path,
+    output: &str,
+) -> AppResult<Vec<Reviewed<P4ReconcileFile>>> {
+    let mut files = Vec::new();
+    for record in parse_ztag(output) {
+        let get = |name: &str| record.get(name).cloned().unwrap_or_default();
+        let action = get("action");
+        if !matches!(action.as_str(), "add" | "edit" | "delete") {
+            continue;
+        }
+        let path = get("clientFile");
+        if !path_is_within(scope, Path::new(&path)) {
+            return Err(AppError::msg(
+                "P4 returned a file outside the selected workspace folder.",
+            ));
+        }
+        let file = P4ReconcileFile {
+            path: path.clone(),
+            depot_path: get("depotFile"),
+            action,
+        };
+        files.push(review_file(connection, &path, file, &record)?);
+    }
+    Ok(files)
 }
 
 pub fn apply_reconcile(
     connection: &P4Connection,
-    paths: &[String],
+    files: &[FileApproval],
     change: &str,
     fingerprint: &str,
     scopes: &[String],
 ) -> AppResult<String> {
-    if paths.is_empty() {
-        return Err(AppError::msg("Choose a file."));
-    }
+    let folders = scan_folders(connection, scopes)?;
+    let paths = selected_paths(files, &folders)?;
     let change = pending_change(connection, change)?;
-    let preview = preview_reconcile(connection, scopes, |_| {})?;
-    let reviewed: HashSet<_> = preview.files.iter().map(|file| &file.path).collect();
-    if preview.fingerprint != fingerprint || paths.iter().any(|path| !reviewed.contains(path)) {
+    if workspace_fingerprint(connection, ("reconcile", &folders))? != fingerprint {
         return Err(AppError::msg(STALE));
     }
+    let specs: Vec<_> = paths
+        .iter()
+        .map(|path| workspace_file_spec(&connection.root, path))
+        .collect();
+    let preview = RECONCILE_PREVIEW.map(str::to_owned);
+    let output = allow_empty(run_files(connection, &preview, &specs))?;
+    let reviewed = review_reconcile_output(connection, Path::new(&connection.root), &output)?;
+    verify_selection(
+        files,
+        reviewed
+            .iter()
+            .map(|item| (&item.file.path, &item.fingerprint)),
+    )?;
     let args = vec![
         "reconcile".to_string(),
         "-e".into(),
@@ -237,10 +249,6 @@ pub fn apply_reconcile(
         "-c".into(),
         change,
     ];
-    let specs = paths
-        .iter()
-        .map(|path| workspace_file_spec(&connection.root, path))
-        .collect::<Vec<_>>();
     run_files(connection, &args, &specs)
 }
 

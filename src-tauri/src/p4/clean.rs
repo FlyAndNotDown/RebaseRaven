@@ -1,14 +1,16 @@
 //! Explicit workspace cleanup, bound to a reviewed set of individual files.
-use std::collections::{hash_map::DefaultHasher, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::hash::{Hash, Hasher};
+
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use super::client::stable_spec;
 use super::parse::{parse_ztag, path_is_within};
-use super::review::{hash_file, run, run_files, scan_folder, scan_folders, STALE};
+use super::review::{run_files, scan_folder, scan_folders, STALE};
+use super::scan_review::{
+    review_file, selected_paths, verify_selection, workspace_fingerprint, FileApproval, Reviewed,
+};
 use super::workspace::{workspace_file_spec, P4Connection};
 use crate::error::{AppError, AppResult};
 
@@ -36,7 +38,7 @@ pub struct P4CleanFile {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct P4CleanPreview {
-    pub files: Vec<P4CleanFile>,
+    pub files: Vec<Reviewed<P4CleanFile>>,
     pub fingerprint: String,
 }
 
@@ -147,12 +149,10 @@ pub fn preview_clean(
     let args = arguments(request, true)?;
     let args = args.iter().map(String::as_str).collect::<Vec<_>>();
     let folders = scan_folders(connection, &request.scopes)?;
-    let mut hash = DefaultHasher::new();
     let mut scanned = Vec::new();
     for folder in folders {
         on_folder(&folder);
         let output = scan_folder(connection, &folder, &args)?;
-        output.hash(&mut hash);
         scanned.extend(files(&folder, &output)?);
         if scanned.len() > LIMIT {
             return Err(AppError::msg("Cleanup preview exceeds 2000 files. Choose a smaller folder or fewer cleanup actions."));
@@ -161,29 +161,27 @@ pub fn preview_clean(
     let files = scanned;
     if files.is_empty() {
         return Ok(P4CleanPreview {
-            files,
+            files: vec![],
             fingerprint: String::new(),
         });
     }
-    let client = run(connection, &["client", "-o", &connection.client])?;
-    (
-        &connection.root,
-        &connection.port,
-        &connection.user,
-        &connection.client,
-        &connection.charset,
-        request,
-        stable_spec(&client),
-    )
-        .hash(&mut hash);
-    for file in &files {
-        hash_file(&connection.root, Path::new(&file.path), &mut hash)?;
-    }
+    let fingerprint = workspace_fingerprint(connection, ("clean", request))?;
+    Ok(P4CleanPreview {
+        files: review_clean_files(connection, files)?,
+        fingerprint,
+    })
+}
+
+fn review_clean_files(
+    connection: &P4Connection,
+    files: Vec<P4CleanFile>,
+) -> AppResult<Vec<Reviewed<P4CleanFile>>> {
     let tracked: Vec<_> = files
         .iter()
         .filter(|file| file.revision.is_some())
         .map(|file| workspace_file_spec(&connection.root, &file.path))
         .collect();
+    let mut facts = HashMap::new();
     if !tracked.is_empty() {
         let args = vec![
             "-ztag".to_string(),
@@ -191,37 +189,56 @@ pub fn preview_clean(
             "-T".into(),
             "depotFile,clientFile,haveRev,action,change".into(),
         ];
-        run_files(connection, &args, &tracked)?.hash(&mut hash);
+        for record in parse_ztag(&run_files(connection, &args, &tracked)?) {
+            if let Some(depot) = record.get("depotFile") {
+                facts.insert(depot.clone(), record);
+            }
+        }
     }
-    Ok(P4CleanPreview {
-        files,
-        fingerprint: format!("{:016x}", hash.finish()),
-    })
+    files
+        .into_iter()
+        .map(|file| {
+            let details = facts.get(&file.depot_path);
+            if file.revision.is_some() && details.is_none() {
+                return Err(AppError::msg(STALE));
+            }
+            let identity = (&file.depot_path, &file.action, &file.revision, details);
+            review_file(connection, &file.path, file.clone(), identity)
+        })
+        .collect()
 }
 
 pub fn apply_clean(
     connection: &P4Connection,
     request: &P4CleanRequest,
-    paths: &[String],
+    selected: &[FileApproval],
     fingerprint: &str,
 ) -> AppResult<String> {
-    if paths.is_empty()
-        || paths.len() > LIMIT
-        || paths.iter().collect::<HashSet<_>>().len() != paths.len()
-    {
-        return Err(AppError::msg("Choose each cleanup file at most once."));
-    }
-    let preview = preview_clean(connection, request, |_| {})?;
-    let reviewed: std::collections::HashMap<_, _> = preview
-        .files
-        .iter()
-        .map(|file| (&file.path, file))
-        .collect();
-    if preview.fingerprint != fingerprint || paths.iter().any(|path| !reviewed.contains_key(path)) {
+    if selected.len() > LIMIT {
         return Err(AppError::msg(STALE));
     }
+    let folders = scan_folders(connection, &request.scopes)?;
+    let paths = selected_paths(selected, &folders)?;
+    for path in &paths {
+        local_path(path)?;
+    }
+    if workspace_fingerprint(connection, ("clean", request))? != fingerprint {
+        return Err(AppError::msg(STALE));
+    }
+    let output = run_files(connection, &arguments(request, true)?, &paths)?;
+    let exact = review_clean_files(connection, files(Path::new(&connection.root), &output)?)?;
+    verify_selection(
+        selected,
+        exact
+            .iter()
+            .map(|item| (&item.file.path, &item.fingerprint)),
+    )?;
+    let reviewed: HashMap<_, _> = exact
+        .iter()
+        .map(|item| (&item.file.path, &item.file))
+        .collect();
     // Never rerun a recursive scope when applying: unreviewed new files stay untouched.
-    let output = run_files(connection, &arguments(request, false)?, paths)?;
+    let output = run_files(connection, &arguments(request, false)?, &paths)?;
     let verify = P4CleanRequest {
         restore_modified: true,
         restore_missing: true,
@@ -229,7 +246,7 @@ pub fn apply_clean(
         include_ignored: true,
         ..request.clone()
     };
-    let remaining = run_files(connection, &arguments(&verify, true)?, paths)?;
+    let remaining = run_files(connection, &arguments(&verify, true)?, &paths)?;
     let incomplete = || {
         AppError::msg("Some selected files could not be cleaned. Preview the remaining changes.")
     };
@@ -237,7 +254,7 @@ pub fn apply_clean(
         return Err(incomplete());
     }
     let mut tracked = Vec::new();
-    for path in paths {
+    for path in &paths {
         let file = reviewed.get(path).ok_or_else(incomplete)?;
         let metadata = fs::symlink_metadata(path);
         if file.action == "removeUntracked" {

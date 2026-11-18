@@ -2052,21 +2052,21 @@ async fn p4_preview_clean(
 async fn p4_apply_clean(
     connection: p4::P4Connection,
     request: p4::P4CleanRequest,
-    paths: Vec<String>,
+    files: Vec<p4::FileApproval>,
     fingerprint: String,
 ) -> AppResult<String> {
-    blocking(move || p4::apply_clean(&connection, &request, &paths, &fingerprint)).await
+    blocking(move || p4::apply_clean(&connection, &request, &files, &fingerprint)).await
 }
 
 #[tauri::command]
 async fn p4_apply_reconcile(
     connection: p4::P4Connection,
-    paths: Vec<String>,
+    files: Vec<p4::FileApproval>,
     change_id: String,
     fingerprint: String,
     scopes: Vec<String>,
 ) -> AppResult<String> {
-    blocking(move || p4::apply_reconcile(&connection, &paths, &change_id, &fingerprint, &scopes))
+    blocking(move || p4::apply_reconcile(&connection, &files, &change_id, &fingerprint, &scopes))
         .await
 }
 

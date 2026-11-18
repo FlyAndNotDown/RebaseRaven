@@ -16,6 +16,8 @@ pub use integration::{
 mod operations;
 mod parse;
 mod review;
+mod scan_review;
+pub use scan_review::FileApproval;
 mod shelves;
 mod specs;
 pub use specs::{

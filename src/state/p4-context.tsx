@@ -32,6 +32,7 @@ import { acquireP4Mutation, invalidateP4Session } from "@/state/p4-mutations";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import type { FileDiff } from "@/types/git";
 import type {
+  P4FileApproval,
   P4CleanRequest,
   P4CleanPreview,
   P4UnshelveRequest,
@@ -154,9 +155,9 @@ interface P4ContextValue {
   reconcile: (scope?: string) => Promise<void>;
   openClean: (scope?: string) => void;
   previewClean: (request: P4CleanRequest, signal: AbortSignal, onFolder: (path: string) => void) => Promise<P4CleanPreview>;
-  applyClean: (request: P4CleanRequest, paths: string[], fingerprint: string) => Promise<void>;
+  applyClean: (request: P4CleanRequest, files: P4FileApproval[], fingerprint: string) => Promise<void>;
   previewReconcile: (scopes: string[], signal: AbortSignal, onFolder: (path: string) => void) => Promise<P4ReconcilePreview>;
-  applyReconcile: (paths: string[], changeId: string, fingerprint: string, scopes: string[]) => Promise<void>;
+  applyReconcile: (files: P4FileApproval[], changeId: string, fingerprint: string, scopes: string[]) => Promise<void>;
   fileAction: (action: "edit" | "add" | "delete", paths: string[]) => Promise<void>;
   loadSubmitted: (more?: boolean) => Promise<void>;
   submittedUser: string;
@@ -1281,14 +1282,14 @@ export function P4Provider({ children }: { children: ReactNode }) {
   }, [guard, runActivity]);
   const previewClean = useCallback((request: P4CleanRequest, signal: AbortSignal, onFolder: (path: string) => void) =>
     scanWorkspace(signal, (connection, id) => p4Api.previewClean(connection, request, id, onFolder)), [scanWorkspace]);
-  const applyClean = useCallback(async (request: P4CleanRequest, paths: string[], fingerprint: string) => {
+  const applyClean = useCallback(async (request: P4CleanRequest, files: P4FileApproval[], fingerprint: string) => {
     const current=sessionRef.current;
     if (!current) throw new Error(t("p4-operations.connectionRequired"));
     const release=lockMutation(current,t("p4.clean.cleaning"));
     if (!release) throw new Error(t("p4-operations.workspaceBusy"));
     const activity=beginActivity(t("p4.clean.cleaning"),current.connection.client);
     try {
-      await guard(current.connection,()=>p4Api.applyClean(current.connection,request,paths,fingerprint));
+      await guard(current.connection,()=>p4Api.applyClean(current.connection,request,files,fingerprint));
       toast.success(t("p4.clean.cleaned"));
     } finally {
       await reloadPending(current).catch(report); bumpFiles();endActivity(activity);release();
@@ -1298,14 +1299,14 @@ export function P4Provider({ children }: { children: ReactNode }) {
   const previewReconcile = useCallback((scopes: string[], signal: AbortSignal, onFolder: (path: string) => void) =>
     scanWorkspace(signal, (connection, id) => p4Api.previewReconcile(connection, scopes, id, onFolder)), [scanWorkspace]);
 
-  const applyReconcile = useCallback(async (paths: string[], changeId: string, fingerprint: string, scopes: string[]) => {
+  const applyReconcile = useCallback(async (files: P4FileApproval[], changeId: string, fingerprint: string, scopes: string[]) => {
     const current = sessionRef.current;
     if (!current) throw new Error(t("p4-operations.connectionRequired"));
     const release = lockMutation(current, t("p4.reconciling"));
     if (!release) throw new Error(t("p4-operations.workspaceBusy"));
     const activity = beginActivity(t("p4.reconciling"), current.connection.client);
     try {
-      await guard(current.connection, () => p4Api.applyReconcile(current.connection, paths, changeId, fingerprint, scopes));
+      await guard(current.connection, () => p4Api.applyReconcile(current.connection, files, changeId, fingerprint, scopes));
       toast.success(t("p4.reconciled"));
     } finally {
       await reloadPending(current, changeId).catch(report);

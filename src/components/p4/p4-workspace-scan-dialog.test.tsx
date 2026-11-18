@@ -15,8 +15,8 @@ vi.mock("@/state/p4-context", () => ({useP4: () => ({
   ...api, busy, pending: [], selectedChange: "default", connection: { root: "/work", client: "example" },
 })}));
 const clean = {scopes: ["/work/art"], restoreModified: true, restoreMissing: true, removeUntracked: true, includeIgnored: false};
-const changed = {path: "/work/art/material", action: "restoreModified", revision: "2"};
-const local = {path: "/work/art/temporary", action: "removeUntracked"};
+const changed = {fingerprint: "original", path: "/work/art/material", action: "restoreModified", revision: "2"};
+const local = {fingerprint: "local", path: "/work/art/temporary", action: "removeUntracked"};
 const result = {fingerprint: "reviewed", files: [changed, local]};
 let root: Root;
 let container: HTMLDivElement;
@@ -79,7 +79,7 @@ it("reconciles only the picked changes in the right-clicked folder", async () =>
   await click("Scan");
   await check("art/temporary");
   await click("Reconcile 1 file");
-  expect(api.applyReconcile).toHaveBeenCalledExactlyOnceWith([changed.path], "default", "reviewed", ["/work/art"]);
+  expect(api.applyReconcile).toHaveBeenCalledExactlyOnceWith([{path:changed.path, fingerprint:changed.fingerprint}], "default", "reviewed", ["/work/art"]);
   expect(api.close).toHaveBeenCalledOnce();
 });
 
@@ -93,7 +93,7 @@ it("reviews clean actions and their revisions, then applies the confirmed subset
   let finish!: () => void;
   api.applyClean.mockReturnValue(new Promise<void>(resolve => {finish = resolve;}));
   await act(async () => {button("Clean 1 file").click(); button("Clean 1 file").click();});
-  expect(api.applyClean).toHaveBeenCalledExactlyOnceWith(clean, [changed.path], "reviewed");
+  expect(api.applyClean).toHaveBeenCalledExactlyOnceWith(clean, [{path:changed.path, fingerprint:changed.fingerprint}], "reviewed");
   expect(button("Cancel").disabled).toBe(true);
   await render("clean", "/work/other");
   await act(async () => finish());

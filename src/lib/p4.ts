@@ -2,6 +2,7 @@ import { p4ComparisonDiff, type P4Comparison } from "@/lib/p4-comparison";
 import { Channel, Resource, invoke } from "@tauri-apps/api/core";
 import { t } from "@/i18n";
 import type {
+  P4FileApproval,
   P4CleanRequest,
   P4CleanPreview,
   P4UnshelveRequest,
@@ -229,10 +230,10 @@ export const p4Api = {
   applyUndo: (connection: P4Connection, request: P4UndoRequest, fingerprint: string) =>
     call<string>("p4_apply_undo", { connection, request, fingerprint }),
   previewClean: (connection: P4Connection, request: P4CleanRequest, activityId: string, onFolder: (path: string) => void) => call<P4CleanPreview>("p4_preview_clean", {connection, request, activityId, folder: new Channel(onFolder)}),
-  applyClean: (connection: P4Connection, request: P4CleanRequest, paths: string[], fingerprint: string) => call<string>("p4_apply_clean", {connection,request,paths,fingerprint}),
+  applyClean: (connection: P4Connection, request: P4CleanRequest, files: P4FileApproval[], fingerprint: string) => call<string>("p4_apply_clean", {connection,request,files,fingerprint}),
   previewReconcile: (connection: P4Connection, scopes: string[], activityId: string, onFolder: (path: string) => void) => call<P4ReconcilePreview>("p4_preview_reconcile", { connection, scopes, activityId, folder: new Channel(onFolder) }),
-  applyReconcile: (connection: P4Connection, paths: string[], changeId: string, fingerprint: string, scopes: string[]) =>
-    call<string>("p4_apply_reconcile", { connection, paths, changeId, fingerprint, scopes }),
+  applyReconcile: (connection: P4Connection, files: P4FileApproval[], changeId: string, fingerprint: string, scopes: string[]) =>
+    call<string>("p4_apply_reconcile", { connection, files, changeId, fingerprint, scopes }),
   fileAction: (connection: P4Connection, action: "edit" | "add" | "delete" | "lock" | "unlock", paths: string[], changeId?: string) =>
     call<void>("p4_file_action", { connection, action, paths, changeId: changeId ?? null }),
   login: (connection: P4Connection, password: string) =>

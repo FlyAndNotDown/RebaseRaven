@@ -13,10 +13,10 @@ import { p4DisplayError } from "@/lib/p4-operation-preview";
 import { addScanFolders } from "@/lib/p4-workspace-scan";
 import { useWindowedRows } from "@/lib/use-windowed-rows";
 import { useP4 } from "@/state/p4-context";
-import type { P4CleanRequest } from "@/types/p4";
+import type { P4CleanRequest, P4FileApproval } from "@/types/p4";
 
 type Operation = "clean" | "reconcile";
-type ScanFile = { path: string; action: string; revision?: string | null };
+type ScanFile = P4FileApproval & { action: string; revision?: string | null };
 type ScanResult = { files: ScanFile[]; fingerprint: string };
 const cleanOptions = ["restoreModified", "restoreMissing", "removeUntracked", "includeIgnored"] as const;
 
@@ -131,8 +131,9 @@ export function P4WorkspaceScanDialog({ operation, scope, onClose }: {
     setApplying(true);
     setError("");
     try {
-      if (clean) await p4.applyClean(request, [...picked], review.fingerprint);
-      else await p4.applyReconcile([...picked], change, review.fingerprint, request.scopes);
+      const files = review.files.filter(file => picked.has(file.path)).map(({path, fingerprint}) => ({path, fingerprint}));
+      if (clean) await p4.applyClean(request, files, review.fingerprint);
+      else await p4.applyReconcile(files, change, review.fingerprint, request.scopes);
       if (mounted.current) onClose();
     } catch (caught) {
       if (mounted.current) {

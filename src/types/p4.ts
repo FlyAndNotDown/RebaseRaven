@@ -204,7 +204,7 @@ export interface P4ManualResolve {
   fingerprint: string;
 }
 
-export interface P4ReconcilePreview {
+export interface P4ChangePreview {
   files: { path: string; depotPath: string; action: string }[];
   fingerprint: string;
 }
@@ -214,7 +214,12 @@ export interface P4StreamRequest {
   source: string;
   changeId: string;
 }
-export type P4StreamPreview = P4ReconcilePreview;
+export type P4StreamPreview = P4ChangePreview;
+export interface P4FileApproval { path: string; fingerprint: string }
+export interface P4ReconcilePreview {
+  files: (P4ChangePreview["files"][number] & P4FileApproval)[];
+  fingerprint: string;
+}
 
 export interface P4UnshelveRequest {
   changeId: string;
@@ -252,7 +257,7 @@ export interface P4CleanRequest {
   removeUntracked: boolean;
   includeIgnored: boolean;
 }
-export interface P4CleanFile {path: string; depotPath: string; action: "restoreModified" | "restoreMissing" | "removeUntracked"; revision: string | null}
+export interface P4CleanFile extends P4FileApproval { depotPath: string; action: "restoreModified" | "restoreMissing" | "removeUntracked"; revision: string | null}
 export interface P4CleanPreview {files: P4CleanFile[]; fingerprint: string}
 
 export interface P4AutoResolveSummary { resolved: number; remaining: number; failed: boolean }
