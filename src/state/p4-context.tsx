@@ -1880,8 +1880,6 @@ export function P4Provider({ children }: { children: ReactNode }) {
     ],
   );
 
-  const [store] = useState(() => createStore(value));
-  useLayoutEffect(() => { store.set(value); }, [store, value]);
   const dialogs = useMemo<P4Dialogs>(() => ({
     integration: integrationInitial && connection ? {initial: integrationInitial, close: () => setIntegrationInitial(null)} : null,
     stream: streamOpen && connection ? {initial: streamInitial, close: () => setStreamOpen(false)} : null,
@@ -1905,9 +1903,15 @@ export function P4Provider({ children }: { children: ReactNode }) {
     login: {open: loginOpen, ...loginTarget, finish: finishLogin},
   }), [activePerforceId, connection, finishLogin, integrationInitial, loading, loginOpen, loginTarget, mutationLabels, scanTarget, setStreamOpen, setView, streamInitial, streamOpen, switchOutcome, switchTarget, sync]);
 
-  return <P4Context.Provider value={store}>
+  return <P4StateProvider value={value}>
     <P4DialogContext.Provider value={dialogs}>{children}</P4DialogContext.Provider>
-  </P4Context.Provider>;
+  </P4StateProvider>;
+}
+
+function P4StateProvider({value, children}: {value: P4ContextValue; children: ReactNode}) {
+  const [store] = useState(() => createStore(value));
+  useLayoutEffect(() => { store.set(value); }, [store, value]);
+  return <P4Context.Provider value={store}>{children}</P4Context.Provider>;
 }
 
 function useP4Store() {
