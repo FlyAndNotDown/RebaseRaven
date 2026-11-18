@@ -139,6 +139,7 @@ impl tauri::Resource for WorkspaceSearch {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
     #[test]
     fn pages_resume_at_the_next_entry_and_observe_cancellation() {
         let root = tempfile::tempdir().unwrap();
