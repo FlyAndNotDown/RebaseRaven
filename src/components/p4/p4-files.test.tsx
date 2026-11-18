@@ -10,7 +10,7 @@ import type { P4DirEntry, P4EntryStatus, P4FileSearch } from "@/types/p4";
 import { analyticsP4FilesMode } from "@/state/analytics-screen";
 
 const actions=vi.hoisted(()=>({listDir:vi.fn(),listDepot:vi.fn(),status:vi.fn(),search:vi.fn(),closeSearch:vi.fn(),cancel:vi.fn(),reconcile:vi.fn(),openClean:vi.fn(),epoch:0,connection:{root:"/workspace",port:"server:1666",user:"alice",client:"client",stream:""}}));
-vi.mock("@/state/p4-context",()=>({useP4:()=>({connection:actions.connection,listDir:actions.listDir,listDepot:actions.listDepot,reconcile:actions.reconcile,openClean:actions.openClean,filesEpoch:actions.epoch,busy:false})}));
+vi.mock("@/state/p4-context",()=>({useP4Pick:()=>({connection:actions.connection,listDir:actions.listDir,listDepot:actions.listDepot,reconcile:actions.reconcile,openClean:actions.openClean,filesEpoch:actions.epoch,busy:false})}));
 vi.mock("@/lib/p4",async importOriginal=>({...await importOriginal<typeof import("@/lib/p4")>(),p4Api:{listingStatus:actions.status,openWorkspaceSearch:async()=>({page:actions.search,close:actions.closeSearch}),cancelDepotSearch:actions.cancel}}));
 vi.mock("@/components/p4/p4-file-history",()=>({P4FileHistory:({path}:{path:string})=><div data-file-history={path}/> }));
 vi.mock("@/components/p4/p4-file-view",()=>({P4FileView:({path}:{path:string})=><div data-file-view={path}/> }));

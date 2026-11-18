@@ -3,7 +3,7 @@ import { lazy, Suspense } from "react";
 import { WorkspaceSkeleton } from "@/components/skeletons";
 import { Button } from "@/components/ui/button";
 import { useGitPick } from "@/state/git-context";
-import { useP4 } from "@/state/p4-context";
+import { useP4Pick } from "@/state/p4-context";
 
 const P4Shelves = lazy(() => import("@/components/p4/p4-shelves").then(module => ({default: module.P4Shelves})));
 const P4Files = lazy(() => import("@/components/p4/p4-files").then((module) => ({ default: module.P4Files })));
@@ -12,7 +12,7 @@ const P4Submitted = lazy(() => import("@/components/p4/p4-submitted").then((modu
 
 export function P4Workspace() {
   useTranslation();
-  const { view, error, connection, reconnect } = useP4();
+  const { view, error, connection, reconnect } = useP4Pick(["view", "error", "connection", "reconnect"]);
   const { setOpenPanel } = useGitPick(["setOpenPanel"]);
 
   if (!connection && !error) return <WorkspaceSkeleton />;

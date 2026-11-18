@@ -4,14 +4,14 @@ import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/i18n";
 import { errorMessage } from "@/lib/git";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
-import { useP4 } from "@/state/p4-context";
+import { useP4Pick } from "@/state/p4-context";
 import type { P4Changelist } from "@/types/p4";
 
 const empty = () => ({changes:[] as P4Changelist[], hasMore:true, selected:null as string | null, detail:null as P4Changelist | null, loading:false, describing:false});
 
 export function P4DirectoryHistory({path}: {path:string}) {
   const {t} = useTranslation();
-  const {pathHistory, describeSubmitted} = useP4();
+  const {pathHistory, describeSubmitted} = useP4Pick(["pathHistory", "describeSubmitted"]);
   const [state,setState] = useState(empty);
   const [filters,setFilters] = useState({user:"",client:""});
   const [error,setError] = useState<string | null>(null);

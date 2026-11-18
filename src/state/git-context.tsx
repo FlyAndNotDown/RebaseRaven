@@ -1,3 +1,4 @@
+import { createStore, shallowEqual, type Store } from "./store";
 import { RepositoryOperations } from "./repository-operations";
 import {
   createContext,
@@ -280,31 +281,6 @@ type ActionKey = {
 type GitActions = Pick<GitContextValue, ActionKey>;
 type GitState = Omit<GitContextValue, ActionKey>;
 
-interface GitStore {
-  get: () => GitState;
-  set: (next: GitState) => void;
-  subscribe: (listener: () => void) => () => void;
-}
-
-function createStore(initial: GitState): GitStore {
-  let state = initial;
-  const listeners = new Set<() => void>();
-  return {
-    get: () => state,
-    set: (next) => {
-      if (next === state) return;
-      state = next;
-      for (const listener of listeners) listener();
-    },
-    subscribe: (listener) => {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
-  };
-}
-
 const OPERATION_FINISHED: Record<string, string> = {
   get merge() { return t("operations.merge_finished"); },
   get rebase() { return t("operations.rebase_finished"); },
@@ -336,7 +312,7 @@ const WELCOME_TAB: AppTab = { id: WELCOME_TAB_ID, kind: "welcome" };
 
 // The value never changes after mount; components subscribe to the store for
 // the fields they read, so an unrelated update does not re-render them.
-const GitContext = createContext<{ store: GitStore; actions: GitActions } | null>(null);
+const GitContext = createContext<{ store: Store<GitState>; actions: GitActions } | null>(null);
 // Progress updates arrive many times per second; keeping them out of GitContext
 // means only the activity meter re-renders for them. Each activity names the tab
 // that started it, so one repository's bar does not show another's work.
@@ -3388,11 +3364,6 @@ export function useGitPick<K extends keyof GitContextValue>(keys: readonly K[]):
     [actions, keyText],
   );
   return useSyncExternalStoreWithSelector(store.subscribe, store.get, store.get, select, shallowEqual);
-}
-
-function shallowEqual<T extends object>(left: T, right: T) {
-  const keys = Object.keys(left) as (keyof T)[];
-  return keys.length === Object.keys(right).length && keys.every((key) => Object.is(left[key], right[key]));
 }
 
 /**

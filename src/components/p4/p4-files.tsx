@@ -33,7 +33,7 @@ import { p4DisplayText } from "@/lib/p4-display";
 import { useWorkspaceSearch } from "./use-workspace-search";
 import { Button } from "@/components/ui/button";
 import { useFileQuery } from "@/lib/use-file-query";
-import { useP4 } from "@/state/p4-context";
+import { useP4Pick } from "@/state/p4-context";
 import { setAnalyticsP4FilesMode } from "@/state/analytics-screen";
 import type { P4Connection, P4DirEntry, P4EntryStatus } from "@/types/p4";
 
@@ -41,7 +41,10 @@ import { useTreeCache, type P4TreeEntry } from "./p4-tree-cache";
 
 export function P4Files() {
   const { t } = useTranslation();
-  const p4 = useP4();
+  const p4 = useP4Pick([
+    "busy", "connection", "fileAction", "filesEpoch", "listDepot",
+    "listDir", "openClean", "openIntegration", "reconcile", "sync",
+  ]);
   const [moving, setMoving] = useState<string | null>(null);
   const [operation, setOperation] = useState<{ kind: P4OperationKind; path: string; depot: boolean } | null>(null);
   const root = p4.connection?.root ?? "";
@@ -356,7 +359,7 @@ function WorkspaceTree({
   menu: (entry: FileTreeEntry) => ReactNode;
 }) {
   useTranslation();
-  const { connection, listDir, filesEpoch } = useP4();
+  const { connection, listDir, filesEpoch } = useP4Pick(["connection", "listDir", "filesEpoch"]);
   const root = connection?.root ?? "";
   const cache = useTreeCache(connection);
   const cached = cache?.workspace;
@@ -494,7 +497,7 @@ function DepotTree({
   menu: (entry: FileTreeEntry) => ReactNode;
 }) {
   useTranslation();
-  const { connection, listDepot, filesEpoch } = useP4();
+  const { connection, listDepot, filesEpoch } = useP4Pick(["connection", "listDepot", "filesEpoch"]);
   const cache = useTreeCache(connection);
   const cached = cache?.depot;
   const [entries, setEntries] = useState<Record<string, P4TreeEntry[]>>(() => cached?.epoch === filesEpoch ? cached.entries : {});

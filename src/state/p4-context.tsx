@@ -1,3 +1,6 @@
+import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
+import { createStore, shallowEqual, type Store } from "./store";
+import { P4DialogContext, type P4Dialogs } from "./p4-dialogs";
 import { t, useTranslation } from "@/i18n";
 import {
   createContext,
@@ -8,18 +11,12 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
-import { P4ConnectionDialog } from "@/components/p4/p4-connection-dialog";
-import { P4StreamDialog } from "@/components/p4/p4-stream-dialog";
-import { P4WorkspaceScanDialog } from "@/components/p4/p4-workspace-scan-dialog";
 import { abortableScan } from "@/lib/p4-workspace-scan";
-import { P4LoginDialog } from "@/components/p4/p4-login-dialog";
-import { P4SwitchDialog, P4SwitchUpdateDialog } from "@/components/p4/p4-switch-dialog";
-import { P4IntegrationDialog } from "@/components/p4/p4-integration-dialog";
 import type { P4IntegrationInitial, P4IntegrationRequest, P4IntegrationPreview } from "@/types/p4-integration";
-import { P4WorkspaceDialog } from "@/components/p4/p4-workspace-dialog";
 import { errorMessage, isCancelled } from "@/lib/git";
 import { depotBase, P4_LOGIN, P4_MISSING, p4Api } from "@/lib/p4";
 import { notifyP4Error, p4SyncNotice } from "@/lib/p4-output-notice";
@@ -194,8 +191,8 @@ interface P4ContextValue {
   saveWorkspace: (edit: P4WorkspaceEdit, fingerprint: string) => Promise<void>;
 }
 
-const P4Context = createContext<P4ContextValue | null>(null);
-const P4ViewContext = createContext<P4View | null>(null);
+const P4Context = createContext<Store<P4ContextValue> | null>(null);
+
 
 export function P4Provider({ children }: { children: ReactNode }) {
   const language = useTranslation().i18n.resolvedLanguage;
@@ -1883,53 +1880,58 @@ export function P4Provider({ children }: { children: ReactNode }) {
     ],
   );
 
-  return (
-    <P4Context.Provider value={value}>
-      <P4ViewContext.Provider value={value.view}>
-        {children}
-        <P4ConnectionDialog />
-        {workspaceOpen && connection ? <P4WorkspaceDialog key={JSON.stringify(connection)} /> : null}
-        {integrationInitial && connection ? <P4IntegrationDialog key={JSON.stringify([connection,integrationInitial])} initial={integrationInitial} onClose={() => setIntegrationInitial(null)} /> : null}
-        {streamOpen && connection ? <P4StreamDialog initial={streamInitial} key={JSON.stringify([connection,streamInitial])} onClose={() => setStreamOpen(false)} /> : null}
-        {scanTarget && activePerforceId === scanTarget.tabId && connection && sameP4Connection(scanTarget.connection, connection) ? (
-          <P4WorkspaceScanDialog key={JSON.stringify(scanTarget)} operation={scanTarget.operation} scope={scanTarget.scope}
-            onClose={() => setScanTarget(current => current === scanTarget ? null : current)} />
-        ) : null}
-        {switchTarget !== null && connection ? <P4SwitchDialog key={JSON.stringify([connection,switchTarget])} initialTarget={switchTarget} onClose={() => setSwitchTarget(null)} /> : null}
-        {switchOutcome && activePerforceId === switchOutcome.tabId ? <P4SwitchUpdateDialog
-          stream={switchOutcome.connection.stream ?? ""}
-          disabled={loading || mutationLabels.has(activePerforceId) || !connection || !sameP4Connection(connection, switchOutcome.connection)}
-          onClose={() => setSwitchOutcome(null)}
-          onUpdate={() => {
-            const current = sessionRef.current;
-            if (!current || current.tabId !== switchOutcome.tabId || !sameP4Connection(current.connection, switchOutcome.connection)) return;
-            setSwitchOutcome(null);
-            setView("pending");
-            void sync();
-          }}
-        /> : null}
-        <P4LoginDialog
-          open={loginOpen}
-          client={loginTarget.client}
-          port={loginTarget.port}
-          onCancel={() => finishLogin(null)}
-          onSubmit={(password) => finishLogin(password)}
-        />
-      </P4ViewContext.Provider>
-    </P4Context.Provider>
-  );
+  const [store] = useState(() => createStore(value));
+  useLayoutEffect(() => { store.set(value); }, [store, value]);
+  const dialogs = useMemo<P4Dialogs>(() => ({
+    integration: integrationInitial && connection ? {initial: integrationInitial, close: () => setIntegrationInitial(null)} : null,
+    stream: streamOpen && connection ? {initial: streamInitial, close: () => setStreamOpen(false)} : null,
+    scan: scanTarget && activePerforceId === scanTarget.tabId && connection && sameP4Connection(scanTarget.connection, connection) ? {
+      key: JSON.stringify(scanTarget), operation: scanTarget.operation, scope: scanTarget.scope,
+      close: () => setScanTarget(current => current === scanTarget ? null : current),
+    } : null,
+    switchStream: switchTarget !== null && connection ? {target: switchTarget, close: () => setSwitchTarget(null)} : null,
+    update: switchOutcome && activePerforceId === switchOutcome.tabId ? {
+      stream: switchOutcome.connection.stream ?? "",
+      disabled: loading || mutationLabels.has(activePerforceId) || !connection || !sameP4Connection(connection, switchOutcome.connection),
+      close: () => setSwitchOutcome(null),
+      apply: () => {
+        const current = sessionRef.current;
+        if (!current || current.tabId !== switchOutcome.tabId || !sameP4Connection(current.connection, switchOutcome.connection)) return;
+        setSwitchOutcome(null);
+        setView("pending");
+        void sync();
+      },
+    } : null,
+    login: {open: loginOpen, ...loginTarget, finish: finishLogin},
+  }), [activePerforceId, connection, finishLogin, integrationInitial, loading, loginOpen, loginTarget, mutationLabels, scanTarget, setStreamOpen, setView, streamInitial, streamOpen, switchOutcome, switchTarget, sync]);
+
+  return <P4Context.Provider value={store}>
+    <P4DialogContext.Provider value={dialogs}>{children}</P4DialogContext.Provider>
+  </P4Context.Provider>;
+}
+
+function useP4Store() {
+  const store = useContext(P4Context);
+  if (!store) throw new Error("useP4 must be used within P4Provider");
+  return store;
 }
 
 export function useP4() {
-  const value = useContext(P4Context);
-  if (!value) throw new Error("useP4 must be used within P4Provider");
-  return value;
+  const store = useP4Store();
+  return useSyncExternalStore(store.subscribe, store.get, store.get);
+}
+
+export function useP4Pick<K extends keyof P4ContextValue>(keys: readonly K[]): Pick<P4ContextValue, K> {
+  const store = useP4Store();
+  return useSyncExternalStoreWithSelector(store.subscribe, store.get, store.get, value => {
+    const picked = {} as Pick<P4ContextValue, K>;
+    for (const key of keys) picked[key] = value[key];
+    return picked;
+  }, shallowEqual);
 }
 
 export function useP4View() {
-  const view = useContext(P4ViewContext);
-  if (view === null) throw new Error("useP4View must be used within P4Provider");
-  return view;
+  return useP4Pick(["view"]).view;
 }
 
 function groupPaths(files: { change: string; path: string }[]) {

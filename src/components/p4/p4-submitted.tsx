@@ -22,7 +22,7 @@ import { notifyP4Error } from "@/lib/p4-output-notice";
 import { errorMessage } from "@/lib/git";
 import { changeSummary } from "@/lib/p4";
 import { cn } from "@/lib/utils";
-import { useP4 } from "@/state/p4-context";
+import { type useP4, useP4Pick } from "@/state/p4-context";
 import type { FileDiff } from "@/types/git";
 import type { P4Changelist } from "@/types/p4";
 
@@ -40,7 +40,12 @@ export type SubmittedHistoryModel = Pick<ReturnType<typeof useP4>, "submitted" |
 export function P4Submitted({history, historyScope, layout = "columns"}: {history?: SubmittedHistoryModel; historyScope?: string; layout?: "columns" | "stacked"} = {}) {
   const stacked = layout === "stacked";
   useTranslation();
-  const context = useP4();
+  const context = useP4Pick([
+    "busy", "connection", "getRevision", "listClients", "listUsers",
+    "loadSubmitted", "revisionDiff", "searchSubmitted", "selectSubmitted", "selectedSubmitted",
+    "setSubmittedFilter", "submitted", "submittedClient", "submittedDetail", "submittedHasMore",
+    "submittedLoading", "submittedUser",
+  ]);
   const p4 = history ? {...context, ...history} : context;
   const [streamDiff, setStreamDiff] = useState<P4StreamDiffRequest | null>(null);
   const [query, setQuery] = useState("");

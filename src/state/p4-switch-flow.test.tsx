@@ -2,6 +2,7 @@
 import { act, useLayoutEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, it, expect, vi } from "vitest";
+import { P4DialogHost } from "@/components/p4/p4-dialog-host";
 import { P4Provider, useP4 } from "./p4-context";
 import { p4Api } from "@/lib/p4";
 import { defaultPrefs } from "@/lib/prefs";
@@ -32,7 +33,7 @@ beforeEach(async () => {
   vi.spyOn(p4Api,"applySwitch").mockImplementation(async (_connection,request) => {current={...current,stream:request.target};return current;});
   vi.spyOn(p4Api,"sync").mockResolvedValue({output:upToDate,autoResolve:null});
   host=document.createElement("div");document.body.append(host);root=createRoot(host);
-  await act(async () => root.render(<TooltipProvider><P4Provider><Capture /></P4Provider></TooltipProvider>));
+  await act(async () => root.render(<TooltipProvider><P4Provider><P4DialogHost /><Capture /></P4Provider></TooltipProvider>));
 });
 afterEach(async () => {await act(async () => root.unmount());host.remove();vi.restoreAllMocks();});
 async function switchStream() {

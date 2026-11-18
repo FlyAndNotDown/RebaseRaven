@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { setLanguagePreference } from "@/i18n";
 import { p4Api } from "@/lib/p4";
 import { defaultPrefs } from "@/lib/prefs";
-import { P4Provider, useP4 } from "./p4-context";
+import { P4Provider, useP4, useP4Pick } from "./p4-context";
 import type { P4Changelist } from "@/types/p4";
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
@@ -21,6 +21,12 @@ const model = {
 };
 vi.mock("@/state/git-context", () => ({ useGitPick: () => model }));
 let state: ReturnType<typeof useP4>, root: Root, host: HTMLDivElement;
+const historyRender = vi.fn();
+function HistorySubscriber() {
+  useP4Pick(["describeSubmitted", "pathHistory"]);
+  useLayoutEffect(() => { historyRender(); });
+  return null;
+}
 function Capture() {
   const value = useP4();
   useLayoutEffect(() => { state = value; });
@@ -41,7 +47,7 @@ beforeEach(async () => {
   vi.spyOn(p4Api, "sync").mockResolvedValue({ output: skipped, autoResolve: null });
   vi.spyOn(p4Api, "getRevision").mockResolvedValue(skipped);
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => root.render(<P4Provider><Capture /></P4Provider>));
+  await act(async () => root.render(<P4Provider><Capture /><HistorySubscriber /></P4Provider>));
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); });
 
@@ -111,4 +117,11 @@ it.each([false, true])("cancels Get Revision (preview: %s) without dismissing it
   expect(p4Api.refreshPending).toHaveBeenCalledTimes(preview ? 0 : 1);
   expect(toast.error).not.toHaveBeenCalled();
   expect(state.busy).toBe(false);
+});
+
+it("keeps history subscribers idle when the pending description changes", async () => {
+  historyRender.mockClear();
+  await act(async () => state.setDescription("A different description"));
+  expect(state.description).toBe("A different description");
+  expect(historyRender).not.toHaveBeenCalled();
 });

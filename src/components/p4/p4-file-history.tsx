@@ -15,13 +15,13 @@ import { errorMessage } from "@/lib/git";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import { useWindowedRows } from "@/lib/use-windowed-rows";
 import { cn } from "@/lib/utils";
-import { useP4 } from "@/state/p4-context";
+import { useP4Pick } from "@/state/p4-context";
 import type { P4Changelist, P4File, P4HistoryCursor, P4Revision } from "@/types/p4";
 import type { FileDiff } from "@/types/git";
 
 export function P4FileHistory({ path }: { path: string }) {
   const { t } = useTranslation();
-  const { filelog, revisionDiff, describeSubmitted, selectSubmitted, setView } = useP4();
+  const { filelog, revisionDiff, describeSubmitted, selectSubmitted, setView } = useP4Pick(["filelog", "revisionDiff", "describeSubmitted", "selectSubmitted", "setView"]);
   const [revisions, setRevisions] = useState<P4Revision[] | null>(null);
   const [next, setNext] = useState<P4HistoryCursor | null>(null);
   const [loading, setLoading] = useState(true);
