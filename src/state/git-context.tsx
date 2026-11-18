@@ -1,6 +1,5 @@
 import { errorCode } from "@/lib/native-error";
 import { ActivityProvider, useActivityActions } from "./activity-context";
-import type { RefObject } from "react";
 import { createStore, shallowEqual, type Store } from "./store";
 import { RepositoryOperations } from "./repository-operations";
 import {
@@ -318,13 +317,12 @@ const GitContext = createContext<{ store: Store<GitState>; actions: GitActions }
 export { useActivities } from "./activity-context";
 
 export function GitProvider({children}: {children: ReactNode}) {
-  const owner = useRef(WELCOME_TAB_ID);
-  return <ActivityProvider owner={owner}><RepositoryProvider owner={owner}>{children}</RepositoryProvider></ActivityProvider>;
+  return <ActivityProvider initialOwner={WELCOME_TAB_ID}><RepositoryProvider>{children}</RepositoryProvider></ActivityProvider>;
 }
 
-function RepositoryProvider({owner, children}: {owner: RefObject<string>; children: ReactNode}) {
+function RepositoryProvider({children}: {children: ReactNode}) {
   const activeTabIdRef = useRef(WELCOME_TAB_ID);
-  const {runActivity, beginActivity, patchActivity, cancelActivity, endActivity} = useActivityActions();
+  const {runActivity, beginActivity, patchActivity, cancelActivity, endActivity, setActivityOwner} = useActivityActions();
   const [recents, setRecents] = useState<RecentRepo[]>([]);
   const [tabs, setTabs] = useState<AppTab[]>([]);
   const [activeTabId, setActiveTabId] = useState(WELCOME_TAB_ID);
@@ -370,9 +368,9 @@ function RepositoryProvider({owner, children}: {owner: RefObject<string>; childr
   }, []);
   const commitActiveTabId = useCallback((next: string) => {
     activeTabIdRef.current = next;
-    owner.current = next;
+    setActivityOwner(next);
     setActiveTabId(next);
-  }, [owner]);
+  }, [setActivityOwner]);
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? WELCOME_TAB;
   const session = activeTab.kind === "repo" ? sessions[activeTab.id] : undefined;

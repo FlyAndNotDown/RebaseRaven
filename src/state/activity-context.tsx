@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "sonner";
 import { t } from "@/i18n";
@@ -9,7 +9,9 @@ import type { Activity } from "@/types/git";
 const ActivityContext = createContext<Activity[]>([]);
 const ActionContext = createContext<ReturnType<typeof useActivityController>["actions"] | null>(null);
 
-function useActivityController(activeTabIdRef: RefObject<string>) {
+function useActivityController(initialOwner: string) {
+  const activeTabIdRef = useRef(initialOwner);
+  const setActivityOwner = useCallback((id: string) => { activeTabIdRef.current = id; }, []);
   const [activities, setActivities] = useState<Activity[]>([]);
   const activityStops = useRef(new Map<string, "ready" | "requested">());
   const runActivity = useCallback(
@@ -33,7 +35,7 @@ function useActivityController(activeTabIdRef: RefObject<string>) {
         await reservation?.close();
       }
     },
-    [activeTabIdRef],
+    [],
   );
 
   const beginActivity = useCallback((label: string, detail?: string, progress?: number, tabId?: string) => {
@@ -41,7 +43,7 @@ function useActivityController(activeTabIdRef: RefObject<string>) {
     const owner = tabId ?? activeTabIdRef.current;
     setActivities((current) => [...current, { id, label, detail, progress, tabId: owner }]);
     return id;
-  }, [activeTabIdRef]);
+  }, []);
 
   const patchActivity = useCallback(
     (id: string, patch: Partial<Pick<Activity, "label" | "detail" | "progress" | "cancelling">>) => {
@@ -104,13 +106,13 @@ function useActivityController(activeTabIdRef: RefObject<string>) {
     };
   }, []);
 
-  const actions = useMemo(() => ({runActivity, beginActivity, patchActivity, cancelActivity, endActivity}),
-    [runActivity, beginActivity, patchActivity, cancelActivity, endActivity]);
+  const actions = useMemo(() => ({runActivity, beginActivity, patchActivity, cancelActivity, endActivity, setActivityOwner}),
+    [runActivity, beginActivity, patchActivity, cancelActivity, endActivity, setActivityOwner]);
   return {activities, actions};
 }
 
-export function ActivityProvider({owner, children}: {owner: RefObject<string>; children: ReactNode}) {
-  const {actions, activities} = useActivityController(owner);
+export function ActivityProvider({initialOwner, children}: {initialOwner: string; children: ReactNode}) {
+  const {actions, activities} = useActivityController(initialOwner);
   return <ActionContext.Provider value={actions}><ActivityContext.Provider value={activities}>{children}</ActivityContext.Provider></ActionContext.Provider>;
 }
 
