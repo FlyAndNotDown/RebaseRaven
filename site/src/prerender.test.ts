@@ -14,6 +14,8 @@ describe("website prerender", () => {
     expect(html).toContain(siteResources.en["story.source.body"]);
     expect(html.split(`href="${LATEST_RELEASE_URL}"`)).toHaveLength(3);
     expect(html).toContain("Enable JavaScript to try the interactive demo.");
+    expect(html).toMatch(/<div id="features"[^>]* data-nosnippet=""/);
+    expect(html).toContain(siteResources.en["story.games.title"]);
     expect(html).toContain('id="demo-commit-message"');
     expect(html).toContain("./assets/raven.svg");
     expect(html).not.toContain("/@fs/");
@@ -31,11 +33,13 @@ describe("website prerender", () => {
     expect(translated).not.toContain(siteResources["zh-CN"]["demo.sampleData"]);
     expect(translated).toContain('href="../"');
     expect(translated).toContain('href="../zh-CN/"');
+    expect(translated.match(/<footer\b[\s\S]*?<\/footer>/)?.[0]).toContain('href="../" hrefLang="en" lang="en">English</a>');
     expect(translated).toContain("../assets/raven.svg");
     const english = await render("en", true);
     expect(english).toContain(siteResources.en["preview.title"]);
     expect(english).toContain("./assets/raven.svg");
     expect(english).toContain('href="./zh-CN/"');
+    expect(english.match(/<footer\b[\s\S]*?<\/footer>/)?.[0]).toContain(`href="./zh-CN/" hrefLang="zh-CN" lang="zh-CN">${siteResources["zh-CN"]["language.zh-CN"]}</a>`);
     expect(english).not.toContain(siteResources["zh-CN"]["preview.title"]);
   });
 

@@ -19,7 +19,7 @@ export function FeatureStories() {
     {stories.map(({ id, icon: Icon, scene: Scene }) => <section className={`site-story site-story-${id}`} key={id} aria-labelledby={`story-${id}`}>
       <div className="site-story-rail" aria-hidden="true"><div className="site-story-icon"><Icon /></div></div>
       <div className="site-story-copy">
-        <h2 id={`story-${id}`}>{t(`story.${id}.title`).split("\n").map(line => <span key={line}>{line}</span>)}</h2>
+        <h2 id={`story-${id}`}>{t(`story.${id}.title`)}</h2>
         <p>{t(`story.${id}.body`)}</p>
         {id === "source" ? <a className="site-story-link" href={REPOSITORY_URL}><GitHubMark />{t("story.source.link")}<ArrowUpRightIcon /></a> : null}
       </div>
