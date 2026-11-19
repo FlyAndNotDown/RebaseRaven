@@ -2,13 +2,14 @@
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { P4Shelves, RestoreShelfDialog } from "./p4-shelves";
+import { P4Shelves } from "./p4-shelves";
+import { PendingRestoreShelfDialog, RestoreShelfDialog } from "./p4-restore-shelf-dialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { setLanguagePreference } from "@/i18n";
 import type { P4Changelist } from "@/types/p4";
 
 const calls = vi.hoisted(() => ({listShelves:vi.fn(),shelfDetail:vi.fn(),shelfDiff:vi.fn(),listUsers:vi.fn(),listClients:vi.fn(),previewUnshelve:vi.fn(),restoreShelf:vi.fn(),setView:vi.fn(),closed:vi.fn()}));
-vi.mock("@/state/p4-context", () => ({useP4:() => ({...calls,connection:{root:"/workspace",port:"example:1666",user:"alice",client:"main"},selectedChange:"default",busy:false})}));
+vi.mock("@/state/p4-context", () => ({useP4:() => ({...calls,connection:{root:"/workspace",port:"example:1666",user:"alice",client:"main",stream:"//project/dev"},selectedChange:"default",busy:false})}));
 vi.mock("@/components/p4/p4-diff", () => ({P4Diff:() => <div>Diff</div>}));
 vi.mock("@/components/p4/p4-stream-work", () => ({P4StreamDiffDialog:() => null}));
 vi.mock("@/components/revision-meta", () => ({AuthorName:({name}:{name:string}) => <span>{name}</span>}));
@@ -62,14 +63,14 @@ it("ignores an earlier shelf response after the filters change", async () => {
 
 it("restores only reviewed files to the selected pending changelist", async () => {
   await render(true);await toggle("//depot/theme.ts");await field('select[aria-label="Pending changelist"]',"121",true);
-  expect(button("Restore 1 files").disabled).toBe(true);
+  expect(button("Restore 1 file").disabled).toBe(true);
   await click("Preview");expect(calls.previewUnshelve).toHaveBeenLastCalledWith({changeId:"120",target:"121",files:["//depot/app.ts"],stream:""});
-  await click("Restore 1 files");expect(calls.restoreShelf).toHaveBeenCalledWith({changeId:"120",target:"121",files:["//depot/app.ts"],stream:""},preview);
-  expect(calls.closed).toHaveBeenCalledOnce();expect(calls.setView).toHaveBeenCalledWith("pending");
+  await click("Restore 1 file");expect(calls.restoreShelf).toHaveBeenCalledWith({changeId:"120",target:"121",files:["//depot/app.ts"],stream:""},preview);
+  expect(calls.closed).toHaveBeenCalledOnce();
 });
 
 it("invalidates a preview when the destination changes and requires all files for stream mapping", async () => {
-  await render(true);await toggle("//depot/theme.ts");await click("Preview");expect(button("Restore 1 files").disabled).toBe(false);
+  await render(true);await toggle("//depot/theme.ts");await click("Preview");expect(button("Restore 1 file").disabled).toBe(false);
   await field('#shelf-stream-mapping',"//depot/dev");expect(button("Restore 2 files").disabled).toBe(true);
   expect([...document.querySelectorAll<HTMLButtonElement>('[role="checkbox"]')].every(node => node.disabled)).toBe(true);
   await click("Preview");expect(calls.previewUnshelve).toHaveBeenLastCalledWith({changeId:"120",target:"default",files:shelf.files.map(file => file.depotPath),stream:"//depot/dev"});
@@ -79,4 +80,19 @@ it("invalidates a preview when the destination changes and requires all files fo
 it("keeps the dialog open and requires another preview after restore fails", async () => {
   calls.restoreShelf.mockRejectedValueOnce(new Error("The workspace changed. Preview again."));
   await render(true);await click("Preview");await click("Restore 2 files");expect(document.querySelector('[role="alert"]')?.textContent).toContain("workspace changed");expect(button("Restore 2 files").disabled).toBe(true);expect(calls.closed).not.toHaveBeenCalled();expect(calls.setView).not.toHaveBeenCalled();
+});
+
+it("opens a pending shelf by its explicit id and previews the dropped selection in the current stream", async () => {
+  const source = {...shelf, files: shelf.files.map(file => ({...file, depotPath: file.depotPath.replace("//depot/", "//project/main/")}))};
+  calls.shelfDetail.mockResolvedValue(source);
+  await act(async () => root.render(<TooltipProvider><PendingRestoreShelfDialog id="120" initialTarget="121"
+    initialFiles={["//project/main/app.ts"]} onClose={calls.closed} /></TooltipProvider>));
+  expect(calls.shelfDetail).toHaveBeenCalledExactlyOnceWith("120");
+  expect(document.body.textContent).toContain("//project/dev");
+  expect(button("Restore 1 file").disabled).toBe(true);
+  expect(calls.restoreShelf).not.toHaveBeenCalled();
+  await click("Preview");
+  expect(calls.previewUnshelve).toHaveBeenCalledWith({changeId:"120",target:"121",files:["//project/main/app.ts"],stream:""});
+  await click("Restore 1 file");
+  expect(calls.restoreShelf).toHaveBeenCalledWith({changeId:"120",target:"121",files:["//project/main/app.ts"],stream:""},preview);
 });

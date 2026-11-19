@@ -10,6 +10,7 @@
 @source "../../src/components/p4/file-status-icon.tsx";
 @source "../../src/components/p4/change-badge.tsx";
 @source "../../src/components/p4/p4-change-dialog.tsx";
+@source "../../src/components/p4/p4-workspace-actions.tsx";
 
 html, body, #root { height: auto; min-height: 100%; overflow: visible; }
 html { scroll-behavior: smooth; scroll-padding-top: 32px; }

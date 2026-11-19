@@ -69,22 +69,24 @@ export function WelcomeScreen() {
               {recents.length ? <span className="ml-auto text-xs text-muted-foreground">{recents.length}</span> : null}
             </div>
             {recents.length ? (
-              <ScrollArea className="max-h-[380px] rounded-lg border [&_[data-slot=scroll-area-viewport]]:max-h-[380px]">
+              <ScrollArea className="rounded-lg border" viewportClassName="max-h-[380px]" gutter={false} scrollbars="vertical">
                 <ul className="divide-y divide-border">
                   {recents.map((repo) => (
-                    <li key={`${asVcs(repo.vcs)}:${repo.path}`} className="flex items-center gap-2 pr-1">
+                    <li key={`${asVcs(repo.vcs)}:${repo.path}`} className="flex items-center pr-3 hover:bg-muted/60 has-focus-visible:bg-muted/60">
                       <HoverTip label={displayPath(repo.path)}>
-                        <button type="button" className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-3 text-left outline-none hover:bg-muted/60 focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring" onClick={() => void openPath(repo.path, repo.vcs ? asVcs(repo.vcs) : undefined)}>
+                        <button type="button" className="flex min-w-0 flex-1 items-center gap-2.5 py-3 pr-2 pl-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring" onClick={() => void openPath(repo.path, repo.vcs ? asVcs(repo.vcs) : undefined)}>
                           <VcsIcon vcs={asVcs(repo.vcs)} className="size-4 shrink-0 text-muted-foreground" />
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-sm font-medium">{asVcs(repo.vcs) === "perforce" ? repo.name : labels.get(repo.path) ?? repo.name}</span>
                             <span className="mt-0.5 block truncate font-mono text-[11px] text-muted-foreground">{displayPath(repo.path)}</span>
                           </span>
+                          <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">{formatRelativeTime(repo.lastOpened)}</span>
                         </button>
                       </HoverTip>
-                      <span className="shrink-0 text-[11px] text-muted-foreground">{formatRelativeTime(repo.lastOpened)}</span>
                       <HoverTip label={t("desktop.welcomeScreen.remove_from_recents")}>
-                        <Button variant="ghost" size="icon-xs" className="mr-1" onClick={() => void forgetRecent(repo.path)} aria-label={t("desktop.welcomeScreen.removeRecent", { name: repo.name })}><XIcon /></Button>
+                        <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:bg-foreground/10 hover:text-foreground dark:hover:bg-foreground/10" onClick={() => void forgetRecent(repo.path)} aria-label={t("desktop.welcomeScreen.removeRecent", { name: repo.name })}>
+                          <XIcon className="size-3.5" />
+                        </Button>
                       </HoverTip>
                     </li>
                   ))}

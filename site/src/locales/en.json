@@ -285,7 +285,6 @@
   "demo.desktopOnly": "Available in the desktop app",
   "demo.refresh": "Refresh",
   "demo.sync": "Get latest revision",
-  "demo.workspaceActions": "Workspace actions",
   "demo.fetch": "Fetch from origin",
   "demo.pull": "Pull from origin",
   "demo.push": "Push to origin",

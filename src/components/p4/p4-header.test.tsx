@@ -9,13 +9,42 @@ import { setLanguagePreference } from "@/i18n";
 let prefs = { ...defaultPrefs };
 const updatePrefs = vi.fn(async (next: typeof prefs) => { prefs = next; });
 const sync = vi.fn();
+const workspace = {
+  busy: false,
+  reconcile: vi.fn(),
+  openClean: vi.fn(),
+  openIntegration: vi.fn(),
+  setWorkspaceOpen: vi.fn(),
+  setConnectionOpen: vi.fn(),
+};
 vi.mock("@/state/git-context", () => ({ useGitPick: () => ({ prefs, updatePrefs }) }));
-vi.mock("@/state/p4-context", () => ({ useP4: () => ({ connection: { client: "example" }, busy: false, sync }) }));
+vi.mock("@/state/p4-context", () => ({ useP4: () => ({ connection: { client: "example" }, ...workspace, sync }) }));
 let root: Root, container: HTMLDivElement;
 async function render() { await act(async () => root.render(<TooltipProvider><P4Header /></TooltipProvider>)); }
 async function open() { await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="Get latest"]')!.click()); }
 beforeEach(() => { Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); setLanguagePreference("en"); vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); vi.clearAllMocks(); prefs = { ...defaultPrefs }; container = document.createElement("div"); document.body.append(container); root = createRoot(container); });
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+afterEach(async () => { workspace.busy = false; await act(async () => root.unmount()); container.remove(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+it("exposes each workspace action directly and disables it while busy", async () => {
+  const actions = [
+    ["Reconcile offline changes", workspace.reconcile, []],
+    ["Clean workspace", workspace.openClean, []],
+    ["Merge / Integrate", workspace.openIntegration, []],
+    ["Edit workspace", workspace.setWorkspaceOpen, [true]],
+    ["Edit connection", workspace.setConnectionOpen, [true]],
+  ] as const;
+  await render();
+  for (const [label, action, args] of actions) {
+    const button = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
+    await act(async () => button.click());
+    expect(action).toHaveBeenCalledExactlyOnceWith(...args);
+  }
+  workspace.busy = true;
+  await render();
+  for (const [label] of actions) {
+    expect(container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)?.disabled).toBe(true);
+  }
+});
 it("opens the panel without its option tooltip and keeps focus and hover help available", async () => {
   vi.useFakeTimers();
   await render(); await open();

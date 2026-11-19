@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { SyncPopover } from "@/components/sync-popover";
+import { P4WorkspaceActions } from "@/components/p4/p4-workspace-actions";
 import { RepositoryActions, RepositoryRefButton, ToolbarButton } from "@/components/repository-toolbar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useGitPick } from "@/state/git-context";
 import { errorMessage } from "@/lib/git";
 import { t, useTranslation } from "@/i18n";
-import { BrushCleaningIcon, CableIcon, DownloadIcon, EllipsisIcon, FolderPenIcon, GitMergeIcon, ListChecksIcon, RefreshCwIcon } from "lucide-react";
+import { DownloadIcon, RefreshCwIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { HoverTip } from "@/components/ui/tooltip";
 import { useP4 } from "@/state/p4-context";
 
@@ -21,6 +21,13 @@ export function P4Header() {
   const { prefs, updatePrefs } = useGitPick(["prefs", "updatePrefs"]);
   const [openAction, setOpenAction] = useState<"sync" | null>(null);
   const [saving, setSaving] = useState(false);
+  const workspaceActions = {
+    reconcile: () => void p4.reconcile(),
+    clean: () => p4.openClean(),
+    integrate: () => p4.openIntegration(),
+    workspace: () => p4.setWorkspaceOpen(true),
+    connection: () => p4.setConnectionOpen(true),
+  };
   async function setAutoResolve(checked: boolean) {
     if (saving) return;
     setSaving(true);
@@ -47,18 +54,11 @@ export function P4Header() {
           <Button size="sm" className="w-full" disabled={busy || saving} onClick={() => {setOpenAction(null); void p4.sync();}}><DownloadIcon />{t("p4.getLatest")}</Button>
         </div>
       </SyncPopover>
-      <span className="h-3.5 w-px self-center bg-foreground/20" />
-      <DropdownMenu>
-        <HoverTip label={t("p4.workspaceActions")}><DropdownMenuTrigger asChild><ToolbarButton label={t("p4.workspaceActions")} disabled={busy}><EllipsisIcon /></ToolbarButton></DropdownMenuTrigger></HoverTip>
-        <DropdownMenuContent align="start">
-          <DropdownMenuItem onClick={() => void p4.reconcile()}><ListChecksIcon />{t("p4.reconcileReview.title")}</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => p4.openClean()}><BrushCleaningIcon />{t("p4.clean.title")}</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => p4.openIntegration()}><GitMergeIcon />{t("p4.integration.title")}</DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => p4.setWorkspaceOpen(true)}><FolderPenIcon />{t("p4.editWorkspace")}</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => p4.setConnectionOpen(true)}><CableIcon />{t("p4.editConnection")}</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <P4WorkspaceActions renderAction={(action, label, icon) => (
+        <HoverTip label={label}>
+          <ToolbarButton label={label} disabled={busy} onClick={workspaceActions[action]}>{icon}</ToolbarButton>
+        </HoverTip>
+      )} />
     </RepositoryActions>
   </div>;
 }

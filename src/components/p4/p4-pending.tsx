@@ -1,10 +1,11 @@
+import { PendingRestoreShelfDialog } from "./p4-restore-shelf-dialog";
 import { P4StreamWorkDialog, P4StreamDiffDialog } from "@/components/p4/p4-stream-work";
 import { PendingShelfGroup, ShelfReadError } from "@/components/p4/p4-pending-shelf";
 import type { P4StreamDiffRequest } from "@/types/p4-stream-specs";
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { GitBranchIcon, ArchiveIcon, ChevronDownIcon, CopyIcon, GitMergeIcon, Loader2Icon, PencilIcon, PlusIcon, SendIcon, Trash2Icon, Undo2Icon, UndoDotIcon } from "lucide-react";
+import { GitBranchIcon, ArchiveIcon, ArchiveRestoreIcon, ChevronDownIcon, CopyIcon, GitMergeIcon, Loader2Icon, PencilIcon, PlusIcon, SendIcon, Trash2Icon, Undo2Icon, UndoDotIcon } from "lucide-react";
 import { toast } from "sonner";
-import { ChangeBadge, ChangelistMarker } from "@/components/p4/change-badge";
+import { ChangeBadge } from "@/components/p4/change-badge";
 import { P4ChangeDialog, type ChangeDialogRequest } from "@/components/p4/p4-change-dialog";
 import { PendingFiles, openedSelection, rowKey, type PendingFile, type PendingDragFile } from "@/components/p4/p4-pending-files";
 import { P4Diff } from "@/components/p4/p4-diff";
@@ -43,7 +44,7 @@ export function P4Pending() {
     "pending", "pendingShelves", "placeFiles", "resolveRequest", "revertPaths",
     "revertUnchanged", "saveChange", "selectChange", "selectFile", "selectedChange",
     "selectedFile", "selectedShelved", "shelveFiles", "shelveSelected", "submitChange",
-    "submitShelf", "unshelveSelected",
+    "submitShelf",
   ]);
   const [streamWorkOpen, setStreamWorkOpen] = useState(false);
   const [streamDiff, setStreamDiff] = useState<P4StreamDiffRequest | null>(null);
@@ -53,6 +54,9 @@ export function P4Pending() {
   const [deleteFailed, setDeleteFailed] = useState(false);
   const {openChanges, shelvedOpen, setExpanded, setShelvedOpen} = useP4PendingExpansion(p4.connection?.root ?? "", p4.selectedChange);
   const [revertRequest, setRevertRequest] = useState<RevertRequest | null>(null);
+  const [restore, setRestore] = useState<{id: string; target: string; files?: string[]; detail?: P4Changelist; connection: string} | null>(null);
+  const connectionKey = JSON.stringify(p4.connection);
+  const restoring = restore?.connection === connectionKey ? restore : null;
   const [deletingShelf, setDeletingShelf] = useState(false);
   const [resolving, setResolving] = useState<{ change: string; path: string } | null>(null);
   const [picked, setPicked] = useState<Set<string>>(() => new Set());
@@ -75,6 +79,11 @@ export function P4Pending() {
   useEffect(() => {
     if (selected && needsShelf && !selectedShelf) void loadPendingShelf(selected.id);
   }, [loadPendingShelf, needsShelf, selected, selectedShelf]);
+
+  function openRestore(id: string, target = "default", files?: string[]) {
+    const shelf = p4.pendingShelves[id];
+    setRestore({id, target, files, detail: shelf?.status === "ready" ? shelf.detail : undefined, connection: connectionKey});
+  }
 
   function openChangeDialog(change: P4Changelist, mode: ChangeDialogRequest["mode"]) {
     setChangeDialog({
@@ -226,7 +235,11 @@ export function P4Pending() {
         setExpanded((current) => new Set(current ?? openChanges).add(target.change));
       }
       setPicked(new Set());
-      void p4.placeFiles(files, target.change, target.shelf);
+      if (!target.shelf && files[0].shelved && files.every(file => file.change === files[0].change)) {
+        openRestore(files[0].change, target.change, files.map(file => file.path));
+      } else {
+        void p4.placeFiles(files, target.change, target.shelf);
+      }
     };
 
     const stop = () => {
@@ -364,8 +377,7 @@ export function P4Pending() {
                               focusChange(change.id);
                             }}
                           >
-                            <ChangelistMarker opened={changeOpened.length > 0 || !!change.stream} shelved={change.shelved} conflict={changeOpened.some(file => file.status === "conflict")} />
-                            <ChangeBadge id={change.id} />
+                            <ChangeBadge id={change.id} opened={changeOpened.length > 0 || !!change.stream} shelved={change.shelved} conflict={changeOpened.some(file => file.status === "conflict")} />
                             <span className="min-w-0 flex-1 truncate text-xs">{summary || t("p4.noDescription")}</span>
                           </button>
                         </div>
@@ -470,7 +482,7 @@ export function P4Pending() {
                               id={change.id} exists={change.shelved} shelf={shelf} busy={p4.busy}
                               open={shelvedOpen.has(change.id)} load={loadPendingShelf}
                               onToggle={() => { if (!didDrag.current) toggleShelved(change.id); }}
-                              onUnshelve={() => { p4.selectChange(change.id); void p4.unshelveSelected(); }}
+                              onUnshelve={() => openRestore(change.id)}
                               onDelete={() => { p4.selectChange(change.id); setDeletingShelf(true); }}
                               onStream={path => setStreamDiff({kind: "shelf", path, change: change.id})}
                             >
@@ -479,6 +491,10 @@ export function P4Pending() {
                                 picked={picked} selectedPath={selectedPath} selectedShelved={p4.selectedShelved}
                                 className="pl-12" onPointerDown={beginPointer}
                                 onSelect={(event, path) => pickFile(event, { change: change.id, path, shelved: true })}
+                                menu={(_, file) => <ContextMenuContent><ContextMenuItem disabled={p4.busy} onSelect={() => {
+                                  const paths = picked.has(rowKey(file)) ? rowsInOrder().filter(row => row.shelved && row.change === change.id && picked.has(rowKey(row))).map(row => row.path) : [file.path];
+                                  openRestore(change.id, "default", paths);
+                                }}><ArchiveRestoreIcon />{t("p4.unshelve")}</ContextMenuItem></ContextMenuContent>}
                               />
                             </PendingShelfGroup>
                           </div>
@@ -505,6 +521,8 @@ export function P4Pending() {
           )}
         </ResizablePanel>
       </ResizablePanelGroup>
+      {restoring && <PendingRestoreShelfDialog key={restoring.id} id={restoring.id} cached={restoring.detail}
+        initialTarget={restoring.target} initialFiles={restoring.files} onClose={() => setRestore(null)} />}
       {resolvingPath ? <P4Resolve key={resolvingPath} path={resolvingPath} onClose={closeResolution} /> : null}
       {streamWorkOpen ? <P4StreamWorkDialog onClose={() => setStreamWorkOpen(false)} /> : null}
       {streamDiff ? <P4StreamDiffDialog target={streamDiff} onClose={() => setStreamDiff(null)} /> : null}
@@ -516,6 +534,7 @@ export function P4Pending() {
           openedCount={dialogChange?.files.filter((file) => !file.shelved).length ?? 0}
           openedStream={Boolean(dialogChange?.stream)}
           shelved={Boolean(dialogChange?.shelved)}
+          conflict={dialogChange?.files.some(file => file.status === "conflict")}
           onManageShelf={() => {p4.selectChange(changeDialog.id); setChangeDialog(null); setDeletingShelf(true);}}
           available={!!dialogChange}
           busy={p4.busy}

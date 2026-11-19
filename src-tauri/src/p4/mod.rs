@@ -41,7 +41,7 @@ mod switch;
 pub use review::{apply_reconcile, preview_reconcile, P4ReconcilePreview};
 pub use shelves::{
     list_shelves, pending_shelf_detail, preview_unshelve, restore_shelf, shelf_detail,
-    P4UnshelveRequest,
+    unshelve_files, P4UnshelveRequest,
 };
 pub use streams::{apply_stream, preview_stream, P4StreamPreview, P4StreamRequest};
 pub use switch::{apply_switch, P4SwitchRequest};
@@ -61,9 +61,9 @@ pub use workspace::{
     open_workspace, opened_diff, path_history, prepare_client, refresh_pending, reopen,
     resolve_accept, resolve_view, revert, revert_unchanged, revision_diff, revision_targets,
     save_change, search_depot, search_submitted, shelf_diff, shelve, submit, submit_shelf,
-    submitted, sync, unshelve, P4Auth, P4ChangePage, P4Changelist, P4CheckedConnection,
-    P4Connection, P4CreateRequest, P4DepotEntry, P4Describe, P4DirEntry, P4EntryStatus,
-    P4FileSearch, P4GetRevision, P4HistoryCursor, P4Location, P4ManualResolve, P4Open,
-    P4PathHistoryRequest, P4ResolveView, P4RevisionPage, P4StreamOption, P4SyncResult,
-    RepoDetection, RevisionOutput, WorkspaceSearch,
+    submitted, sync, P4Auth, P4ChangePage, P4Changelist, P4CheckedConnection, P4Connection,
+    P4CreateRequest, P4DepotEntry, P4Describe, P4DirEntry, P4EntryStatus, P4FileSearch,
+    P4GetRevision, P4HistoryCursor, P4Location, P4ManualResolve, P4Open, P4PathHistoryRequest,
+    P4ResolveView, P4RevisionPage, P4StreamOption, P4SyncResult, RepoDetection, RevisionOutput,
+    WorkspaceSearch,
 };

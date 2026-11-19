@@ -415,10 +415,11 @@
     "more": "Load more",
     "select": "Select a shelf to review its files.",
     "selected": "{{count}} / {{total}} files selected",
-    "mapping": "Stream mapping · optional",
-    "mappingHint": "A stream mapping restores the entire shelf between this stream and its parent. Preview the target paths before restoring.",
-    "hint": "Restore selected files into the current workspace. The source shelf is kept; conflicts remain for review in Pending.",
-    "restore": "Restore {{count}} files"
+    "mapping": "Override stream mapping",
+    "mappingHint": "Child stream for a whole-shelf restore using its parent mapping",
+    "hint": "Preview where the selected files will open in this workspace. The original shelf is kept.",
+    "restore_one": "Restore {{count}} file",
+    "restore_other": "Restore {{count}} files"
   },
   "filePreview": {
     "loading": "Loading file…",
@@ -664,7 +665,6 @@
     "shelfComparison": "Version comparison · workspace → shelf #{{change}}",
     "confirmDeleteShelf": "Type the full stream path to remove its shelved definition."
   },
-  "workspaceActions": "Workspace actions",
   "revisionTargets": "Files and folders",
   "addRevisionTarget": "Add file or folder",
   "targetPath": "File or folder path",

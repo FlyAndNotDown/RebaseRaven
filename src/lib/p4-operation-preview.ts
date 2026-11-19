@@ -115,6 +115,8 @@ const operationErrors: Record<string, string> = {
   "This changelist has no shelved files.": "shelfEmpty",
   "Choose files from this shelf.": "shelfFiles",
   "Stream mapping restores the entire shelf. Select all files.": "shelfMapping",
+  "The stream mapping does not cover every selected file.": "shelfPartialMapping",
+  "Select files from one source stream at a time.": "shelfMixedStreams",
   "No files can be restored into this workspace.": "shelfMappingEmpty",
 
   "Choose a stream workspace.": "streamWorkspace",

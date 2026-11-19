@@ -4,8 +4,8 @@ import type { P4StreamDiffRequest } from "@/types/p4-stream-specs";
 import { t, useTranslation } from "@/i18n";
 import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import { DownloadIcon, HistoryIcon } from "lucide-react";
-import { AuthorName, ExactTime, RevisionDot } from "@/components/revision-meta";
-import { ChangeBadge } from "@/components/p4/change-badge";
+import { AuthorName, ExactTime } from "@/components/revision-meta";
+import { ChangeNumber, SubmittedHistoryMarker } from "@/components/p4/change-badge";
 import { P4ChangeFiles } from "@/components/p4/p4-change-files";
 import { P4Diff } from "@/components/p4/p4-diff";
 import { P4GetRevisionDialog, type P4RevisionTarget } from "@/components/p4/p4-get-revision-dialog";
@@ -317,8 +317,8 @@ export function P4Submitted({history, historyScope, layout = "columns"}: {histor
                           )}
                           onClick={() => void p4.selectSubmitted(change.id)}
                         >
-                          <RevisionDot before={index > 0} after={index < changes.length - 1 || hasMore} extend={6} />
-                          <ChangeBadge id={change.id} />
+                          <SubmittedHistoryMarker before={index > 0} after={index < changes.length - 1 || hasMore} className="-my-1.5" />
+                          <ChangeNumber id={change.id} />
                           <span className="min-w-0 flex-1 truncate text-xs">
                             {changeSummary(change.description) || t("p4.noDescription")}
                           </span>

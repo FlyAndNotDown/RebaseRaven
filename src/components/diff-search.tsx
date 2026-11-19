@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode, type RefObject } from "react";
 import { CaseSensitiveIcon, ChevronDownIcon, ChevronUpIcon, SearchIcon, XIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ interface SearchState {
   matches: TextMatch[];
   byLine: Map<number, TextMatch[]>;
   active: TextMatch | undefined;
+  navigationId: number;
   show: () => void;
   close: () => void;
   change: (value: string) => void;
@@ -41,6 +42,7 @@ export function DiffSearchScope({ lines, children, enabled = true, className, on
   const [query, setQuery] = useState("");
   const [matchCase, setMatchCase] = useState(false);
   const [position, setPosition] = useState(0);
+  const [navigationId, requestNavigation] = useReducer((id: number) => id + 1, 0);
   const matches = useMemo(() => enabled && open ? findText(lines, query, matchCase) : [], [enabled, lines, open, query, matchCase]);
   const byLine = useMemo(() => {
     const map = new Map<number, TextMatch[]>();
@@ -54,6 +56,7 @@ export function DiffSearchScope({ lines, children, enabled = true, className, on
   const active = matches[Math.min(position, Math.max(0, matches.length - 1))];
   const show = () => {
     onOpen?.();
+    requestNavigation();
     setOpen(true);
     const input = root.current?.querySelector<HTMLInputElement>('[role="search"] input');
     input?.focus();
@@ -61,7 +64,9 @@ export function DiffSearchScope({ lines, children, enabled = true, className, on
   };
   const close = () => { setOpen(false); root.current?.focus({ preventScroll: true }); };
   const step = (delta: number) => {
-    if (matches.length) setPosition((value) => (Math.min(value, matches.length - 1) + delta + matches.length) % matches.length);
+    if (!matches.length) return;
+    setPosition((value) => (Math.min(value, matches.length - 1) + delta + matches.length) % matches.length);
+    requestNavigation();
   };
 
   useEffect(() => {
@@ -89,8 +94,8 @@ export function DiffSearchScope({ lines, children, enabled = true, className, on
     return () => window.removeEventListener("keydown", keydown, true);
   });
 
-  return <SearchContext.Provider value={{ open: enabled && open, query, matchCase, matches, byLine, active, show, close,
-    change: value => {setQuery(value); setPosition(0);}, toggleCase: () => {setMatchCase(value => !value); setPosition(0);}, step }}>
+  return <SearchContext.Provider value={{ open: enabled && open, query, matchCase, matches, byLine, active, navigationId, show, close,
+    change: value => {setQuery(value); setPosition(0); requestNavigation();}, toggleCase: () => {setMatchCase(value => !value); setPosition(0); requestNavigation();}, step }}>
     <div ref={root} tabIndex={-1} data-diff-search={enabled ? "" : undefined} className={cn("flex min-h-0 min-w-0 flex-col outline-none", className)}>{children}</div>
   </SearchContext.Provider>;
 }
@@ -131,14 +136,14 @@ function SearchAction({ label, pressed, disabled, onClick, children }: {label: s
 /** Editable merge results use native text selection without changing their contents. */
 export function DiffSearchSelection({ editor, text }: {editor: RefObject<HTMLTextAreaElement | null>; text: string}) {
   const search = useDiffSearch();
-  const match = search?.active;
+  const { line, start, end } = search?.active ?? {};
   useLayoutEffect(() => {
     const node = editor.current;
-    if (!node || !match) return;
+    if (!node || line === undefined || start === undefined || end === undefined) return;
     const lines = text.split("\n");
-    const offset = lines.slice(0, match.line).reduce((sum, line) => sum + line.length + 1, 0);
-    node.setSelectionRange(offset + match.start, offset + match.end);
-    node.scrollTo({top: Math.max(0, match.line * 20 - node.clientHeight / 2)});
-  }, [editor, match, text]);
+    const offset = lines.slice(0, line).reduce((sum, textLine) => sum + textLine.length + 1, 0);
+    node.setSelectionRange(offset + start, offset + end);
+    node.scrollTo({top: Math.max(0, line * 20 - node.clientHeight / 2)});
+  }, [editor, line, start, end, text, search?.navigationId]);
   return null;
 }

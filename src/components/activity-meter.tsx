@@ -58,7 +58,7 @@ export function ActivityMeter() {
             const expanded = expandedId === activity.id;
             const stopping = activity.cancelling;
             return (
-              <div key={activity.id} className="flex items-start gap-2 rounded-md hover:bg-muted/60">
+              <div key={activity.id} className="flex items-center gap-2 rounded-md hover:bg-muted/60">
                 <button
                   type="button"
                   className="min-w-0 flex-1 rounded-md px-2 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
@@ -87,7 +87,7 @@ export function ActivityMeter() {
                     <Button
                       variant="ghost"
                       size="icon-xs"
-                      className="mt-1.5 mr-1"
+                      className="mr-1 shrink-0"
                       disabled={stopping}
                       aria-label={t(stopping ? "desktop.activityMeter.cancelling" : "desktop.activityMeter.cancelNamed", { name: activity.label })}
                       onClick={() => void cancelActivity(activity.id)}

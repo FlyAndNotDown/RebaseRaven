@@ -1908,11 +1908,10 @@ async fn p4_shelve(
 async fn p4_unshelve(
     connection: p4::P4Connection,
     change_id: String,
-    target: Option<String>,
-    files: Option<Vec<String>>,
-) -> AppResult<()> {
-    let files = files.unwrap_or_default();
-    blocking(move || p4::unshelve(&connection, &change_id, target.as_deref(), &files)).await
+    target: String,
+    files: Vec<String>,
+) -> AppResult<Vec<String>> {
+    blocking(move || p4::unshelve_files(&connection, change_id, target, files)).await
 }
 
 #[tauri::command]

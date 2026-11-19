@@ -41,6 +41,8 @@
     "shelfEmpty": "This changelist has no shelved files.",
     "shelfFiles": "Choose files from this shelf.",
     "shelfMapping": "Stream mapping restores the entire shelf. Select all files.",
+    "shelfPartialMapping": "The stream mapping does not cover every selected file. Select mapped files and preview again.",
+    "shelfMixedStreams": "Select files from one source stream at a time.",
     "shelfMappingEmpty": "No files can be restored into this workspace. Check the workspace view and stream mapping.",
     "mergeToolMissing": "Choose an installed external merge tool in Settings → Perforce.",
     "mergeToolExit": "The external merge tool exited without a successful result. Your workspace file has not been changed.",
