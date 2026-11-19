@@ -104,19 +104,29 @@ export const DiffCode = memo(function DiffCode({
     let offset = 0;
     return splitHeights.map(height => {const top = offset; offset += height; return top;});
   }, [splitHeights]);
-  const activeMatch = search?.active;
+  const { id: matchId, line: matchLine, start: matchStart, end: matchEnd } = search?.active ?? {};
+  const pendingJump = useRef<"requested" | "waitingForRow" | null>(null);
+  const viewport = rows.viewport;
+
   useLayoutEffect(() => {
-    const node = rows.viewport;
-    if (!node || !activeMatch) return;
-    const index = pairs ? pairs.findIndex(row => row.kind === "hunk" ? row.index === activeMatch.line : row.left === activeMatch.line || row.right === activeMatch.line) : activeMatch.line;
-    if (index < 0) return;
-    if (index < rows.start || index >= rows.end) {
+    pendingJump.current = matchId === undefined ? null : "requested";
+  }, [viewport, matchId, matchLine, matchStart, matchEnd, search?.navigationId, diff.path, split]);
+
+  // A distant match takes two renders: scroll to its virtual row, then align the mark once it mounts.
+  useLayoutEffect(() => {
+    if (!pendingJump.current || !viewport || matchId === undefined || matchLine === undefined) return;
+    const mark = viewport.querySelector<HTMLElement>(`[data-search-match="${matchId}"]`);
+    if (mark) {
+      pendingJump.current = null;
+      mark.scrollIntoView({ block: "nearest", inline: "center" });
+    } else if (pendingJump.current === "requested") {
+      const index = pairs ? pairs.findIndex(row => row.kind === "hunk" ? row.index === matchLine : row.left === matchLine || row.right === matchLine) : matchLine;
+      if (index < 0) return;
+      pendingJump.current = "waitingForRow";
       const top = searchOffsets?.[index] ?? index * DIFF_ROW_HEIGHT;
-      node.scrollTo({top: Math.max(0, top - node.clientHeight / 2)});
-    } else {
-      node.querySelector<HTMLElement>(`[data-search-match="${activeMatch.id}"]`)?.scrollIntoView({block:"nearest", inline:"center"});
+      viewport.scrollTo({ top: Math.max(0, top - viewport.clientHeight / 2) });
     }
-  }, [activeMatch, pairs, searchOffsets, rows.viewport, rows.start, rows.end]);
+  });
   // Picks belong to one diff; a reloaded diff starts with none.
   const [picks, setPicks] = useState<{ diff: FileDiff; set: ReadonlySet<number>; anchor: number | null }>(
     () => ({ diff, set: NO_PICKS, anchor: null }),
@@ -366,16 +376,16 @@ export const DiffCode = memo(function DiffCode({
           </Button>
         </div>
       ) : null}
-      <ScrollArea className="min-h-0 flex-1" gutter={false} viewportRef={rows.viewportRef}>
+      <ScrollArea className="min-h-0 flex-1" gutter={false} viewportRef={rows.viewportRef} viewportClassName="[overflow-anchor:none]">
         <pre
           className={cn("font-mono text-[12px] leading-5 [tab-size:4]", pairs && "w-full")}
           style={pairs ? undefined : { minWidth: `calc(${DIFF_GUTTER} + ${widest}ch)` }}
         >
-          <div style={{ height: rows.before }} />
+          <div className="transition-none" style={{ height: rows.before }} />
           {pairs
             ? pairs.slice(rows.start, rows.end).map((row, offset) => splitRow(row, rows.start + offset))
             : diff.lines.slice(rows.start, rows.end).map((_, offset) => unifiedRow(rows.start + offset))}
-          <div style={{ height: rows.after }} />
+          <div className="transition-none" style={{ height: rows.after }} />
           {diff.truncated ? (
             <div className="px-3 py-2 text-muted-foreground">{t("git-files.truncated")}</div>
           ) : null}
