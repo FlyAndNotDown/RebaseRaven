@@ -122,9 +122,21 @@ function ShelfBrowser() {
             <div className="flex min-w-0 gap-1"><Input aria-label={t("p4.filterChangelists")} placeholder={t("p4.filterChangelists")} value={query} onChange={event => setQuery(event.target.value)} className="h-8 min-w-0 flex-1" /><HoverTip label={t("p4.refresh")}><Button type="button" size="icon-sm" variant="ghost" aria-label={t("p4.refresh")} disabled={loading} onClick={() => void load(user, client, null)}><RefreshCwIcon /></Button></HoverTip></div>
           </form>
           <div className="min-h-0 flex-1 overflow-auto p-1">
-            {changes.map(entry => <button key={entry.id} type="button" aria-pressed={detail?.id === entry.id} onClick={() => void select(entry.id)} className={cn("flex h-8 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted/70", detail?.id === entry.id && "bg-muted")}>
-              <ChangeBadge id={entry.id} shelved /><span className="min-w-0 flex-1 truncate text-xs" title={entry.description}>{changeSummary(entry.description)}</span><AuthorName name={entry.user} vcs="perforce" className="w-20" />
-            </button>)}
+            <div className="grid grid-cols-[auto_minmax(0,1fr)_fit-content(48%)] gap-x-2">
+              {changes.map(entry => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  aria-pressed={detail?.id === entry.id}
+                  onClick={() => void select(entry.id)}
+                  className={cn("col-span-full grid h-8 grid-cols-subgrid items-center rounded-md px-2 text-left hover:bg-muted/70", detail?.id === entry.id && "bg-muted")}
+                >
+                  <ChangeBadge id={entry.id} shelved />
+                  <span className="min-w-0 truncate text-xs" title={entry.description}>{changeSummary(entry.description)}</span>
+                  <AuthorName name={entry.user} title={entry.user} vcs="perforce" className="w-auto min-w-0" />
+                </button>
+              ))}
+            </div>
             {loading ? <p role="status" className="p-5 text-center text-xs text-muted-foreground">{t("p4.shelves.loading")}</p> : !changes.length ? <p role="status" className="p-5 text-center text-xs text-muted-foreground">{t("p4.shelves.empty")}</p> : null}
             {page?.hasMore ? <Button variant="ghost" size="sm" className="w-full" disabled={loading} onClick={() => void load(filter.current.user, filter.current.client, page.scannedThrough)}>{t("p4.shelves.more")}</Button> : null}
           </div>
@@ -137,7 +149,14 @@ function ShelfBrowser() {
             <ResizablePanel id="p4-shelf-files" defaultSize="32%" minSize="16%">
               <div className="absolute inset-0 flex min-h-0 flex-col">
                 <div className="shrink-0 space-y-2 border-b px-3 py-2">
-                  <div className="flex min-w-0 items-center gap-2"><ChangeBadge id={detail.id} shelved /><AuthorName name={detail.user} vcs="perforce" className="w-auto max-w-[35%]" /><span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground" title={detail.client}>{detail.client}</span><Button size="sm" variant="outline" disabled={!detail.files.length} onClick={() => setRestoring(true)}><ArchiveRestoreIcon />{t("p4.shelves.restoreAction")}</Button></div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+                      <ChangeBadge id={detail.id} shelved />
+                      <AuthorName name={detail.user} vcs="perforce" wrap className="w-auto max-w-full" />
+                      <span className="max-w-full truncate font-mono text-[11px] text-muted-foreground" title={detail.client}>{detail.client}</span>
+                    </div>
+                    <Button size="sm" variant="outline" disabled={!detail.files.length} onClick={() => setRestoring(true)}><ArchiveRestoreIcon />{t("p4.shelves.restoreAction")}</Button>
+                  </div>
                   <CommitMessage key={detail.id} message={detail.description} className="px-0 py-0" />
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto">
