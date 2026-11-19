@@ -1,15 +1,15 @@
 {
-  "version": "0.1.22",
-  "notes": "- Cancel Perforce sync and revision downloads from the activity meter, and stop workspace scans even while a worker is starting.\n- Choose one or more folders before scanning for Perforce Reconcile or Clean. Applying the selection rechecks only those files and respects changes made since the scan.\n- Speed up Perforce browsing in large workspaces with virtualized file trees, paginated searches, and streamed sync summaries.\n- Keep expanded folders with their Perforce connection so switching streams or reconnecting clears stale listings.\n- Load Git history membership by page and bound diff previews for large changes.\n- Serialize Git writes per repository and keep late refreshes or completed operations from updating a reopened tab.\n",
-  "pub_date": "2026-11-18T10:22:02.763Z",
+  "version": "0.1.23",
+  "notes": "- Restore shelved Perforce files after switching streams. Preview the stream mapping and resolve outstanding conflicts in the destination changelist.\n- Distinguish shelved changes and conflicts inside the changelist icon across Perforce views.\n- Access Reconcile, Clean, Integrate, workspace settings, and connection settings directly from the Perforce toolbar.\n- Keep Team Shelves authors in a single right-hand column as the list resizes. Hover over a shortened name or select the shelf to see the full name.\n- Scroll freely after a diff search. Navigating to another match still brings it into view.\n- Highlight the entire recent repository row on hover, center its remove button, and remove the extra space below the list.\n- Center the cancel button in each activity row.\n",
+  "pub_date": "2026-11-19T08:57:17.158Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUK0hSbWZEbkU5REp2c2dDOU9zelRrNEtoNGJETzNXOG1Tb0ltY05sSlJkRVhlcDdHUnk3SXp2bkJsWGFlb0Z6amQ3SUgySkg0MXN6aFM0N0Z2M3ZkQ1RNYStLYzZTUGdnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTk3MzA3CWZpbGU6UmViYXNlUmF2ZW5fMC4xLjIyX3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjEuMjIKTHBhVmtTZWZpNDh4SUM1MXhIMTk0UlJQTmFWYzJqSVNVYmNkTDB2dVNZenBnL0ZYTy9QbTB6cnlNUmNMZERuTnE1dmFoaVZLLzhaZmpkN0ZtYTRCQnc9PQo=",
-      "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v0.1.22/RebaseRaven_v0.1.22_windows_x64.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUK0hSbWZEbkU5REk1NkVuVXhoVFBJUjhINWtBWFUwMGdoRUdlUzZ6c3NWMktzSi9tNkVyYTY5OHFzM0VmMmpiWHlmWXhaay9zcmJVYUMwMC83L09CYXpnbXMxK2kzZmdrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDc4NjA2CWZpbGU6UmViYXNlUmF2ZW5fMC4xLjIzX3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjEuMjMKcnhiYmxtUUcrT0ZRL0tQdWVLOTFjYzNjRkpSeGxYMS8xK1gyUmxpTXU0d2ZCT3RGN3JTSEE4OUluVlc4cm45VWRQekh3dXZvWlVpeEc4eDU5T20xQlE9PQo=",
+      "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v0.1.23/RebaseRaven_v0.1.23_windows_x64.exe"
     },
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUK0hSbWZEbkU5RE1qemFSRjE0dUNNY20xV28vTFNGV2FUbisvVEFKaVZxODBSbGFYTzkzSVpweTdPbzVvTzdEQytxWGo3WnRlVm1QbTliU2laK0VZYUNTVEMxNktlVFFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0OTk3MDc0CWZpbGU6UmViYXNlUmF2ZW4uYXBwLnRhci5negl2ZXJzaW9uOjAuMS4yMgpaVlBQbWRGQkZ6aUlwQkZueDR2U0JwVkFubStIOWFhSXBkMVVheU16VWt0U2ptdWNCMjl6TU9kNmZrYzdGR2ZsZEorRC9USHhsOW9IMzY0YURWOHlCUT09Cg==",
-      "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v0.1.22/RebaseRaven_v0.1.22_macos_arm64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUK0hSbWZEbkU5REszNDJrc1hwLzlCZzRKWGV2R0VQNzhuRS81WTZZQkhIQmFySmlWc1RiSytwbENKSVJHSEVIQ1l5SWxpVTlnaVJ6cy9oNDRpMkVScldldk1GeUxuVWd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDc4NjE3CWZpbGU6UmViYXNlUmF2ZW4uYXBwLnRhci5negl2ZXJzaW9uOjAuMS4yMwpSUWdTV3RRajdoR3B0Rkp3U3JWdTdFTWR0UFZ4Um81UU5uVFpvVndGbWhRMWVOTURNR0hlU0w2R2N3WnhwNDhMSUFFbHpmeUFqcjZYSmVReWFtaVpCQT09Cg==",
+      "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v0.1.23/RebaseRaven_v0.1.23_macos_arm64.app.tar.gz"
     }
   }
 }
