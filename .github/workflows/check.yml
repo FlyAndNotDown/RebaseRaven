@@ -39,18 +39,18 @@ jobs:
           package-manager-cache: false
       - name: System packages
         if: runner.os == 'Linux'
-        timeout-minutes: 12
+        timeout-minutes: 18
         run: |
           packages=(libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev
             libayatana-appindicator3-dev librsvg2-dev)
           download_packages() {
             sudo timeout --kill-after=15s 90s apt-get update &&
-              sudo timeout --kill-after=15s 3m apt-get install -y --download-only --no-install-recommends "${packages[@]}"
+              sudo timeout --kill-after=15s "$1" apt-get install -y --download-only --no-install-recommends "${packages[@]}"
           }
-          if ! download_packages; then
-            echo "::warning::Retrying Ubuntu package downloads without the Azure mirror."
-            sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
-            download_packages
+          if ! download_packages 3m; then
+            echo "::warning::Retrying package downloads from the Ubuntu archive."
+            printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+            download_packages 8m
           fi
           sudo apt-get install -y --no-download --no-install-recommends "${packages[@]}"
       - name: Rust
