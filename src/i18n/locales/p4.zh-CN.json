@@ -665,7 +665,6 @@
     "shelfComparison": "版本对比 · 工作区 → Shelf #{{change}}",
     "confirmDeleteShelf": "输入完整的 Stream 路径以移除搁置的定义。"
   },
-  "workspaceActions": "工作区操作",
   "revisionTargets": "文件和目录",
   "addRevisionTarget": "添加文件或目录",
   "targetPath": "文件或目录路径",

@@ -665,7 +665,6 @@
     "shelfComparison": "Version comparison · workspace → shelf #{{change}}",
     "confirmDeleteShelf": "Type the full stream path to remove its shelved definition."
   },
-  "workspaceActions": "Workspace actions",
   "revisionTargets": "Files and folders",
   "addRevisionTarget": "Add file or folder",
   "targetPath": "File or folder path",

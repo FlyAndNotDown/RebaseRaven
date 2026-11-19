@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowDownFromLineIcon, ArrowDownToLineIcon, ArrowUpFromLineIcon, CodeXmlIcon, DownloadIcon, EllipsisIcon, FileInputIcon, FolderOpenIcon, RefreshCwIcon, Settings2Icon, SquareTerminalIcon } from "lucide-react";
+import { ArrowDownFromLineIcon, ArrowDownToLineIcon, ArrowUpFromLineIcon, CodeXmlIcon, DownloadIcon, FileInputIcon, FolderOpenIcon, RefreshCwIcon, Settings2Icon, SquareTerminalIcon } from "lucide-react";
+import { P4WorkspaceActions } from "@/components/p4/p4-workspace-actions";
 import { RepositoryActions, RepositoryRefButton, ToolbarButton } from "@/components/repository-toolbar";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { HoverTip } from "@/components/ui/tooltip";
@@ -24,8 +25,7 @@ export function DemoToolbar({ perforce = false, ahead = 0, onRefresh }: { perfor
       <HoverTip label={t("demo.refresh")}><ToolbarButton label={t("demo.refresh")} onClick={onRefresh}><RefreshCwIcon /></ToolbarButton></HoverTip>
       {perforce ? <>
         {desktopTool(t("demo.sync"), <DownloadIcon />)}
-        <span className="demo-toolbar-divider" />
-        {desktopTool(t("demo.workspaceActions"), <EllipsisIcon />)}
+        <P4WorkspaceActions renderAction={(_action, label, icon) => desktopTool(label, icon)} />
       </> : <>
         {desktopTool(t("demo.fetch"), <ArrowDownFromLineIcon />)}
         {desktopTool(t("demo.pull"), <ArrowDownToLineIcon />)}

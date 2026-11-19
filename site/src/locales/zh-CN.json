@@ -285,7 +285,6 @@
   "demo.desktopOnly": "请在桌面应用中使用",
   "demo.refresh": "刷新",
   "demo.sync": "获取最新版本",
-  "demo.workspaceActions": "工作区操作",
   "demo.fetch": "从 origin 获取",
   "demo.pull": "从 origin 拉取",
   "demo.push": "推送到 origin",
