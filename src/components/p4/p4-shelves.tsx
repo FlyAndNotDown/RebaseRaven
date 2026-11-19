@@ -4,7 +4,7 @@ import { ArchiveRestoreIcon, GitBranchIcon, RefreshCwIcon } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import { CommitMessage } from "@/components/commit-message";
 import { AuthorName } from "@/components/revision-meta";
-import { ChangeBadge, ChangelistMarker } from "@/components/p4/change-badge";
+import { ChangeBadge } from "@/components/p4/change-badge";
 import { P4Diff } from "@/components/p4/p4-diff";
 import { P4FilterMenu, withCurrent } from "@/components/p4/p4-filter-menu";
 import { P4StreamDiffDialog } from "@/components/p4/p4-stream-work";
@@ -123,7 +123,7 @@ function ShelfBrowser() {
           </form>
           <div className="min-h-0 flex-1 overflow-auto p-1">
             {changes.map(entry => <button key={entry.id} type="button" aria-pressed={detail?.id === entry.id} onClick={() => void select(entry.id)} className={cn("flex h-8 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted/70", detail?.id === entry.id && "bg-muted")}>
-              <ChangelistMarker opened={false} /><ChangeBadge id={entry.id} /><span className="min-w-0 flex-1 truncate text-xs" title={entry.description}>{changeSummary(entry.description)}</span><AuthorName name={entry.user} vcs="perforce" className="w-20" />
+              <ChangeBadge id={entry.id} shelved /><span className="min-w-0 flex-1 truncate text-xs" title={entry.description}>{changeSummary(entry.description)}</span><AuthorName name={entry.user} vcs="perforce" className="w-20" />
             </button>)}
             {loading ? <p role="status" className="p-5 text-center text-xs text-muted-foreground">{t("p4.shelves.loading")}</p> : !changes.length ? <p role="status" className="p-5 text-center text-xs text-muted-foreground">{t("p4.shelves.empty")}</p> : null}
             {page?.hasMore ? <Button variant="ghost" size="sm" className="w-full" disabled={loading} onClick={() => void load(filter.current.user, filter.current.client, page.scannedThrough)}>{t("p4.shelves.more")}</Button> : null}
@@ -137,7 +137,7 @@ function ShelfBrowser() {
             <ResizablePanel id="p4-shelf-files" defaultSize="32%" minSize="16%">
               <div className="absolute inset-0 flex min-h-0 flex-col">
                 <div className="shrink-0 space-y-2 border-b px-3 py-2">
-                  <div className="flex min-w-0 items-center gap-2"><ChangelistMarker opened={false} /><ChangeBadge id={detail.id} /><AuthorName name={detail.user} vcs="perforce" className="w-auto max-w-[35%]" /><span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground" title={detail.client}>{detail.client}</span><Button size="sm" variant="outline" disabled={!detail.files.length} onClick={() => setRestoring(true)}><ArchiveRestoreIcon />{t("p4.shelves.restoreAction")}</Button></div>
+                  <div className="flex min-w-0 items-center gap-2"><ChangeBadge id={detail.id} shelved /><AuthorName name={detail.user} vcs="perforce" className="w-auto max-w-[35%]" /><span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground" title={detail.client}>{detail.client}</span><Button size="sm" variant="outline" disabled={!detail.files.length} onClick={() => setRestoring(true)}><ArchiveRestoreIcon />{t("p4.shelves.restoreAction")}</Button></div>
                   <CommitMessage key={detail.id} message={detail.description} className="px-0 py-0" />
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto">

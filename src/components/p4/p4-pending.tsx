@@ -5,7 +5,7 @@ import type { P4StreamDiffRequest } from "@/types/p4-stream-specs";
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { GitBranchIcon, ArchiveIcon, ArchiveRestoreIcon, ChevronDownIcon, CopyIcon, GitMergeIcon, Loader2Icon, PencilIcon, PlusIcon, SendIcon, Trash2Icon, Undo2Icon, UndoDotIcon } from "lucide-react";
 import { toast } from "sonner";
-import { ChangeBadge, ChangelistMarker } from "@/components/p4/change-badge";
+import { ChangeBadge } from "@/components/p4/change-badge";
 import { P4ChangeDialog, type ChangeDialogRequest } from "@/components/p4/p4-change-dialog";
 import { PendingFiles, openedSelection, rowKey, type PendingFile, type PendingDragFile } from "@/components/p4/p4-pending-files";
 import { P4Diff } from "@/components/p4/p4-diff";
@@ -377,8 +377,7 @@ export function P4Pending() {
                               focusChange(change.id);
                             }}
                           >
-                            <ChangelistMarker opened={changeOpened.length > 0 || !!change.stream} shelved={change.shelved} conflict={changeOpened.some(file => file.status === "conflict")} />
-                            <ChangeBadge id={change.id} />
+                            <ChangeBadge id={change.id} opened={changeOpened.length > 0 || !!change.stream} shelved={change.shelved} conflict={changeOpened.some(file => file.status === "conflict")} />
                             <span className="min-w-0 flex-1 truncate text-xs">{summary || t("p4.noDescription")}</span>
                           </button>
                         </div>
@@ -535,6 +534,7 @@ export function P4Pending() {
           openedCount={dialogChange?.files.filter((file) => !file.shelved).length ?? 0}
           openedStream={Boolean(dialogChange?.stream)}
           shelved={Boolean(dialogChange?.shelved)}
+          conflict={dialogChange?.files.some(file => file.status === "conflict")}
           onManageShelf={() => {p4.selectChange(changeDialog.id); setChangeDialog(null); setDeletingShelf(true);}}
           available={!!dialogChange}
           busy={p4.busy}

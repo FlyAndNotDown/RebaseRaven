@@ -1,5 +1,6 @@
 import { GitBranchIcon } from "lucide-react";
 import { toast } from "sonner";
+import { ChangeBadge } from "@/components/p4/change-badge";
 import { CommitMessage } from "@/components/commit-message";
 import { AuthorAvatar } from "@/components/author-avatar";
 import { FileRowsSkeleton } from "@/components/skeletons";
@@ -67,7 +68,7 @@ export function P4ChangeFiles({ detail, summary, file, loading = false, binaryPa
               className="shrink-0 rounded-md px-1 py-0.5 font-mono hover:bg-muted hover:text-foreground"
               onClick={() => void copyText(meta.id, t("p4.copiedChangelist"))}
             >
-              #{meta.id}
+              <ChangeBadge id={meta.id} />
             </button>
             </HoverTip>
           </div>

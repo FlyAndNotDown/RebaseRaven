@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { LoaderCircleIcon } from "lucide-react";
+import { ChangeBadge } from "@/components/p4/change-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -52,7 +53,7 @@ export function P4RevisionPicker({ kind, onSelect, onClose }: {
     <DialogHeader><DialogTitle>{t("p4.selectRevisionValue", {kind:t(`p4.${kind}`)})}</DialogTitle><DialogDescription className="sr-only">{t("p4.revisionBrowseSearch")}</DialogDescription></DialogHeader>
     <Input autoFocus value={query} placeholder={t("p4.revisionBrowseSearch")} aria-label={t("p4.revisionBrowseSearch")} onChange={event => setQuery(event.target.value)} />
     <div className="min-h-24 overflow-auto rounded-lg border">
-      {items.map(item => <button type="button" key={item.value} className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none" onClick={() => {onSelect(item.value);onClose();}}><span className="shrink-0 font-mono text-xs">{kind === "changelist" ? `#${item.value}` : item.value}</span><span className="truncate text-xs text-muted-foreground">{item.detail}</span></button>)}
+      {items.map(item => <button type="button" key={item.value} className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none" onClick={() => {onSelect(item.value);onClose();}}>{kind === "changelist" ? <ChangeBadge id={item.value} /> : <span className="shrink-0 font-mono text-xs">{item.value}</span>}<span className="truncate text-xs text-muted-foreground">{item.detail}</span></button>)}
       {busy ? <div role="status" className="flex justify-center p-4"><LoaderCircleIcon className="size-4 animate-spin" /></div> : error ? <div className="grid gap-2 p-3"><p role="alert" className="text-xs text-destructive">{error}</p><Button size="sm" variant="outline" onClick={() => setAttempt(value => value + 1)}>{t("common.retry")}</Button></div> : !items.length ? <p className="p-4 text-center text-sm text-muted-foreground">{t("p4.noRevisionMatches")}</p> : null}
     </div>
     {page?.more && page.cursor !== null ? <Button variant="ghost" disabled={busy} onClick={() => setBefore(page.cursor)}>{t("p4.loadMoreRevisions")}</Button> : null}

@@ -13,6 +13,7 @@ export function P4ChangeDialog({
   openedCount,
   openedStream = false,
   shelved = false,
+  conflict = false,
   onManageShelf,
   available,
   busy,
@@ -24,6 +25,7 @@ export function P4ChangeDialog({
   openedCount: number;
   openedStream?: boolean;
   shelved?: boolean;
+  conflict?: boolean;
   onManageShelf?: () => void;
   available: boolean;
   busy: boolean;
@@ -67,7 +69,7 @@ export function P4ChangeDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <ChangeBadge id={request.id} />
+            <ChangeBadge id={request.id} opened={openedCount > 0 || openedStream} shelved={shelved} conflict={conflict} />
             <span>{t("p4.changeDialog.openedFiles", { count: openedCount })}{openedStream ? ` · ${t("p4.streamWork.title")}` : ""}</span>
           </div>
           <div className="grid gap-2">

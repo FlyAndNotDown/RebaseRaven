@@ -1,4 +1,4 @@
-import type { LucideIcon } from "lucide-react";
+import { ChangelistMarker } from "@/components/p4/change-badge";
 import { useTranslation } from "@/i18n";
 import { p4DisplayText } from "@/lib/p4-display";
 import {
@@ -10,7 +10,6 @@ import {
   FolderTreeIcon,
   GitMergeIcon,
   HardDriveIcon,
-  HashIcon,
   HistoryIcon,
   InfoIcon,
   LockIcon,
@@ -55,9 +54,9 @@ export function FileStatusTip({ text }: { text: string }) {
   );
 }
 
-function iconFor(line: string): LucideIcon {
+function iconFor(line: string) {
   if (line.startsWith("//")) return FolderTreeIcon;
-  if (line.startsWith("Changelist ") || line.startsWith("Your changelist ")) return HashIcon;
+  if (line.startsWith("Changelist ") || line.startsWith("Your changelist ")) return ChangelistMarker;
   if (line.startsWith("Have revision ")) return HardDriveIcon;
   if (line.startsWith("Head revision ")) return CloudIcon;
   if (line.startsWith("Revision ")) return HistoryIcon;

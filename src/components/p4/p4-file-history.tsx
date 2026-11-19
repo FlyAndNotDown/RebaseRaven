@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DownloadIcon, ExternalLinkIcon, LoaderCircleIcon } from "lucide-react";
 import { useTranslation } from "@/i18n";
-import { AuthorName, ExactTime, RevisionDot } from "@/components/revision-meta";
-import { ChangeBadge } from "@/components/p4/change-badge";
+import { AuthorName, ExactTime } from "@/components/revision-meta";
+import { ChangeNumber, SubmittedHistoryMarker } from "@/components/p4/change-badge";
 import { P4ChangeFiles } from "@/components/p4/p4-change-files";
 import { P4Diff } from "@/components/p4/p4-diff";
 import { P4GetRevisionDialog, type P4RevisionTarget } from "@/components/p4/p4-get-revision-dialog";
@@ -98,7 +98,7 @@ export function P4FileHistory({ path }: { path: string }) {
             <div aria-hidden style={{ height: before }} />
             {revisions?.slice(start, end).map((revision, index) => <ContextMenu key={`${revision.depotPath}#${revision.rev}`}><ContextMenuTrigger asChild>
               <button type="button" title={revision.depotPath} aria-pressed={selected?.rev === revision.rev && selected.depotPath === revision.depotPath} className={cn("flex h-8 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted/70", selected?.rev === revision.rev && selected.depotPath === revision.depotPath && "bg-muted")} onClick={() => void showRevision(revision)}>
-                <RevisionDot before={start + index > 0} after={start + index < revisions.length - 1 || !!next} /><span className="w-10 shrink-0 font-mono text-xs">#{revision.rev}</span><ChangeBadge id={revision.change} /><span className="min-w-0 flex-1 truncate text-xs">{changeSummary(revision.description) || t("p4.noDescription")}</span><AuthorName vcs="perforce" name={revision.user} /><ExactTime time={revision.time} />
+                <SubmittedHistoryMarker before={start + index > 0} after={start + index < revisions.length - 1 || !!next} /><span className="w-10 shrink-0 font-mono text-xs">#{revision.rev}</span><ChangeNumber id={revision.change} /><span className="min-w-0 flex-1 truncate text-xs">{changeSummary(revision.description) || t("p4.noDescription")}</span><AuthorName vcs="perforce" name={revision.user} /><ExactTime time={revision.time} />
               </button></ContextMenuTrigger><ContextMenuContent>
                 <ContextMenuItem onClick={() => setRevisionTarget({path:revision.depotPath,recursive:false,revision:revision.rev})}><DownloadIcon />{t("p4.getRevision")}</ContextMenuItem>
                 <ContextMenuSeparator /><ContextMenuItem onClick={() => openChange(revision.change)}><ExternalLinkIcon />{t("p4.history.openChange")}</ContextMenuItem>
