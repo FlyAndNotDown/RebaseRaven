@@ -784,6 +784,29 @@ enum ActivityOutput {
     End,
 }
 
+fn decode_stream_line(bytes: &[u8]) -> std::borrow::Cow<'_, str> {
+    #[cfg(windows)]
+    {
+        if let Ok(text) = std::str::from_utf8(bytes) {
+            return text.into();
+        }
+        // With a legacy Windows charset, p4 emits OS errors in the system ANSI
+        // code page. Preserve the localized reason and path for skip counting.
+        use windows_sys::Win32::Globalization::{MultiByteToWideChar, CP_ACP};
+        if let Ok(len) = i32::try_from(bytes.len()) {
+            let mut wide = vec![0u16; bytes.len()];
+            // Input and output buffers are valid for the provided lengths.
+            let used = unsafe {
+                MultiByteToWideChar(CP_ACP, 0, bytes.as_ptr(), len, wide.as_mut_ptr(), len)
+            };
+            if used > 0 {
+                return String::from_utf16_lossy(&wide[..used as usize]).into();
+            }
+        }
+    }
+    String::from_utf8_lossy(bytes)
+}
+
 fn collect_activity_output(
     command: &mut Command,
     mut on_line: Option<&mut dyn FnMut(&str)>,
@@ -857,7 +880,7 @@ fn collect_activity_output(
                         &mut stderr_excerpt
                     };
                     excerpt.append(&bytes);
-                    let line = String::from_utf8_lossy(&bytes);
+                    let line = decode_stream_line(&bytes);
                     on_line(line.trim_end_matches(['\r', '\n']));
                 } else if is_stdout {
                     stdout.extend(bytes);

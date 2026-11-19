@@ -267,7 +267,7 @@ export interface P4SyncSummary {
   added: number;
   deleted: number;
   unchanged: boolean;
-  warnings: Partial<Record<"writable" | "modified" | "opened" | "resolve" | "outsideView", number>>;
+  warnings: Partial<Record<"inUse" | "targetExists" | "writable" | "modified" | "opened" | "resolve" | "outsideView", number>>;
   diagnostics: number;
   firstDiagnostic: string;
 }
