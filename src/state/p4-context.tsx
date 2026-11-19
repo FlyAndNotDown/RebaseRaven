@@ -140,7 +140,6 @@ interface P4ContextValue {
   revertPaths: (paths: string[], wipe?: string[]) => Promise<boolean>;
   shelveFiles: (files: { change: string; path: string }[]) => Promise<boolean>;
   shelveSelected: () => Promise<void>;
-  unshelveSelected: () => Promise<void>;
   deleteSelectedShelf: () => Promise<void>;
   manualResolveView: (path: string) => Promise<P4ManualResolve>;
   manualResolveExternal: (path: string, text: string, fingerprint: string) => Promise<string>;
@@ -806,11 +805,11 @@ export function P4Provider({ children }: { children: ReactNode }) {
     try {
       await guard(current.connection, () => p4Api.restoreShelf(current.connection, request, preview.fingerprint));
       toast.success(t("p4.unshelved"));
-      await reloadPending(current, request.target);
-      updateSession(current.tabId, (session) => ({ ...session, view: "pending" }));
+      updateSession(current.tabId, (session) => sameP4Connection(session.connection, current.connection) ? { ...session, view: "pending" } : session);
     } finally {
       await reloadPending(current, request.target).catch(report);
-      bumpFiles(); endActivity(activity); release();
+      if (activeTabRef.current.id === current.tabId) bumpFiles();
+      endActivity(activity); release();
     }
   }, [guard, lockMutation, beginActivity, endActivity, reloadPending, bumpFiles, report, updateSession]);
 
@@ -964,22 +963,24 @@ export function P4Provider({ children }: { children: ReactNode }) {
             return;
           }
           const moving = shelf ? files.filter((file) => file.change !== targetChange) : files;
+          const restored: string[] = [];
           for (const [source, paths] of groupPaths(moving)) {
-            await p4Api.unshelve(current.connection, source, targetChange, paths);
+            const targets = await p4Api.unshelve(current.connection, source, targetChange, paths);
+            for (const path of targets) restored.push(path);
           }
           if (shelf) {
             await p4Api.shelve(
               current.connection,
               targetChange,
-              moving.map((file) => file.path),
+              restored,
             );
           }
         });
         toast.success(!shelved && !shelf ? t("p4.moved") : shelved && !shelf ? t("p4.unshelved") : t("p4.shelved"));
-        await reloadPending(current, targetChange);
       } catch (caught) {
         report(caught);
       } finally {
+        await reloadPending(current, targetChange).catch(report);
         endActivity(id);
         release();
       }
@@ -1049,24 +1050,6 @@ export function P4Provider({ children }: { children: ReactNode }) {
     try {
       await guard(current.connection, () => p4Api.shelve(current.connection, current.selectedChange));
       toast.success(t("p4.shelved"));
-      await reloadPending(current, current.selectedChange);
-    } catch (caught) {
-      report(caught);
-    } finally {
-      endActivity(id);
-      release();
-    }
-  }, [lockMutation, beginActivity, endActivity, guard, reloadPending, report]);
-
-  const unshelveSelected = useCallback(async () => {
-    const current = sessionRef.current;
-    if (!current) return;
-    const release = lockMutation(current, t("p4.unshelving"));
-    if (!release) return;
-    const id = beginActivity(t("p4.unshelving"), current.selectedChange);
-    try {
-      await guard(current.connection, () => p4Api.unshelve(current.connection, current.selectedChange));
-      toast.success(t("p4.unshelved"));
       await reloadPending(current, current.selectedChange);
     } catch (caught) {
       report(caught);
@@ -1736,7 +1719,6 @@ export function P4Provider({ children }: { children: ReactNode }) {
       revertPaths,
       shelveFiles,
       shelveSelected,
-      unshelveSelected,
       deleteSelectedShelf,
       manualResolveView,
       manualResolveApply,
@@ -1876,7 +1858,6 @@ export function P4Provider({ children }: { children: ReactNode }) {
       submitShelf,
       submittedLoading,
       sync,
-      unshelveSelected,
     ],
   );
 

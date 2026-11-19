@@ -194,8 +194,8 @@ export const p4Api = {
   submitShelf: (connection: P4Connection, changeId: string, description: string) => call<void>("p4_submit_shelf", {connection, changeId, description}),
   shelve: (connection: P4Connection, changeId: string, files?: string[]) =>
     call<void>("p4_shelve", { connection, changeId, files: files ?? null }),
-  unshelve: (connection: P4Connection, changeId: string, target?: string, files?: string[]) =>
-    call<void>("p4_unshelve", { connection, changeId, target: target ?? null, files: files ?? null }),
+  unshelve: (connection: P4Connection, changeId: string, target: string, files: string[]) =>
+    call<string[]>("p4_unshelve", { connection, changeId, target, files }),
   deleteShelf: (connection: P4Connection, changeId: string) =>
     call<void>("p4_delete_shelf", { connection, changeId }),
   manualResolveView: (connection: P4Connection, path: string) =>

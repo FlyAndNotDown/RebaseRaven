@@ -1069,28 +1069,6 @@ pub fn shelve(connection: &P4Connection, change_id: &str, files: &[String]) -> A
     Ok(())
 }
 
-pub fn unshelve(
-    connection: &P4Connection,
-    change_id: &str,
-    target: Option<&str>,
-    files: &[String],
-) -> AppResult<()> {
-    let source = require_numbered(change_id)?;
-    let env = env_for(connection);
-    let mut args = vec!["unshelve".to_string(), "-s".into(), source];
-    if let Some(target) = target.filter(|target| *target != "default") {
-        args.push("-c".into());
-        args.push(require_numbered(target)?);
-    }
-    args.extend(
-        files
-            .iter()
-            .map(|path| workspace_file_spec(&connection.root, path)),
-    );
-    run_owned(&env, &args, None)?;
-    Ok(())
-}
-
 pub fn delete_shelf(connection: &P4Connection, change_id: &str) -> AppResult<()> {
     let id = require_numbered(change_id)?;
     let env = env_for(connection);
