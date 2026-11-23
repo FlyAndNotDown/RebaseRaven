@@ -720,8 +720,8 @@ pub fn run_p4_stream(
 }
 
 fn finish(output: std::process::Output) -> AppResult<String> {
-    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    let stdout = decode_p4_text(&output.stdout).into_owned();
+    let stderr = decode_p4_text(&output.stderr).into_owned();
     finish_parts(output.status.success(), stdout, stderr)
 }
 
@@ -784,14 +784,14 @@ enum ActivityOutput {
     End,
 }
 
-fn decode_stream_line(bytes: &[u8]) -> std::borrow::Cow<'_, str> {
+fn decode_p4_text(bytes: &[u8]) -> std::borrow::Cow<'_, str> {
     #[cfg(windows)]
     {
         if let Ok(text) = std::str::from_utf8(bytes) {
             return text.into();
         }
-        // With a legacy Windows charset, p4 emits OS errors in the system ANSI
-        // code page. Preserve the localized reason and path for skip counting.
+        // Legacy Windows clients can emit tagged paths and diagnostics in the
+        // system ANSI code page. Decode before using a path on disk.
         use windows_sys::Win32::Globalization::{MultiByteToWideChar, CP_ACP};
         if let Ok(len) = i32::try_from(bytes.len()) {
             let mut wide = vec![0u16; bytes.len()];
@@ -880,7 +880,7 @@ fn collect_activity_output(
                         &mut stderr_excerpt
                     };
                     excerpt.append(&bytes);
-                    let line = decode_stream_line(&bytes);
+                    let line = decode_p4_text(&bytes);
                     on_line(line.trim_end_matches(['\r', '\n']));
                 } else if is_stdout {
                     stdout.extend(bytes);
@@ -1075,6 +1075,29 @@ mod tests {
     use std::thread;
     #[cfg(unix)]
     use std::time::{Duration, Instant};
+
+    #[cfg(windows)]
+    #[test]
+    fn tagged_paths_preserve_the_windows_command_encoding() {
+        use std::os::windows::process::ExitStatusExt;
+        use windows_sys::Win32::Globalization::GetACP;
+
+        // GetACP has no arguments or memory preconditions.
+        let (name, bytes): (&str, &[u8]) = match unsafe { GetACP() } {
+            936 => ("\u{6587}\u{4ef6}", b"\xce\xc4\xbc\xfe"),
+            1252 => ("caf\u{e9}", b"caf\xe9"),
+            _ => ("caf\u{e9}", "caf\u{e9}".as_bytes()),
+        };
+        let output = std::process::Output {
+            status: std::process::ExitStatus::from_raw(0),
+            stdout: [b"... path C:\\workspace\\".as_slice(), bytes, b".txt\r\n"].concat(),
+            stderr: Vec::new(),
+        };
+        assert_eq!(
+            super::finish(output).unwrap(),
+            format!("... path C:\\workspace\\{name}.txt\r\n")
+        );
+    }
 
     #[test]
     fn windows_patterns_stay_one_quoted_argument() {

@@ -1500,7 +1500,7 @@ async fn p4_describe(connection: p4::P4Connection, change_id: String) -> AppResu
 }
 
 #[tauri::command]
-async fn p4_opened_diff(connection: p4::P4Connection, path: String) -> AppResult<git::FileDiff> {
+async fn p4_opened_diff(connection: p4::P4Connection, path: String) -> AppResult<p4::P4OpenedDiff> {
     blocking(move || p4::opened_diff(&connection, &path)).await
 }
 

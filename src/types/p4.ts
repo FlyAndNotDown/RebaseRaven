@@ -1,5 +1,7 @@
 import type { FileDiff } from "@/types/git";
 
+export type P4OpenedDiff = FileDiff | { unavailable: "missing" | "permissionDenied" | "unreadable" };
+
 export interface P4Connection {
   root: string;
   port: string;

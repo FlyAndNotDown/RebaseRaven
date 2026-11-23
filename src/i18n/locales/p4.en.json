@@ -292,6 +292,11 @@
     "locked": "Locked selected files for submit",
     "unlocked": "Unlocked selected files"
   },
+  "previewUnavailable": {
+    "missing": "This file is missing from the workspace.",
+    "permissionDenied": "You do not have permission to read this file.",
+    "unreadable": "This workspace file could not be read."
+  },
   "noTextDifferences": "No text differences",
   "editChangelist": "Edit changelist",
   "changeDialog": {

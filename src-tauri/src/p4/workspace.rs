@@ -11,6 +11,8 @@ use browse::{
     include_search_parents, local_path_key, plain_dir,
 };
 pub use browse::{cancel_depot_search, list_depot, list_dir, listing_status, search_depot};
+mod opened_diff;
+pub use opened_diff::{opened_diff, P4OpenedDiff};
 mod resolve;
 pub(super) use resolve::resolve_file_versions;
 pub use resolve::{
@@ -25,7 +27,6 @@ pub use search::WorkspaceSearch;
 
 use std::collections::{BTreeMap, VecDeque};
 use std::fs;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -594,75 +595,6 @@ pub fn describe(connection: &P4Connection, change_id: &str) -> AppResult<P4Descr
         change: change_from_record(&record, files, false),
         diffs: Vec::new(),
     })
-}
-
-pub fn opened_diff(connection: &P4Connection, path: &str) -> AppResult<FileDiff> {
-    let env = env_for(connection);
-    let spec = workspace_file_spec(&connection.root, path);
-    let meta = run_ok(
-        &env,
-        &[
-            "-ztag",
-            "fstat",
-            "-T",
-            "action,clientFile,depotFile,type",
-            &spec,
-        ],
-        None,
-    )?;
-    let record = parse_ztag(&meta).into_iter().next().unwrap_or_default();
-    let action = field(&record, "action");
-    if action == "add" || action == "move/add" {
-        let local = PathBuf::from(field(&record, "clientFile"));
-        let root = fs::canonicalize(&connection.root)?;
-        let parent = local
-            .parent()
-            .ok_or_else(|| AppError::msg("Choose a file."))?;
-        if !path_is_within(&root, &fs::canonicalize(parent)?) {
-            return Err(AppError::msg("Path is outside the workspace."));
-        }
-        if field(&record, "type").split('+').next() == Some("symlink") {
-            let target = fs::read_link(local)?;
-            return Ok(content_file_diff(
-                path,
-                target.to_string_lossy().as_bytes(),
-                false,
-                false,
-                false,
-            ));
-        }
-        let local = fs::canonicalize(local)?;
-        if !path_is_within(&root, &local) {
-            return Err(AppError::msg("Path is outside the workspace."));
-        }
-        let mut bytes = Vec::new();
-        fs::File::open(local)?
-            .take((MAX_PREVIEW_BYTES + 1) as u64)
-            .read_to_end(&mut bytes)?;
-        let truncated = bytes.len() > MAX_PREVIEW_BYTES;
-        bytes.truncate(MAX_PREVIEW_BYTES);
-        return Ok(content_file_diff(
-            path,
-            &bytes,
-            truncated,
-            file_type_is_binary(&field(&record, "type")),
-            false,
-        ));
-    }
-    if action == "delete" || action == "move/delete" {
-        let have = format!("{}#have", field(&record, "depotFile"));
-        return printed_file_diff(
-            &env,
-            path,
-            &have,
-            file_type_is_binary(&field(&record, "type")),
-            true,
-        );
-    }
-    let text = cli::run_p4_diff(&env, &["diff", "-du", &spec])?;
-    let mut diff = parse_single_diff(&text, path);
-    diff.binary |= file_type_is_binary(&field(&record, "type"));
-    Ok(diff)
 }
 
 pub fn shelf_diff(
