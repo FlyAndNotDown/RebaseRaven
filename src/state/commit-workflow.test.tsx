@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { listen } from "@tauri-apps/api/event";
 import { act, useLayoutEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import {
@@ -104,6 +105,7 @@ function useModel() {
     "undoLastCommit",
     "refreshRepository",
     "operationContinue",
+    "rebaseOnto",
     "retargetRepoTab",
     "closeTab",
   ]);
@@ -302,6 +304,31 @@ afterEach(async () => {
   });
   container.remove();
   vi.restoreAllMocks();
+});
+
+it("coalesces watcher events until the rebase has finished", async () => {
+  let finish!: (value: WorkspaceSnapshot) => void;
+  vi.spyOn(gitApi, "rebaseOnto").mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  const notify = vi.mocked(listen).mock.calls.slice().reverse().find(([event]) => event === "repo-changed")![1];
+  let rebasing!: Promise<boolean>;
+  await act(async () => {
+    rebasing = model.rebaseOnto("refs/heads/target", "target");
+  });
+  vi.mocked(gitApi.refreshWorkspace).mockClear();
+  await act(async () => {
+    for (let i = 0; i < 8; i++) {
+      notify({ event: "repo-changed", id: 1, payload: { path: A, paths: ["file.txt"] } });
+      await Promise.resolve();
+    }
+  });
+  expect(gitApi.refreshWorkspace).not.toHaveBeenCalled();
+  await act(async () => {
+    snapshots[A] = { ...snapshots[A], repo: { ...snapshots[A].repo, headId: "rebased" } };
+    finish(snapshots[A]);
+    expect(await rebasing).toBe(true);
+  });
+  expect(gitApi.refreshWorkspace).toHaveBeenCalledExactlyOnceWith(A);
+  expect(model.snapshot?.repo.headId).toBe("rebased");
 });
 
 it("keeps typed messages and amend mode across actual repository and view remounts", async () => {

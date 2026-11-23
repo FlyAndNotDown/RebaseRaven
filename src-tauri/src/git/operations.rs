@@ -79,11 +79,24 @@ pub fn rebase_plan(repo: &Repository, onto: &str) -> AppResult<Vec<RebaseCommit>
     commits_to_replay(repo, &onto_id)
 }
 
-pub fn rebase_onto(repo: &mut Repository, onto: &str) -> AppResult<WorkspaceSnapshot> {
+pub fn rebase_onto(
+    repo: &mut Repository,
+    onto: &str,
+    upstream: Option<&str>,
+) -> AppResult<WorkspaceSnapshot> {
     ensure_rebase_ready(repo)?;
-    let onto_id = peel_commit(repo, onto)?.id().to_string();
-    let root = workdir(repo)?.to_path_buf();
-    if let Err(err) = run_git_stdout(&root, &["rebase", &onto_id]) {
+    let onto = onto.trim();
+    if onto.is_empty() {
+        return Err(AppError::msg("Choose a rebase target"));
+    }
+    // Pass the selected ref to Git itself, including its identity for hooks.
+    // Git owns the dirty-worktree check and honors rebase.autoStash.
+    let root = workdir(repo)?;
+    let result = match upstream.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(old_base) => run_git_stdout(root, &["rebase", "--onto", onto, "--", old_base]),
+        None => run_git_stdout(root, &["rebase", "--", onto]),
+    };
+    if let Err(err) = result {
         return Err(rebase_stop_error(repo, err));
     }
     snapshot(repo)
@@ -222,25 +235,69 @@ pub(super) fn rebase_control(repo: &mut Repository, flag: &str) -> AppResult<Wor
 }
 
 pub(super) fn commits_to_replay(repo: &Repository, onto: &str) -> AppResult<Vec<RebaseCommit>> {
-    let spec = format!("{onto}..HEAD");
+    let range = format!("{onto}...HEAD");
+    let root = workdir(repo)?;
     let bytes = run_git_stdout(
-        workdir(repo)?,
-        &["rev-list", "--reverse", "--no-merges", &spec],
+        root,
+        &[
+            "-c",
+            "log.showSignature=false",
+            "-c",
+            "i18n.logOutputEncoding=utf-8",
+            "log",
+            "--reverse",
+            "--topo-order",
+            "--cherry-mark",
+            "--right-only",
+            "--no-merges",
+            "--no-patch",
+            "--no-notes",
+            "--no-decorate",
+            "-z",
+            "--format=%m%x00%H%x00%s%x00%B",
+            &range,
+            "--",
+        ],
     )?;
+    let text = String::from_utf8_lossy(&bytes);
+    let mut fields = text.split_terminator('\0');
     let mut commits = Vec::new();
-    for line in String::from_utf8_lossy(&bytes).lines() {
-        let id = line.trim();
-        if id.is_empty() {
-            continue;
+    let mut equivalent = String::new();
+    while let Some(mark) = fields.next() {
+        let (Some(id), Some(summary), Some(message)) =
+            (fields.next(), fields.next(), fields.next())
+        else {
+            return Err(AppError::msg("Could not read the rebase plan"));
+        };
+        if mark == "=" {
+            equivalent.push_str(id);
+            equivalent.push('\n');
         }
-        let commit = peel_commit(repo, id)?;
-        let summary = commit.summary().unwrap_or("").trim().to_string();
         commits.push(RebaseCommit {
-            message: commit.message.clone(),
-            id: commit.id().to_string(),
-            short_id: short_id(commit.id()),
-            summary,
+            id: id.to_owned(),
+            short_id: short_id(id),
+            summary: summary.trim().to_owned(),
+            message: message.trim().to_owned(),
         });
+    }
+    // Git skips patches already upstream but keeps commits that started empty.
+    // diff-tree emits only the nonempty commits among these candidates.
+    if !equivalent.is_empty() {
+        let output = run_git_input(
+            root,
+            &[
+                "diff-tree",
+                "--stdin",
+                "--root",
+                "--no-renames",
+                "--no-patch",
+                "--format=%H",
+            ],
+            equivalent.as_bytes(),
+        )?;
+        let output = String::from_utf8_lossy(&output);
+        let skip: HashSet<_> = output.lines().collect();
+        commits.retain(|commit| !skip.contains(commit.id.as_str()));
     }
     Ok(commits)
 }
@@ -251,7 +308,11 @@ pub(super) fn rebase_todo(commits: &[RebaseCommit], steps: &[RebaseStep]) -> App
             "The rebase plan does not match the commits on this branch",
         ));
     }
-    let mut seen = HashSet::new();
+    let mut remaining: HashMap<_, _> = commits
+        .iter()
+        .map(|commit| (commit.id.as_str(), commit))
+        .collect();
+    let mut has_pick = false;
     let mut lines = Vec::new();
     let mut messages = Vec::new();
     for step in steps {
@@ -262,21 +323,16 @@ pub(super) fn rebase_todo(commits: &[RebaseCommit], steps: &[RebaseStep]) -> App
         ) {
             return Err(AppError::msg(format!("Unknown rebase action: {action}")));
         }
-        if matches!(action.as_str(), "squash" | "fixup")
-            && !lines.iter().any(|line: &String| !line.starts_with("drop "))
-        {
+        if matches!(action.as_str(), "squash" | "fixup") && !has_pick {
             return Err(AppError::msg(
                 "Squash and fixup need a picked or reworded commit before them",
             ));
         }
         let id = step.id.trim();
-        if !seen.insert(id.to_string()) {
-            return Err(AppError::msg("Each commit can appear only once"));
-        }
-        let commit = commits
-            .iter()
-            .find(|commit| commit.id == id)
-            .ok_or_else(|| AppError::msg("The rebase plan includes a commit outside this range"))?;
+        let commit = remaining.remove(id).ok_or_else(|| {
+            AppError::msg("The rebase plan does not match the commits on this branch")
+        })?;
+        has_pick |= action != "drop";
         let subject = commit.summary.replace(['\r', '\n'], " ");
         lines.push(format!("{action} {id} {subject}"));
         if matches!(action.as_str(), "reword" | "squash") {
@@ -287,12 +343,7 @@ pub(super) fn rebase_todo(commits: &[RebaseCommit], steps: &[RebaseStep]) -> App
             messages.push(message.to_string());
         }
     }
-    if seen.len() != commits.len() {
-        return Err(AppError::msg(
-            "The rebase plan does not match the commits on this branch",
-        ));
-    }
-    if lines.iter().all(|line| line.starts_with("drop ")) {
+    if !has_pick {
         return Err(AppError::msg(
             "Dropping every commit leaves nothing to rebase",
         ));
@@ -519,7 +570,7 @@ pub(super) fn ensure_rebase_ready(repo: &Repository) -> AppResult<()> {
     if symbolic_branch(repo).is_none() || head_oid(repo).is_none() {
         return Err(AppError::msg("Rebase needs a checked-out branch"));
     }
-    ensure_clean_for_replay(repo)
+    Ok(())
 }
 
 pub(super) fn rebase_stop_error(repo: &Repository, err: AppError) -> AppError {

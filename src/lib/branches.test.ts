@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { groupRemoteBranches, shortRemoteName } from "./branches";
 
-const branch = (name: string) => ({ name, isHead: false, isRemote: true, upstream: null });
+const branch = (name: string) => ({ name, fullRef: `refs/remotes/${name}`, isHead: false, isRemote: true, upstream: null });
 
 describe("groupRemoteBranches", () => {
   it("puts origin first and default branches first within a remote", () => {

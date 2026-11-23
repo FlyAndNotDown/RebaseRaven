@@ -82,13 +82,13 @@ describe("sameDiff", () => {
 
 describe("keepRemoteBranches", () => {
   it("keeps previously loaded remote branches when the refresh skipped them", () => {
-    const remote = [{ name: "origin/main", isHead: false, isRemote: true, upstream: null }];
+    const remote = [{ name: "origin/main", fullRef: "refs/remotes/origin/main", isHead: false, isRemote: true, upstream: null }];
     const previous = snapshot({ branches: { ...snapshot().branches, remote } });
     expect(keepRemoteBranches(previous, snapshot()).branches.remote).toBe(remote);
   });
 
   it("uses the new list when the refresh has one", () => {
-    const fresh = [{ name: "origin/dev", isHead: false, isRemote: true, upstream: null }];
+    const fresh = [{ name: "origin/dev", fullRef: "refs/remotes/origin/dev", isHead: false, isRemote: true, upstream: null }];
     const next = snapshot({ branches: { ...snapshot().branches, remote: fresh } });
     expect(keepRemoteBranches(snapshot(), next)).toBe(next);
   });

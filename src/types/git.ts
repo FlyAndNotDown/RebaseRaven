@@ -164,6 +164,7 @@ export interface RevisionComparison {
 }
 
 export interface BranchInfo {
+  fullRef: string;
   name: string;
   isHead: boolean;
   isRemote: boolean;

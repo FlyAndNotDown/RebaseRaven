@@ -17,13 +17,14 @@ pub(super) fn branch_list(
             "-c",
             "core.quotePath=false",
             "for-each-ref",
-            "--format=%(refname:short)%00%(upstream:short)%00%(HEAD)",
+            "--format=%(refname)%00%(refname:short)%00%(upstream:short)%00%(HEAD)",
             "refs/heads",
         ],
     )?;
     let mut local = Vec::new();
     for line in String::from_utf8_lossy(&stdout).lines() {
         let mut fields = line.split('\0');
+        let full = fields.next().unwrap_or("").trim();
         let name = fields.next().unwrap_or("").trim();
         if name.is_empty() {
             continue;
@@ -31,6 +32,7 @@ pub(super) fn branch_list(
         let upstream = fields.next().unwrap_or("").trim();
         let head = fields.next().unwrap_or("").trim();
         local.push(BranchInfo {
+            full_ref: full.to_string(),
             is_head: head == "*",
             is_remote: false,
             name: name.to_string(),
@@ -149,6 +151,7 @@ pub(super) fn remote_branches_from_git(
             continue;
         };
         remote.push(BranchInfo {
+            full_ref: full.to_string(),
             is_head: false,
             is_remote: true,
             name,

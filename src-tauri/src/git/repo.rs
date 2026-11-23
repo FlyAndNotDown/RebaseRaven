@@ -66,14 +66,6 @@ impl CommitInfo {
             .map(String::as_str)
             .ok_or_else(|| AppError::msg("Commit has no such parent"))
     }
-
-    pub(super) fn summary(&self) -> Option<&str> {
-        if self.summary.is_empty() {
-            None
-        } else {
-            Some(self.summary.as_str())
-        }
-    }
 }
 
 pub fn discover(path: &str) -> AppResult<Repository> {

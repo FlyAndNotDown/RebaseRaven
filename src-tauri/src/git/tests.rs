@@ -338,11 +338,117 @@ fn rebase_onto_replays_commits() {
     commit_file(&repo, &root, "feature.txt", "two\n", "feature-two");
 
     let onto = main_tip(&repo);
-    rebase_onto(&mut repo, &onto).unwrap();
+    rebase_onto(&mut repo, &onto, None).unwrap();
     assert_eq!(head_summary(&repo), "feature-two");
     assert!(root.join("main.txt").exists());
     assert!(rebase_progress(&repo).is_none());
     let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn selected_rebase_refs_match_native_git_with_ambiguous_names_and_equivalent_patches() {
+    let (dir, mut repo) = temp_repo();
+    commit_file(&repo, &dir, "common", "common", "base");
+    let base = head_id(&repo);
+    branch_here(&repo, "topic");
+    run_git_stdout(&dir, &["switch", "-c", "destination"]).unwrap();
+    commit_file(&repo, &dir, "shared", "same patch", "upstream equivalent");
+    commit_file(&repo, &dir, "local", "local", "local destination");
+    let local = head_id(&repo);
+    commit_file(&repo, &dir, "remote", "remote", "fetched destination");
+    let remote = head_id(&repo);
+    switch_to(&repo, "topic");
+    run_git_stdout(&dir, &["update-ref", "refs/heads/destination", &local]).unwrap();
+    run_git_stdout(
+        &dir,
+        &["update-ref", "refs/remotes/origin/destination", &remote],
+    )
+    .unwrap();
+    run_git_stdout(&dir, &["tag", "destination", &base]).unwrap();
+    run_git_stdout(&dir, &["branch", "origin/destination", &base]).unwrap();
+    config_set_local(&repo, "core.warnAmbiguousRefs", "false").unwrap();
+    commit_file(&repo, &dir, "shared", "same patch", "already upstream");
+    let message = "topic change\n\nFirst paragraph.\n\nSecond paragraph.";
+    commit_file(&repo, &dir, "work", "topic", message);
+    let topic = head_id(&repo);
+    let refs = branches(&repo, true).unwrap();
+    for (index, entry) in [
+        refs.local
+            .iter()
+            .find(|b| b.full_ref == "refs/heads/destination")
+            .unwrap(),
+        refs.remote
+            .iter()
+            .find(|b| b.full_ref == "refs/remotes/origin/destination")
+            .unwrap(),
+    ]
+    .iter()
+    .enumerate()
+    {
+        let target = entry.full_ref.as_str();
+        let expected_parent = if entry.is_remote { &remote } else { &local };
+        run_git_stdout(&dir, &["switch", "-c", &format!("control-{index}"), &topic]).unwrap();
+        run_git_stdout(&dir, &["rebase", target]).unwrap();
+        let expected_tree = rev_parse(&repo, "HEAD^{tree}").unwrap();
+        let branch = format!("actual-{index}");
+        run_git_stdout(&dir, &["switch", "-c", &branch, &topic]).unwrap();
+        let plan = rebase_plan(&repo, target).unwrap();
+        assert_eq!(plan.len(), 1);
+        assert_eq!(plan[0].id, topic);
+        assert_eq!(plan[0].summary, "topic change");
+        assert_eq!(plan[0].message, message);
+        let result = rebase_onto(&mut repo, target, None).unwrap();
+        assert_eq!(result.repo.current_branch.as_deref(), Some(branch.as_str()));
+        assert_eq!(rev_parse(&repo, "HEAD^").as_ref(), Some(expected_parent));
+        assert_eq!(rev_parse(&repo, "HEAD^{tree}"), Some(expected_tree));
+        assert_eq!(head_summary(&repo), "topic change");
+        assert_eq!(rev_parse(&repo, target).as_ref(), Some(expected_parent));
+        assert!(result.repo.operation.is_none());
+    }
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn rebase_onto_transplants_only_the_topic_commits_after_the_selected_old_base() {
+    let (dir, mut repo) = temp_repo();
+    commit_file(&repo, &dir, "base", "base", "base");
+    branch_here(&repo, "parent");
+    commit_file(&repo, &dir, "destination", "target", "new destination");
+    let target = head_id(&repo);
+    switch_to(&repo, "parent");
+    commit_file(&repo, &dir, "parent", "old base", "parent-only change");
+    let old_base = head_id(&repo);
+    run_git_stdout(&dir, &["switch", "-c", "topic"]).unwrap();
+    commit_file(&repo, &dir, "work", "one", "first topic change");
+    commit_file(&repo, &dir, "work", "two", "second topic change");
+    rebase_onto(&mut repo, &target, Some("refs/heads/parent")).unwrap();
+    assert_eq!(symbolic_branch(&repo).as_deref(), Some("topic"));
+    assert_eq!(rev_parse(&repo, "HEAD~2"), Some(target));
+    assert_eq!(rev_parse(&repo, "refs/heads/parent"), Some(old_base));
+    assert!(!dir.join("parent").exists());
+    assert_eq!(fs::read(dir.join("work")).unwrap(), b"two");
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn rebase_honors_native_autostash_and_preserves_worktree_changes() {
+    let (dir, mut repo) = temp_repo();
+    commit_file(&repo, &dir, "notes", "original", "base");
+    branch_here(&repo, "topic");
+    commit_file(&repo, &dir, "incoming", "upstream", "upstream");
+    let target = head_id(&repo);
+    switch_to(&repo, "topic");
+    commit_file(&repo, &dir, "work", "local", "local");
+    let before = head_id(&repo);
+    fs::write(dir.join("notes"), "unsaved").unwrap();
+    config_set_local(&repo, "rebase.autoStash", "false").unwrap();
+    assert!(rebase_onto(&mut repo, &target, None).is_err());
+    assert_eq!(head_id(&repo), before);
+    config_set_local(&repo, "rebase.autoStash", "true").unwrap();
+    rebase_onto(&mut repo, &target, None).unwrap();
+    assert_eq!(rev_parse(&repo, "HEAD^"), Some(target));
+    assert_eq!(fs::read(dir.join("notes")).unwrap(), b"unsaved");
+    fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
@@ -367,7 +473,7 @@ fn rebase_onto_fast_forwards_to_fetched_targets_without_a_local_branch() {
         ] {
             let branch = format!("{name}-{ending}");
             run_git_stdout(&root, &["switch", "-c", &branch, &base]).unwrap();
-            let result = rebase_onto(&mut repo, onto).unwrap();
+            let result = rebase_onto(&mut repo, onto, None).unwrap();
             assert_eq!(head_id(&repo), target);
             assert_eq!(symbolic_branch(&repo).as_deref(), Some(branch.as_str()));
             assert!(result.repo.operation.is_none());
@@ -397,12 +503,30 @@ fn rebase_onto_an_ancestor_preserves_a_long_history_and_is_not_a_reset() {
     }
     let original = head_id(&repo);
     for target in [&base, &original] {
-        let result = rebase_onto(&mut repo, target).unwrap();
+        let result = rebase_onto(&mut repo, target, None).unwrap();
         assert_eq!(head_id(&repo), original);
         assert!(result.repo.operation.is_none());
         assert_eq!(fs::read_to_string(root.join("change.txt")).unwrap(), "99\n");
     }
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn interactive_rebase_plan_keeps_intentionally_empty_commits() {
+    let (dir, mut repo) = temp_repo();
+    commit_file(&repo, &dir, "file", "base", "base");
+    branch_here(&repo, "topic");
+    run_git_stdout(&dir, &["commit", "--allow-empty", "-m", "upstream marker"]).unwrap();
+    let target = head_id(&repo);
+    switch_to(&repo, "topic");
+    run_git_stdout(&dir, &["commit", "--allow-empty", "-m", "topic marker"]).unwrap();
+    let plan = rebase_plan(&repo, &target).unwrap();
+    assert_eq!(plan.len(), 1);
+    assert_eq!(plan[0].id, head_id(&repo));
+    rebase_onto(&mut repo, &target, None).unwrap();
+    assert_eq!(head_summary(&repo), "topic marker");
+    assert_eq!(rev_parse(&repo, "HEAD^"), Some(target));
+    fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
@@ -458,13 +582,35 @@ fn rebase_conflict_can_abort() {
     commit_file(&repo, &root, "file.txt", "right\n", "right");
     let original = head_id(&repo);
     let onto = main_tip(&repo);
-    let err = rebase_onto(&mut repo, &onto).unwrap_err();
+    let err = rebase_onto(&mut repo, &onto, None).unwrap_err();
     assert!(err.to_string().contains("conflicts"), "{err}");
     assert!(rebase_progress(&repo).is_some());
     rebase_abort(&mut repo).unwrap();
     assert!(rebase_progress(&repo).is_none());
     assert_eq!(head_id(&repo), original);
     let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn rebase_skip_keeps_later_commits_after_a_conflict() {
+    let (dir, mut repo) = temp_repo();
+    commit_file(&repo, &dir, "shared", "base", "base");
+    branch_here(&repo, "topic");
+    commit_file(&repo, &dir, "shared", "upstream", "upstream edit");
+    let target = head_id(&repo);
+    switch_to(&repo, "topic");
+    commit_file(&repo, &dir, "shared", "topic", "conflicting edit");
+    commit_file(&repo, &dir, "later", "keep", "later change");
+    assert!(rebase_onto(&mut repo, &target, None).is_err());
+    assert!(rebase_progress(&repo).is_some());
+    let result = rebase_skip(&mut repo).unwrap();
+    assert!(result.repo.operation.is_none());
+    assert_eq!(result.repo.current_branch.as_deref(), Some("topic"));
+    assert_eq!(rev_parse(&repo, "HEAD^"), Some(target));
+    assert_eq!(head_summary(&repo), "later change");
+    assert_eq!(fs::read(dir.join("shared")).unwrap(), b"upstream");
+    assert_eq!(fs::read(dir.join("later")).unwrap(), b"keep");
+    fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
@@ -476,7 +622,7 @@ fn rebase_conflict_can_continue() {
     switch_to(&repo, "other");
     commit_file(&repo, &root, "file.txt", "right\n", "right");
     let onto = main_tip(&repo);
-    assert!(rebase_onto(&mut repo, &onto).is_err());
+    assert!(rebase_onto(&mut repo, &onto, None).is_err());
     fs::write(root.join("file.txt"), "both\n").unwrap();
     run_git_stdout(&root, &["add", "file.txt"]).unwrap();
     rebase_continue(&mut repo).unwrap();
@@ -553,7 +699,7 @@ fn amend_keeps_original_author() {
     assert!(committed.status.success());
     commit(&repo, "reworded", true).unwrap();
     let head = commit_info(&repo, "HEAD").unwrap();
-    assert_eq!(head.summary(), Some("reworded"));
+    assert_eq!(head.summary, "reworded");
     assert_eq!(head.author_name, "Original Author");
     assert_eq!(head.committer_name, "RebaseRaven Test");
     let _ = fs::remove_dir_all(&root);
@@ -1384,7 +1530,7 @@ fn committing_during_a_merge_records_both_parents() {
     commit(&repo, "merge left", false).unwrap();
     let head = commit_info(&repo, "HEAD").unwrap();
     assert_eq!(head.parent_count(), 2);
-    assert_eq!(head.summary(), Some("merge left"));
+    assert_eq!(head.summary, "merge left");
     assert!(git_operation(&repo).is_none());
     let _ = fs::remove_dir_all(&root);
 }
@@ -1424,7 +1570,7 @@ fn continuing_a_cherry_pick_with_an_edited_message_keeps_the_author() {
 
     assert!(git_operation(&repo).is_none());
     let head = commit_info(&repo, "HEAD").unwrap();
-    assert_eq!(head.summary(), Some("side change, reworded"));
+    assert_eq!(head.summary, "side change, reworded");
     assert_eq!(head.author_name, "Side Author");
     let _ = fs::remove_dir_all(&root);
 }
@@ -1440,7 +1586,7 @@ fn continuing_a_rebase_with_an_edited_message_uses_it() {
     commit_file(&repo, &root, "file.txt", "main\n", "main change");
     checkout_branch(&repo, "feature").unwrap();
 
-    assert!(rebase_onto(&mut repo, &main).is_err());
+    assert!(rebase_onto(&mut repo, &main, None).is_err());
     assert_eq!(
         git_operation(&repo).unwrap().message.as_deref(),
         Some("feature change")

@@ -906,8 +906,15 @@ async fn rebase_plan(repo_path: String, onto: String) -> AppResult<Vec<RebaseCom
 }
 
 #[tauri::command]
-async fn rebase_onto(repo_path: String, onto: String) -> AppResult<WorkspaceSnapshot> {
-    with_repo_async(repo_path, move |repo| git::rebase_onto(repo, &onto)).await
+async fn rebase_onto(
+    repo_path: String,
+    onto: String,
+    upstream: Option<String>,
+) -> AppResult<WorkspaceSnapshot> {
+    with_repo_async(repo_path, move |repo| {
+        git::rebase_onto(repo, &onto, upstream.as_deref())
+    })
+    .await
 }
 
 #[tauri::command]

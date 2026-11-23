@@ -246,7 +246,7 @@ interface GitContextValue {
   deleteBranch: (name: string, force?: boolean, owner?: BranchDeletionOwner) => Promise<boolean | "unmerged">;
   revertCommit: (oid: string, tabId?: string) => Promise<boolean>;
   cherryPickCommit: (oid: string, tabId?: string) => Promise<boolean>;
-  rebaseOnto: (onto: string, label: string) => Promise<boolean>;
+  rebaseOnto: (onto: string, label: string, upstream?: string) => Promise<boolean>;
   rebaseInteractive: (onto: string, steps: RebaseStep[]) => Promise<boolean>;
   rebaseContinue: () => Promise<boolean>;
   rebaseSkip: () => Promise<boolean>;
@@ -1092,8 +1092,15 @@ function RepositoryProvider({children}: {children: ReactNode}) {
           for (;;) {
             const job = flight.queued.get(path);
             if (!job) break;
-            flight.queued.delete(path);
             const tab = findRepoTab(tabsRef.current, path, "git");
+            const pending = tab && operations.pendingWrite(tab.id);
+            if (pending) {
+              // Fold events from the index, HEAD and worktree into one refresh
+              // after Git finishes or pauses for conflict resolution.
+              await pending;
+              continue;
+            }
+            flight.queued.delete(path);
             if (!tab) continue;
             const current = sessionsRef.current[tab.id];
             const valid = operations.read(tab.id);
@@ -2412,11 +2419,11 @@ function RepositoryProvider({children}: {children: ReactNode}) {
   );
 
   const rebaseOnto = useCallback(
-    async (onto: string, label: string) => {
+    async (onto: string, label: string, upstream?: string) => {
       const tabId = activeTabIdRef.current;
       const ok = await runMutation(
         t("operations.rebasing_onto", { value: label }),
-        (repoPath) => gitApi.rebaseOnto(repoPath, onto),
+        (repoPath) => gitApi.rebaseOnto(repoPath, onto, upstream),
         t("operations.rebased_onto", { value: label }),
         { tabId },
       );
