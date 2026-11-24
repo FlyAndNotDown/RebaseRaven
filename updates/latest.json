@@ -1,15 +1,15 @@
 {
-  "version": "0.1.23",
-  "notes": "- Restore shelved Perforce files after switching streams. Preview the stream mapping and resolve outstanding conflicts in the destination changelist.\n- Distinguish shelved changes and conflicts inside the changelist icon across Perforce views.\n- Access Reconcile, Clean, Integrate, workspace settings, and connection settings directly from the Perforce toolbar.\n- Keep Team Shelves authors in a single right-hand column as the list resizes. Hover over a shortened name or select the shelf to see the full name.\n- Scroll freely after a diff search. Navigating to another match still brings it into view.\n- Highlight the entire recent repository row on hover, center its remove button, and remove the extra space below the list.\n- Center the cancel button in each activity row.\n",
-  "pub_date": "2026-11-19T08:57:17.158Z",
+  "version": "0.1.24",
+  "notes": "- Rebase onto the exact local or remote branch you select. Specify an old base to replay only the commits after it.\n- Avoid repeated workspace scans while Git is rebasing. Load interactive rebase plans in fewer Git calls and retain intentionally empty commits.\n- Let Perforce Get Latest continue past files that remain in use after retrying on Windows. The completion notice groups skipped files by reason.\n- Preview newly added and moved Perforce files from the mapped workspace path. Show missing or unreadable files in the preview pane using the app's language.\n- Improve search and link previews for the English and Chinese website pages with localized metadata, structured data, and canonical redirects.\n",
+  "pub_date": "2026-11-24T02:53:24.047Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUK0hSbWZEbkU5REk1NkVuVXhoVFBJUjhINWtBWFUwMGdoRUdlUzZ6c3NWMktzSi9tNkVyYTY5OHFzM0VmMmpiWHlmWXhaay9zcmJVYUMwMC83L09CYXpnbXMxK2kzZmdrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDc4NjA2CWZpbGU6UmViYXNlUmF2ZW5fMC4xLjIzX3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjEuMjMKcnhiYmxtUUcrT0ZRL0tQdWVLOTFjYzNjRkpSeGxYMS8xK1gyUmxpTXU0d2ZCT3RGN3JTSEE4OUluVlc4cm45VWRQekh3dXZvWlVpeEc4eDU5T20xQlE9PQo=",
-      "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v0.1.23/RebaseRaven_v0.1.23_windows_x64.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUK0hSbWZEbkU5RENUb29weEtHWmJud0NIekRudzBxcnhCSE1YblRNNStVamJrcnNVU2xGZjRiQUN0cWFrdUVMR1hnbGhWdmlUT1ZDN0FSMkpYYno5UnNGSUhWZnlPTVFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1NDg4NTYxCWZpbGU6UmViYXNlUmF2ZW5fMC4xLjI0X3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjEuMjQKM0c0L0F1emFwSkZNMW9TRkVlVlR0aGk3RkQ3bFZqU0orY3FHUGkxRW9BbzBRM0YweXdZSXo3cnBOSVVzaEdXMkJFemczTjd2WjhaUU05alRRYzVWQVE9PQo=",
+      "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v0.1.24/RebaseRaven_v0.1.24_windows_x64.exe"
     },
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUK0hSbWZEbkU5REszNDJrc1hwLzlCZzRKWGV2R0VQNzhuRS81WTZZQkhIQmFySmlWc1RiSytwbENKSVJHSEVIQ1l5SWxpVTlnaVJ6cy9oNDRpMkVScldldk1GeUxuVWd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDc4NjE3CWZpbGU6UmViYXNlUmF2ZW4uYXBwLnRhci5negl2ZXJzaW9uOjAuMS4yMwpSUWdTV3RRajdoR3B0Rkp3U3JWdTdFTWR0UFZ4Um81UU5uVFpvVndGbWhRMWVOTURNR0hlU0w2R2N3WnhwNDhMSUFFbHpmeUFqcjZYSmVReWFtaVpCQT09Cg==",
-      "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v0.1.23/RebaseRaven_v0.1.23_macos_arm64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUK0hSbWZEbkU5REJwRVpLUmlzU2F6T01XMnorQTBXYWNUYk42bk4wMXJUNHcySldIRE9IeFpDRDJKNFdZbVd5dFVqM3NvR2M2Ty8yMnhwL0Ruc2lhL1FsVTQ4b0J5ZkE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1NDg4NzgzCWZpbGU6UmViYXNlUmF2ZW4uYXBwLnRhci5negl2ZXJzaW9uOjAuMS4yNAplU0hkUW5lSWhqbU1aa2RVbk9mRG5RVlV6V1BacUg4UmZPRWdnbVh4SWgzRnJJNmxWZmk5NjNYLzJyMkhIeFMyOTVhVWl3dVBxK3VXelQ2NFlBY1VCZz09Cg==",
+      "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v0.1.24/RebaseRaven_v0.1.24_macos_arm64.app.tar.gz"
     }
   }
 }
