@@ -295,8 +295,8 @@ export const gitApi = {
     call<WorkspaceSnapshot>("cherry_pick_commit", { repoPath, oid }),
   rebasePlan: (repoPath: string, onto: string) =>
     call<RebaseCommit[]>("rebase_plan", { repoPath, onto }),
-  rebaseOnto: (repoPath: string, onto: string) =>
-    call<WorkspaceSnapshot>("rebase_onto", { repoPath, onto }),
+  rebaseOnto: (repoPath: string, onto: string, upstream?: string) =>
+    call<WorkspaceSnapshot>("rebase_onto", { repoPath, onto, upstream }),
   rebaseInteractive: (repoPath: string, onto: string, steps: RebaseStep[]) =>
     call<WorkspaceSnapshot>("rebase_interactive", { repoPath, onto, steps }),
   rebaseContinue: (repoPath: string) =>

@@ -1,3 +1,6 @@
+import { useId, useState } from "react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { t, useTranslation } from "@/i18n";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,33 +20,51 @@ export function RebaseOntoDialog({
   target: { onto: string; label: string } | null;
   onOpenChange: (open: boolean) => void;
 }) {
-  useTranslation();
-  const { snapshot, rebaseOnto } = useGitPick(["snapshot", "rebaseOnto"]);
-  const branch = snapshot?.repo.currentBranch;
-
   return (
     <Dialog open={Boolean(target)} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{t("git.dynamic.rebaseTitle", { target: target?.label })}</DialogTitle>
-          <DialogDescription>
-            {t("git.dynamic.rebaseDescription", { branch: branch ?? t("git.dynamic.currentBranch"), target: target?.label })}
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("git.ui.cancel")}</Button>
-          <Button
-            type="button"
-            onClick={() => {
-              const next = target;
-              if (!next) return;
-              onOpenChange(false);
-              void rebaseOnto(next.onto, next.label);
-            }}
-          >{t("git.ui.rebase")}</Button>
-        </DialogFooter>
-      </DialogContent>
+      {target && <RebaseForm key={target.onto} target={target} close={() => onOpenChange(false)} />}
     </Dialog>
+  );
+}
+
+function RebaseForm({ target, close }: { target: { onto: string; label: string }; close: () => void }) {
+  const { t } = useTranslation();
+  const { snapshot, rebaseOnto } = useGitPick(["snapshot", "rebaseOnto"]);
+  const [upstream, setUpstream] = useState("");
+  const inputId = useId();
+  const oldBase = upstream.trim();
+  const branch = snapshot?.repo.currentBranch ?? t("git.dynamic.currentBranch");
+  return (
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>{t("git.dynamic.rebaseTitle", { target: target.label })}</DialogTitle>
+        <DialogDescription className="break-words">
+          {t(oldBase ? "git.dynamic.rebaseRangeDescription" : "git.dynamic.rebaseDescription", {
+            branch, target: target.label, oldBase,
+          })}
+        </DialogDescription>
+      </DialogHeader>
+      <div className="space-y-2">
+        <Label htmlFor={inputId}>{t("git.dynamic.rebaseOldBase")}</Label>
+        <Input
+          id={inputId}
+          className="font-mono"
+          value={upstream}
+          placeholder={t("git.dynamic.rebaseOldBasePlaceholder")}
+          onChange={(event) => setUpstream(event.target.value)}
+        />
+      </div>
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={close}>{t("git.ui.cancel")}</Button>
+        <Button
+          type="button"
+          onClick={() => {
+            close();
+            void rebaseOnto(target.onto, target.label, oldBase || undefined);
+          }}
+        >{t("git.ui.rebase")}</Button>
+      </DialogFooter>
+    </DialogContent>
   );
 }
 

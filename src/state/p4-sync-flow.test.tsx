@@ -71,6 +71,17 @@ it("uses the same skipped-file warning for revision updates", async () => {
   expect(toast.error).not.toHaveBeenCalled(); expect(state.busy).toBe(false);
 });
 
+it("reports busy and unreplaceable files once after the sync completes", async () => {
+  vi.mocked(p4Api.sync).mockResolvedValueOnce({
+    output: { ...skipped, failed: false, warnings: { inUse: 2, targetExists: 1 } }, autoResolve: null,
+  });
+  await act(async () => state.sync());
+  expect(toast.warning).toHaveBeenCalledExactlyOnceWith("Skipped 2 files in use by another process · Skipped 1 file because the existing target could not be replaced");
+  expect(toast.success).not.toHaveBeenCalled();
+  expect(toast.error).not.toHaveBeenCalled();
+  expect(state.busy).toBe(false);
+});
+
 it("keeps a mixed transport failure as an error", async () => {
   vi.mocked(p4Api.sync).mockResolvedValueOnce({ output: { ...skipped, diagnostics: 1, firstDiagnostic: "TCP receive failed." }, autoResolve: null });
   await act(async () => state.sync());

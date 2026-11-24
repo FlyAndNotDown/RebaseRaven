@@ -221,6 +221,10 @@
   "searchPathHint": "Use a file name, or //depot/name.",
   "searchMinimum": "Type at least 2 characters.",
   "feedback": {
+    "inUse_one": "Skipped {{count}} file in use by another process",
+    "inUse_other": "Skipped {{count}} files in use by another process",
+    "targetExists_one": "Skipped {{count}} file because the existing target could not be replaced",
+    "targetExists_other": "Skipped {{count}} files because the existing targets could not be replaced",
     "writable_one": "Skipped {{count}} writable file",
     "writable_other": "Skipped {{count}} writable files",
     "modified_one": "Skipped {{count}} locally modified file",
@@ -287,6 +291,11 @@
     "unlocking": "Unlocking files",
     "locked": "Locked selected files for submit",
     "unlocked": "Unlocked selected files"
+  },
+  "previewUnavailable": {
+    "missing": "This file is missing from the workspace.",
+    "permissionDenied": "You do not have permission to read this file.",
+    "unreadable": "This workspace file could not be read."
   },
   "noTextDifferences": "No text differences",
   "editChangelist": "Edit changelist",

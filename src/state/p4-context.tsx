@@ -52,6 +52,7 @@ import type {
   P4IntegrateRequest,
   P4UndoRequest,
   P4OperationPreview,
+  P4OpenedDiff,
   P4ResolveView,
   P4CompareRequest,
   P4BlameLine,
@@ -96,7 +97,7 @@ interface P4ContextValue {
   selectedShelved: boolean;
   description: string;
   setDescription: (value: string) => void;
-  diff: FileDiff | null;
+  diff: P4OpenedDiff | null;
   diffLoading: boolean;
   submitted: P4Changelist[];
   submittedLoading: boolean;

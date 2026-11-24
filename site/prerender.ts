@@ -14,9 +14,19 @@ function metadata(locale: SiteLocale, releaseTag: string | null) {
   const url = sitePageUrl(locale);
   const title = escapeAttribute(copy["meta.title"]);
   const description = escapeAttribute(copy["meta.description"]);
+  const imageAlt = escapeAttribute(copy["meta.imageAlt"]);
+  const app = softwareApplication(locale, releaseTag);
+  const schemas: object[] = [app];
+  if (url === SITE_URL) {
+    schemas.push({
+      "@context": "https://schema.org", "@type": "WebSite", "@id": `${SITE_URL}#website`,
+      name: app.name, url: SITE_URL, about: { "@id": app["@id"] },
+    });
+  }
   return `<!--site-meta-start-->
     <title>${title}</title>
     <meta name="description" content="${description}">
+    <meta name="robots" content="max-image-preview:large">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="RebaseRaven">
     <meta property="og:title" content="${title}">
@@ -25,18 +35,19 @@ function metadata(locale: SiteLocale, releaseTag: string | null) {
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="RebaseRaven — Rust-powered Git and Perforce client">
+    <meta property="og:image:alt" content="${imageAlt}">
     <meta property="og:url" content="${url}">
     <meta property="og:locale" content="${locale === "en" ? "en_US" : "zh_CN"}">
+    <meta property="og:locale:alternate" content="${locale === "en" ? "zh_CN" : "en_US"}">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="${title}">
     <meta name="twitter:description" content="${description}">
     <meta name="twitter:image" content="${SITE_URL}assets/social.png">
-    <meta name="twitter:image:alt" content="RebaseRaven — Rust-powered Git and Perforce client">
+    <meta name="twitter:image:alt" content="${imageAlt}">
     <link rel="canonical" href="${url}">
     ${SITE_LOCALES.map((language) => `<link rel="alternate" hreflang="${language}" href="${sitePageUrl(language)}">`).join("\n    ")}
     <link rel="alternate" hreflang="x-default" href="${SITE_URL}">
-    <script type="application/ld+json">${JSON.stringify(softwareApplication(locale, releaseTag)).replace(/</g, "\\u003c")}</script>
+    ${schemas.map(schema => `<script type="application/ld+json">${JSON.stringify(schema).replace(/</g, "\\u003c")}</script>`).join("\n    ")}
     <!--site-meta-end-->`;
 }
 

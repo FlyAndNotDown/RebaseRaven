@@ -1,5 +1,5 @@
 import type { FileDiff } from "@/types/git";
-import type { P4Changelist, P4Connection, P4File } from "@/types/p4";
+import type { P4Changelist, P4Connection, P4File, P4OpenedDiff } from "@/types/p4";
 import { sameRepoPath } from "@/lib/format";
 
 export type P4View = "pending" | "submitted" | "workspace" | "shelves";
@@ -24,7 +24,7 @@ export interface P4Session {
   selectedFile: string | null;
   selectedShelved: boolean;
   description: string;
-  diff: FileDiff | null;
+  diff: P4OpenedDiff | null;
   diffFor: string;
   submitted: P4Changelist[];
   submittedHasMore: boolean;

@@ -224,6 +224,7 @@ pub struct CommitDetails {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BranchInfo {
+    pub full_ref: String,
     pub name: String,
     pub is_head: bool,
     pub is_remote: bool,

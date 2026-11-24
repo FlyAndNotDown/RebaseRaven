@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { deleteBranchBatch } from "./branch-deletion";
 import type { BranchInfo } from "@/types/git";
-const branch = (name: string, isHead = false): BranchInfo => ({ name, isHead, isRemote: false, upstream: null });
+const branch = (name: string, isHead = false): BranchInfo => ({ name, fullRef: `refs/heads/${name}`, isHead, isRemote: false, upstream: null });
 
 it("deletes every reviewed branch in order while skipping HEAD and duplicates", async () => {
   const remove = vi.fn(async () => true);

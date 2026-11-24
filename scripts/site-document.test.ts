@@ -7,6 +7,7 @@ const download = "https://github.com/FlyAndNotDown/RebaseRaven/releases/latest";
 const product = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
+  "@id": `${canonical}#application`,
   name: "RebaseRaven",
   url: canonical,
   description: "A Git and Perforce GUI client built with Rust.",
@@ -17,10 +18,15 @@ const product = {
   sameAs: "https://github.com/FlyAndNotDown/RebaseRaven",
 };
 const content = `<main><h1>A Git and Perforce GUI client built with Rust</h1><p>${"Review changes and follow repository history. ".repeat(5)}</p><p>macOS Apple Silicon and Windows x64. MIT License.</p><a href="${download}"><svg><path /></svg>Download</a></main>`;
+const website = { "@context": "https://schema.org", "@type": "WebSite", name: "RebaseRaven", url: canonical, about: { "@id": product["@id"] } };
 
 function fixture() {
   return {
-    html: `<html><head><link rel="alternate" hreflang="en" href="${canonical}"><link rel="alternate" hreflang="zh-CN" href="${canonical}zh-CN/"><link rel="alternate" hreflang="x-default" href="${canonical}"><link href="${canonical}" rel="canonical"><meta content="${canonical}" property="og:url"><script type="application/ld+json">${JSON.stringify(product)}</script></head><body><div id="root" data-prerendered="true"><div>RebaseRaven</div>${content}</div></body></html>`,
+    html: `<html lang="en"><head><title>RebaseRaven</title><meta name="description" content="Git and Perforce client">
+      <link rel="alternate" hreflang="en" href="${canonical}"><link rel="alternate" hreflang="zh-CN" href="${canonical}zh-CN/"><link rel="alternate" hreflang="x-default" href="${canonical}">
+      <link href="${canonical}" rel="canonical"><meta content="${canonical}" property="og:url">
+      <script type="application/ld+json">${JSON.stringify(product)}</script><script type="application/ld+json">${JSON.stringify(website)}</script>
+      </head><body><div id="root" data-prerendered="true"><div>RebaseRaven</div>${content}</div></body></html>`,
     sitemap: `<urlset><url><loc>${canonical}</loc></url></urlset>`,
     files: new Set(["index.html", "sitemap.xml", "assets/index-abc.js", "assets/index-abc.css"]),
   };
@@ -29,6 +35,15 @@ function fixture() {
 describe("published website document", () => {
   it("accepts crawlable prerendered content with matching metadata and a real release link", () => {
     expect(validateSiteDocument(fixture())).toEqual([]);
+  });
+
+  it("rejects a noindexed homepage and a site entity pointing to another domain", () => {
+    const value = fixture();
+    value.html = value.html.replace("</head>", '<meta name="robots" content="noindex, follow"></head>')
+      .replace(JSON.stringify(website), JSON.stringify({ ...website, url: "https://example.com/" }));
+    expect(validateSiteDocument(value)).toEqual(expect.arrayContaining([
+      expect.stringContaining("indexed and quoted"), expect.stringContaining("canonical WebSite"),
+    ]));
   });
 
   it("rejects an empty hydration root even when product text exists elsewhere", () => {

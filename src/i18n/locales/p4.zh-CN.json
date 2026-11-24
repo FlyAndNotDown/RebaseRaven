@@ -221,6 +221,10 @@
   "searchPathHint": "输入文件名或 //depot/name。",
   "searchMinimum": "请至少输入 2 个字符。",
   "feedback": {
+    "inUse_one": "已跳过 {{count}} 个被其他进程占用的文件",
+    "inUse_other": "已跳过 {{count}} 个被其他进程占用的文件",
+    "targetExists_one": "已跳过 {{count}} 个无法替换的已有文件",
+    "targetExists_other": "已跳过 {{count}} 个无法替换的已有文件",
     "writable_one": "已跳过 {{count}} 个可写文件",
     "writable_other": "已跳过 {{count}} 个可写文件",
     "modified_one": "已跳过 {{count}} 个本地修改文件",
@@ -287,6 +291,11 @@
     "unlocking": "正在解锁文件",
     "locked": "已锁定所选文件的提交",
     "unlocked": "已解锁所选文件"
+  },
+  "previewUnavailable": {
+    "missing": "工作区中找不到此文件。",
+    "permissionDenied": "没有权限读取此文件。",
+    "unreadable": "无法读取此工作区文件。"
   },
   "noTextDifferences": "没有文本差异",
   "editChangelist": "编辑变更列表",

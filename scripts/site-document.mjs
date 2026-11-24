@@ -89,6 +89,18 @@ export function validateSiteRouting({ robots = "" }) {
 export function validateSiteDocument({ html, sitemap, files, filename = "index.html" }) {
   const violations = [];
   const fail = (message) => violations.push(`${filename}: ${message}`);
+  const head = elements(html, "head")[0]?.content ?? "";
+  const language = filename === "zh-CN/index.html" ? "zh-CN" : "en";
+  if (attributes(/<html\b([^>]*)>/i.exec(html)?.[1] ?? "").get("lang") !== language) fail("declare the language of this page");
+  const titles = elements(head, "title");
+  const metas = [...head.matchAll(/<meta\b([^>]*)>/gi)].map(match => attributes(match[1]));
+  const descriptions = metas.filter(attrs => attrs.get("name")?.toLowerCase() === "description");
+  if (titles.length !== 1 || !readableText(titles[0].content)) fail("provide one readable page title");
+  if (descriptions.length !== 1 || !descriptions[0].get("content")?.trim()) fail("provide one meta description");
+  if (metas.some(attrs => ["robots", "googlebot", "bingbot"].includes(attrs.get("name")?.toLowerCase())
+    && attrs.get("content")?.toLowerCase().split(/[\s,]+/).some(rule => ["noindex", "none", "nosnippet"].includes(rule)))) {
+    fail("allow the product page to be indexed and quoted");
+  }
   const content = rootContent(html);
   const mains = elements(content, "main");
   const headings = elements(content, "h1");
@@ -108,16 +120,24 @@ export function validateSiteDocument({ html, sitemap, files, filename = "index.h
     const alternates = links.filter((attrs) => attrs.get("rel") === "alternate" && attrs.get("hreflang") === language);
     if (alternates.length !== 1 || alternates[0].get("href") !== url) fail(`provide one reciprocal ${language} language alternate`);
   }
-  const ogUrls = [...html.matchAll(/<meta\b([^>]*)>/gi)].map((match) => attributes(match[1]))
-    .filter((attrs) => attrs.get("property") === "og:url");
+  const ogUrls = metas.filter((attrs) => attrs.get("property") === "og:url");
   if (ogUrls.length !== 1 || ogUrls[0].get("content") !== canonical) fail("og:url must match the unique canonical URL");
 
-  const schemas = elements(html, "script").filter((entry) => entry.attributes.get("type")?.toLowerCase() === "application/ld+json");
-  let product;
+  const schemas = elements(head, "script").filter((entry) => entry.attributes.get("type")?.toLowerCase() === "application/ld+json");
+  let nodes = [];
   try {
-    if (schemas.length !== 1) throw new Error();
-    product = JSON.parse(schemas[0].content);
-  } catch { fail("provide one valid SoftwareApplication JSON-LD document"); }
+    nodes = schemas.map(entry => JSON.parse(entry.content));
+  } catch { fail("provide valid JSON-LD"); }
+  const products = nodes.filter(node => node?.["@type"] === "SoftwareApplication");
+  if (products.length !== 1) fail("provide one valid SoftwareApplication JSON-LD document");
+  const [product] = products;
+  if (filename === "index.html") {
+    const sites = nodes.filter(node => node?.["@type"] === "WebSite");
+    if (sites.length !== 1 || sites[0]["@context"] !== "https://schema.org" || sites[0].url !== SITE_URL
+      || sites[0].name !== "RebaseRaven" || !product?.["@id"] || sites[0].about?.["@id"] !== product["@id"]) {
+      fail("identify the canonical WebSite and link it to the application");
+    }
+  }
   if (product) {
     if (product["@context"] !== "https://schema.org" || product["@type"] !== "SoftwareApplication" || product.name !== "RebaseRaven" ||
       product.url !== canonical || product.applicationCategory !== "DeveloperApplication" ||
@@ -131,7 +151,7 @@ export function validateSiteDocument({ html, sitemap, files, filename = "index.h
     if (!/\bmit\b/.test(visible)) {
       fail("the MIT license must also be readable in the page content");
     }
-  } else if (schemas.length === 1 && product !== undefined) fail("SoftwareApplication JSON-LD must be an object");
+  }
 
   if (!elements(main, "a").some((link) => link.attributes.get("href") === DOWNLOAD_URL && readableText(link.content) &&
     !link.attributes.has("hidden") && link.attributes.get("aria-hidden") !== "true")) {

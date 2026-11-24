@@ -38,7 +38,7 @@ a { text-decoration: none; }
 @keyframes hero-light-pass { 0% { opacity: 0; transform: translateX(-200px); } 18% { opacity: .7; } 52.5%,100% { opacity: 0; transform: translateX(300px); } }
 .site-hero-heading { display: flex; align-items: center; justify-content: space-between; gap: 40px; padding-block: 76px 52px; }
 .site-wordmark h1 { margin: 0; font-size: clamp(48px, 6vw, 86px); font-weight: 550; letter-spacing: -.055em; line-height: 1.1; }
-.site-description { margin: 16px 0 0; color: var(--muted-foreground); font-size: 18px; line-height: 1.6; }
+.site-description { margin: 16px 0 0; color: var(--muted-foreground); font-size: 18px; line-height: 1.6; text-wrap: balance; }
 .site-actions { display: flex; gap: 10px; }
 .site-actions [data-slot="button"] { min-height: 40px; padding-inline: 16px; }
 .site-canvas { min-width: 0; scroll-margin-top: 24px; }
@@ -64,8 +64,7 @@ a { text-decoration: none; }
 .site-story-icon { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border: 1px solid var(--border); border-radius: 10px; background: var(--background); }
 .site-story-icon svg { width: 19px; height: 19px; }
 .site-story-copy { padding-block: var(--story-inset) 72px; min-width: 0; }
-.site-story-copy h2 { margin: -5px 0 0; font-size: clamp(40px, 4vw, 58px); font-weight: 500; letter-spacing: -.045em; line-height: 1.17; text-wrap: balance; }
-.site-story-copy h2 > span { display: block; }
+.site-story-copy h2 { margin: -5px 0 0; font-size: clamp(40px, 4vw, 58px); font-weight: 500; letter-spacing: -.045em; line-height: 1.17; white-space: pre-line; text-wrap: balance; }
 .site-story-copy p { max-width: 36ch; margin: 24px 0 0; color: var(--muted-foreground); font-size: 15px; line-height: 1.9; text-wrap: pretty; }
 .site-story-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 20px; font-size: 13px; }
 .site-story-link:hover { text-decoration: underline; text-underline-offset: 5px; }
@@ -158,7 +157,7 @@ a { text-decoration: none; }
 .source-repository-footer svg:nth-of-type(2) { margin-left: auto; }
 
 .site-footer { border-top: 1px solid var(--border); display: flex; justify-content: flex-end; padding-block: 24px 32px; font-size: 12px; }
-.site-footer nav { display: flex; gap: 24px; color: var(--muted-foreground); }
+.site-footer nav { display: flex; flex-wrap: wrap; gap: 0 24px; color: var(--muted-foreground); }
 .site-footer a { display: inline-flex; align-items: center; min-height: 32px; }
 .site-footer a:hover { color: var(--foreground); text-decoration: underline; text-underline-offset: 4px; }
 .site-brand:focus-visible, .site-footer a:focus-visible, .site-story-link:focus-visible { outline: 2px solid var(--ring); outline-offset: 4px; border-radius: 3px; }
@@ -314,8 +313,7 @@ a { text-decoration: none; }
   .site-story-copy { padding-block: var(--story-inset) 16px; }
   .site-story-copy p { max-width: 48ch; margin-top: 20px; }
   .site-story-visual { grid-column: 2; max-width: 620px; margin-top: 12px; }
-  .site-story-copy h2 > span { display: inline; }
-  .site-story-copy h2 > span + span::before { content: " "; }
+  .site-story-copy h2 { white-space: normal; }
   .site-story-rail::after { bottom: calc(-1 * var(--story-inset) - 36px); }
 }
 @media (max-width: 600px) {
@@ -333,9 +331,7 @@ a { text-decoration: none; }
   .site-story-icon { width: 32px; height: 32px; border-radius: 8px; }
   .site-story-icon svg { width: 16px; height: 16px; }
   .site-story-rail::after { left: 15.5px; top: calc(var(--story-inset) + 32px); bottom: calc(-1 * var(--story-inset) - 28px); }
-  .site-story-copy h2 { font-size: clamp(32px, 8.2vw, 44px); line-height: 1.2; letter-spacing: -.04em; }
-  .site-story-copy h2 > span { display: block; }
-  .site-story-copy h2 > span + span::before { content: none; }
+  .site-story-copy h2 { font-size: clamp(32px, 8.2vw, 44px); line-height: 1.2; letter-spacing: -.04em; white-space: pre-line; }
   .site-story-copy p { margin-top: 18px; font-size: 14px; line-height: 1.9; }
   .site-story-visual { width: calc(100% + 14px); margin-left: -7px; }
   .site-footer { padding-block: 20px; }

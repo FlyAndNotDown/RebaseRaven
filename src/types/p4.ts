@@ -1,5 +1,7 @@
 import type { FileDiff } from "@/types/git";
 
+export type P4OpenedDiff = FileDiff | { unavailable: "missing" | "permissionDenied" | "unreadable" };
+
 export interface P4Connection {
   root: string;
   port: string;
@@ -267,7 +269,7 @@ export interface P4SyncSummary {
   added: number;
   deleted: number;
   unchanged: boolean;
-  warnings: Partial<Record<"writable" | "modified" | "opened" | "resolve" | "outsideView", number>>;
+  warnings: Partial<Record<"inUse" | "targetExists" | "writable" | "modified" | "opened" | "resolve" | "outsideView", number>>;
   diagnostics: number;
   firstDiagnostic: string;
 }

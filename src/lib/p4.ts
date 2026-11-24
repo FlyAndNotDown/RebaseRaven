@@ -32,6 +32,7 @@ import type {
   P4Location,
   P4Executables,
   P4OpenResult,
+  P4OpenedDiff,
   P4ResolveView,
   P4SyncResult,
   P4SyncSummary,
@@ -134,7 +135,7 @@ export const p4Api = {
   describe: (connection: P4Connection, changeId: string) =>
     call<P4Describe>("p4_describe", { connection, changeId }),
   openedDiff: (connection: P4Connection, path: string) =>
-    call<FileDiff>("p4_opened_diff", { connection, path }),
+    call<P4OpenedDiff>("p4_opened_diff", { connection, path }),
   revisionTargets: (connection: P4Connection, changeId: string) => call<string[]>("p4_revision_targets", { connection, changeId }),
   shelfDiff: (connection: P4Connection, depotPath: string, changeId: string) =>
     call<FileDiff>("p4_shelf_diff", { connection, depotPath, changeId }),

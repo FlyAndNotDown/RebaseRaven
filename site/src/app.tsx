@@ -20,7 +20,8 @@ import { trackDemoStart, trackDownloadDialog, trackReleasePageOpen } from "./web
 const REPOSITORY = REPOSITORY_URL;
 
 export function Site({ rootPage = false }: { rootPage?: boolean }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const otherLocales = SITE_LOCALES.filter(locale => locale !== i18n.language);
   const [downloadOpen, setDownloadOpen] = useState(false);
   const downloadTrigger = useRef<HTMLAnchorElement | null>(null);
   const demoStarted = useRef(false);
@@ -73,7 +74,7 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
               </div>
             </div>
           </div>
-          <div id="features" className="site-canvas" role="region" aria-label={t("preview.title")} onPointerDownCapture={startDemo} onKeyDownCapture={startDemo}>
+          <div id="features" className="site-canvas" role="region" data-nosnippet="" aria-label={t("preview.title")} onPointerDownCapture={startDemo} onKeyDownCapture={startDemo}>
             <noscript className="site-preview-caption">{t("preview.noscript")}</noscript>
             <WorkspacePreview />
           </div>
@@ -83,7 +84,14 @@ export function Site({ rootPage = false }: { rootPage?: boolean }) {
       <FeatureStories />
 
       <div className="site-wrap">
-        <footer className="site-footer"><nav aria-label={t("nav.footer")}><a href={`${REPOSITORY}/issues`}>{t("nav.feedback")}</a><a href={`${REPOSITORY}/blob/dev/CONTRIBUTING.md`}>{t("nav.contribute")}</a><a href={`${REPOSITORY}/blob/dev/LICENSE`}>{t("nav.license")}</a></nav></footer>
+        <footer className="site-footer">
+          <nav aria-label={t("nav.footer")}>
+            <a href={`${REPOSITORY}/issues`}>{t("nav.feedback")}</a>
+            <a href={`${REPOSITORY}/blob/dev/CONTRIBUTING.md`}>{t("nav.contribute")}</a>
+            <a href={`${REPOSITORY}/blob/dev/LICENSE`}>{t("nav.license")}</a>
+            {otherLocales.map(locale => <a key={locale} href={localeHref(locale, rootPage)} hrefLang={locale} lang={locale}>{t(`language.${locale}`, { lng: locale })}</a>)}
+          </nav>
+        </footer>
       </div>
     </main>
     <DownloadDialog open={downloadOpen} onOpenChange={setDownloadOpen} returnFocusTo={downloadTrigger} onReleaseOpen={() => {

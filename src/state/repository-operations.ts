@@ -22,6 +22,10 @@ export class RepositoryOperations {
     return () => this.sessions.get(id) === session;
   }
 
+  pendingWrite(id: string) {
+    return this.writes.get(id);
+  }
+
   read(id: string) {
     const session = this.session(id);
     const revision = ++session.revision;

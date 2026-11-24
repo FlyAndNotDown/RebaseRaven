@@ -204,7 +204,7 @@ export function HistoryBranches() {
     );
     return markTagNodes(
       buildBranchTree(
-        items.map((tag) => ({ name: tag.name, isHead: false, isRemote: false, upstream: null })),
+        items.map((tag) => ({ name: tag.name, fullRef: `refs/tags/${tag.name}`, isHead: false, isRemote: false, upstream: null })),
         (tag) => tag.name.split("/"),
         "tag",
       ),
@@ -437,7 +437,7 @@ export function HistoryBranches() {
         />
       ) : null}
       <RebaseOntoDialog
-        target={rebasing ? { onto: rebasing.name, label: rebasing.name } : null}
+        target={rebasing ? { onto: rebasing.fullRef, label: rebasing.name } : null}
         onOpenChange={(open) => {
           if (!open) setRebasing(null);
         }}
@@ -768,7 +768,7 @@ function TreeRows({
                 </div>
               </ContextMenuTrigger>
               <ContextMenuContent className="min-w-44">
-                <ContextMenuItem onClick={() => onCheckout({ name, isHead: false, isRemote: false, upstream: null })}>
+                <ContextMenuItem onClick={() => onCheckout({ name, fullRef: `refs/tags/${name}`, isHead: false, isRemote: false, upstream: null })}>
                   <ArrowDownToLineIcon />{t("git.sidebar.checkout")}</ContextMenuItem>
                 {onPushTag && remotes && remotes.length > 0 ? (
                   <ContextMenuSub>

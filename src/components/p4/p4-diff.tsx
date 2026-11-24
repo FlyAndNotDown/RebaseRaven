@@ -7,12 +7,11 @@ import { DiffLines } from "@/components/diff-viewer";
 import { DiffSearchBar, DiffSearchScope } from "@/components/diff-search";
 import { P4ImageDiff } from "@/components/p4/p4-image-diff";
 import { isImagePath } from "@/components/image-diff";
-import type { P4FileSource } from "@/types/p4";
+import type { P4FileSource, P4OpenedDiff } from "@/types/p4";
 import { toast } from "sonner";
 import { DiffSkeleton } from "@/components/skeletons";
 import { cn } from "@/lib/utils";
 import { useGitSelect } from "@/state/git-context";
-import type { FileDiff } from "@/types/git";
 
 async function copyPath(value: string) {
   if (!value) {
@@ -28,7 +27,7 @@ async function copyPath(value: string) {
 }
 
 export function P4Diff({
-  diff: originalDiff,
+  diff: preview,
   loading: originalLoading,
   empty,
   captions,
@@ -36,7 +35,7 @@ export function P4Diff({
   fileSource,
   textSource,
 }: {
-  diff: FileDiff | null;
+  diff: P4OpenedDiff | null;
   loading: boolean;
   empty: string;
   captions?: [string, string];
@@ -44,7 +43,8 @@ export function P4Diff({
   fileSource?: P4FileSource;
   textSource?: TextPair;
 }) {
-  useTranslation();
+  const { t } = useTranslation();
+  const originalDiff = preview && "unavailable" in preview ? null : preview;
   const prefs = useGitSelect(state => state.prefs);
   const { connection } = useP4();
   const source: Exclude<DiffToolSource, {kind:"git"}> | null = textSource ? {kind:"text", ...textSource} : fileSource && connection ? {kind:"perforce", connection, source:fileSource} : null;
@@ -65,7 +65,7 @@ export function P4Diff({
   if (!diff) {
     return (
       <div className={cn("flex items-center justify-center p-6 text-center text-sm text-muted-foreground", frame)}>
-        {empty}
+        {preview && "unavailable" in preview ? t(`p4.previewUnavailable.${preview.unavailable}`) : empty}
       </div>
     );
   }

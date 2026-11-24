@@ -586,6 +586,7 @@ fn header_type_is_binary(header: &str) -> bool {
 }
 
 /// `p4 sync -N` prints `files added/updated/deleted=1/2/3`.
+#[cfg(any(not(windows), test))]
 pub fn sync_estimate_files(text: &str) -> Option<u64> {
     let rest = text.split_once("files added/updated/deleted=")?.1;
     let numbers = rest.split([',', ' ', '\r', '\n']).next()?.trim();

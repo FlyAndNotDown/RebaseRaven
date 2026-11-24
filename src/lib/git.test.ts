@@ -3,7 +3,7 @@ import type { BranchInfo } from "@/types/git";
 import { emptyBinaryDiff, errorMessage, expandHistoryRevs, isCancelled, isRemoteTrackingBranch } from "./git";
 
 function branch(name: string, upstream: string | null): BranchInfo {
-  return { name, isHead: false, isRemote: false, upstream };
+  return { name, fullRef: `refs/heads/${name}`, isHead: false, isRemote: false, upstream };
 }
 
 describe("isRemoteTrackingBranch", () => {

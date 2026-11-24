@@ -63,7 +63,7 @@ pub use workspace::{
     save_change, search_depot, search_submitted, shelf_diff, shelve, submit, submit_shelf,
     submitted, sync, P4Auth, P4ChangePage, P4Changelist, P4CheckedConnection, P4Connection,
     P4CreateRequest, P4DepotEntry, P4Describe, P4DirEntry, P4EntryStatus, P4FileSearch,
-    P4GetRevision, P4HistoryCursor, P4Location, P4ManualResolve, P4Open, P4PathHistoryRequest,
-    P4ResolveView, P4RevisionPage, P4StreamOption, P4SyncResult, RepoDetection, RevisionOutput,
-    WorkspaceSearch,
+    P4GetRevision, P4HistoryCursor, P4Location, P4ManualResolve, P4Open, P4OpenedDiff,
+    P4PathHistoryRequest, P4ResolveView, P4RevisionPage, P4StreamOption, P4SyncResult,
+    RepoDetection, RevisionOutput, WorkspaceSearch,
 };

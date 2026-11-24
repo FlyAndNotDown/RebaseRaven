@@ -4,13 +4,13 @@ import { formatSyncCounts, syncSummary } from "@/lib/p4";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import type { P4AutoResolveSummary, P4SyncSummary } from "@/types/p4";
 
-type WarningKind = "writable" | "modified" | "opened" | "resolve" | "outsideView";
+type WarningKind = keyof P4SyncSummary["warnings"];
 export interface P4OutputNotice {
   kind: "success" | "info" | "warning" | "error";
   message: string;
 }
 
-const warningKinds: WarningKind[] = ["writable", "modified", "opened", "resolve", "outsideView"];
+const warningKinds: WarningKind[] = ["inUse", "targetExists", "writable", "modified", "opened", "resolve", "outsideView"];
 
 function warning(line: string): { kind: WarningKind; file: string } | null {
   const writable = /^Can't clobber writable file (.+)$/i.exec(line);
@@ -86,7 +86,7 @@ function formatNotice(warnings: P4SyncSummary["warnings"], errors: number, first
   });
   if (errors > 0) {
     const more = errors > 1 ? t("p4.feedback.more", { count: errors - 1 }) : "";
-    const diagnostics = [firstError, more].filter(Boolean);
+    const diagnostics = [firstError || t("p4.feedback.failed"), more].filter(Boolean);
     if (!succeeded) return { kind: "error", message: [...diagnostics, ...messages].join(" · ") };
     messages.unshift(...diagnostics);
   }

@@ -31,7 +31,7 @@ impl SyncOutput {
             .get(..8)
             .filter(|s| s.eq_ignore_ascii_case("warning:"))
             .map_or(line, |_| line[8..].trim_start());
-        if line.is_empty() {
+        if line.is_empty() || line == "Perforce client error:" {
             return false;
         }
         let (file, status) = file_status(line);
@@ -62,10 +62,7 @@ impl SyncOutput {
         let status_lower = status.to_ascii_lowercase();
         let status = status_lower.trim_end_matches('.');
         if let Some((kind, file)) = skipped_file(line, file, status) {
-            self.skipped
-                .entry(kind)
-                .or_default()
-                .insert(file_key(file.trim()));
+            self.skip(kind, file);
         } else if matches!(
             status,
             "file(s) up-to-date"
@@ -90,6 +87,17 @@ impl SyncOutput {
         false
     }
 
+    pub fn skip(&mut self, kind: &'static str, path: &str) {
+        self.skipped
+            .entry(kind)
+            .or_default()
+            .insert(file_key(path.trim()));
+    }
+
+    pub fn only_skips(&self) -> bool {
+        !self.skipped.is_empty() && self.summary.diagnostics == 0
+    }
+
     pub fn append(&mut self, other: Self) {
         self.summary.updated += other.summary.updated;
         self.summary.added += other.summary.added;
@@ -106,6 +114,10 @@ impl SyncOutput {
 
     pub fn finish(mut self, success: bool) -> SyncSummary {
         self.summary.failed = !success;
+        // A later batch can fail silently after earlier batches skipped files.
+        if !success && self.summary.diagnostics == 0 {
+            self.summary.diagnostics = 1;
+        }
         self.summary.warnings = self
             .skipped
             .into_iter()
@@ -127,6 +139,9 @@ fn skipped_file<'a>(line: &'a str, file: &'a str, status: &str) -> Option<(&'sta
         {
             return Some((kind, &line[prefix.len()..]));
         }
+    }
+    if let Some(skipped) = windows_skip(line) {
+        return Some(skipped);
     }
     if file.is_empty() {
         return None;
@@ -164,6 +179,52 @@ fn skipped_file<'a>(line: &'a str, file: &'a str, status: &str) -> Option<(&'sta
     Some((kind, file))
 }
 
+fn windows_skip(line: &str) -> Option<(&'static str, &str)> {
+    let (op, rest) = line.split_once(": ")?;
+    let (arg, reason) = rest.rsplit_once(": ")?;
+    let path = match op {
+        "rename" => {
+            let (path, count) = arg
+                .strip_prefix("failed to rename ")?
+                .rsplit_once(" after ")?;
+            count.strip_suffix(" attempts")?.parse::<u32>().ok()?;
+            path
+        }
+        "unlink" | "open for write" | "chmod" | "write" | "Write" => arg,
+        _ => return None,
+    };
+    if !is_windows_path(path) {
+        return None;
+    }
+    Some((windows_file_error(reason, op == "rename")?, path))
+}
+
+fn windows_file_error(reason: &str, replacing: bool) -> Option<&'static str> {
+    // p4 uses FormatMessage for the Windows portion of the diagnostic.
+    for (code, english, kind) in [
+        (32, "The process cannot access the file because it is being used by another process.", "inUse"),
+        (33, "The process cannot access the file because another process has locked a portion of the file.", "inUse"),
+        (1224, "The requested operation cannot be performed on a file with a user-mapped section open.", "inUse"),
+        (80, "The file exists.", "targetExists"),
+        (183, "Cannot create a file when that file already exists.", "targetExists"),
+    ] {
+        if (kind != "targetExists" || replacing)
+            && (reason.eq_ignore_ascii_case(english) || localized_os_error(reason, code))
+        {
+            return Some(kind);
+        }
+    }
+    None
+}
+
+fn localized_os_error(reason: &str, code: i32) -> bool {
+    cfg!(windows)
+        && std::io::Error::from_raw_os_error(code)
+            .to_string()
+            .rsplit_once(" (os error ")
+            .is_some_and(|(text, _)| text.trim() == reason)
+}
+
 fn file_status(line: &str) -> (&str, &str) {
     // Perforce escapes literal '#' in depot names. The revision therefore
     // disambiguates the status separator even when the name also contains " - ".
@@ -179,6 +240,15 @@ fn file_status(line: &str) -> (&str, &str) {
     line.rsplit_once(" - ").unwrap_or(("", line))
 }
 
+fn is_windows_path(path: &str) -> bool {
+    path.starts_with(r"\\")
+        || (path.as_bytes().get(1) == Some(&b':')
+            && path
+                .as_bytes()
+                .get(2)
+                .is_some_and(|b| matches!(b, b'/' | b'\\')))
+}
+
 fn file_key(path: &str) -> String {
     if path.starts_with("//") {
         if let Some((base, rev)) = path.rsplit_once('#') {
@@ -186,13 +256,7 @@ fn file_key(path: &str) -> String {
                 return base.to_owned();
             }
         }
-    } else if path.starts_with(r"\\")
-        || (path.as_bytes().get(1) == Some(&b':')
-            && path
-                .as_bytes()
-                .get(2)
-                .is_some_and(|b| matches!(b, b'/' | b'\\')))
-    {
+    } else if is_windows_path(path) {
         return path.replace('\\', "/").to_lowercase();
     }
     path.to_owned()
@@ -230,6 +294,28 @@ impl TransferProgress {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn busy_files_and_rename_collisions_are_distinct_from_fatal_io_errors() {
+        let mut batch = SyncOutput::default();
+        let sharing =
+            "The process cannot access the file because it is being used by another process.";
+        batch.record("Perforce client error:");
+        batch.record(&format!(
+            r"rename: failed to rename C:\Work\binary file after 10 attempts: {sharing}"
+        ));
+        batch.record(&format!("unlink: c:/work/binary file: {sharing}"));
+        batch.record(r"rename: failed to rename C:\work\other after 10 attempts: Cannot create a file when that file already exists.");
+        assert!(batch.only_skips());
+        batch.record(r"rename: failed to rename C:\work\third after 10 attempts: There is not enough space on the disk.");
+        assert!(!batch.only_skips());
+        let summary = batch.finish(false);
+        assert!(summary.failed);
+        assert_eq!(summary.diagnostics, 1);
+        assert_eq!(summary.warnings["inUse"], 1);
+        assert_eq!(summary.warnings["targetExists"], 1);
+        assert!(summary.first_diagnostic.contains("disk"));
+    }
+
     #[test]
     fn progress_coalesces_bursts_and_reports_the_final_count() {
         let start = Instant::now();
@@ -271,7 +357,7 @@ mod tests {
         assert_eq!(summary.warnings["writable"], 1);
         assert_eq!(summary.warnings["resolve"], 2);
         assert_eq!(summary.first_diagnostic, "TCP receive failed.");
-        assert_eq!(summary.diagnostics, 2);
+        assert_eq!(summary.diagnostics, 1);
         assert!(serde_json::to_vec(&summary).unwrap().len() < 300);
     }
 }

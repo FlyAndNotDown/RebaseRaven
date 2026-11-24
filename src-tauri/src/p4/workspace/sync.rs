@@ -1,11 +1,16 @@
 //! Workspace sync, revision selection, and automatic resolve.
+#[cfg(any(windows, test))]
+mod locked;
+
 use super::{
     env_for, field, file_spec, revision_file_spec, run_ok, run_owned, workspace_file_spec,
     P4Connection,
 };
 use crate::error::{AppError, AppResult};
 use crate::p4::cli::{self, P4Env};
-use crate::p4::parse::{parse_ztag, sync_estimate_files, valid_client_name};
+#[cfg(not(windows))]
+use crate::p4::parse::sync_estimate_files;
+use crate::p4::parse::{parse_ztag, valid_client_name};
 use crate::p4::sync_output::{SyncOutput, TransferProgress};
 use crate::p4::SyncSummary;
 use serde::{Deserialize, Serialize};
@@ -112,7 +117,14 @@ pub fn sync(
         .collect();
     let env = env_for(connection);
     let mut output = SyncOutput::default();
-    let success = sync_paths(&env, &paths, SyncFlags::default(), progress, &mut output)?;
+    let success = sync_paths(
+        &env,
+        &paths,
+        SyncFlags::default(),
+        "",
+        progress,
+        &mut output,
+    )?;
     let auto_resolve = if success && auto_resolve {
         Some(auto_resolve_files(&env, &connection.client)?)
     } else {
@@ -193,16 +205,7 @@ pub fn get_revision(
     // Keep argument lists short even for large changelists on Windows.
     let mut remaining = paths.as_slice();
     while !remaining.is_empty() {
-        let mut arg_bytes = 0;
-        let count = remaining
-            .iter()
-            .take_while(|path| {
-                arg_bytes += path.len() + 3;
-                arg_bytes <= 16_384
-            })
-            .count()
-            .max(1);
-        let (chunk, rest) = remaining.split_at(count);
+        let (chunk, rest) = next_batch(remaining);
         remaining = rest;
         if request.preview {
             progress("Previewing");
@@ -217,7 +220,7 @@ pub fn get_revision(
                 output.push_str("\nPreview truncated.");
                 break;
             }
-        } else if !sync_paths(&env, chunk, flags, &mut progress, &mut summary)? {
+        } else if !sync_paths(&env, chunk, flags, &suffix, &mut progress, &mut summary)? {
             success = false;
             break;
         }
@@ -401,14 +404,35 @@ pub(super) fn file_at(path: &str, suffix: &str) -> String {
     format!("{}{suffix}", file_spec(path))
 }
 
+const SYNC_ARG_BYTES: usize = 16_384;
+
+fn next_batch(paths: &[String]) -> (&[String], &[String]) {
+    let mut arg_bytes = 0;
+    let count = paths
+        .iter()
+        .take_while(|path| {
+            arg_bytes += path.len() + 3;
+            arg_bytes <= SYNC_ARG_BYTES
+        })
+        .count()
+        .max(1);
+    paths.split_at(count)
+}
+
 fn sync_paths(
     env: &P4Env,
     paths: &[String],
     flags: SyncFlags,
+    _revision: &str,
     mut progress: impl FnMut(&str),
     output: &mut SyncOutput,
 ) -> AppResult<bool> {
     progress("Counting files");
+    #[cfg(windows)]
+    let plan = locked::plan(env, paths, flags, _revision, output)?;
+    #[cfg(windows)]
+    let total = plan.total;
+    #[cfg(not(windows))]
     let total = match run_owned(env, &sync_args(paths, false, true, flags), None) {
         Ok(estimate) => sync_estimate_files(&estimate),
         Err(error) if error.is_cancelled() => return Err(error),
@@ -417,6 +441,42 @@ fn sync_paths(
     if total.is_some_and(|count| count > 0) {
         progress("0% Syncing");
     }
+    let mut transfer = TransferProgress::default();
+    let mut emit = |line: &str, count: u64| {
+        let line = crate::error::redact_credentials(line);
+        if let Some(total) = total.filter(|n| *n > 0) {
+            progress(&format!(
+                "{}% {line}",
+                (count.saturating_mul(100) / total).min(100)
+            ));
+        } else {
+            progress(&line);
+        }
+    };
+    let mut run = |targets: &[String]| {
+        transfer_batch(env, targets, flags, output, |line| {
+            transfer.record(line, Instant::now(), &mut emit);
+        })
+    };
+    #[cfg(windows)]
+    let success = if let Some(targets) = plan.targets {
+        locked::run_batches(targets, run)?
+    } else {
+        run(paths)?
+    };
+    #[cfg(not(windows))]
+    let success = run(paths)?;
+    transfer.finish(&mut emit);
+    Ok(success)
+}
+
+fn transfer_batch(
+    env: &P4Env,
+    paths: &[String],
+    flags: SyncFlags,
+    output: &mut SyncOutput,
+    mut progress: impl FnMut(&str),
+) -> AppResult<bool> {
     // P4V transfers several files at once. Four threads is its usual default.
     // Progress is counted from the file lines, because asking p4 for its own
     // progress indicator turns parallel transfer off.
@@ -424,33 +484,23 @@ fn sync_paths(
         let args = sync_args(paths, parallel, false, flags);
         let refs: Vec<_> = args.iter().map(String::as_str).collect();
         let mut batch = SyncOutput::default();
-        let mut transfer = TransferProgress::default();
+        let mut saw_file = false;
         let mut retry = false;
-        let mut emit = |line: &str, count: u64| {
-            let line = crate::error::redact_credentials(line);
-            if let Some(total) = total.filter(|n| *n > 0) {
-                progress(&format!(
-                    "{}% {line}",
-                    (count.saturating_mul(100) / total).min(100)
-                ));
-            } else {
-                progress(&line);
-            }
-        };
         let success = cli::run_p4_stream(env, &refs, |line| {
             if !batch.record(line) {
-                if transfer.transferred == 0 && parallel {
+                if !saw_file && parallel {
                     retry |= parallel_rejected(line);
                 }
                 return false;
             }
-            transfer.record(line, Instant::now(), &mut emit);
+            saw_file = true;
+            progress(line);
             true
         })?;
-        transfer.finish(&mut emit);
-        if !success && parallel && retry && transfer.transferred == 0 {
+        if !success && parallel && retry && !saw_file {
             continue;
         }
+        let success = success || batch.only_skips();
         output.append(batch);
         return Ok(success);
     }
@@ -458,7 +508,13 @@ fn sync_paths(
 }
 
 fn sync_args(paths: &[String], parallel: bool, estimate: bool, flags: SyncFlags) -> Vec<String> {
-    let mut args = vec!["sync".to_string()];
+    let mut args = Vec::new();
+    // A file can become busy after the sharing check. Bound the native
+    // fallback too: current p4 clients clamp these settings to 10 and 50 ms.
+    if cfg!(windows) && !estimate && !flags.preview {
+        args.extend(["-vsys.rename.max=10".into(), "-vsys.rename.wait=50".into()]);
+    }
+    args.push("sync".into());
     if flags.preview {
         args.extend([
             "-n".to_string(),

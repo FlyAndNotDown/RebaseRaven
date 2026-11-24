@@ -906,8 +906,15 @@ async fn rebase_plan(repo_path: String, onto: String) -> AppResult<Vec<RebaseCom
 }
 
 #[tauri::command]
-async fn rebase_onto(repo_path: String, onto: String) -> AppResult<WorkspaceSnapshot> {
-    with_repo_async(repo_path, move |repo| git::rebase_onto(repo, &onto)).await
+async fn rebase_onto(
+    repo_path: String,
+    onto: String,
+    upstream: Option<String>,
+) -> AppResult<WorkspaceSnapshot> {
+    with_repo_async(repo_path, move |repo| {
+        git::rebase_onto(repo, &onto, upstream.as_deref())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1493,7 +1500,7 @@ async fn p4_describe(connection: p4::P4Connection, change_id: String) -> AppResu
 }
 
 #[tauri::command]
-async fn p4_opened_diff(connection: p4::P4Connection, path: String) -> AppResult<git::FileDiff> {
+async fn p4_opened_diff(connection: p4::P4Connection, path: String) -> AppResult<p4::P4OpenedDiff> {
     blocking(move || p4::opened_diff(&connection, &path)).await
 }
 
