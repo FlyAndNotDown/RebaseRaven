@@ -1401,7 +1401,8 @@ fn failed_history_command_surfaces_git_diagnostics_and_can_be_retried() {
     commit_file(&repo, &root, "base.txt", "base", "base");
     let missing_ref = "refs/heads/history-command-fixture";
     let args = ["log", missing_ref, "--"].map(str::to_string);
-    let error = log_page(repo.workdir(), &args, 0, 10, None).unwrap_err();
+    let refs = Arc::new(refs::RefCatalog::read(&repo, true).unwrap());
+    let error = log_page(repo.workdir(), &args, 0, 10, None, Vec::new(), refs).unwrap_err();
     assert!(error.to_string().contains(missing_ref), "{error}");
     let rows = commits(&repo, 10, 0, None, &[], |_| {}).unwrap();
     assert_eq!(rows[0].summary, "base");

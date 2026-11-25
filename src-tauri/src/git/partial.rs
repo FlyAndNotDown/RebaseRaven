@@ -180,7 +180,7 @@ pub fn apply_lines(
     action: &str,
     lines: &[LineRef],
     fingerprint: &str,
-) -> AppResult<WorkspaceSnapshot> {
+) -> AppResult<StatusSnapshot> {
     let rel = safe_repo_path(path)?;
     if rel.is_empty() {
         return Err(AppError::msg("A file is required"));
@@ -211,7 +211,7 @@ pub fn apply_lines(
     }
     args.push("-");
     run_git_input(&root, &args, &patch)?;
-    snapshot(repo)
+    status_snapshot(repo)
 }
 
 #[cfg(test)]

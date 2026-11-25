@@ -7,6 +7,17 @@ pub fn fetch_remote(
     prune: bool,
     on_progress: impl FnMut(&str) + Send,
 ) -> AppResult<WorkspaceSnapshot> {
+    fetch_refs(repo, remote, all, prune, on_progress)?;
+    snapshot(repo)
+}
+
+pub fn fetch_refs(
+    repo: &Repository,
+    remote: Option<&str>,
+    all: bool,
+    prune: bool,
+    on_progress: impl FnMut(&str) + Send,
+) -> AppResult<()> {
     let mut args = vec!["fetch", "--progress"];
     if prune {
         args.push("--prune");
@@ -17,8 +28,7 @@ pub fn fetch_remote(
         args.push("--");
         args.push(name);
     }
-    run_git_ok_progress(workdir(repo)?, &args, on_progress)?;
-    snapshot(repo)
+    run_git_ok_progress(workdir(repo)?, &args, on_progress)
 }
 
 pub fn delete_remote_tag(

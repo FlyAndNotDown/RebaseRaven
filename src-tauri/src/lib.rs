@@ -232,8 +232,19 @@ async fn open_repository(path: String, app: AppHandle) -> AppResult<WorkspaceSna
 }
 
 #[tauri::command]
-async fn refresh_workspace(repo_path: String) -> AppResult<WorkspaceSnapshot> {
-    with_repo_diagnostic(repo_path, diagnostics::Code::GitSnapshot, git::snapshot).await
+async fn refresh_workspace(
+    repo_path: String,
+    include_remote: Option<bool>,
+) -> AppResult<WorkspaceSnapshot> {
+    with_repo_diagnostic(repo_path, diagnostics::Code::GitSnapshot, move |repo| {
+        git::snapshot_with_refs(repo, include_remote.unwrap_or(false))
+    })
+    .await
+}
+
+#[tauri::command]
+async fn refresh_git_status(repo_path: String) -> AppResult<git::StatusSnapshot> {
+    with_repo_async(repo_path, |repo| git::status_snapshot(repo)).await
 }
 
 #[tauri::command]
@@ -254,9 +265,9 @@ async fn get_commits(
             skip.unwrap_or(0),
             query.as_deref(),
             rev.as_deref().unwrap_or(&[]),
-            |items| {
-                if let Some(channel) = preview {
-                    let _ = channel.send(items.to_vec());
+            |event| {
+                if let Some(channel) = &preview {
+                    let _ = channel.send(event);
                 }
             },
         )
@@ -393,19 +404,19 @@ async fn compare_file_diff(
 }
 
 #[tauri::command]
-async fn stage_paths(repo_path: String, paths: Vec<String>) -> AppResult<WorkspaceSnapshot> {
+async fn stage_paths(repo_path: String, paths: Vec<String>) -> AppResult<git::StatusSnapshot> {
     with_repo_async(repo_path, move |repo| {
         git::stage_paths(repo, &paths)?;
-        git::snapshot(repo)
+        git::status_snapshot(repo)
     })
     .await
 }
 
 #[tauri::command]
-async fn unstage_paths(repo_path: String, paths: Vec<String>) -> AppResult<WorkspaceSnapshot> {
+async fn unstage_paths(repo_path: String, paths: Vec<String>) -> AppResult<git::StatusSnapshot> {
     with_repo_async(repo_path, move |repo| {
         git::unstage_paths(repo, &paths)?;
-        git::snapshot(repo)
+        git::status_snapshot(repo)
     })
     .await
 }
@@ -418,7 +429,7 @@ async fn apply_lines(
     action: String,
     lines: Vec<git::LineRef>,
     fingerprint: String,
-) -> AppResult<WorkspaceSnapshot> {
+) -> AppResult<git::StatusSnapshot> {
     with_repo_async(repo_path, move |repo| {
         git::apply_lines(repo, &path, staged, &action, &lines, &fingerprint)
     })
@@ -426,10 +437,10 @@ async fn apply_lines(
 }
 
 #[tauri::command]
-async fn discard_paths(repo_path: String, paths: Vec<String>) -> AppResult<WorkspaceSnapshot> {
+async fn discard_paths(repo_path: String, paths: Vec<String>) -> AppResult<git::StatusSnapshot> {
     with_repo_async(repo_path, move |repo| {
         git::discard_paths(repo, &paths)?;
-        git::snapshot(repo)
+        git::status_snapshot(repo)
     })
     .await
 }
@@ -671,19 +682,41 @@ async fn fetch_remote(
     remote: Option<String>,
     all: Option<bool>,
     prune: Option<bool>,
-    background: Option<bool>,
     app: AppHandle,
 ) -> AppResult<WorkspaceSnapshot> {
     with_repo_async(repo_path, move |repo| {
-        git::with_background(background.unwrap_or(false), || {
-            activity::with_cancel(activity_id.as_deref(), || {
-                git::fetch_remote(
+        activity::with_cancel(activity_id.as_deref(), || {
+            git::fetch_remote(
+                repo,
+                remote.as_deref(),
+                all.unwrap_or(false),
+                prune.unwrap_or(false),
+                progress_sink(&app, activity_id.as_deref()),
+            )
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+async fn fetch_in_background(
+    repo_path: String,
+    activity_id: String,
+    prune: bool,
+    app: AppHandle,
+) -> AppResult<git::WorkspaceRefs> {
+    with_repo_async(repo_path, move |repo| {
+        git::with_background(true, || {
+            activity::with_cancel(Some(&activity_id), || {
+                git::fetch_refs(
                     repo,
-                    remote.as_deref(),
-                    all.unwrap_or(false),
-                    prune.unwrap_or(false),
-                    progress_sink(&app, activity_id.as_deref()),
-                )
+                    None,
+                    true,
+                    prune,
+                    progress_sink(&app, Some(&activity_id)),
+                )?;
+                activity::check_cancelled()?;
+                git::workspace_refs(repo)
             })
         })
     })
@@ -2535,6 +2568,7 @@ pub fn run() {
             answer_askpass,
             open_repository,
             refresh_workspace,
+            refresh_git_status,
             get_commits,
             get_branches,
             get_workdir_diff,
@@ -2576,6 +2610,7 @@ pub fn run() {
             remove_worktree,
             prune_worktrees,
             fetch_remote,
+            fetch_in_background,
             pull_remote,
             push_remote,
             create_branch,

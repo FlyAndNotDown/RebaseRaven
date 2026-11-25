@@ -1,93 +1,168 @@
 use super::*;
 
-pub fn branches(repo: &Repository, include_remote: bool) -> AppResult<BranchList> {
-    let info = repo_info(repo)?;
-    branch_list(repo, include_remote, info.current_branch, info.is_detached)
+pub(super) struct RefRecord {
+    pub(super) name: String,
+    pub(super) oid: String,
+    pub(super) peeled: String,
+    short: String,
+    target: String,
+    upstream: String,
+    upstream_short: String,
+    head: bool,
 }
 
-pub(super) fn branch_list(
-    repo: &Repository,
+pub(super) struct RefCatalog {
+    pub(super) entries: Vec<RefRecord>,
+    pub(super) remotes: Vec<String>,
     include_remote: bool,
-    current: Option<String>,
-    is_detached: bool,
-) -> AppResult<BranchList> {
-    let stdout = run_git_stdout(
-        workdir(repo)?,
-        &[
-            "-c",
-            "core.quotePath=false",
+}
+
+impl RefCatalog {
+    pub(super) fn read(repo: &Repository, include_remote: bool) -> AppResult<Self> {
+        let mut args = vec![
             "for-each-ref",
-            "--format=%(refname)%00%(refname:short)%00%(upstream:short)%00%(HEAD)",
+            "--format=%(refname)%00%(refname:short)%00%(objectname)%00%(*objectname)%00%(symref)%00%(upstream)%00%(upstream:short)%00%(HEAD)",
             "refs/heads",
-        ],
-    )?;
-    let mut local = Vec::new();
-    for line in String::from_utf8_lossy(&stdout).lines() {
-        let mut fields = line.split('\0');
-        let full = fields.next().unwrap_or("").trim();
-        let name = fields.next().unwrap_or("").trim();
-        if name.is_empty() {
-            continue;
-        }
-        let upstream = fields.next().unwrap_or("").trim();
-        let head = fields.next().unwrap_or("").trim();
-        local.push(BranchInfo {
-            full_ref: full.to_string(),
-            is_head: head == "*",
-            is_remote: false,
-            name: name.to_string(),
-            upstream: if upstream.is_empty() {
-                None
-            } else {
-                Some(upstream.to_string())
-            },
-        });
-    }
-    local.sort_by_cached_key(|branch| branch.name.to_lowercase());
-
-    let mut remote = Vec::new();
-    if include_remote {
-        let names = configured_remote_names(repo);
-        let mut items = remote_branches_from_git(workdir(repo)?, &names)?;
-        items.sort_by_cached_key(|branch| branch.name.to_lowercase());
-        remote = items;
-    }
-
-    Ok(BranchList {
-        current,
-        is_detached,
-        local,
-        remote,
-        tags: list_tags(repo)?,
-    })
-}
-
-pub(super) fn list_tags(repo: &Repository) -> AppResult<Vec<TagInfo>> {
-    let stdout = run_git_stdout(
-        workdir(repo)?,
-        &[
-            "-c",
-            "core.quotePath=false",
-            "for-each-ref",
-            "--format=%(refname:short)",
             "refs/tags",
-        ],
-    )?;
-    let mut tags = Vec::new();
-    for line in String::from_utf8_lossy(&stdout).lines() {
-        let name = line.trim();
-        if !name.is_empty() {
-            tags.push(TagInfo {
-                name: name.to_string(),
-            });
+        ];
+        if include_remote {
+            args.push("refs/remotes");
+        }
+        let stdout = run_git_stdout(workdir(repo)?, &args)?;
+        let entries = String::from_utf8_lossy(&stdout)
+            .lines()
+            .filter_map(|line| {
+                let mut fields = line.split('\0');
+                Some(RefRecord {
+                    name: fields.next()?.into(),
+                    short: fields.next()?.into(),
+                    oid: fields.next()?.into(),
+                    peeled: fields.next()?.into(),
+                    target: fields.next()?.into(),
+                    upstream: fields.next()?.into(),
+                    upstream_short: fields.next()?.into(),
+                    head: fields.next()? == "*",
+                })
+            })
+            .collect();
+        let remotes = if include_remote {
+            remote_names(repo).unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        Ok(Self {
+            entries,
+            remotes,
+            include_remote,
+        })
+    }
+
+    fn current(&self) -> Option<&RefRecord> {
+        self.entries
+            .iter()
+            .find(|entry| entry.head && entry.name.starts_with("refs/heads/"))
+    }
+
+    pub(super) fn head(&self, repo: &Repository) -> Option<String> {
+        self.current()
+            .map(|entry| entry.oid.clone())
+            .or_else(|| head_oid(repo))
+    }
+
+    pub(super) fn upstream_oid(&self, repo: &Repository) -> Option<String> {
+        if let Some(current) = self.current() {
+            return self
+                .entries
+                .iter()
+                .find(|entry| entry.name == current.upstream)
+                .map(|entry| entry.oid.clone())
+                .or_else(|| {
+                    (!current.upstream.is_empty())
+                        .then(|| rev_parse(repo, "@{upstream}"))
+                        .flatten()
+                });
+        }
+        // Detached HEAD has no upstream. Symbolic HEAD may be unborn.
+        None
+    }
+
+    pub(super) fn current_branch(
+        &self,
+        repo: &Repository,
+        head: Option<&str>,
+    ) -> (Option<String>, bool) {
+        let branch = self
+            .current()
+            .and_then(|entry| entry.name.strip_prefix("refs/heads/"))
+            .map(str::to_owned)
+            .or_else(|| symbolic_branch(repo));
+        let detached = branch.is_none() && head.is_some();
+        (
+            if detached {
+                Some("HEAD".to_string())
+            } else {
+                branch
+            },
+            detached,
+        )
+    }
+
+    pub(super) fn branch_list(&self, current: Option<String>, is_detached: bool) -> BranchList {
+        let mut local = Vec::new();
+        let mut remote = Vec::new();
+        let mut tags = Vec::new();
+        for entry in &self.entries {
+            if entry.name.starts_with("refs/tags/") {
+                tags.push(TagInfo {
+                    name: entry.short.clone(),
+                    oid: entry.oid.clone(),
+                });
+                continue;
+            }
+            let is_remote = entry.name.starts_with("refs/remotes/");
+            if is_remote
+                && (!entry.target.is_empty()
+                    || !is_remote_branch_name(
+                        entry.name.trim_start_matches("refs/remotes/"),
+                        &self.remotes,
+                    )
+                    || !is_remote_branch_name(&entry.short, &self.remotes))
+            {
+                continue;
+            }
+            let branch = BranchInfo {
+                full_ref: entry.name.clone(),
+                name: entry.short.clone(),
+                oid: entry.oid.clone(),
+                is_head: entry.head && !is_remote,
+                is_remote,
+                upstream: (!entry.upstream_short.is_empty()).then(|| entry.upstream_short.clone()),
+            };
+            if is_remote {
+                remote.push(branch);
+            } else {
+                local.push(branch);
+            }
+        }
+        local.sort_by_cached_key(|branch| branch.name.to_lowercase());
+        remote.sort_by_cached_key(|branch| branch.name.to_lowercase());
+        tags.sort_by_cached_key(|tag| tag.name.to_lowercase());
+        BranchList {
+            current,
+            is_detached,
+            local,
+            remote,
+            tags,
+            remote_loaded: self.include_remote,
         }
     }
-    tags.sort_by_cached_key(|tag| tag.name.to_lowercase());
-    Ok(tags)
 }
 
-pub(super) fn configured_remote_names(repo: &Repository) -> Vec<String> {
-    remote_names(repo).unwrap_or_default()
+pub fn branches(repo: &Repository, include_remote: bool) -> AppResult<BranchList> {
+    let catalog = RefCatalog::read(repo, include_remote)?;
+    let head = catalog.head(repo);
+    let (current, detached) = catalog.current_branch(repo, head.as_deref());
+    Ok(catalog.branch_list(current, detached))
 }
 
 pub(super) fn is_remote_branch_name(name: &str, remotes: &[String]) -> bool {
@@ -105,60 +180,6 @@ pub(super) fn is_remote_branch_name(name: &str, remotes: &[String]) -> bool {
     !remotes
         .iter()
         .any(|remote| name.eq_ignore_ascii_case(remote))
-}
-
-pub(super) fn remote_tracking_branch_name(
-    full_ref: &str,
-    short_name: &str,
-    remotes: &[String],
-) -> Option<String> {
-    if let Some(rest) = full_ref.strip_prefix("refs/remotes/") {
-        if !is_remote_branch_name(rest, remotes) {
-            return None;
-        }
-    } else if !full_ref.is_empty() {
-        return None;
-    }
-    if !is_remote_branch_name(short_name, remotes) {
-        return None;
-    }
-    Some(short_name.trim().to_string())
-}
-
-pub(super) fn remote_branches_from_git(
-    root: &Path,
-    remotes: &[String],
-) -> AppResult<Vec<BranchInfo>> {
-    let stdout = run_git_stdout(
-        root,
-        &[
-            "for-each-ref",
-            "--format=%(refname)%00%(refname:short)%00%(symref)",
-            "refs/remotes",
-        ],
-    )?;
-    let text = String::from_utf8_lossy(&stdout);
-    let mut remote = Vec::new();
-    for line in text.lines() {
-        let mut fields = line.split('\0');
-        let full = fields.next().unwrap_or("").trim();
-        let name = fields.next().unwrap_or("").trim();
-        let symref = fields.next().unwrap_or("").trim();
-        if !symref.is_empty() {
-            continue;
-        }
-        let Some(name) = remote_tracking_branch_name(full, name, remotes) else {
-            continue;
-        };
-        remote.push(BranchInfo {
-            full_ref: full.to_string(),
-            is_head: false,
-            is_remote: true,
-            name,
-            upstream: None,
-        });
-    }
-    Ok(remote)
 }
 
 /// Switching goes through `git switch` so smudge filters such as Git LFS,

@@ -17,6 +17,7 @@ use crate::git::strip_verbatim_prefix;
 
 const DEBOUNCE: Duration = Duration::from_millis(600);
 const MAX_CHANGED_PATHS: usize = 48;
+const IGNORE_BATCH: usize = 256;
 /// Walk this many levels so output folders are never part of a recursive watch.
 /// Deeper folders get one recursive watch, and new directories above this depth
 /// are attached when they are created.
@@ -35,6 +36,7 @@ struct Pending {
     at: Instant,
     paths: Vec<String>,
     overflow: bool,
+    rules: Arc<IgnoreRules>,
 }
 
 struct AttachRequest {
@@ -140,54 +142,42 @@ impl IgnoreRules {
         }
     }
 
-    fn ignores(&self, path: &Path) -> bool {
-        self.ignores_as(path, false)
-    }
-
-    fn ignores_dir(&self, path: &Path) -> bool {
-        self.ignores_as(path, true)
-    }
-
-    fn ignores_as(&self, path: &Path, dir: bool) -> bool {
-        if ignored(path) {
-            return true;
-        }
-        let Some(rel) = relative_path(&self.root, path) else {
-            return false;
-        };
+    fn query_path(&self, path: &Path, dir: bool) -> Option<String> {
+        let rel = relative_path(&self.root, path)?;
         if rel == ".git" || rel.starts_with(".git/") {
-            return false;
+            return None;
         }
-        let query = if dir { format!("{rel}/") } else { rel };
-        self.query_ignored(&query)
+        Some(if dir { format!("{rel}/") } else { rel })
     }
 
-    /// One `git check-ignore` for a whole directory of children. A failure is
-    /// treated as "not ignored" so a transient git error still delivers events.
+    /// One native ignore query for a batch of paths. A failure delivers events.
     fn ignored_set(&self, queries: &[String]) -> HashSet<String> {
         let Some(repo) = &self.repo else {
             return HashSet::new();
         };
         let mut ignored = HashSet::new();
         let mut missing = Vec::new();
-        let mut guard = self.cache.lock().unwrap_or_else(|err| err.into_inner());
-        for query in queries {
-            let stamp = ignore_stamp(repo, query);
-            if let Some((cached_stamp, value)) = guard.get(query) {
-                if *cached_stamp == stamp {
-                    if *value {
-                        ignored.insert(query.clone());
+        {
+            let guard = self.cache.lock().unwrap_or_else(|err| err.into_inner());
+            for query in queries {
+                let stamp = ignore_stamp(repo, query);
+                if let Some((cached_stamp, value)) = guard.get(query) {
+                    if *cached_stamp == stamp {
+                        if *value {
+                            ignored.insert(query.clone());
+                        }
+                        continue;
                     }
-                    continue;
                 }
+                missing.push((query.clone(), stamp));
             }
-            missing.push((query.clone(), stamp));
         }
         if missing.is_empty() {
             return ignored;
         }
         let asked: Vec<String> = missing.iter().map(|(query, _)| query.clone()).collect();
         let found = crate::git::ignored_queries(repo, &asked).unwrap_or_default();
+        let mut guard = self.cache.lock().unwrap_or_else(|err| err.into_inner());
         for (query, stamp) in missing {
             let value = found.contains(&query);
             if value {
@@ -198,9 +188,24 @@ impl IgnoreRules {
         ignored
     }
 
-    fn query_ignored(&self, query: &str) -> bool {
-        self.ignored_set(std::slice::from_ref(&query.to_string()))
-            .contains(query)
+    fn visible_paths<T: AsRef<Path>>(&self, paths: Vec<T>, dir: bool) -> Vec<T> {
+        let mut visible = Vec::new();
+        let mut paths = paths.into_iter();
+        loop {
+            let batch: Vec<_> = paths.by_ref().take(IGNORE_BATCH).collect();
+            if batch.is_empty() {
+                break;
+            }
+            let queries: Vec<_> = batch
+                .iter()
+                .map(|path| self.query_path(path.as_ref(), dir))
+                .collect();
+            let ignored = self.ignored_set(&queries.iter().flatten().cloned().collect::<Vec<_>>());
+            visible.extend(batch.into_iter().zip(queries).filter_map(|(path, query)| {
+                (!query.is_some_and(|query| ignored.contains(&query))).then_some(path)
+            }));
+        }
+        visible
     }
 }
 
@@ -240,16 +245,6 @@ fn relative_path(root: &Path, path: &Path) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join("/"))
 }
 
-fn interesting(event: &Event, rules: &IgnoreRules) -> bool {
-    if !matches!(
-        event.kind,
-        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
-    ) {
-        return false;
-    }
-    event.paths.iter().any(|path| !rules.ignores(path))
-}
-
 fn relative_depth(root: &str, path: &Path) -> Option<usize> {
     let root_text = strip_verbatim_prefix(root);
     let path_text = strip_verbatim_prefix(&path.to_string_lossy());
@@ -260,11 +255,11 @@ fn relative_depth(root: &str, path: &Path) -> Option<usize> {
         .filter(|depth| *depth > 0)
 }
 
-fn should_attach(root: &str, path: &Path, rules: &IgnoreRules) -> bool {
+fn should_attach(root: &str, path: &Path) -> bool {
     let Some(depth) = relative_depth(root, path) else {
         return false;
     };
-    depth <= WATCH_SPLIT_DEPTH as usize && path.is_dir() && !rules.ignores_dir(path)
+    depth <= WATCH_SPLIT_DEPTH as usize && path.is_dir()
 }
 
 fn is_watch_limit(err: &notify::Error) -> bool {
@@ -285,49 +280,41 @@ fn watch_tree(
     depth: u8,
     rules: &IgnoreRules,
 ) -> Result<(), WatchFault> {
-    let mode = if depth >= WATCH_SPLIT_DEPTH {
-        RecursiveMode::Recursive
-    } else {
-        RecursiveMode::NonRecursive
-    };
-    watcher.watch(path, mode).map_err(watch_fault)?;
-    if depth >= WATCH_SPLIT_DEPTH {
-        return Ok(());
-    }
-    let Ok(entries) = fs::read_dir(path) else {
-        return Ok(());
-    };
-    let mut children = Vec::new();
-    for entry in entries.flatten() {
-        let child = entry.path();
-        if !child.is_dir() {
-            continue;
-        }
-        let name = child
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("");
-        if name.is_empty() || name == ".git" || ignored(&child) {
-            continue;
-        }
-        children.push(child);
-    }
-    let queries: Vec<String> = children
-        .iter()
-        .filter_map(|child| relative_path(&rules.root, child))
-        .map(|rel| format!("{rel}/"))
-        .collect();
-    let ignored_dirs = rules.ignored_set(&queries);
-    for child in children {
-        let Some(rel) = relative_path(&rules.root, &child) else {
-            continue;
+    let mut layer = vec![path.to_path_buf()];
+    for level in depth..=WATCH_SPLIT_DEPTH {
+        let recursive = level == WATCH_SPLIT_DEPTH;
+        let mode = if recursive {
+            RecursiveMode::Recursive
+        } else {
+            RecursiveMode::NonRecursive
         };
-        if ignored_dirs.contains(&format!("{rel}/")) {
-            continue;
+        let mut children = Vec::new();
+        for directory in layer {
+            if let Err(error) = watcher.watch(&directory, mode).map_err(watch_fault) {
+                if level == depth || matches!(error, WatchFault::Limit) {
+                    return Err(error);
+                }
+                continue;
+            }
+            if !recursive {
+                children.extend(
+                    fs::read_dir(directory)
+                        .into_iter()
+                        .flatten()
+                        .flatten()
+                        .map(|entry| entry.path())
+                        .filter(|path| {
+                            path.file_name().is_some_and(|name| name != ".git")
+                                && !ignored(path)
+                                && path.is_dir()
+                        }),
+                );
+            }
         }
-        if let Err(WatchFault::Limit) = watch_tree(watcher, &child, depth + 1, rules) {
-            return Err(WatchFault::Limit);
+        if children.is_empty() {
+            break;
         }
+        layer = rules.visible_paths(children, true);
     }
     Ok(())
 }
@@ -356,13 +343,16 @@ fn watch_repo(
 
     // A linked worktree has a `.git` file pointing at its own git folder, and
     // shares refs with the main repository's.
-    let (git_dir, common_dir) = match crate::git::open_at(root) {
-        Ok(repo) => (repo.path().to_path_buf(), repo.commondir().to_path_buf()),
-        Err(_) => (root.join(".git"), root.join(".git")),
-    };
-    watch_optional(watcher, &git_dir, RecursiveMode::NonRecursive)?;
+    let fallback = root.join(".git");
+    let (git_dir, common_dir) = rules
+        .repo
+        .as_ref()
+        .map_or((fallback.as_path(), fallback.as_path()), |repo| {
+            (repo.path(), repo.commondir())
+        });
+    watch_optional(watcher, git_dir, RecursiveMode::NonRecursive)?;
     if common_dir != git_dir {
-        watch_optional(watcher, &common_dir, RecursiveMode::NonRecursive)?;
+        watch_optional(watcher, common_dir, RecursiveMode::NonRecursive)?;
     }
     watch_optional(watcher, &common_dir.join("refs"), RecursiveMode::Recursive)?;
     Ok(())
@@ -371,8 +361,8 @@ fn watch_repo(
 fn note_change(
     pending: &Mutex<HashMap<String, Pending>>,
     repo: &str,
-    event: &Event,
-    rules: &IgnoreRules,
+    paths: &[PathBuf],
+    rules: &Arc<IgnoreRules>,
 ) {
     let mut map = pending.lock().unwrap_or_else(|err| err.into_inner());
     let slot = map.entry(repo.to_string()).or_insert_with(|| Pending {
@@ -380,17 +370,15 @@ fn note_change(
         at: Instant::now(),
         paths: Vec::new(),
         overflow: false,
+        rules: rules.clone(),
     });
     slot.generation = slot.generation.wrapping_add(1);
     slot.at = Instant::now();
     if slot.overflow {
         return;
     }
-    for path in &event.paths {
-        if rules.ignores(path) {
-            continue;
-        }
-        if slot.paths.len() >= MAX_CHANGED_PATHS {
+    for path in paths {
+        if slot.paths.len() >= IGNORE_BATCH {
             slot.overflow = true;
             slot.paths.clear();
             return;
@@ -409,13 +397,20 @@ fn event_handler(
     rules: Arc<IgnoreRules>,
 ) -> impl Fn(Result<Event, notify::Error>) + Send + 'static {
     move |result| {
-        let Ok(event) = result else { return };
-        if !interesting(&event, &rules) {
+        let Ok(mut event) = result else { return };
+        if !matches!(
+            event.kind,
+            EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+        ) {
+            return;
+        }
+        event.paths.retain(|path| !ignored(path));
+        if event.paths.is_empty() {
             return;
         }
         if matches!(event.kind, EventKind::Create(_)) {
             for changed in &event.paths {
-                if should_attach(&path, changed, &rules) {
+                if should_attach(&path, changed) {
                     let _ = attach.send(AttachRequest {
                         root: path.clone(),
                         path: changed.clone(),
@@ -423,7 +418,7 @@ fn event_handler(
                 }
             }
         }
-        note_change(pending.as_ref(), &path, &event, &rules);
+        note_change(pending.as_ref(), &path, &event.paths, &rules);
     }
 }
 
@@ -491,18 +486,34 @@ fn ensure_debouncer(app: &AppHandle, state: &WatchState) {
     let watchers = state.watchers.clone();
     let app = app.clone();
     thread::spawn(move || loop {
+        let mut attachments = HashMap::<String, HashSet<PathBuf>>::new();
         while let Ok(request) = receiver.try_recv() {
-            let mut map = watchers.lock().unwrap_or_else(|err| err.into_inner());
-            let Some(entry) = map.get_mut(&request.root) else {
+            attachments
+                .entry(request.root)
+                .or_default()
+                .insert(request.path);
+        }
+        for (root, paths) in attachments {
+            let rules = watchers
+                .lock()
+                .unwrap_or_else(|err| err.into_inner())
+                .get(&root)
+                .map(|entry| entry.rules.clone());
+            let Some(rules) = rules else {
                 continue;
             };
-            if entry.rules.ignores_dir(&request.path) {
-                continue;
+            for path in rules.visible_paths(paths.into_iter().collect(), true) {
+                let mut map = watchers.lock().unwrap_or_else(|err| err.into_inner());
+                let Some(entry) = map
+                    .get_mut(&root)
+                    .filter(|entry| Arc::ptr_eq(&entry.rules, &rules))
+                else {
+                    break;
+                };
+                let depth = relative_depth(&root, &path)
+                    .expect("attached directory must be in the repository");
+                let _ = watch_tree(&mut *entry.watcher, &path, depth as u8, &rules);
             }
-            let depth =
-                relative_depth(&request.root, &request.path).unwrap_or(WATCH_SPLIT_DEPTH as usize);
-            let rules = entry.rules.clone();
-            let _ = watch_tree(&mut *entry.watcher, &request.path, depth as u8, &rules);
         }
 
         thread::sleep(Duration::from_millis(150));
@@ -515,29 +526,34 @@ fn ensure_debouncer(app: &AppHandle, state: &WatchState) {
                 .collect()
         };
         for (path, generation) in due {
-            let payload = {
+            let item = {
                 let mut map = pending.lock().unwrap_or_else(|err| err.into_inner());
                 match map.get(&path) {
                     Some(item)
                         if item.generation == generation && item.at.elapsed() >= DEBOUNCE =>
                     {
-                        let item = map.remove(&path).expect("pending entry");
-                        Some(RepoChanged {
-                            path,
-                            paths: if item.overflow {
-                                Vec::new()
-                            } else {
-                                item.paths
-                            },
-                            overflow: item.overflow,
-                        })
+                        map.remove(&path)
                     }
                     _ => None,
                 }
             };
-            if let Some(payload) = payload {
-                let _ = app.emit("repo-changed", payload);
+            let Some(item) = item else { continue };
+            let mut paths = item.rules.visible_paths(item.paths, false);
+            let overflow = item.overflow || paths.len() > MAX_CHANGED_PATHS;
+            if paths.is_empty() && !overflow {
+                continue;
             }
+            if overflow {
+                paths.clear();
+            }
+            let _ = app.emit(
+                "repo-changed",
+                RepoChanged {
+                    path,
+                    paths,
+                    overflow,
+                },
+            );
         }
     });
 }
@@ -614,7 +630,11 @@ mod tests {
         assert!(!ignored(Path::new("repo/module/src/detail/impl.cpp")));
         assert!(!ignored(Path::new("repo/.git/index")));
         assert!(!ignored(Path::new("repo/.git/refs/heads/main")));
-        assert!(!IgnoreRules::fixed_only().ignores(Path::new("repo/module/src/a.cpp")));
+        let paths = vec![Path::new("repo/module/src/a.cpp")];
+        assert_eq!(
+            IgnoreRules::fixed_only().visible_paths(paths.clone(), false),
+            paths
+        );
     }
 
     #[test]
@@ -639,13 +659,18 @@ mod tests {
         git(&["add", "-f", "--", "kept.log"]);
 
         let rules = IgnoreRules::open(&root);
-        assert!(rules.ignores_dir(&root.join("out")));
-        assert!(rules.ignores(&root.join("out").join("app.o")));
-        assert!(rules.ignores(&root.join("debug.log")));
-        assert!(!rules.ignores(&root.join("kept.log")));
-        assert!(!rules.ignores(&root.join("src").join("main.rs")));
-        assert!(!rules.ignores_dir(&root.join("src")));
-        assert!(!rules.ignores(&root.join(".git").join("index")));
+        assert_eq!(
+            rules.visible_paths(vec![root.join("src"), root.join("out")], true),
+            vec![root.join("src")]
+        );
+        let visible = vec![
+            root.join("kept.log"),
+            root.join("src/main.rs"),
+            root.join(".git/index"),
+        ];
+        let mut candidates = visible.clone();
+        candidates.extend([root.join("out/app.o"), root.join("debug.log")]);
+        assert_eq!(rules.visible_paths(candidates, false), visible);
         let _ = fs::remove_dir_all(&root);
     }
 }

@@ -21,6 +21,7 @@ import type {
   RebaseStep,
   FileDiff,
   StashDetails,
+  StatusSnapshot,
   GitExecutables,
   GitIdentity,
   ImagePair,
@@ -119,13 +120,18 @@ export const gitApi = {
     }),
   answerAskpass: (id: number, answer: string | null) =>
     call<void>("answer_askpass", { id, answer }),
-  refreshWorkspace: (repoPath: string) =>
-    call<WorkspaceSnapshot>("refresh_workspace", { repoPath }),
-  getCommits: async (repoPath: string, limit = 80, skip = 0, query?: string, revs?: string[] | null, onPreview?: (items: CommitSummary[]) => void) => {
-    const preview = onPreview ? new Channel<CommitSummary[]>() : null;
+  refreshWorkspace: (repoPath: string, includeRemote = false) =>
+    call<WorkspaceSnapshot>("refresh_workspace", { repoPath, includeRemote }),
+  refreshStatus: (repoPath: string) => call<StatusSnapshot>("refresh_git_status", { repoPath }),
+  getCommits: async (repoPath: string, limit = 80, skip = 0, query?: string, revs?: string[] | null, onPreview?: (items: CommitSummary[]) => void, onBranches?: (branches: BranchList) => void) => {
+    const preview = onPreview || onBranches
+      ? new Channel<{ kind: "commits"; value: CommitSummary[] } | { kind: "branches"; value: BranchList }>()
+      : null;
     let pending = true;
-    if (preview) preview.onmessage = (items) => {
-      if (pending) onPreview?.(items.map(item => ({...item, onCurrentBranch: null, onTrackingBranch: null})));
+    if (preview) preview.onmessage = ({ kind, value }) => {
+      if (!pending) return;
+      if (kind === "branches") onBranches?.(value);
+      else onPreview?.(value.map(item => ({...item, onCurrentBranch: null, onTrackingBranch: null})));
     };
     try {
       return await call<CommitSummary[]>("get_commits", { repoPath, limit, skip, query: query || null, rev: revs?.length ? revs : null, preview });
@@ -156,13 +162,13 @@ export const gitApi = {
   compareFileDiff: (repoPath: string, base: string, head: string, path: string, ignoreWhitespace = false) =>
     call<FileDiff>("compare_file_diff", { repoPath, base, head, path, ignoreWhitespace }),
   stagePaths: (repoPath: string, paths: string[]) =>
-    call<WorkspaceSnapshot>("stage_paths", { repoPath, paths }),
+    call<StatusSnapshot>("stage_paths", { repoPath, paths }),
   unstagePaths: (repoPath: string, paths: string[]) =>
-    call<WorkspaceSnapshot>("unstage_paths", { repoPath, paths }),
+    call<StatusSnapshot>("unstage_paths", { repoPath, paths }),
   applyLines: (repoPath: string, path: string, staged: boolean, action: LineAction, lines: LineRef[], fingerprint: string) =>
-    call<WorkspaceSnapshot>("apply_lines", { repoPath, path, staged, action, lines, fingerprint }),
+    call<StatusSnapshot>("apply_lines", { repoPath, path, staged, action, lines, fingerprint }),
   discardPaths: (repoPath: string, paths: string[]) =>
-    call<WorkspaceSnapshot>("discard_paths", { repoPath, paths }),
+    call<StatusSnapshot>("discard_paths", { repoPath, paths }),
   commit: (repoPath: string, message: string, amend = false) =>
     call<WorkspaceSnapshot>("commit_changes", { repoPath, message, amend }),
   checkoutBranch: (repoPath: string, name: string) =>
@@ -209,7 +215,7 @@ export const gitApi = {
     activityId?: string,
     remote?: string,
     all = false,
-    options?: { prune?: boolean; background?: boolean },
+    options?: { prune?: boolean },
   ) =>
     call<WorkspaceSnapshot>("fetch_remote", {
       repoPath,
@@ -217,8 +223,9 @@ export const gitApi = {
       remote: remote || null,
       all,
       prune: options?.prune ?? false,
-      background: options?.background ?? false,
     }),
+  fetchInBackground: (repoPath: string, activityId: string, prune: boolean) =>
+    call<Pick<WorkspaceSnapshot, "repo" | "branches">>("fetch_in_background", { repoPath, activityId, prune }),
   deleteRemoteTag: (repoPath: string, remote: string, name: string, activityId?: string) =>
     call<WorkspaceSnapshot>("delete_remote_tag", { repoPath, remote, name, activityId: activityId || null }),
   addRemote: (repoPath: string, name: string, url: string) =>

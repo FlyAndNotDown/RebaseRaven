@@ -63,7 +63,7 @@ function joinPath(root: string, relative: string) {
 }
 
 /** Submodule and worktree sections for the branches sidebar. */
-export function RepoStructure({ onReady }: { onReady?: (repoPath: string) => void }) {
+export function RepoStructure() {
   useTranslation();
   const { snapshot, openPath, updateSubmodules, beginActivity, endActivity, setOpenPanel, changeSubmodule } = useGitPick([
     "snapshot",
@@ -91,8 +91,12 @@ export function RepoStructure({ onReady }: { onReady?: (repoPath: string) => voi
   const structureReady = loadedFor === repoPath && repoPath !== "";
   const definitionsBlocked = busy || Boolean(snapshot?.repo.operation);
   const changedPaths = new Set([...(snapshot?.status.staged ?? []), ...(snapshot?.status.unstaged ?? [])].map(file => file.path));
+  const repoMetadata = snapshot?.repo;
+  const moduleChanges = [".gitmodules", ...submodules.map(module => module.path)]
+    .filter(path => changedPaths.has(path)).join("\0");
 
-  // Any repository change can move a submodule or a worktree's branch.
+  // File-only snapshots retain the repository metadata. Submodule paths can
+  // still change independently of HEAD.
   useEffect(() => {
     if (!repoPath) return;
     let live = true;
@@ -106,12 +110,11 @@ export function RepoStructure({ onReady }: { onReady?: (repoPath: string) => voi
           worktrees: trees.status === "rejected" ? errorMessage(trees.reason) : null,
         });
         setLoadedFor(repoPath);
-        onReady?.(repoPath);
       });
     return () => {
       live = false;
     };
-  }, [onReady, repoPath, snapshot, reload]);
+  }, [repoPath, repoMetadata, moduleChanges, reload]);
 
   async function copy(text: string) {
     try {
