@@ -1326,28 +1326,72 @@ fn history_pages_are_contiguous_whether_or_not_the_stream_is_reused() {
 }
 
 #[test]
-fn history_keeps_valid_filters_when_a_branch_matches_a_path_or_another_ref_is_deleted() {
+fn history_keeps_selected_branches_and_upstreams_when_a_saved_branch_is_deleted() {
     let (root, repo) = temp_repo();
-    commit_file(&repo, &root, "base.txt", "base", "base");
-    branch_here(&repo, "topic");
-    commit_file(&repo, &root, "main.txt", "main", "main only");
-    fs::create_dir(root.join("topic")).unwrap();
+    run_git_stdout(&root, &["symbolic-ref", "HEAD", "refs/heads/unselected"]).unwrap();
+    commit_file(&repo, &root, "base.txt", "base", "base change");
+    let base = head_id(&repo);
+    let tree = rev_parse(&repo, "HEAD^{tree}").unwrap();
+    let refs = [
+        ("refs/heads/work/feature/current", "local feature change"),
+        ("refs/heads/stable", "local stable change"),
+        (
+            "refs/remotes/origin/work/feature/current",
+            "remote feature change",
+        ),
+        ("refs/remotes/origin/stable", "remote stable change"),
+    ];
+    for (reference, message) in refs {
+        let oid =
+            run_git_stdout(&root, &["commit-tree", &tree, "-p", &base, "-m", message]).unwrap();
+        run_git_stdout(
+            &root,
+            &[
+                "update-ref",
+                reference,
+                std::str::from_utf8(&oid).unwrap().trim(),
+            ],
+        )
+        .unwrap();
+    }
+    commit_file(&repo, &root, "unselected.txt", "extra", "unselected change");
+    branch_here(&repo, "work/feature/retired");
+    run_git_stdout(
+        &root,
+        &["update-ref", "-d", "refs/heads/work/feature/retired"],
+    )
+    .unwrap();
 
-    let missing = "refs/remotes/origin/pruned".to_string();
-    let selections = ["topic".to_string(), missing.clone()];
-    for query in [None, Some("base")] {
+    let selections = [
+        "work/feature/current",
+        "stable",
+        "work/feature/retired",
+        "origin/work/feature/current",
+        "origin/stable",
+    ]
+    .map(str::to_string);
+    let mut expected = refs.map(|(_, subject)| subject).to_vec();
+    expected.push("base change");
+    expected.sort_unstable();
+    for query in [None, Some("change")] {
         let rows = commits(&repo, 10, 0, query, &selections, |_| {}).unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].summary, "base");
+        let mut subjects = rows
+            .iter()
+            .map(|commit| commit.summary.as_str())
+            .collect::<Vec<_>>();
+        subjects.sort_unstable();
+        assert_eq!(subjects, expected);
     }
 
-    // When all saved filters are gone, the default scope applies on every page.
-    let stale = std::slice::from_ref(&missing);
-    let first_page = commits(&repo, 1, 0, None, stale, |_| {}).unwrap();
-    let second_page = commits(&repo, 1, 1, None, stale, |_| {}).unwrap();
-    assert_eq!(first_page[0].summary, "main only");
-    assert_eq!(second_page[0].summary, "base");
-    assert!(commits(&repo, 1, 2, None, &[], |_| {}).unwrap().is_empty());
+    let default = commits(&repo, 10, 0, None, &[], |_| {}).unwrap();
+    let stale_only = commits(&repo, 10, 0, None, &selections[2..3], |_| {}).unwrap();
+    assert_eq!(
+        stale_only
+            .iter()
+            .map(|commit| &commit.id)
+            .collect::<Vec<_>>(),
+        default.iter().map(|commit| &commit.id).collect::<Vec<_>>(),
+    );
     fs::remove_dir_all(root).unwrap();
 }
 
