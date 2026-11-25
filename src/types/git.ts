@@ -166,6 +166,7 @@ export interface RevisionComparison {
 export interface BranchInfo {
   fullRef: string;
   name: string;
+  oid?: string;
   isHead: boolean;
   isRemote: boolean;
   upstream: string | null;
@@ -173,6 +174,7 @@ export interface BranchInfo {
 
 export interface TagInfo {
   name: string;
+  oid?: string;
 }
 
 export interface BranchList {
@@ -181,6 +183,7 @@ export interface BranchList {
   local: BranchInfo[];
   remote: BranchInfo[];
   tags: TagInfo[];
+  remoteLoaded?: boolean;
 }
 
 export interface GitIdentity {

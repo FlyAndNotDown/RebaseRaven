@@ -52,6 +52,36 @@ beforeEach(async () => {
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); });
 
+it("shows Pending files before status enrichment and updates their conflict status", async () => {
+  const file = {
+    depotPath: "//depot/sample.txt", localPath: "/workspace/sample.txt", action: "edit",
+    rev: "2", shelved: false, binary: false, status: "", detail: "",
+  };
+  const summary = {
+    id: "42", user: "alice", client: "example", status: "pending", description: "Review",
+    time: 0, shelved: false, files: [file], stream: null, shelvedStream: null,
+  };
+  let finish!: () => void;
+  vi.mocked(p4Api.refreshPending).mockImplementationOnce(async (_connection, preview) => {
+    preview?.([summary]);
+    await new Promise<void>((resolve) => { finish = resolve; });
+    return [{ ...summary, files: [{ ...file, status: "conflict" }] }];
+  });
+  const diff = vi.spyOn(p4Api, "openedDiff").mockResolvedValue({
+    path: file.depotPath, oldPath: null, binary: false, truncated: false, lines: [],
+  });
+  let refresh!: Promise<void>;
+  await act(async () => { refresh = state.refresh(); });
+  expect(state.pending[0].files[0]).toEqual(file);
+  expect(state.busy).toBe(true);
+  expect(diff).not.toHaveBeenCalled();
+  await act(async () => { finish(); await refresh; });
+  expect(state.pending[0].files[0].status).toBe("conflict");
+  expect(state.selectedFile).toBe(file.depotPath);
+  expect(state.busy).toBe(false);
+  expect(diff).toHaveBeenCalledOnce();
+});
+
 it("reports partial sync as one warning and finishes refreshing and releasing the workspace", async () => {
   await act(async () => state.sync());
   expect(toast.warning).toHaveBeenCalledExactlyOnceWith("Skipped 2 writable files");

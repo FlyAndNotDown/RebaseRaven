@@ -10,18 +10,14 @@ const STREAM_IDLE: Duration = Duration::from_secs(120);
 
 struct LogStream {
     args: Vec<String>,
+    selected: Vec<String>,
+    refs: Arc<refs::RefCatalog>,
     tips: Option<BranchTips>,
     frontier: HashMap<String, u8>,
     child: LoggedChild,
     reader: BufReader<LoggedReader<ChildStdout>>,
     position: usize,
     used: Instant,
-}
-
-impl Drop for LogStream {
-    fn drop(&mut self) {
-        stop_child(&mut self.child);
-    }
 }
 
 type Slot = Arc<Mutex<Option<LogStream>>>;
@@ -78,6 +74,22 @@ pub fn retain_log_streams(open: &[String]) {
     map.retain(|root, _| open.contains(&root_key(&root.to_string_lossy())));
 }
 
+pub(super) fn history_stream_refs(
+    root: &Path,
+    skip: usize,
+    selected: &[String],
+) -> Option<Arc<refs::RefCatalog>> {
+    if skip == 0 {
+        return None;
+    }
+    let slot = slot_for(root);
+    let stream = slot.lock().unwrap_or_else(|err| err.into_inner());
+    stream
+        .as_ref()
+        .filter(|stream| stream.position == skip && stream.selected == selected)
+        .map(|stream| stream.refs.clone())
+}
+
 /// Returns `limit` lines of `git <args>` output starting at line `skip`.
 ///
 /// Date-ordered `git log` walks the whole graph before printing its first line,
@@ -89,12 +101,17 @@ pub(super) fn log_page(
     skip: usize,
     limit: usize,
     tips: Option<&BranchTips>,
+    selected: Vec<String>,
+    refs: Arc<refs::RefCatalog>,
 ) -> AppResult<Vec<CommitSummary>> {
     let slot = slot_for(root);
     let mut guard = slot.lock().unwrap_or_else(|err| err.into_inner());
     let reusable = skip > 0
         && guard.as_ref().is_some_and(|stream| {
-            stream.args == args && stream.position == skip && stream.tips.as_ref() == tips
+            stream.args == args
+                && stream.position == skip
+                && stream.tips.as_ref() == tips
+                && Arc::ptr_eq(&stream.refs, &refs)
         });
     if !reusable {
         *guard = None;
@@ -106,6 +123,8 @@ pub(super) fn log_page(
             .ok_or_else(|| AppError::msg("Could not read git log"))?;
         *guard = Some(LogStream {
             args: args.to_vec(),
+            selected,
+            refs,
             tips: tips.cloned(),
             frontier: tips.map(BranchTips::frontier).unwrap_or_default(),
             child,
@@ -143,14 +162,13 @@ pub(super) fn log_page(
             }
         }
     }
-    stream.child.checkpoint();
-    stream.used = Instant::now();
     if ended {
-        let status = stream.child.wait()?;
+        let result = stream.child.wait_checked("Could not load Git history");
         *guard = None;
-        if !status.success() {
-            return Err(AppError::msg("git log failed"));
-        }
+        result?;
+    } else {
+        stream.child.checkpoint();
+        stream.used = Instant::now();
     }
     Ok(page)
 }

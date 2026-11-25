@@ -59,28 +59,53 @@ pub(super) fn summary_from_info(info: &CommitInfo) -> CommitSummary {
     }
 }
 
+#[derive(Serialize)]
+#[serde(tag = "kind", content = "value", rename_all = "camelCase")]
+pub enum HistoryPreview<'a> {
+    Branches(BranchList),
+    Commits(&'a [CommitSummary]),
+}
+
 pub fn commits(
     repo: &Repository,
     limit: usize,
     skip: usize,
     query: Option<&str>,
     revs: &[String],
-    preview: impl FnOnce(&[CommitSummary]),
+    mut preview: impl FnMut(HistoryPreview<'_>),
 ) -> AppResult<Vec<CommitSummary>> {
     let query = query.map(str::trim).filter(|value| !value.is_empty());
-    let revs = normalize_revs(revs);
-    if let Some(query) = query {
-        return search_commits(repo, limit, skip, query, &revs, preview);
-    }
     let root = workdir(repo)?;
+    let selected = normalize_revs(revs);
+    let cached = if query.is_none() {
+        history_stream_refs(root, skip, &selected)
+    } else {
+        None
+    };
+    let catalog = match cached {
+        Some(catalog) => catalog,
+        None => Arc::new(refs::RefCatalog::read(repo, true)?),
+    };
+    let tips = BranchTips::from_catalog(repo, &catalog);
+    let (labels, revs) = history_labels(&catalog, tips.head.as_deref(), &selected);
+    if skip == 0 && query.is_none() {
+        let (current, detached) = catalog.current_branch(repo, tips.head.as_deref());
+        preview(HistoryPreview::Branches(
+            catalog.branch_list(current, detached),
+        ));
+    }
+    if let Some(query) = query {
+        let mut items = search_commits(repo, limit, skip, query, &revs, &labels)?;
+        preview(HistoryPreview::Commits(&items));
+        mark_on_current_branch(repo, &tips, &mut items)?;
+        return Ok(items);
+    }
     // Committer-date order, unlike author-date order, lets git stream from
     // the commit-graph instead of sorting all of history first.
     let args = git_log_args(
         &revs,
         &["-c", "log.showSignature=false", "log", "--date-order"],
     );
-    let labels = collect_ref_labels(repo);
-    let tips = BranchTips::read(repo);
     // With all branch tips in the log, its existing child-before-parent walk
     // can carry both membership bits across pages without a second process.
     let in_log = revs.is_empty()
@@ -89,10 +114,18 @@ pub fn commits(
                 .get(tip)
                 .is_some_and(|refs| refs.iter().any(|r| r.kind == "branch"))
         });
-    let mut items = log_page(root, &args, skip, limit, in_log.then_some(&tips))?;
+    let mut items = log_page(
+        root,
+        &args,
+        skip,
+        limit,
+        in_log.then_some(&tips),
+        selected,
+        catalog,
+    )?;
     apply_ref_labels(&mut items, &labels);
     if !in_log {
-        preview(&items);
+        preview(HistoryPreview::Commits(&items));
         mark_on_current_branch(repo, &tips, &mut items)?;
     }
     Ok(items)
@@ -123,6 +156,7 @@ pub(super) fn git_log_args(revs: &[String], prefix: &[&str]) -> Vec<String> {
     }
     args.push("--pretty=format:%H%x00%h%x00%s%x00%an%x00%ae%x00%at%x00%P".to_string());
     args.extend(revs.iter().cloned());
+    args.push("--".to_string());
     args
 }
 
@@ -229,10 +263,8 @@ pub(super) fn git_search_log_args(revs: &[String], query: &SearchQuery) -> Vec<S
     }
     args.push("--pretty=format:%H%x00%h%x00%s%x00%an%x00%ae%x00%at%x00%P".to_string());
     args.extend(revs.iter().cloned());
-    if !query.paths.is_empty() {
-        args.push("--".to_string());
-        args.extend(query.paths.iter().cloned());
-    }
+    args.push("--".to_string());
+    args.extend(query.paths.iter().cloned());
     args
 }
 
@@ -242,11 +274,10 @@ pub(super) fn search_commits(
     skip: usize,
     query: &str,
     revs: &[String],
-    preview: impl FnOnce(&[CommitSummary]),
+    labels: &HashMap<String, Vec<CommitRefLabel>>,
 ) -> AppResult<Vec<CommitSummary>> {
     let parsed = parse_search_query(query);
     let needle = parsed.text.to_lowercase();
-    let labels = collect_ref_labels(repo);
     let mut items = Vec::new();
     let mut skipped = 0usize;
 
@@ -261,7 +292,7 @@ pub(super) fn search_commits(
                 let Some(commit) = parse_search_record(&record) else {
                     continue;
                 };
-                if !commit_matches(&commit, &needle, &labels) {
+                if !commit_matches(&commit, &needle, labels) {
                     continue;
                 }
                 if skipped < skip {
@@ -277,9 +308,7 @@ pub(super) fn search_commits(
         stop_child(&mut child);
     }
 
-    apply_ref_labels(&mut items, &labels);
-    preview(&items);
-    mark_on_current_branch(repo, &BranchTips::read(repo), &mut items)?;
+    apply_ref_labels(&mut items, labels);
     Ok(items)
 }
 
@@ -381,10 +410,10 @@ pub(super) struct BranchTips {
 }
 
 impl BranchTips {
-    fn read(repo: &Repository) -> Self {
+    fn from_catalog(repo: &Repository, catalog: &refs::RefCatalog) -> Self {
         Self {
-            head: head_oid(repo),
-            upstream: rev_parse(repo, "@{upstream}"),
+            head: catalog.head(repo),
+            upstream: catalog.upstream_oid(repo),
         }
     }
 
@@ -494,64 +523,57 @@ pub(super) fn ref_kind_rank(kind: &str) -> u8 {
     }
 }
 
-pub(super) fn collect_ref_labels(repo: &Repository) -> HashMap<String, Vec<CommitRefLabel>> {
+fn history_labels(
+    catalog: &refs::RefCatalog,
+    head: Option<&str>,
+    selected: &[String],
+) -> (HashMap<String, Vec<CommitRefLabel>>, Vec<String>) {
     let mut labels: HashMap<String, Vec<CommitRefLabel>> = HashMap::new();
-    let remote_names = configured_remote_names(repo);
-    if let Ok(root) = workdir(repo) {
-        if let Ok(stdout) = run_git_stdout(
-            root,
-            &[
-                "for-each-ref",
-                "--format=%(if)%(*objectname)%(then)%(*objectname)%(else)%(objectname)%(end)%00%(refname)%00%(HEAD)",
-                "refs/heads",
-                "refs/tags",
-                "refs/remotes",
-            ],
-        ) {
-            let text = String::from_utf8_lossy(&stdout);
-            for line in text.split('\n') {
-                if line.is_empty() {
-                    continue;
-                }
-                let mut fields = line.split('\0');
-                let Some(oid) = fields.next() else { continue };
-                let Some(refname) = fields.next() else { continue };
-                let (kind, name) = if let Some(name) = refname.strip_prefix("refs/heads/") {
-                    ("branch", name)
-                } else if let Some(name) = refname.strip_prefix("refs/tags/") {
-                    ("tag", name)
-                } else if let Some(name) = refname.strip_prefix("refs/remotes/") {
-                    if !is_remote_branch_name(name, &remote_names) {
-                        continue;
-                    }
-                    ("branch", name)
-                } else {
-                    continue;
-                };
-                if name.is_empty() {
-                    continue;
-                }
-                labels.entry(oid.to_string()).or_default().push(CommitRefLabel {
-                    name: name.to_string(),
-                    kind: kind.to_string(),
-                });
-            }
+    let mut missing: HashSet<&str> = selected.iter().map(String::as_str).collect();
+    for entry in &catalog.entries {
+        let Some(relative) = entry.name.strip_prefix("refs/") else {
+            continue;
+        };
+        let Some((namespace, name)) = relative.split_once('/') else {
+            continue;
+        };
+        for alias in [entry.name.as_str(), relative, name] {
+            missing.remove(alias);
         }
+        let kind = match namespace {
+            "heads" => "branch",
+            "tags" => "tag",
+            "remotes" if is_remote_branch_name(name, &catalog.remotes) => "branch",
+            _ => continue,
+        };
+        let oid = if entry.peeled.is_empty() {
+            &entry.oid
+        } else {
+            &entry.peeled
+        };
+        labels.entry(oid.clone()).or_default().push(CommitRefLabel {
+            name: name.to_string(),
+            kind: kind.to_string(),
+        });
     }
 
-    if let Some(oid) = head_oid(repo) {
-        let entry = labels.entry(oid).or_default();
-        if !entry.iter().any(|label| label.kind == "head") {
-            entry.insert(
-                0,
-                CommitRefLabel {
-                    name: "HEAD".to_string(),
-                    kind: "head".to_string(),
-                },
-            );
-        }
+    if let Some(oid) = head {
+        missing.remove("HEAD");
+        labels.entry(oid.to_owned()).or_default().insert(
+            0,
+            CommitRefLabel {
+                name: "HEAD".to_string(),
+                kind: "head".to_string(),
+            },
+        );
     }
-    labels
+    // A saved selection can outlive a branch deleted outside the app.
+    let selected = selected
+        .iter()
+        .filter(|rev| !missing.contains(rev.as_str()))
+        .cloned()
+        .collect();
+    (labels, selected)
 }
 
 pub fn file_commits(

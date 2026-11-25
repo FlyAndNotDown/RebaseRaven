@@ -16,7 +16,11 @@ pub enum ReadIssue {
     Unreadable,
 }
 
-pub fn opened_diff(connection: &P4Connection, path: &str) -> AppResult<P4OpenedDiff> {
+pub fn opened_diff(
+    connection: &P4Connection,
+    path: &str,
+    ignore_whitespace: bool,
+) -> AppResult<P4OpenedDiff> {
     let env = env_for(connection);
     let spec = workspace_file_spec(&connection.root, path);
     let meta = run_ok(
@@ -47,7 +51,7 @@ pub fn opened_diff(connection: &P4Connection, path: &str) -> AppResult<P4OpenedD
         )
         .map(P4OpenedDiff::File);
     }
-    let text = cli::run_p4_diff(&env, &["diff", "-du", &spec])?;
+    let text = cli::run_p4_diff(&env, &["diff", cli::unified_diff(ignore_whitespace), &spec])?;
     let mut diff = parse_single_diff(&text, path);
     diff.binary |= file_type_is_binary(&field(&record, "type"));
     Ok(P4OpenedDiff::File(diff))

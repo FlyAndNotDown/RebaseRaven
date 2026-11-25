@@ -19,6 +19,8 @@ export interface P4Session {
   tabId: string;
   connection: P4Connection;
   pending: P4Changelist[];
+  pendingEnriching?: boolean;
+  pendingRefreshedAt?: number;
   pendingShelves?: Record<string, PendingShelf>;
   selectedChange: string;
   selectedFile: string | null;
@@ -104,7 +106,25 @@ export function refreshPendingSession(
   pending: P4Changelist[],
   selectId?: string,
   selectionAtStart = current.selectedChange,
+  enriching = false,
 ): P4Session {
+  if (enriching && current.pending.length > 0) {
+    const previous = new Map(current.pending.map(change => [change.id, change]));
+    pending = pending.map(change => {
+      const prior = previous.get(change.id);
+      if (!prior?.files.length) return change;
+      const files = new Map(prior.files.map(file => [file.depotPath, file]));
+      return {
+        ...change,
+        files: change.files.map(file => {
+          const existing = files.get(file.depotPath);
+          return existing && existing.rev === file.rev && existing.action === file.action
+            ? { ...file, localPath: existing.localPath || file.localPath, status: existing.status, detail: existing.detail }
+            : file;
+        }),
+      };
+    });
+  }
   const preferred = current.selectedChange === selectionAtStart ? selectId : undefined;
   const selected = preferred && pending.some((change) => change.id === preferred)
     ? preferred
@@ -122,13 +142,14 @@ export function refreshPendingSession(
   return {
     ...current,
     pending,
-    pendingShelves: {},
+    pendingEnriching: enriching,
+    pendingShelves: enriching ? current.pendingShelves : {},
     selectedChange: selected,
     selectedFile: shown.path,
     selectedShelved: shown.shelved,
     description: selected === current.selectedChange && edited ? current.description : change?.description ?? "",
     diff: sameSelection ? current.diff : null,
-    diffFor: "",
+    diffFor: enriching && sameSelection ? current.diffFor : "",
   };
 }
 
@@ -144,8 +165,8 @@ export function finishPendingShelf(
   return { ...next, selectedFile: shown.path, selectedShelved: shown.shelved, diff: null, diffFor: "" };
 }
 
-export function fileKey(change: string, file: string | null, shelved: boolean) {
-  return `${change}\n${file ?? ""}\n${shelved ? "shelf" : "open"}`;
+export function fileKey(change: string, file: string | null, shelved: boolean, ignoreWhitespace = false) {
+  return `${change}\n${file ?? ""}\n${shelved ? "shelf" : "open"}${ignoreWhitespace ? "\nignoreWhitespace" : ""}`;
 }
 
 export function shownFile(files: P4File[], preferred?: { path: string | null; shelved: boolean }) {

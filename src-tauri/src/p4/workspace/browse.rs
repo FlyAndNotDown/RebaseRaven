@@ -1,8 +1,7 @@
 //! Workspace and depot browsing, ignore rules, and file status.
 use super::{
-    env_for, field, find_config, read_config, run_ok, run_owned, unescape_p4_path,
-    workspace_directory, workspace_file_spec, P4Changelist, P4Connection, P4DirEntry,
-    P4EntryStatus, P4FileSearch,
+    env_for, field, find_config, read_config, run_ok, unescape_p4_path, workspace_directory,
+    workspace_file_spec, P4Changelist, P4Connection, P4DirEntry, P4EntryStatus, P4FileSearch,
 };
 use crate::error::{AppError, AppResult};
 use crate::git::strip_verbatim_prefix;
@@ -565,13 +564,8 @@ fn unchanged_opened(env: &P4Env, paths: &[String]) -> BTreeSet<String> {
     if wanted.is_empty() {
         return same;
     }
-    for chunk in wanted.chunks(40) {
-        let mut args = Vec::with_capacity(chunk.len() + 2);
-        args.push("diff".to_string());
-        args.push("-sr".into());
-        args.extend(chunk.iter().cloned());
-        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        let Ok(output) = cli::run_p4(env, &refs, None) else {
+    for chunk in cli::file_batches(&wanted) {
+        let Ok(output) = cli::run_p4_files(env, &["diff", "-sr"], chunk) else {
             continue;
         };
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -766,20 +760,27 @@ pub(in crate::p4) fn annotate_pending(connection: &P4Connection, changes: &mut [
     }
     paths.sort();
     paths.dedup();
-    let mut known = HashMap::<String, (String, String)>::new();
-    for chunk in paths.chunks(40) {
+    let mut known = HashMap::new();
+    for chunk in cli::file_batches(&paths) {
         for record in fstat_records(&env, chunk) {
             let depot = field(&record, "depotFile");
             if depot.is_empty() {
                 continue;
             }
-            known.insert(depot, status_of(&record));
+            known.insert(depot, record);
         }
     }
     for change in changes.iter_mut() {
         for file in &mut change.files {
-            let (status, detail) =
-                combine_status(known.get(&file.depot_path).cloned(), &file.action);
+            let record = known.get(&file.depot_path);
+            if !file.shelved {
+                if let Some(local) = record.and_then(|record| record.get("clientFile")) {
+                    if Path::new(local).is_absolute() {
+                        file.local_path.clone_from(local);
+                    }
+                }
+            }
+            let (status, detail) = combine_status(record.map(status_of), &file.action);
             file.status = status;
             file.detail = detail;
         }
@@ -856,14 +857,7 @@ fn fstat_records(env: &P4Env, paths: &[String]) -> Vec<ZtagRecord> {
 }
 
 fn fstat_stdout(env: &P4Env, fields: &str, paths: &[String]) -> Option<String> {
-    let mut args = vec![
-        "-ztag".to_string(),
-        "fstat".into(),
-        "-T".into(),
-        fields.to_string(),
-    ];
-    args.extend(paths.iter().cloned());
-    run_owned(env, &args, None).ok()
+    cli::run_p4_ok_files(env, &["-ztag", "fstat", "-T", fields], paths).ok()
 }
 
 struct OtherOpen {

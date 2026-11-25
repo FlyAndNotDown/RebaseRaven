@@ -226,6 +226,7 @@ pub struct CommitDetails {
 pub struct BranchInfo {
     pub full_ref: String,
     pub name: String,
+    pub oid: String,
     pub is_head: bool,
     pub is_remote: bool,
     pub upstream: Option<String>,
@@ -235,6 +236,7 @@ pub struct BranchInfo {
 #[serde(rename_all = "camelCase")]
 pub struct TagInfo {
     pub name: String,
+    pub oid: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -245,6 +247,7 @@ pub struct BranchList {
     pub local: Vec<BranchInfo>,
     pub remote: Vec<BranchInfo>,
     pub tags: Vec<TagInfo>,
+    pub remote_loaded: bool,
 }
 
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]

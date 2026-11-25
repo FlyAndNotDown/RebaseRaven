@@ -6,6 +6,9 @@ import { HoverTip } from "@/components/ui/tooltip";
 import { useTranslation } from "@/i18n";
 import { depotBase, p4ActionStatus } from "@/lib/p4";
 import { cn } from "@/lib/utils";
+import { useWindowedRows } from "@/lib/use-windowed-rows";
+
+const FILE_ROW_HEIGHT = 24;
 
 export type PendingFile = {
   depotPath: string;
@@ -41,6 +44,7 @@ export function openedSelection(
 export function PendingFiles({
   changeId,
   files,
+  viewport,
   picked,
   selectedPath,
   selectedShelved,
@@ -52,6 +56,7 @@ export function PendingFiles({
 }: {
   changeId: string;
   files: PendingFile[];
+  viewport?: HTMLDivElement | null;
   picked: ReadonlySet<string>;
   selectedPath: string | null;
   selectedShelved: boolean;
@@ -62,7 +67,12 @@ export function PendingFiles({
   menu?: (entry: PendingFile, file: PendingDragFile) => ReactNode;
 }) {
   useTranslation();
-  return files.map((file) => {
+  const windowed = useWindowedRows(files.length, FILE_ROW_HEIGHT, 12, 800, viewport);
+  const virtual = viewport !== undefined && files.length >= 80;
+  const visible = virtual ? files.slice(windowed.start, windowed.end) : files;
+  return <div ref={virtual ? windowed.viewportRef : undefined}>
+    {virtual && windowed.before > 0 ? <div aria-hidden style={{ height: windowed.before }} /> : null}
+    {visible.map((file) => {
     const drag = { change: changeId, path: file.depotPath, shelved: file.shelved };
     const active =
       picked.size > 0
@@ -72,7 +82,7 @@ export function PendingFiles({
       <button
         type="button"
         className={cn(
-          "flex w-full cursor-grab items-center gap-2 rounded-md py-1 pr-2 text-left text-xs hover:bg-muted/70",
+          "flex h-6 w-full cursor-grab items-center gap-2 rounded-md pr-2 text-left text-xs hover:bg-muted/70",
           className,
           active && "bg-muted",
         )}
@@ -101,7 +111,9 @@ export function PendingFiles({
         {row}
       </HoverTip>
     );
-  });
+    })}
+    {virtual && windowed.after > 0 ? <div aria-hidden style={{ height: windowed.after }} /> : null}
+  </div>;
 }
 
 function PendingFileMenu({ children, content }: { children: ReactNode; content: () => ReactNode }) {

@@ -67,6 +67,23 @@ pub fn status_snapshot(repo: &Repository) -> AppResult<StatusSnapshot> {
     status_from_git(workdir(repo)?)
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceRefs {
+    repo: RepoInfo,
+    branches: BranchList,
+}
+
+pub fn workspace_refs(repo: &Repository) -> AppResult<WorkspaceRefs> {
+    let info = repo_info(repo)?;
+    let branches = refs::RefCatalog::read(repo, true)?
+        .branch_list(info.current_branch.clone(), info.is_detached);
+    Ok(WorkspaceRefs {
+        repo: info,
+        branches,
+    })
+}
+
 pub(super) fn status_from_git(root: &Path) -> AppResult<StatusSnapshot> {
     let output = run_git(
         root,
@@ -237,6 +254,13 @@ pub(super) fn snapshot_mutex(root: &Path) -> Arc<Mutex<()>> {
 }
 
 pub fn snapshot(repo: &mut Repository) -> AppResult<WorkspaceSnapshot> {
+    snapshot_with_refs(repo, false)
+}
+
+pub fn snapshot_with_refs(
+    repo: &mut Repository,
+    include_remote: bool,
+) -> AppResult<WorkspaceSnapshot> {
     let root = workdir(repo)?.to_path_buf();
     let gate = snapshot_mutex(&root);
     let waited = std::time::Instant::now();
@@ -250,10 +274,15 @@ pub fn snapshot(repo: &mut Repository) -> AppResult<WorkspaceSnapshot> {
     let status_task = thread::spawn(move || status_from_git(&status_root));
     let built: AppResult<_> = (|| {
         let info = repo_info(repo)?;
-        let branches = branch_list(repo, false, info.current_branch.clone(), info.is_detached)?;
+        let branches = refs::RefCatalog::read(repo, include_remote)?
+            .branch_list(info.current_branch.clone(), info.is_detached);
         let remotes = list_remotes(repo)?;
         let stashes = list_stashes(repo)?;
-        Ok((info, branches, remotes, stashes, head_commit(repo)))
+        let head = info
+            .head_id
+            .as_deref()
+            .and_then(|oid| summarize_oid(repo, oid).ok());
+        Ok((info, branches, remotes, stashes, head))
     })();
     let status_result = match status_task.join() {
         Ok(result) => result,
@@ -269,9 +298,4 @@ pub fn snapshot(repo: &mut Repository) -> AppResult<WorkspaceSnapshot> {
         stashes,
         head_commit: head,
     })
-}
-
-pub(super) fn head_commit(repo: &Repository) -> Option<CommitSummary> {
-    let oid = head_oid(repo)?;
-    summarize_oid(repo, &oid).ok()
 }

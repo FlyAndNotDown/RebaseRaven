@@ -81,11 +81,21 @@ function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   });
 }
 
+async function readWithPreview<T, P>(command: string, args: Record<string, unknown>, onPreview?: (partial: P) => void) {
+  const preview = onPreview ? new Channel(onPreview) : null;
+  try {
+    return await call<T>(command, { ...args, preview });
+  } finally {
+    if (preview) preview.onmessage = () => {};
+  }
+}
+
 export const p4Api = {
   streamWork: (connection: P4Connection) => call<P4StreamWork>("p4_stream_work", {connection}),
   previewStreamWork: (connection: P4Connection, request: P4StreamWorkRequest) => call<P4StreamWorkPreview>("p4_preview_stream_work", {connection, request}),
   applyStreamWork: (connection: P4Connection, request: P4StreamWorkRequest, fingerprint: string) => call<P4StreamWork>("p4_apply_stream_work", {connection, request, fingerprint}),
-  streamChangeDiff: (connection: P4Connection, request: P4StreamDiffRequest) => call<FileDiff>("p4_stream_change_diff", {connection, request}),
+  streamChangeDiff: (connection: P4Connection, request: P4StreamDiffRequest, ignoreWhitespace = false) =>
+    call<FileDiff>("p4_stream_change_diff", {connection, request, ignoreWhitespace}),
 
   newStreamSpec: (connection: P4Connection, setup: P4StreamSetup) => call<P4StreamSpec>("p4_new_stream_spec", {connection, setup}),
   readStreamSpec: (connection: P4Connection, path: string) => call<P4StreamSpec>("p4_read_stream_spec", {connection, path}),
@@ -101,9 +111,10 @@ export const p4Api = {
   previewLabelTag: (connection: P4Connection, request: P4LabelTagRequest) => call<P4LabelTagPreview>("p4_preview_label_tag", {connection, request}),
   applyLabelTag: (connection: P4Connection, request: P4LabelTagRequest, fingerprint: string) => call<string>("p4_apply_label_tag", {connection, request, fingerprint}),
   detectRepository: (path: string) => call<RepoDetection>("detect_repository", { path }),
-  open: (path: string) => call<P4OpenResult>("p4_open", { path }),
-  refreshPending: (connection: P4Connection) =>
-    call<P4Changelist[]>("p4_refresh_pending", { connection }),
+  open: (path: string, onPreview?: (partial: Extract<P4OpenResult, {status: "ready"}>) => void) =>
+    readWithPreview<P4OpenResult, Extract<P4OpenResult, {status: "ready"}>>("p4_open", { path }, onPreview),
+  refreshPending: (connection: P4Connection, onPreview?: (partial: P4Changelist[]) => void) =>
+    readWithPreview<P4Changelist[], P4Changelist[]>("p4_refresh_pending", { connection }, onPreview),
   submitted: (
     connection: P4Connection,
     user: string,
@@ -134,16 +145,18 @@ export const p4Api = {
     call<string[]>("p4_list_clients", { connection, user }),
   describe: (connection: P4Connection, changeId: string) =>
     call<P4Describe>("p4_describe", { connection, changeId }),
-  openedDiff: (connection: P4Connection, path: string) =>
-    call<P4OpenedDiff>("p4_opened_diff", { connection, path }),
+  openedDiff: (connection: P4Connection, path: string, ignoreWhitespace = false) =>
+    call<P4OpenedDiff>("p4_opened_diff", { connection, path, ignoreWhitespace }),
   revisionTargets: (connection: P4Connection, changeId: string) => call<string[]>("p4_revision_targets", { connection, changeId }),
-  shelfDiff: (connection: P4Connection, depotPath: string, changeId: string) =>
-    call<FileDiff>("p4_shelf_diff", { connection, depotPath, changeId }),
+  shelfDiff: (connection: P4Connection, depotPath: string, changeId: string, ignoreWhitespace = false) =>
+    call<FileDiff>("p4_shelf_diff", { connection, depotPath, changeId, ignoreWhitespace }),
   imagePair: (connection: P4Connection, source: P4FileSource) => call<ImagePair>("p4_image_pair", {connection, source}),
   annotate: (connection: P4Connection, depotPath: string, revision: string) => call<P4BlameLine[]>("p4_annotate", { connection, depotPath, revision }),
-  compareFiles: (connection: P4Connection, request: P4CompareRequest) => call<P4Comparison>("p4_compare_files", { connection, request }).then(p4ComparisonDiff),
-  revisionDiff: (connection: P4Connection, depotPath: string, rev: string) =>
-    call<FileDiff>("p4_revision_diff", { connection, depotPath, rev }),
+  compareFiles: (connection: P4Connection, request: P4CompareRequest, ignoreWhitespace = false) =>
+    call<P4Comparison>("p4_compare_files", { connection, request, ignoreWhitespace })
+      .then((result) => p4ComparisonDiff(result, ignoreWhitespace)),
+  revisionDiff: (connection: P4Connection, depotPath: string, rev: string, ignoreWhitespace = false) =>
+    call<FileDiff>("p4_revision_diff", { connection, depotPath, rev, ignoreWhitespace }),
   filelog: (connection: P4Connection, path: string, cursor: P4HistoryCursor | null = null) =>
     call<P4RevisionPage>("p4_filelog", { connection, path, cursor }),
   pathHistory: (connection: P4Connection, path: string, request: P4PathHistoryRequest) =>
@@ -204,8 +217,8 @@ export const p4Api = {
   manualResolveExternal: (connection: P4Connection, path: string, text: string, fingerprint: string, tool: string) => call<string>("p4_manual_resolve_external", { connection, path, text, fingerprint, tool }),
   manualResolveApply: (connection: P4Connection, path: string, text: string, fingerprint: string) =>
     call<void>("p4_manual_resolve_apply", { connection, path, text, fingerprint }),
-  resolveView: (connection: P4Connection, path: string) =>
-    call<P4ResolveView>("p4_resolve_view", { connection, path }),
+  resolveView: (connection: P4Connection, path: string, ignoreWhitespace = false) =>
+    call<P4ResolveView>("p4_resolve_view", { connection, path, ignoreWhitespace }),
   resolveAccept: (connection: P4Connection, path: string, mode: "yours" | "theirs" | "merge") =>
     call<void>("p4_resolve_accept", { connection, path, mode }),
   sync: (connection: P4Connection, paths: string[], activityId?: string, autoResolve = false) =>

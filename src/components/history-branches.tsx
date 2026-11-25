@@ -72,7 +72,6 @@ export function HistoryBranches() {
     setHistoryRevs,
     historyExpanded,
     setHistoryExpanded,
-    ensureBranches,
     addRemote,
     deleteRemote,
     setRemoteUrl,
@@ -94,7 +93,6 @@ export function HistoryBranches() {
     "setHistoryRevs",
     "historyExpanded",
     "setHistoryExpanded",
-    "ensureBranches",
     "addRemote",
     "deleteRemote",
     "setRemoteUrl",
@@ -132,33 +130,17 @@ export function HistoryBranches() {
   const [deletingTag, setDeletingTag] = useState<string | null>(null);
   const [selectedNames, setSelectedNames] = useState<string[]>([]);
   const [deletingMany, setDeletingMany] = useState<{ branches: BranchInfo[]; owner: BranchDeletionOwner } | null>(null);
-  const [branchesReadyFor, setBranchesReadyFor] = useState("");
-  const [structureReadyFor, setStructureReadyFor] = useState("");
   const branchAnchor = useRef<string | null>(null);
   const canRebase =
     Boolean(snapshot?.repo.currentBranch) && !snapshot?.repo.isDetached && !snapshot?.repo.operation;
   const branches = snapshot?.branches;
   const repoPath = snapshot?.repo.path ?? "";
-  // Local branches arrive with the snapshot. Remotes, tags, and worktrees each
-  // finish later, so the column stays a skeleton until that whole set is in.
-  const sidebarReady =
-    repoPath !== "" && branchesReadyFor === repoPath && structureReadyFor === repoPath;
+  const sidebarReady = Boolean(branches);
   const watched = useMemo(() => new Set(historyRevs), [historyRevs]);
   const expanded = useMemo(
     () => new Set(historyExpanded ?? DEFAULT_HISTORY_EXPANDED),
     [historyExpanded],
   );
-
-  useEffect(() => {
-    if (!repoPath) return;
-    let live = true;
-    void ensureBranches().finally(() => {
-      if (live) setBranchesReadyFor(repoPath);
-    });
-    return () => {
-      live = false;
-    };
-  }, [ensureBranches, branches?.remote.length, repoPath]);
 
   useEffect(() => {
     if (historyExpanded !== null) return;
@@ -398,7 +380,7 @@ export function HistoryBranches() {
           />
         ) : null}
         <div className={cn((!sidebarReady || Boolean(needle)) && "hidden")}>
-          <RepoStructure onReady={setStructureReadyFor} />
+          <RepoStructure />
         </div>
       </ScrollArea>
       <MergeDialog

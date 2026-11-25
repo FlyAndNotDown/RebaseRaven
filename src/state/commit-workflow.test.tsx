@@ -327,7 +327,7 @@ it("coalesces watcher events until the rebase has finished", async () => {
     finish(snapshots[A]);
     expect(await rebasing).toBe(true);
   });
-  expect(gitApi.refreshWorkspace).toHaveBeenCalledExactlyOnceWith(A);
+  expect(gitApi.refreshWorkspace).toHaveBeenCalledExactlyOnceWith(A, false);
   expect(model.snapshot?.repo.headId).toBe("rebased");
 });
 
@@ -713,28 +713,29 @@ it("reloads visible history after deleting an unfiltered branch", async () => {
   await act(async () => {model.setView("history");});
   vi.mocked(gitApi.getCommits).mockClear();
   await act(async () => {expect(await model.deleteBranch("reviewed")).toBe(true);});
-  expect(gitApi.getCommits).toHaveBeenCalledWith(A,expect.any(Number),0,undefined,[],expect.any(Function));
+  expect(gitApi.getCommits).toHaveBeenCalledWith(A,expect.any(Number),0,undefined,[],expect.any(Function),expect.any(Function));
 });
 
 it("serializes index writes while allowing a different repository to stage", async () => {
-  const stage = vi.spyOn(gitApi, "stagePaths").mockImplementation(path =>
-    new Promise((resolve, reject) => pending.push({path, resolve, reject})));
+  const queued: ((status: WorkspaceSnapshot["status"]) => void)[] = [];
+  const stage = vi.spyOn(gitApi, "stagePaths").mockImplementation(() =>
+    new Promise((resolve) => queued.push(resolve)));
   let first!: Promise<void>, second!: Promise<void>, other!: Promise<void>;
   await act(async () => { first = model.stage(["a"]); second = model.stage(["b"]); });
   expect(stage.mock.calls).toEqual([[A, ["a"]]]);
   await open(B);
   await act(async () => { other = model.stage(["c"]); });
   expect(stage).toHaveBeenCalledWith(B, ["c"]);
-  await act(async () => { pending[1].resolve(snapshots[B]); await other; });
-  await act(async () => { pending[0].resolve(snapshots[A]); await first; });
+  await act(async () => { queued[1](snapshots[B].status); await other; });
+  await act(async () => { queued[0](snapshots[A].status); await first; });
   expect(stage.mock.calls.at(-1)).toEqual([A, ["b"]]);
-  await act(async () => { pending[2].resolve(snapshots[A]); await second; });
+  await act(async () => { queued[2](snapshots[A].status); await second; });
 });
 
 it("ignores a refresh snapshot that arrives after staging completes", async () => {
   const original = snapshots[A];
   const staged = {...original, status: {...original.status, staged: []}};
-  vi.spyOn(gitApi, "stagePaths").mockResolvedValue(staged);
+  vi.spyOn(gitApi, "stagePaths").mockResolvedValue(staged.status);
   vi.mocked(gitApi.refreshWorkspace).mockImplementation(path =>
     new Promise((resolve, reject) => pending.push({path, resolve, reject})));
   let refresh!: Promise<void>;

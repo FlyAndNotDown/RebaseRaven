@@ -62,6 +62,7 @@ import {
 import { reconcileChangeSelection } from "@/state/change-selection";
 import {
   historyGraphChanged,
+  isStatusRefresh,
   keepRemoteBranches,
   mergeRefreshHint,
   sameDiff,
@@ -89,6 +90,7 @@ import type {
   RebaseStep,
   StashDetails,
   StashInfo,
+  StatusSnapshot,
   SubmoduleChange,
   SubmoduleUpdateOptions,
   WorkspaceSnapshot,
@@ -906,7 +908,7 @@ function RepositoryProvider({children}: {children: ReactNode}) {
     const repoPath = tab?.kind === "repo" ? tab.path : null;
     const current = sessionsRef.current[tabId];
     if (!repoPath || !current?.snapshot) return;
-    if (!force && current.snapshot.branches.remote.length > 0) return;
+    if (!force && current.snapshot.branches.remoteLoaded) return;
     try {
       const branches = await gitApi.getBranches(repoPath);
       const snapshot = sessionsRef.current[tabId]?.snapshot;
@@ -948,6 +950,12 @@ function RepositoryProvider({children}: {children: ReactNode}) {
           current.snapshot?.repo.name,
           () => gitApi.getCommits(repoPath, COMMIT_PAGE, skip, undefined, revs, reset ? (commits) => {
             if (historyEpochRef.current[tabId] === epoch) patchSession(tabId, { commits });
+          } : undefined, reset ? (branches) => {
+            if (historyEpochRef.current[tabId] !== epoch) return;
+            const snapshot = sessionsRef.current[tabId]?.snapshot;
+            if (snapshot && snapshot.branches === current.snapshot?.branches) {
+              patchSession(tabId, { snapshot: { ...snapshot, branches } });
+            }
           } : undefined),
           false,
           tabId,
@@ -1066,6 +1074,26 @@ function RepositoryProvider({children}: {children: ReactNode}) {
     return {};
   }, []);
 
+  const requestChangeDiff = useCallback(async (tabId: string, repoPath: string, selection: ChangeSelection, quiet = false, refreshBinary = true) => {
+    const generation = bumpGen(changeLoadGen.current, tabId);
+    try {
+      const changeDiff = await gitApi.getWorkdirDiff(
+        repoPath,
+        selection.path,
+        selection.staged,
+        prefsRef.current.diffIgnoreWhitespace,
+      );
+      if (readGen(changeLoadGen.current, tabId) !== generation) return;
+      if ((refreshBinary && changeDiff.binary) || !sameDiff(sessionsRef.current[tabId]?.changeDiff ?? null, changeDiff)) {
+        patchSession(tabId, { changeDiff });
+      }
+    } catch (error) {
+      if (readGen(changeLoadGen.current, tabId) !== generation || quiet) return;
+      patchSession(tabId, { changeDiff: null });
+      reportError(error);
+    }
+  }, [patchSession]);
+
   // One worker per repository. A refresh in one repo does not hold up the others,
   // and hints for the same repo still collapse into a single follow-up pass.
   const refreshFlight = useRef({
@@ -1104,49 +1132,35 @@ function RepositoryProvider({children}: {children: ReactNode}) {
             if (!tab) continue;
             const current = sessionsRef.current[tab.id];
             const valid = operations.read(tab.id);
-            const changeGeneration = readGen(changeLoadGen.current, tab.id);
             try {
-              const snapshot = keepRemoteBranches(current?.snapshot, await gitApi.refreshWorkspace(path));
-              const graphChanged = historyGraphChanged(current?.snapshot, snapshot);
-              const previousSelection = current?.changeSelection ?? null;
+              const previous = current?.snapshot;
+              const statusOnly = previous && isStatusRefresh(job, path);
+              const result = statusOnly ? await gitApi.refreshStatus(path)
+                : await gitApi.refreshWorkspace(path, Boolean(previous?.branches.remoteLoaded));
+              if (!valid()) continue;
+              const latest = sessionsRef.current[tab.id];
+              const base = latest?.snapshot;
+              const snapshot = "status" in result ? keepRemoteBranches(base, result)
+                : base && { ...base, status: result };
+              if (!snapshot) continue;
+              const previousSelection = latest?.changeSelection ?? null;
               const selection = reconcileChangeSelection(previousSelection, snapshot.status);
               const scopeChanged = selection !== previousSelection;
-              let changeDiff = selection ? current?.changeDiff ?? null : null;
-              let diffReloaded = false;
-              if (selection && (scopeChanged || shouldReloadWorkdirDiff(job, path, selection.path))) {
-                try {
-                  changeDiff = await gitApi.getWorkdirDiff(
-                    path,
-                    selection.path,
-                    selection.staged,
-                    prefsRef.current.diffIgnoreWhitespace,
-                  );
-                  diffReloaded = true;
-                } catch {
-                  if (scopeChanged) changeDiff = null;
-                }
-              }
-              if (!valid()) continue;
-              const snapshotSame = sameSnapshot(current?.snapshot, snapshot);
-              const selectionMoved = readGen(changeLoadGen.current, tab.id) !== changeGeneration;
-              const binaryRefreshed = diffReloaded && Boolean(changeDiff?.binary) && selection
-                && shouldRefreshBinaryDiff(job, path, selection.path);
-              const diffSame =
-                selectionMoved || (!scopeChanged && !binaryRefreshed &&
-                sameDiff(changeDiff, sessionsRef.current[tab.id]?.changeDiff ?? null));
-              if (!diffSame) bumpGen(changeLoadGen.current, tab.id);
-              if (!snapshotSame || !diffSame) {
-                const stashPatch = snapshotSame ? {} : stashPatchFor(tab.id, snapshot.stashes);
-                const patch = {
-                  ...(snapshotSame ? {} : { snapshot, ...stashPatch }),
-                  ...(diffSame ? {} : { changeDiff, changeSelection: selection }),
-                };
+              const snapshotSame = sameSnapshot(base, snapshot);
+              if (scopeChanged) bumpGen(changeLoadGen.current, tab.id);
+              if (!snapshotSame || scopeChanged) {
                 startTransition(() => {
-                  patchSession(tab.id, patch);
+                  patchSession(tab.id, {
+                    ...(snapshotSame ? {} : { snapshot, ...stashPatchFor(tab.id, snapshot.stashes) }),
+                    ...(scopeChanged ? { changeDiff: null, changeSelection: selection } : {}),
+                  });
                 });
               }
-              if (graphChanged) {
-                invalidateHistory(tab.id, current?.view === "history");
+              if (selection && (scopeChanged || shouldReloadWorkdirDiff(job, path, selection.path))) {
+                void requestChangeDiff(tab.id, path, selection, true, shouldRefreshBinaryDiff(job, path, selection.path));
+              }
+              if (historyGraphChanged(base, snapshot)) {
+                invalidateHistory(tab.id, latest?.view === "history");
               }
             } catch {
               // Watch refreshes stay quiet when a repo is mid-write.
@@ -1164,7 +1178,7 @@ function RepositoryProvider({children}: {children: ReactNode}) {
         }
       })();
     },
-    [invalidateHistory, operations, patchSession, stashPatchFor],
+    [invalidateHistory, operations, patchSession, requestChangeDiff, stashPatchFor],
   );
 
   const refreshRepository = useCallback(async () => {
@@ -1174,60 +1188,32 @@ function RepositoryProvider({children}: {children: ReactNode}) {
     if (!repoPath) return;
     const valid = operations.read(tabId);
     const current = sessionsRef.current[tabId];
-    const changeSelection = current?.changeSelection ?? null;
-    const changeGeneration = readGen(changeLoadGen.current, tabId);
     try {
-      const next = await runActivity(
+      const snapshot = await runActivity(
         t("operations.refreshing"),
         current?.snapshot?.repo.name,
-        async () => {
-          const snapshot = keepRemoteBranches(
-            current?.snapshot,
-            await gitApi.refreshWorkspace(repoPath),
-          );
-          let nextSelection = reconcileChangeSelection(changeSelection, snapshot.status);
-          let changeDiff = nextSelection ? current?.changeDiff ?? null : null;
-          if (nextSelection) {
-            try {
-              changeDiff = await gitApi.getWorkdirDiff(
-                repoPath,
-                nextSelection.path,
-                nextSelection.staged,
-                prefsRef.current.diffIgnoreWhitespace,
-              );
-            } catch {
-              changeDiff = null;
-              nextSelection = null;
-            }
-          }
-          return {
-            snapshot,
-            changeDiff,
-            changeSelection: nextSelection,
-            graphChanged: historyGraphChanged(current?.snapshot, snapshot),
-          };
-        },
+        () => gitApi.refreshWorkspace(repoPath, true),
         false,
         tabId,
       );
       if (!valid()) return;
-      const selectionMoved = readGen(changeLoadGen.current, tabId) !== changeGeneration;
-      if (!selectionMoved) bumpGen(changeLoadGen.current, tabId);
+      const latest = sessionsRef.current[tabId];
+      const previousSelection = latest?.changeSelection ?? null;
+      const selection = reconcileChangeSelection(previousSelection, snapshot.status);
+      if (selection !== previousSelection) bumpGen(changeLoadGen.current, tabId);
       patchSession(tabId, {
-        snapshot: next.snapshot,
-        ...(selectionMoved
-          ? {}
-          : { changeDiff: next.changeDiff, changeSelection: next.changeSelection }),
-        ...stashPatchFor(tabId, next.snapshot.stashes),
+        snapshot,
+        ...(selection !== previousSelection ? { changeDiff: null, changeSelection: selection } : {}),
+        ...stashPatchFor(tabId, snapshot.stashes),
       });
-      await ensureBranches(true, tabId);
-      if (next.graphChanged) {
-        invalidateHistory(tabId, sessionsRef.current[tabId]?.view === "history");
+      if (selection) void requestChangeDiff(tabId, repoPath, selection, true);
+      if (historyGraphChanged(latest?.snapshot, snapshot)) {
+        invalidateHistory(tabId, latest?.view === "history");
       }
     } catch (error) {
       reportError(error);
     }
-  }, [ensureBranches, invalidateHistory, operations, patchSession, runActivity, stashPatchFor]);
+  }, [invalidateHistory, operations, patchSession, requestChangeDiff, runActivity, stashPatchFor]);
 
   const watchedKey = useMemo(
     () =>
@@ -1283,30 +1269,17 @@ function RepositoryProvider({children}: {children: ReactNode}) {
       const repoPath = activeRepoPath();
       const tabId = activeTabIdRef.current;
       if (!repoPath) return;
-      const generation = bumpGen(changeLoadGen.current, tabId);
       const previous = sessionsRef.current[tabId]?.changeSelection;
       const samePath = previous?.path === path && previous.staged === staged;
+      const selection: ChangeSelection = { type: "change", path, staged };
       patchSession(tabId, {
         view: "changes",
-        changeSelection: { type: "change", path, staged },
+        changeSelection: selection,
         ...(samePath ? {} : { changeDiff: null }),
       });
-      try {
-        const changeDiff = await gitApi.getWorkdirDiff(
-          repoPath,
-          path,
-          staged,
-          prefsRef.current.diffIgnoreWhitespace,
-        );
-        if (readGen(changeLoadGen.current, tabId) !== generation) return;
-        patchSession(tabId, { changeDiff });
-      } catch (error) {
-        if (readGen(changeLoadGen.current, tabId) !== generation) return;
-        patchSession(tabId, { changeDiff: null });
-        reportError(error);
-      }
+      await requestChangeDiff(tabId, repoPath, selection);
     },
-    [activeRepoPath, patchSession],
+    [activeRepoPath, patchSession, requestChangeDiff],
   );
 
   const selectCommit = useCallback(
@@ -1750,9 +1723,9 @@ function RepositoryProvider({children}: {children: ReactNode}) {
   const runMutation = useCallback(
     async (
       label: string,
-      action: (repoPath: string, activityId: string) => Promise<WorkspaceSnapshot>,
+      action: (repoPath: string, activityId: string) => Promise<WorkspaceSnapshot | StatusSnapshot>,
       success?: string,
-      options?: { cancellable?: boolean; tabId?: string; onActivity?: (id: string) => void },
+      options?: { cancellable?: boolean; tabId?: string; onActivity?: (id: string) => void; paths?: string[] },
     ) => {
       const tabId = options?.tabId ?? activeTabIdRef.current;
       const tab = tabsRef.current.find((item) => item.id === tabId);
@@ -1760,47 +1733,33 @@ function RepositoryProvider({children}: {children: ReactNode}) {
       if (!repoPath) return false;
       return operations.write(tabId, false, async (ownsSession) => {
         const current = sessionsRef.current[tabId];
-        const changeSelection = current?.changeSelection ?? null;
-        const changeGeneration = readGen(changeLoadGen.current, tabId);
         try {
-          const next = await runActivity(label, current?.snapshot?.repo.name, async (activityId) => {
+          const result = await runActivity(label, current?.snapshot?.repo.name, (activityId) => {
             options?.onActivity?.(activityId);
-            const snapshot = keepRemoteBranches(current?.snapshot, await action(repoPath, activityId));
-            let nextSelection = reconcileChangeSelection(changeSelection, snapshot.status);
-            let changeDiff = nextSelection ? current?.changeDiff ?? null : null;
-            if (nextSelection) {
-              try {
-                changeDiff = await gitApi.getWorkdirDiff(
-                  repoPath,
-                  nextSelection.path,
-                  nextSelection.staged,
-                  prefsRef.current.diffIgnoreWhitespace,
-                );
-              } catch {
-                changeDiff = null;
-                nextSelection = null;
-              }
-            }
-            const headChanged = current?.snapshot?.repo.headId !== snapshot.repo.headId;
-            return { snapshot, changeDiff, changeSelection: nextSelection, headChanged };
+            return action(repoPath, activityId);
           }, options?.cancellable, tabId);
           if (!ownsSession()) return true;
-          const selectionMoved = readGen(changeLoadGen.current, tabId) !== changeGeneration;
-          if (!selectionMoved) bumpGen(changeLoadGen.current, tabId);
+          const latest = sessionsRef.current[tabId];
+          const previous = latest?.snapshot;
+          const snapshot = "status" in result
+            ? keepRemoteBranches(previous, result)
+            : previous && { ...previous, status: result };
+          if (!snapshot) return true;
+          const currentSelection = latest?.changeSelection ?? null;
+          const selection = reconcileChangeSelection(currentSelection, snapshot.status);
+          const selectionChanged = selection !== currentSelection;
+          const headChanged = previous?.repo.headId !== snapshot.repo.headId;
+          if (selectionChanged) bumpGen(changeLoadGen.current, tabId);
           patchSession(tabId, {
-            snapshot: next.snapshot,
-            ...(selectionMoved
-              ? {}
-              : { changeDiff: next.changeDiff, changeSelection: next.changeSelection }),
-            ...stashPatchFor(tabId, next.snapshot.stashes),
-            ...(next.headChanged
-              ? {
-                  commitsLoaded: false,
-                  commitsHasMore: true,
-                }
-              : {}),
+            snapshot,
+            ...(selectionChanged ? { changeDiff: null, changeSelection: selection } : {}),
+            ...(previous?.stashes !== snapshot.stashes ? stashPatchFor(tabId, snapshot.stashes) : {}),
+            ...(headChanged ? { commitsLoaded: false, commitsHasMore: true } : {}),
           });
-          if (next.headChanged) refetchStaleHistory(tabId);
+          if (selection && (selectionChanged || !options?.paths || options.paths.includes(selection.path))) {
+            void requestChangeDiff(tabId, repoPath, selection, true);
+          }
+          if (headChanged) refetchStaleHistory(tabId);
           if (success) toast.success(success);
           return true;
         } catch (error) {
@@ -1810,19 +1769,19 @@ function RepositoryProvider({children}: {children: ReactNode}) {
         }
       });
     },
-    [operations, patchSession, refetchStaleHistory, runActivity, stashPatchFor],
+    [operations, patchSession, refetchStaleHistory, requestChangeDiff, runActivity, stashPatchFor],
   );
 
   const stage = useCallback(
     async (paths: string[]) => {
-      await runMutation(t("operations.staging_files"), (repoPath) => gitApi.stagePaths(repoPath, paths));
+      await runMutation(t("operations.staging_files"), (repoPath) => gitApi.stagePaths(repoPath, paths), undefined, { paths });
     },
     [runMutation],
   );
 
   const unstage = useCallback(
     async (paths: string[]) => {
-      await runMutation(t("operations.unstaging_files"), (repoPath) => gitApi.unstagePaths(repoPath, paths));
+      await runMutation(t("operations.unstaging_files"), (repoPath) => gitApi.unstagePaths(repoPath, paths), undefined, { paths });
     },
     [runMutation],
   );
@@ -1835,6 +1794,7 @@ function RepositoryProvider({children}: {children: ReactNode}) {
         t("operations.discarding_changes"),
         (repoPath) => gitApi.discardPaths(repoPath, paths),
         t("operations.discarded_changes"),
+        { paths },
       );
       if (!ok || !ownsSession()) return;
       const selected = sessionsRef.current[tabId]?.changeSelection;
@@ -1854,6 +1814,7 @@ function RepositoryProvider({children}: {children: ReactNode}) {
         label,
         (repoPath) => gitApi.applyLines(repoPath, path, staged, action, lines, fingerprint),
         action === "discard" ? t("operations.discarded", { value: count }) : undefined,
+        { paths: [path] },
       );
     },
     [runMutation],
@@ -2018,39 +1979,44 @@ function RepositoryProvider({children}: {children: ReactNode}) {
       const key = normalizeRepoPath(repoPath);
       if (fetchingRef.current.has(key)) return;
       fetchingRef.current.add(key);
-      lastFetchRef.current[key] = Date.now();
-      return operations.write(tabId, undefined, async (ownsSession) => {
+      return operations.backgroundWrite(tabId, async (ownsSession, signal) => {
+        lastFetchRef.current[key] = Date.now();
         try {
           const fetched = await runActivity(
             t("operations.fetching_in_the_background"),
             sessionsRef.current[tabId]?.snapshot?.repo.name,
-            (activityId) =>
-              gitApi.fetchRemote(repoPath, activityId, undefined, true, {
-                prune: prefsRef.current.fetchPrune,
-                background: true,
-              }),
+            async (activityId) => {
+              if (signal.aborted) return null;
+              const stop = () => void cancelActivity(activityId);
+              signal.addEventListener("abort", stop, { once: true });
+              try {
+                return await gitApi.fetchInBackground(repoPath, activityId, prefsRef.current.fetchPrune);
+              } finally {
+                signal.removeEventListener("abort", stop);
+              }
+            },
             true,
             tabId,
           );
-          if (!ownsSession()) return;
+          if (!fetched || !ownsSession() || signal.aborted) return;
           const current = sessionsRef.current[tabId];
-          if (!current) return;
-          const snapshot = keepRemoteBranches(current.snapshot, fetched);
-          const changed = !sameSnapshot(current.snapshot, snapshot);
-          if (changed) patchSession(tabId, { snapshot });
-          await ensureBranches(true, tabId);
-          if (changed || historyGraphChanged(current.snapshot, snapshot)) {
-            invalidateHistory(tabId, sessionsRef.current[tabId]?.view === "history");
+          if (!current?.snapshot) return;
+          const snapshot = { ...current.snapshot, ...fetched };
+          if (!sameSnapshot(current.snapshot, snapshot)) {
+            patchSession(tabId, { snapshot });
+            invalidateHistory(tabId, current.view === "history");
           }
         } catch {
           // Offline, signed out, or cancelled: the next manual fetch will say why.
+        } finally {
+          const interval = prefsRef.current.autoFetchMinutes * 60_000;
+          lastFetchRef.current[key] = Date.now() - (signal.aborted ? Math.max(0, interval - 30_000) : 0);
         }
       }).finally(() => {
-        lastFetchRef.current[key] = Date.now();
         fetchingRef.current.delete(key);
       });
     },
-    [ensureBranches, invalidateHistory, operations, patchSession, runActivity],
+    [cancelActivity, invalidateHistory, operations, patchSession, runActivity],
   );
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useState } from "react";
 
 export interface WindowedRows {
   viewportRef: (node: HTMLDivElement | null) => void;
@@ -14,12 +14,15 @@ export interface WindowedRows {
  * or an array of per-row heights when rows wrap. Pass `viewportRef` to the
  * scrolling element, render `items.slice(start, end)`, and pad with `before`
  * and `after` pixels so the scroll height stays the same.
+ * For a list within a shared scroll container, pass that container separately
+ * and attach the ref to the list's own wrapper.
  */
 export function useWindowedRows(
   countOrHeights: number | number[],
   rowHeightOrOverscan = 20,
   overscan = 16,
   fallbackHeight = 1200,
+  scrollContainer?: HTMLDivElement | null,
 ): WindowedRows {
   const variable = Array.isArray(countOrHeights);
   const heights = variable ? countOrHeights : null;
@@ -29,25 +32,34 @@ export function useWindowedRows(
   const [node, setNode] = useState<HTMLDivElement | null>(null);
   const [view, setView] = useState({ top: 0, height: 0 });
   const prefix = useMemo(() => prefixSums(heights), [heights]);
+  const embedded = scrollContainer !== undefined;
+  const viewport = embedded ? scrollContainer : node;
+  const measure = useCallback(() => {
+    if (!node || !viewport) return;
+    const top = embedded
+      ? viewport.getBoundingClientRect().top + viewport.clientTop - node.getBoundingClientRect().top
+      : viewport.scrollTop;
+    const height = viewport.clientHeight;
+    setView((current) => current.top === top && current.height === height ? current : { top, height });
+  }, [node, viewport, embedded]);
 
   useLayoutEffect(() => {
-    if (!node) return;
-    const measure = () => {
-      const top = node.scrollTop;
-      const height = node.clientHeight;
-      setView((current) =>
-        current.top === top && current.height === height ? current : { top, height },
-      );
-    };
-    measure();
-    node.addEventListener("scroll", measure, { passive: true });
+    if (!node || !viewport) return;
+    viewport.addEventListener("scroll", measure, { passive: true });
     const observer = new ResizeObserver(measure);
-    observer.observe(node);
+    observer.observe(viewport);
+    if (embedded && viewport.firstElementChild) observer.observe(viewport.firstElementChild);
     return () => {
-      node.removeEventListener("scroll", measure);
+      viewport.removeEventListener("scroll", measure);
       observer.disconnect();
     };
-  }, [node]);
+  }, [embedded, measure, node, viewport]);
+
+  useLayoutEffect(() => {
+    if (!embedded || !node || !viewport) return;
+    const frame = requestAnimationFrame(measure);
+    return () => cancelAnimationFrame(frame);
+  });
 
   // Before the first measurement, render roughly one screen instead of nothing.
   const height = view.height || fallbackHeight;
@@ -58,7 +70,7 @@ export function useWindowedRows(
     const end = Math.min(count, endIndex + extra);
     return {
       viewportRef: setNode,
-      viewport: node,
+      viewport,
       start,
       end,
       before: prefix[start] ?? 0,
@@ -67,10 +79,10 @@ export function useWindowedRows(
   }
 
   const start = Math.min(count, Math.max(0, Math.floor(view.top / rowHeight) - extra));
-  const end = Math.min(count, Math.ceil((view.top + height) / rowHeight) + extra);
+  const end = Math.min(count, Math.max(0, Math.ceil((view.top + height) / rowHeight) + extra));
   return {
     viewportRef: setNode,
-    viewport: node,
+    viewport,
     start,
     end,
     before: start * rowHeight,

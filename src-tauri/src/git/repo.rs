@@ -106,13 +106,47 @@ fn open_repository_with_env(path: &Path, env: &[(&str, &str)]) -> AppResult<Repo
     } else {
         path
     };
-    let bare = run_git_env(start, &["rev-parse", "--is-bare-repository"], env)?;
-    if !bare.status.success() {
-        return Err(git_output_error(bare));
+    let paths = run_git_env(
+        start,
+        &[
+            "rev-parse",
+            "--path-format=absolute",
+            "--is-bare-repository",
+            "--show-toplevel",
+            "--git-dir",
+            "--git-common-dir",
+        ],
+        env,
+    )?;
+    let stdout = String::from_utf8_lossy(&paths.stdout);
+    let lines = stdout.split_terminator('\n').map(|line| {
+        if cfg!(windows) {
+            line.strip_suffix('\r').unwrap_or(line)
+        } else {
+            line
+        }
+    });
+    let bare = lines.clone().find(|line| matches!(*line, "true" | "false"));
+    match bare {
+        Some("true") => return Err(AppError::msg("Bare repositories are not supported yet")),
+        None if !paths.status.success() => return Err(git_output_error(paths)),
+        _ => {}
     }
-    if String::from_utf8_lossy(&bare.stdout).trim() == "true" {
-        return Err(AppError::msg("Bare repositories are not supported yet"));
+    if paths.status.success() {
+        if let ["false", workdir, git_dir, common_dir] = lines.collect::<Vec<_>>().as_slice() {
+            let [workdir, git_dir, common_dir] = [workdir, git_dir, common_dir]
+                .map(|path| PathBuf::from(strip_verbatim_prefix(path)));
+            if workdir.is_absolute() && git_dir.is_absolute() && common_dir.is_absolute() {
+                return Ok(Repository {
+                    workdir,
+                    git_dir,
+                    common_dir,
+                });
+            }
+        }
     }
+    // Older Git versions can echo --path-format as a revision. Paths containing
+    // newlines also require separate calls so record boundaries are unambiguous.
     let workdir = require_git_path(start, "--show-toplevel", env)?;
     let git_dir = require_git_path(&workdir, "--git-dir", env)?;
     let common_dir = require_git_path(&workdir, "--git-common-dir", env)?;

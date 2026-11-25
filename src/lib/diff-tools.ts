@@ -20,7 +20,3 @@ export function openExternalDiff(source: DiffToolSource) {
     ? gitApi.openDifftool(source.repoPath, source.source)
     : invoke<void>("open_diff_document", { source, line: null, externalDiff: true });
 }
-
-export function diffDocumentText(source: Exclude<DiffToolSource, { kind: "git" }>) {
-  return source.kind === "text" ? Promise.resolve(source) : invoke<TextPair>("diff_document_text", { source });
-}

@@ -5,12 +5,14 @@ export function keepRemoteBranches(
   previous: WorkspaceSnapshot | null | undefined,
   next: WorkspaceSnapshot,
 ): WorkspaceSnapshot {
-  if (next.branches.remote.length > 0 || !previous?.branches.remote.length) return next;
+  if (next.branches.remoteLoaded || next.branches.remote.length > 0 ||
+      !(previous?.branches.remoteLoaded || previous?.branches.remote.length)) return next;
   return {
     ...next,
     branches: {
       ...next.branches,
       remote: previous.branches.remote,
+      remoteLoaded: previous.branches.remoteLoaded,
     },
   };
 }
@@ -26,7 +28,8 @@ export function historyGraphChanged(
     before.headId !== after.headId ||
     before.ahead !== after.ahead ||
     before.behind !== after.behind ||
-    before.upstream !== after.upstream
+    before.upstream !== after.upstream ||
+    !sameRefs(previous.branches, next.branches)
   );
 }
 
@@ -45,6 +48,19 @@ export function mergeRefreshHint(into: RefreshHint, extra: RefreshHint) {
     into.overflow = true;
     into.paths = [];
   }
+}
+
+export function isStatusRefresh(hint: RefreshHint, repoPath: string): boolean {
+  if (hint.overflow || hint.paths.length === 0) return false;
+  const separator = pathsIgnoreCase() ? "\\" : "/";
+  const root = normalizeRepoPath(repoPath).replace(pathsIgnoreCase() ? /[\\/]+$/ : /\/+$/, "");
+  const prefix = `${root}${separator}`;
+  return hint.paths.every((path) => {
+    const changed = normalizeRepoPath(path);
+    if (!changed.startsWith(prefix)) return false;
+    const parts = changed.slice(prefix.length).split(separator);
+    return !parts.includes(".git") || (parts.length === 2 && parts[0] === ".git" && parts[1] === "index");
+  });
 }
 
 export function watchTouchesFile(changed: string, repoPath: string, filePath: string) {
@@ -109,6 +125,23 @@ export function sameDiff(left: FileDiff | null, right: FileDiff | null) {
   return true;
 }
 
+function sameRefs(previous: WorkspaceSnapshot["branches"], next: WorkspaceSnapshot["branches"]) {
+  if (previous === next) return true;
+  if (previous.current !== next.current || previous.remoteLoaded !== next.remoteLoaded) return false;
+  return (["local", "remote", "tags"] as const).every((group) => {
+    const before = previous[group];
+    const after = next[group];
+    return before.length === after.length && before.every((ref, index) => {
+      const other = after[index];
+      if (ref.name !== other.name || ref.oid !== other.oid) return false;
+      if ("isHead" in ref && "isHead" in other && "upstream" in ref && "upstream" in other) {
+        return ref.isHead === other.isHead && ref.upstream === other.upstream;
+      }
+      return true;
+    });
+  });
+}
+
 export function sameSnapshot(previous: WorkspaceSnapshot | null | undefined, next: WorkspaceSnapshot) {
   if (!previous) return false;
   const before = previous.repo;
@@ -147,27 +180,7 @@ export function sameSnapshot(previous: WorkspaceSnapshot | null | undefined, nex
     const b = next.remotes[index];
     if (a.name !== b.name || a.url !== b.url || a.pushUrl !== b.pushUrl) return false;
   }
-  if (previous.branches.local.length !== next.branches.local.length || previous.branches.current !== next.branches.current) {
-    return false;
-  }
-  for (let index = 0; index < previous.branches.local.length; index += 1) {
-    const a = previous.branches.local[index];
-    const b = next.branches.local[index];
-    if (a.name !== b.name || a.isHead !== b.isHead || a.upstream !== b.upstream) return false;
-  }
-  if (previous.branches.tags.length !== next.branches.tags.length) return false;
-  for (let index = 0; index < previous.branches.tags.length; index += 1) {
-    if (previous.branches.tags[index]?.name !== next.branches.tags[index]?.name) return false;
-  }
-  if (previous.branches.remote !== next.branches.remote) {
-    if (previous.branches.remote.length !== next.branches.remote.length) return false;
-    for (let index = 0; index < previous.branches.remote.length; index += 1) {
-      const a = previous.branches.remote[index];
-      const b = next.branches.remote[index];
-      if (a.name !== b.name || a.isHead !== b.isHead || a.upstream !== b.upstream) return false;
-    }
-  }
-  return true;
+  return sameRefs(previous.branches, next.branches);
 }
 
 export function sameRevs(left: string[], right: string[]) {

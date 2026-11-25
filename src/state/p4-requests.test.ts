@@ -36,7 +36,7 @@ describe("Perforce credential retries", () => {
     expect(result).toEqual([]);
     expect(login).toHaveBeenCalledOnce();
     expect(refresh).toHaveBeenCalledTimes(2);
-    expect(refresh).toHaveBeenLastCalledWith(connection);
+    expect(refresh).toHaveBeenLastCalledWith(connection, undefined);
   });
 
   it("creates a fresh opened-file diff request after logging in", async () => {
@@ -49,15 +49,15 @@ describe("Perforce credential retries", () => {
     expect(await withP4Login(request, login)).toBe(diff);
     expect(login).toHaveBeenCalledOnce();
     expect(opened).toHaveBeenCalledTimes(2);
-    expect(opened).toHaveBeenLastCalledWith(connection, "//depot/main/a.bin");
+    expect(opened).toHaveBeenLastCalledWith(connection, "//depot/main/a.bin", false);
   });
 
   it("retries a shelved-file diff with its original changelist", async () => {
     const diff = emptyBinaryDiff("a.bin");
     const shelved = vi.spyOn(p4Api, "shelfDiff").mockRejectedValueOnce(P4_LOGIN).mockResolvedValueOnce(diff);
-    expect(await withP4Login(pendingDiffRequest(connection, "42", "//depot/main/a.bin", true), async () => {})).toBe(diff);
+    expect(await withP4Login(pendingDiffRequest(connection, "42", "//depot/main/a.bin", true, true), async () => {})).toBe(diff);
     expect(shelved).toHaveBeenCalledTimes(2);
-    expect(shelved).toHaveBeenLastCalledWith(connection, "//depot/main/a.bin", "42");
+    expect(shelved).toHaveBeenLastCalledWith(connection, "//depot/main/a.bin", "42", true);
   });
 
   it("does not retry unrelated failures or a cancelled login", async () => {

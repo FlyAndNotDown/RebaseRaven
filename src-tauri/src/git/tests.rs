@@ -1326,6 +1326,90 @@ fn history_pages_are_contiguous_whether_or_not_the_stream_is_reused() {
 }
 
 #[test]
+fn history_keeps_selected_branches_and_upstreams_when_a_saved_branch_is_deleted() {
+    let (root, repo) = temp_repo();
+    run_git_stdout(&root, &["symbolic-ref", "HEAD", "refs/heads/unselected"]).unwrap();
+    commit_file(&repo, &root, "base.txt", "base", "base change");
+    let base = head_id(&repo);
+    let tree = rev_parse(&repo, "HEAD^{tree}").unwrap();
+    let refs = [
+        ("refs/heads/work/feature/current", "local feature change"),
+        ("refs/heads/stable", "local stable change"),
+        (
+            "refs/remotes/origin/work/feature/current",
+            "remote feature change",
+        ),
+        ("refs/remotes/origin/stable", "remote stable change"),
+    ];
+    for (reference, message) in refs {
+        let oid =
+            run_git_stdout(&root, &["commit-tree", &tree, "-p", &base, "-m", message]).unwrap();
+        run_git_stdout(
+            &root,
+            &[
+                "update-ref",
+                reference,
+                std::str::from_utf8(&oid).unwrap().trim(),
+            ],
+        )
+        .unwrap();
+    }
+    commit_file(&repo, &root, "unselected.txt", "extra", "unselected change");
+    branch_here(&repo, "work/feature/retired");
+    run_git_stdout(
+        &root,
+        &["update-ref", "-d", "refs/heads/work/feature/retired"],
+    )
+    .unwrap();
+
+    let selections = [
+        "work/feature/current",
+        "stable",
+        "work/feature/retired",
+        "origin/work/feature/current",
+        "origin/stable",
+    ]
+    .map(str::to_string);
+    let mut expected = refs.map(|(_, subject)| subject).to_vec();
+    expected.push("base change");
+    expected.sort_unstable();
+    for query in [None, Some("change")] {
+        let rows = commits(&repo, 10, 0, query, &selections, |_| {}).unwrap();
+        let mut subjects = rows
+            .iter()
+            .map(|commit| commit.summary.as_str())
+            .collect::<Vec<_>>();
+        subjects.sort_unstable();
+        assert_eq!(subjects, expected);
+    }
+
+    let default = commits(&repo, 10, 0, None, &[], |_| {}).unwrap();
+    let stale_only = commits(&repo, 10, 0, None, &selections[2..3], |_| {}).unwrap();
+    assert_eq!(
+        stale_only
+            .iter()
+            .map(|commit| &commit.id)
+            .collect::<Vec<_>>(),
+        default.iter().map(|commit| &commit.id).collect::<Vec<_>>(),
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn failed_history_command_surfaces_git_diagnostics_and_can_be_retried() {
+    let (root, repo) = temp_repo();
+    commit_file(&repo, &root, "base.txt", "base", "base");
+    let missing_ref = "refs/heads/history-command-fixture";
+    let args = ["log", missing_ref, "--"].map(str::to_string);
+    let refs = Arc::new(refs::RefCatalog::read(&repo, true).unwrap());
+    let error = log_page(repo.workdir(), &args, 0, 10, None, Vec::new(), refs).unwrap_err();
+    assert!(error.to_string().contains(missing_ref), "{error}");
+    let rows = commits(&repo, 10, 0, None, &[], |_| {}).unwrap();
+    assert_eq!(rows[0].summary, "base");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn history_pages_preserve_divergent_and_merged_branch_membership() {
     let (root, repo) = temp_repo();
     commit_file(&repo, &root, "base", "base", "common");

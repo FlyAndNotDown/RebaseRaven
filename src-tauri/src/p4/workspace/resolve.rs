@@ -26,7 +26,11 @@ pub struct P4ResolveView {
     pub diff: FileDiff,
 }
 
-pub fn resolve_view(connection: &P4Connection, path: &str) -> AppResult<P4ResolveView> {
+pub fn resolve_view(
+    connection: &P4Connection,
+    path: &str,
+    ignore_whitespace: bool,
+) -> AppResult<P4ResolveView> {
     let path = path.trim();
     if path.is_empty() {
         return Err(AppError::msg("Choose a file to resolve."));
@@ -37,7 +41,7 @@ pub fn resolve_view(connection: &P4Connection, path: &str) -> AppResult<P4Resolv
     let preview = run_ok(&env, &["-ztag", "resolve", "-n", "-o", &spec], None)?;
     let (facts, pending_resolves) = pending_resolve_facts(&preview, &spec)
         .ok_or_else(|| AppError::msg("This file does not need resolve."))?;
-    let (diff, comparable, working_copy) = resolve_diff(&env, &facts);
+    let (diff, comparable, working_copy) = resolve_diff(&env, &facts, ignore_whitespace);
     Ok(P4ResolveView {
         path: facts.depot.clone(),
         summary: resolve_summary(&facts),
@@ -70,7 +74,7 @@ pub(in crate::p4) fn resolve_file_versions(
         binary: false,
         size: None,
     };
-    let view = resolve_view(connection, path)?;
+    let view = resolve_view(connection, path, false)?;
     if !view.comparable {
         return Err(AppError::msg("The two sides cannot be compared."));
     }
@@ -540,7 +544,11 @@ fn auto_merge_available(env: &P4Env, spec: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn resolve_diff(env: &P4Env, facts: &ResolveFacts) -> (FileDiff, bool, bool) {
+fn resolve_diff(
+    env: &P4Env,
+    facts: &ResolveFacts,
+    ignore_whitespace: bool,
+) -> (FileDiff, bool, bool) {
     let depot = facts.depot.clone();
     let end = if facts.end_rev.is_empty() {
         facts.start_rev.clone()
@@ -551,13 +559,14 @@ fn resolve_diff(env: &P4Env, facts: &ResolveFacts) -> (FileDiff, bool, bool) {
         return (empty_diff(&depot), false, false);
     }
     let incoming = incoming_resolve_spec(facts);
+    let unified = cli::unified_diff(ignore_whitespace);
     if depot == facts.from_file {
-        if let Ok(text) = cli::run_p4_diff(env, &["diff", "-du", "-f", &incoming]) {
+        if let Ok(text) = cli::run_p4_diff(env, &["diff", unified, "-f", &incoming]) {
             return (parse_single_diff(&text, &depot), true, true);
         }
     }
     let have = format!("{depot}#have");
-    match cli::run_p4_diff(env, &["diff2", "-du", &have, &incoming]) {
+    match cli::run_p4_diff(env, &["diff2", unified, &have, &incoming]) {
         Ok(text) => (parse_single_diff(&text, &depot), true, false),
         Err(_) => (empty_diff(&depot), false, false),
     }

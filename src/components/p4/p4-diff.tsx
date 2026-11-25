@@ -1,6 +1,6 @@
 import { DiffToolbar } from "@/components/diff-toolbar";
-import { useDiffWhitespace } from "@/components/use-diff-whitespace";
-import { useP4 } from "@/state/p4-context";
+import { useMemo } from "react";
+import { useP4Pick } from "@/state/p4-context";
 import type { TextPair, DiffToolSource } from "@/lib/diff-tools";
 import { t, useTranslation } from "@/i18n";
 import { DiffLines } from "@/components/diff-viewer";
@@ -12,6 +12,8 @@ import { toast } from "sonner";
 import { DiffSkeleton } from "@/components/skeletons";
 import { cn } from "@/lib/utils";
 import { useGitSelect } from "@/state/git-context";
+import { p4ComparisonDiff } from "@/lib/p4-comparison";
+import { p4DisplayError } from "@/lib/p4-operation-preview";
 
 async function copyPath(value: string) {
   if (!value) {
@@ -46,11 +48,23 @@ export function P4Diff({
   const { t } = useTranslation();
   const originalDiff = preview && "unavailable" in preview ? null : preview;
   const prefs = useGitSelect(state => state.prefs);
-  const { connection } = useP4();
+  const { connection } = useP4Pick(["connection"]);
   const source: Exclude<DiffToolSource, {kind:"git"}> | null = textSource ? {kind:"text", ...textSource} : fileSource && connection ? {kind:"perforce", connection, source:fileSource} : null;
-  const filtered = useDiffWhitespace(originalDiff, originalDiff && isImagePath(originalDiff.path) ? null : source);
-  const diff = filtered.diff ?? originalDiff;
-  const loading = originalLoading || filtered.loading;
+  const before = textSource?.before;
+  const after = textSource?.after;
+  const path = textSource?.path;
+  const { diff, error } = useMemo(() => {
+    if (!prefs.diffIgnoreWhitespace || !originalDiff || originalDiff.binary ||
+        path === undefined || before === undefined || after === undefined) {
+      return { diff: originalDiff, error: null };
+    }
+    try {
+      return { diff: p4ComparisonDiff({ kind: "text", path, before, after }, true), error: null };
+    } catch (caught) {
+      return { diff: originalDiff, error: p4DisplayError(caught) };
+    }
+  }, [prefs.diffIgnoreWhitespace, originalDiff, path, before, after]);
+  const loading = originalLoading;
 
   const sideBySide = prefs.diffSplit;
   const image = Boolean(fileSource && diff && isImagePath(diff.path));
@@ -70,7 +84,7 @@ export function P4Diff({
     );
   }
   return (
-    <DiffSearchScope lines={diff.lines.map(line => line.kind === "hunk" ? "" : line.content.replace(/\r/g, ""))} enabled={!loading && !filtered.error && !diff.binary && !image} className={frame}>
+    <DiffSearchScope lines={diff.lines.map(line => line.kind === "hunk" ? "" : line.content.replace(/\r/g, ""))} enabled={!loading && !error && !diff.binary && !image} className={frame}>
       {chrome ? (
         <div className="flex h-10 shrink-0 items-center justify-between gap-3 border-b px-3">
           <button
@@ -90,7 +104,7 @@ export function P4Diff({
           <div className="border-l px-3 py-1.5">{captions[1]}</div>
         </div>
       ) : null}
-      {filtered.error ? <p role="alert" className="p-3 text-sm text-destructive">{filtered.error}</p> : loading ? <div className="relative min-h-0 flex-1"><DiffSkeleton fill /></div> : fileSource && image ? <P4ImageDiff source={fileSource} refreshIdentity={diff} captions={captions} /> : diff.binary ? (
+      {error ? <p role="alert" className="p-3 text-sm text-destructive">{error}</p> : loading ? <div className="relative min-h-0 flex-1"><DiffSkeleton fill /></div> : fileSource && image ? <P4ImageDiff source={fileSource} refreshIdentity={diff} captions={captions} /> : diff.binary ? (
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">{t("p4.binaryFile")}</div>
       ) : diff.lines.length === 0 ? (
         <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">

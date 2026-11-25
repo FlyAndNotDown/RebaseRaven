@@ -307,6 +307,7 @@ fn empty_diff(path: &str, binary: bool) -> FileDiff {
 pub fn compare_files(
     connection: &P4Connection,
     request: &P4CompareRequest,
+    ignore_whitespace: bool,
 ) -> AppResult<P4Comparison> {
     let base = version(connection, &request.path, &request.base)?;
     let head = version(connection, &request.path, &request.head)?;
@@ -333,7 +334,10 @@ pub fn compare_files(
         });
     }
     if let (Some(before), Some(after)) = (&base.spec, &head.spec) {
-        let text = cli::run_p4_diff(&env_for(connection), &["diff2", "-du", before, after])?;
+        let text = cli::run_p4_diff(
+            &env_for(connection),
+            &["diff2", cli::unified_diff(ignore_whitespace), before, after],
+        )?;
         return Ok(P4Comparison::Diff {
             diff: parse_single_diff(&text, path),
         });
