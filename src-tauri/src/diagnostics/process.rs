@@ -126,7 +126,7 @@ impl CommandTrace {
     pub(crate) fn checkpoint(&mut self) {
         let has_output = {
             let streams = self.streams.lock().unwrap_or_else(|err| err.into_inner());
-            streams.stdout.total > 0 || streams.stderr.total > 0
+            streams.stdout.total > 0
         };
         if has_output {
             self.emit(Status::Running, CommandOutput::default(), None);
@@ -137,11 +137,16 @@ impl CommandTrace {
             let mut streams = self.streams.lock().unwrap_or_else(|err| err.into_inner());
             streams.stdout.append(output.stdout);
             streams.stderr.append(output.stderr);
-            let output = (streams.stdout.take(), streams.stderr.take());
-            if status != Status::Running {
+            let stdout = streams.stdout.take();
+            let stderr = if status == Status::Running {
+                // A reader can request another page after Git has already
+                // reported an error. Keep stderr for that final status.
+                Vec::new()
+            } else {
                 streams.completed = Some((self.code, self.report.clone(), self.started));
-            }
-            output
+                streams.stderr.take()
+            };
+            (stdout, stderr)
         };
         let mut report = self.report.clone();
         report.set_output(CommandOutput {

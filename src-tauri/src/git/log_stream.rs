@@ -18,12 +18,6 @@ struct LogStream {
     used: Instant,
 }
 
-impl Drop for LogStream {
-    fn drop(&mut self) {
-        stop_child(&mut self.child);
-    }
-}
-
 type Slot = Arc<Mutex<Option<LogStream>>>;
 
 fn slots() -> &'static Mutex<HashMap<PathBuf, Slot>> {
@@ -143,14 +137,13 @@ pub(super) fn log_page(
             }
         }
     }
-    stream.child.checkpoint();
-    stream.used = Instant::now();
     if ended {
-        let status = stream.child.wait()?;
+        let result = stream.child.wait_checked("Could not load Git history");
         *guard = None;
-        if !status.success() {
-            return Err(AppError::msg("git log failed"));
-        }
+        result?;
+    } else {
+        stream.child.checkpoint();
+        stream.used = Instant::now();
     }
     Ok(page)
 }

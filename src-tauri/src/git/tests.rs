@@ -1326,6 +1326,45 @@ fn history_pages_are_contiguous_whether_or_not_the_stream_is_reused() {
 }
 
 #[test]
+fn history_keeps_valid_filters_when_a_branch_matches_a_path_or_another_ref_is_deleted() {
+    let (root, repo) = temp_repo();
+    commit_file(&repo, &root, "base.txt", "base", "base");
+    branch_here(&repo, "topic");
+    commit_file(&repo, &root, "main.txt", "main", "main only");
+    fs::create_dir(root.join("topic")).unwrap();
+
+    let missing = "refs/remotes/origin/pruned".to_string();
+    let selections = ["topic".to_string(), missing.clone()];
+    for query in [None, Some("base")] {
+        let rows = commits(&repo, 10, 0, query, &selections, |_| {}).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].summary, "base");
+    }
+
+    // When all saved filters are gone, the default scope applies on every page.
+    let stale = std::slice::from_ref(&missing);
+    let first_page = commits(&repo, 1, 0, None, stale, |_| {}).unwrap();
+    let second_page = commits(&repo, 1, 1, None, stale, |_| {}).unwrap();
+    assert_eq!(first_page[0].summary, "main only");
+    assert_eq!(second_page[0].summary, "base");
+    assert!(commits(&repo, 1, 2, None, &[], |_| {}).unwrap().is_empty());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn failed_history_command_surfaces_git_diagnostics_and_can_be_retried() {
+    let (root, repo) = temp_repo();
+    commit_file(&repo, &root, "base.txt", "base", "base");
+    let missing_ref = "refs/heads/history-command-fixture";
+    let args = ["log", missing_ref, "--"].map(str::to_string);
+    let error = log_page(repo.workdir(), &args, 0, 10, None).unwrap_err();
+    assert!(error.to_string().contains(missing_ref), "{error}");
+    let rows = commits(&repo, 10, 0, None, &[], |_| {}).unwrap();
+    assert_eq!(rows[0].summary, "base");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn history_pages_preserve_divergent_and_merged_branch_membership() {
     let (root, repo) = temp_repo();
     commit_file(&repo, &root, "base", "base", "common");
