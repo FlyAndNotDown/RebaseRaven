@@ -12,6 +12,43 @@ const files: PendingFile[] = ["edit", "add", "delete"].map((action, index) => ({
 const changeId = "52";
 const drag = (entry: PendingFile): PendingDragFile => ({ path: entry.depotPath, change: changeId, shelved: entry.shelved });
 
+it("windows a large changelist inside the shared scroller and still selects its last file", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+  const viewport = document.createElement("div");
+  const host = document.createElement("div");
+  viewport.append(host);
+  document.body.append(viewport);
+  Object.defineProperty(viewport, "clientHeight", { value: 240 });
+  const bounds = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    return new DOMRect(0, this === viewport ? 0 : 64 - viewport.scrollTop, 400, 240);
+  });
+  const root = createRoot(host);
+  const many = Array.from({ length: 1000 }, (_, index) => ({ ...files[0], depotPath: `//depot/file-${index}` }));
+  const select = vi.fn();
+  try {
+    await act(async () => root.render(<TooltipProvider><PendingFiles
+      viewport={viewport} changeId={changeId} files={many} picked={new Set()}
+      selectedPath={null} selectedShelved={false} className="" onSelect={select} onPointerDown={() => {}}
+    /></TooltipProvider>));
+    expect(host.querySelectorAll("button").length).toBeLessThan(100);
+    expect(host.textContent).not.toContain("file-999");
+    await act(async () => {
+      viewport.scrollTop = 24 * 990 + 64;
+      viewport.dispatchEvent(new Event("scroll"));
+    });
+    const last = [...host.querySelectorAll("button")].find(button => button.textContent === "file-999");
+    expect(last).toBeDefined();
+    await act(async () => last!.click());
+    expect(select).toHaveBeenCalledWith(expect.anything(), "//depot/file-999");
+  } finally {
+    await act(async () => root.unmount());
+    viewport.remove();
+    bounds.mockRestore();
+    vi.unstubAllGlobals();
+  }
+});
+
 it("creates a file's context menu only when opened and preserves its multi-file selection", async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const host = document.createElement("div");

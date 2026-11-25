@@ -299,7 +299,10 @@ fn pick_closer(
     })
 }
 
-pub fn open_workspace(path: &str) -> AppResult<P4Open> {
+pub fn open_workspace(
+    path: &str,
+    preview: impl FnOnce(&P4Connection, &[P4Changelist]),
+) -> AppResult<P4Open> {
     let start = existing_dir(path)?;
     let Some(connection) = p4_connection(&start)? else {
         return Err(AppError::msg(format!(
@@ -307,7 +310,7 @@ pub fn open_workspace(path: &str) -> AppResult<P4Open> {
             start.to_string_lossy()
         )));
     };
-    match load_pending(&connection) {
+    match refresh_pending(&connection, |pending| preview(&connection, pending)) {
         Ok(pending) => Ok(P4Open::Ready {
             connection,
             pending,
@@ -317,8 +320,14 @@ pub fn open_workspace(path: &str) -> AppResult<P4Open> {
     }
 }
 
-pub fn refresh_pending(connection: &P4Connection) -> AppResult<Vec<P4Changelist>> {
-    load_pending(connection)
+pub fn refresh_pending(
+    connection: &P4Connection,
+    preview: impl FnOnce(&[P4Changelist]),
+) -> AppResult<Vec<P4Changelist>> {
+    let mut changes = load_pending_summary(connection)?;
+    preview(&changes);
+    annotate_pending(connection, &mut changes);
+    Ok(changes)
 }
 
 pub fn submitted(
@@ -601,6 +610,7 @@ pub fn shelf_diff(
     connection: &P4Connection,
     depot_path: &str,
     change_id: &str,
+    ignore_whitespace: bool,
 ) -> AppResult<FileDiff> {
     let id = require_numbered(change_id)?;
     if !depot_path.starts_with("//") {
@@ -625,11 +635,19 @@ pub fn shelf_diff(
             deleted,
         );
     }
-    let text = cli::run_p4_diff(&env, &["diff2", "-du", &have, &shelf])?;
+    let text = cli::run_p4_diff(
+        &env,
+        &["diff2", cli::unified_diff(ignore_whitespace), &have, &shelf],
+    )?;
     Ok(parse_single_diff(&text, depot_path))
 }
 
-pub fn revision_diff(connection: &P4Connection, path: &str, rev: &str) -> AppResult<FileDiff> {
+pub fn revision_diff(
+    connection: &P4Connection,
+    path: &str,
+    rev: &str,
+    ignore_whitespace: bool,
+) -> AppResult<FileDiff> {
     use super::history::{
         compare_files, exact_depot, mapped_local, revision_number, P4CompareRequest, P4Comparison,
         P4FileVersion,
@@ -657,7 +675,7 @@ pub fn revision_diff(connection: &P4Connection, path: &str, rev: &str) -> AppRes
             revision: number.to_string(),
         },
     };
-    match compare_files(connection, &request)? {
+    match compare_files(connection, &request, ignore_whitespace)? {
         P4Comparison::Diff { diff } => Ok(diff),
         P4Comparison::Text { .. } => {
             Err(AppError::msg("The selected file revision is unavailable."))
@@ -957,7 +975,7 @@ pub fn submit_shelf(
 ) -> AppResult<()> {
     require_description(description)?;
     let id = require_numbered(change_id)?;
-    let pending = refresh_pending(connection)?;
+    let pending = load_pending_summary(connection)?;
     let change = pending
         .iter()
         .find(|change| change.id == id)
@@ -1578,41 +1596,43 @@ pub(super) fn connection_after_create(
     })
 }
 
-fn load_pending(connection: &P4Connection) -> AppResult<Vec<P4Changelist>> {
+fn load_pending_summary(connection: &P4Connection) -> AppResult<Vec<P4Changelist>> {
     let env = env_for(connection);
-    let pending_text = run_ok(
-        &env,
-        &[
-            "-ztag",
-            "changes",
-            "-s",
-            "pending",
-            "-c",
-            &connection.client,
-            "-L",
-        ],
-        None,
-    )?;
-    let shelved_text = super::review::allow_empty(run_ok(
-        &env,
-        &[
-            "-ztag",
-            "changes",
-            "-s",
-            "shelved",
-            "-c",
-            &connection.client,
-            "-L",
-        ],
-        None,
-    ))?;
-    let opened_text = run_ok(&env, &["-ztag", "opened"], None)?;
-    let opened = parse_ztag(&opened_text);
-    let depot_files: Vec<String> = opened
-        .iter()
-        .filter_map(|record| record.get("depotFile").cloned())
-        .collect();
-    let locals = where_paths(&env, &depot_files);
+    let changes = |status| {
+        run_ok(
+            &env,
+            &[
+                "-ztag",
+                "changes",
+                "-s",
+                status,
+                "-c",
+                &connection.client,
+                "-L",
+            ],
+            None,
+        )
+    };
+    let (pending_text, shelved_text, opened, default_description) = std::thread::scope(|scope| {
+        let pending = scope.spawn(|| changes("pending"));
+        let shelves = scope.spawn(|| super::review::allow_empty(changes("shelved")));
+        let description = scope.spawn(|| {
+            run_ok(&env, &["change", "-o"], None)
+                .map(|spec| read_description(&spec))
+                .unwrap_or_default()
+        });
+        let opened = parse_ztag(&run_ok(&env, &["-ztag", "opened"], None)?);
+        Ok::<_, AppError>((
+            pending
+                .join()
+                .map_err(|_| AppError::msg("Could not read pending changelists"))??,
+            shelves
+                .join()
+                .map_err(|_| AppError::msg("Could not read shelved changelists"))??,
+            opened,
+            description.join().unwrap_or_default(),
+        ))
+    })?;
     let open_stream = opened.iter().find_map(|record| {
         stream_from_record(record).map(|stream| {
             let change = field(record, "change");
@@ -1642,11 +1662,8 @@ fn load_pending(connection: &P4Connection) -> AppResult<Vec<P4Changelist>> {
         by_change
             .entry(change)
             .or_default()
-            .push(file_from_opened(connection, record, &locals, false));
+            .push(file_from_opened(connection, record));
     }
-    let default_description = run_ok(&env, &["change", "-o"], None)
-        .map(|spec| read_description(&spec))
-        .unwrap_or_default();
     let mut changes = vec![P4Changelist {
         id: "default".to_string(),
         user: connection.user.clone(),
@@ -1670,7 +1687,6 @@ fn load_pending(connection: &P4Connection) -> AppResult<Vec<P4Changelist>> {
             .filter(|(id, _)| id == &change.id)
             .map(|(_, stream)| stream.clone());
     }
-    annotate_pending(connection, &mut changes);
     Ok(changes)
 }
 
@@ -1721,26 +1737,17 @@ fn pending_summaries(
     changes
 }
 
-fn file_from_opened(
-    connection: &P4Connection,
-    record: &ZtagRecord,
-    locals: &BTreeMap<String, String>,
-    shelved: bool,
-) -> P4File {
-    let depot_path = field(record, "depotFile");
-    let local_path = locals.get(&depot_path).cloned().unwrap_or_else(|| {
-        local_from_client(
+fn file_from_opened(connection: &P4Connection, record: &ZtagRecord) -> P4File {
+    P4File {
+        depot_path: field(record, "depotFile"),
+        local_path: local_from_client(
             Path::new(&connection.root),
             &connection.client,
             &field(record, "clientFile"),
-        )
-    });
-    P4File {
-        depot_path,
-        local_path,
+        ),
         action: field(record, "action"),
         rev: field(record, "rev"),
-        shelved,
+        shelved: false,
         binary: file_type_is_binary(&field(record, "type")),
         status: String::new(),
         detail: String::new(),
@@ -1901,23 +1908,6 @@ fn normalize_location(value: &str, depot: bool) -> String {
     } else {
         local_path_key(&location)
     }
-}
-
-fn where_paths(env: &P4Env, files: &[String]) -> BTreeMap<String, String> {
-    let mut map = BTreeMap::new();
-    for chunk in files.chunks(80) {
-        let mut args = vec!["-ztag".to_string(), "where".into()];
-        args.extend(chunk.iter().cloned());
-        let Ok(stdout) = run_owned(env, &args, None) else {
-            continue;
-        };
-        for record in parse_ztag(&stdout) {
-            if let (Some(depot), Some(path)) = (record.get("depotFile"), record.get("path")) {
-                map.insert(depot.clone(), path.clone());
-            }
-        }
-    }
-    map
 }
 
 fn local_from_client(root: &Path, client: &str, client_file: &str) -> String {

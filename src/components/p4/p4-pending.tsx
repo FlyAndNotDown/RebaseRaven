@@ -60,6 +60,7 @@ export function P4Pending() {
   const [deletingShelf, setDeletingShelf] = useState(false);
   const [resolving, setResolving] = useState<{ change: string; path: string } | null>(null);
   const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  const [fileViewport, setFileViewport] = useState<HTMLDivElement | null>(null);
   const [dragKind, setDragKind] = useState<"open" | "shelf" | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const dragFiles = useRef<PendingDragFile[] | null>(null);
@@ -127,11 +128,10 @@ export function P4Pending() {
     if (p4.resolveRequest) p4.dismissResolveRequest(p4.resolveRequest.id);
     if (id !== p4.selectedChange) {
       setResolving(null);
-      p4.selectChange(id);
     } else if (!shelved) {
       setResolving((current) => (current?.path === path ? current : null));
     }
-    p4.selectFile(path, shelved);
+    p4.selectFile(path, shelved, id);
   }
 
   function rowsInOrder() {
@@ -330,7 +330,8 @@ export function P4Pending() {
               <Button type="button" size="xs" variant="ghost" disabled={p4.busy} onClick={() => setCreating(true)}>
                 <PlusIcon />{t("p4.new")}</Button>
             </div>
-            <div className={cn("min-h-0 flex-1 overflow-auto px-1 py-1", dragKind && "[&_*]:cursor-grabbing")}>
+            <div ref={setFileViewport} className={cn("min-h-0 flex-1 overflow-auto px-1 py-1", dragKind && "[&_*]:cursor-grabbing")}>
+              <div>
               {p4.pending.map((change) => {
                 const changeOpened = change.files;
                 const shelf = p4.pendingShelves[change.id];
@@ -454,6 +455,7 @@ export function P4Pending() {
                           <PendingFiles
                             changeId={change.id}
                             files={changeOpened}
+                            viewport={fileViewport}
                             picked={picked}
                             selectedPath={selectedPath}
                             selectedShelved={p4.selectedShelved}
@@ -488,6 +490,7 @@ export function P4Pending() {
                             >
                               <PendingFiles
                                 changeId={change.id} files={shelf?.status === "ready" ? shelf.detail.files : []}
+                                viewport={fileViewport}
                                 picked={picked} selectedPath={selectedPath} selectedShelved={p4.selectedShelved}
                                 className="pl-12" onPointerDown={beginPointer}
                                 onSelect={(event, path) => pickFile(event, { change: change.id, path, shelved: true })}
@@ -504,6 +507,7 @@ export function P4Pending() {
                   </div>
                 );
               })}
+              </div>
             </div>
           </div>
         </ResizablePanel>

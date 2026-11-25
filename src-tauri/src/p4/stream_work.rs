@@ -483,6 +483,7 @@ pub(super) fn stream_change_text(
 pub fn stream_change_diff(
     connection: &P4Connection,
     request: &P4StreamDiffRequest,
+    ignore_whitespace: bool,
 ) -> AppResult<FileDiff> {
     let (before, after, deleted) = stream_change_range(connection, request)?;
     if deleted {
@@ -491,7 +492,13 @@ pub fn stream_change_diff(
     }
     let text = cli::run_p4_diff(
         &env_for(connection),
-        &["diff2", "-As", "-du", &before, &after],
+        &[
+            "diff2",
+            "-As",
+            cli::unified_diff(ignore_whitespace),
+            &before,
+            &after,
+        ],
     );
     let mut diff = match text {
         Ok(text) => parse_single_diff(&text, &request.path),

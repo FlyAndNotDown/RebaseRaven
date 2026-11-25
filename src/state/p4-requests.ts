@@ -12,10 +12,10 @@ export async function withP4Login<T>(request: () => Promise<T>, login: () => Pro
   }
 }
 
-export function pendingDiffRequest(connection: P4Connection, change: string, file: string, shelved: boolean) {
+export function pendingDiffRequest(connection: P4Connection, change: string, file: string, shelved: boolean, ignoreWhitespace = false) {
   return () => shelved
-    ? p4Api.shelfDiff(connection, file, change)
-    : p4Api.openedDiff(connection, file);
+    ? p4Api.shelfDiff(connection, file, change, ignoreWhitespace)
+    : p4Api.openedDiff(connection, file, ignoreWhitespace);
 }
 
 /** Passive reads must never turn an expired ticket into a login prompt. */
@@ -31,6 +31,7 @@ export function pendingRefreshRequest(
   connection: P4Connection,
   quiet: boolean,
   interactive: (request: () => Promise<P4Changelist[]>) => Promise<P4Changelist[]>,
+  preview?: (partial: P4Changelist[]) => void,
 ) {
-  return p4ReadRequest(() => p4Api.refreshPending(connection), quiet, interactive);
+  return p4ReadRequest(() => p4Api.refreshPending(connection, preview), quiet, interactive);
 }

@@ -431,6 +431,53 @@ pub fn run_p4_ok(env: &P4Env, args: &[&str], input: Option<&str>) -> AppResult<S
     run_p4(env, args, input).and_then(finish)
 }
 
+const DIRECT_FILE_BATCH: usize = 40;
+
+pub(super) fn file_batches(paths: &[String]) -> std::slice::Chunks<'_, String> {
+    // Older clients decode argument files in the host code page. Keep native
+    // argument passing for Unicode and any whitespace significant to the path.
+    let argument_file = paths.iter().all(|path| {
+        path.is_ascii() && !path.contains(['\r', '\n']) && !path.ends_with(char::is_whitespace)
+    });
+    paths.chunks(if argument_file {
+        512
+    } else {
+        DIRECT_FILE_BATCH
+    })
+}
+
+pub(super) fn run_p4_files(
+    env: &P4Env,
+    args: &[&str],
+    paths: &[String],
+) -> AppResult<std::process::Output> {
+    if paths.len() <= DIRECT_FILE_BATCH {
+        let argv: Vec<_> = args
+            .iter()
+            .copied()
+            .chain(paths.iter().map(String::as_str))
+            .collect();
+        return run_p4(env, &argv, None);
+    }
+    let mut list = tempfile::NamedTempFile::new()?;
+    for path in paths {
+        writeln!(list, "{path}")?;
+    }
+    let file = list
+        .path()
+        .to_str()
+        .ok_or_else(|| AppError::msg("Could not read the Perforce file list."))?;
+    let argv: Vec<_> = ["-x", file]
+        .into_iter()
+        .chain(args.iter().copied())
+        .collect();
+    run_p4(env, &argv, None)
+}
+
+pub(super) fn run_p4_ok_files(env: &P4Env, args: &[&str], paths: &[String]) -> AppResult<String> {
+    run_p4_files(env, args, paths).and_then(finish)
+}
+
 // Passive repository discovery must never wait for an unrelated server or a
 // selected executable wrapper. Keep its limits separate from user operations.
 const PROBE_OUTPUT_LIMIT: usize = 65_536;
@@ -596,6 +643,14 @@ pub(super) fn run_label_preview(env: &P4Env, args: &[&str]) -> AppResult<String>
         });
     trace.output(&result);
     result.and_then(finish)
+}
+
+pub(super) fn unified_diff(ignore_whitespace: bool) -> &'static str {
+    if ignore_whitespace {
+        "-duw"
+    } else {
+        "-du"
+    }
 }
 
 /// `p4 diff` can exit non-zero when the files differ. A diff body is still a result.

@@ -1354,11 +1354,6 @@ async fn open_git_file_in_editor(
 }
 
 #[tauri::command]
-async fn diff_document_text(source: file_tools::DocumentSource) -> AppResult<file_tools::TextPair> {
-    blocking(move || source.text()).await
-}
-
-#[tauri::command]
 async fn open_diff_document(
     source: file_tools::DocumentSource,
     line: Option<u32>,
@@ -1476,9 +1471,22 @@ async fn detect_repository(path: String) -> AppResult<p4::RepoDetection> {
 }
 
 #[tauri::command]
-async fn p4_open(path: String, app: AppHandle) -> AppResult<p4::P4Open> {
+async fn p4_open(
+    path: String,
+    preview: Option<tauri::ipc::JavaScriptChannelId>,
+    webview: tauri::Webview,
+    app: AppHandle,
+) -> AppResult<p4::P4Open> {
+    let preview = preview.map(|id| id.channel_on(webview));
     blocking(move || {
-        let opened = p4::open_workspace(&path)?;
+        let opened = p4::open_workspace(&path, |connection, pending| {
+            if let Some(channel) = preview {
+                let _ = channel.send(p4::P4Open::Ready {
+                    connection: connection.clone(),
+                    pending: pending.to_vec(),
+                });
+            }
+        })?;
         if let p4::P4Open::Ready { connection, .. } = &opened {
             let name = if connection.client.is_empty() {
                 connection.root.clone()
@@ -1493,8 +1501,20 @@ async fn p4_open(path: String, app: AppHandle) -> AppResult<p4::P4Open> {
 }
 
 #[tauri::command]
-async fn p4_refresh_pending(connection: p4::P4Connection) -> AppResult<Vec<p4::P4Changelist>> {
-    blocking(move || p4::refresh_pending(&connection)).await
+async fn p4_refresh_pending(
+    connection: p4::P4Connection,
+    preview: Option<tauri::ipc::JavaScriptChannelId>,
+    webview: tauri::Webview,
+) -> AppResult<Vec<p4::P4Changelist>> {
+    let preview = preview.map(|id| id.channel_on(webview));
+    blocking(move || {
+        p4::refresh_pending(&connection, |pending| {
+            if let Some(channel) = preview {
+                let _ = channel.send(pending.to_vec());
+            }
+        })
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1533,8 +1553,12 @@ async fn p4_describe(connection: p4::P4Connection, change_id: String) -> AppResu
 }
 
 #[tauri::command]
-async fn p4_opened_diff(connection: p4::P4Connection, path: String) -> AppResult<p4::P4OpenedDiff> {
-    blocking(move || p4::opened_diff(&connection, &path)).await
+async fn p4_opened_diff(
+    connection: p4::P4Connection,
+    path: String,
+    ignore_whitespace: Option<bool>,
+) -> AppResult<p4::P4OpenedDiff> {
+    blocking(move || p4::opened_diff(&connection, &path, ignore_whitespace.unwrap_or(false))).await
 }
 
 #[tauri::command]
@@ -1542,8 +1566,17 @@ async fn p4_shelf_diff(
     connection: p4::P4Connection,
     depot_path: String,
     change_id: String,
+    ignore_whitespace: Option<bool>,
 ) -> AppResult<git::FileDiff> {
-    blocking(move || p4::shelf_diff(&connection, &depot_path, &change_id)).await
+    blocking(move || {
+        p4::shelf_diff(
+            &connection,
+            &depot_path,
+            &change_id,
+            ignore_whitespace.unwrap_or(false),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1551,8 +1584,17 @@ async fn p4_revision_diff(
     connection: p4::P4Connection,
     depot_path: String,
     rev: String,
+    ignore_whitespace: Option<bool>,
 ) -> AppResult<git::FileDiff> {
-    blocking(move || p4::revision_diff(&connection, &depot_path, &rev)).await
+    blocking(move || {
+        p4::revision_diff(
+            &connection,
+            &depot_path,
+            &rev,
+            ignore_whitespace.unwrap_or(false),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1576,8 +1618,10 @@ async fn p4_annotate(
 async fn p4_compare_files(
     connection: p4::P4Connection,
     request: p4::P4CompareRequest,
+    ignore_whitespace: Option<bool>,
 ) -> AppResult<p4::P4Comparison> {
-    blocking(move || p4::compare_files(&connection, &request)).await
+    blocking(move || p4::compare_files(&connection, &request, ignore_whitespace.unwrap_or(false)))
+        .await
 }
 
 #[tauri::command]
@@ -1775,8 +1819,12 @@ async fn p4_apply_stream_work(
 async fn p4_stream_change_diff(
     connection: p4::P4Connection,
     request: p4::P4StreamDiffRequest,
+    ignore_whitespace: Option<bool>,
 ) -> AppResult<git::FileDiff> {
-    blocking(move || p4::stream_change_diff(&connection, &request)).await
+    blocking(move || {
+        p4::stream_change_diff(&connection, &request, ignore_whitespace.unwrap_or(false))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1963,8 +2011,9 @@ async fn p4_delete_shelf(connection: p4::P4Connection, change_id: String) -> App
 async fn p4_resolve_view(
     connection: p4::P4Connection,
     path: String,
+    ignore_whitespace: Option<bool>,
 ) -> AppResult<p4::P4ResolveView> {
-    blocking(move || p4::resolve_view(&connection, &path)).await
+    blocking(move || p4::resolve_view(&connection, &path, ignore_whitespace.unwrap_or(false))).await
 }
 
 #[tauri::command]
@@ -2670,7 +2719,6 @@ pub fn run() {
             open_in_editor,
             open_git_file_in_editor,
             open_diff_document,
-            diff_document_text,
             get_tool_config,
             set_tool_config,
             list_gui_tools,

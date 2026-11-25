@@ -5,7 +5,7 @@ import { expect, it, vi } from "vitest";
 import { P4Diff } from "./p4-diff";
 import { setLanguagePreference, t } from "@/i18n";
 
-vi.mock("@/state/p4-context", () => ({ useP4: () => ({ connection: null }) }));
+vi.mock("@/state/p4-context", () => ({ useP4Pick: () => ({ connection: null }) }));
 vi.mock("@/state/git-context", () => ({
   useGitSelect: (select: (state: object) => unknown) =>
     select({ prefs: { diffSplit: false, diffIgnoreWhitespace: true } }),

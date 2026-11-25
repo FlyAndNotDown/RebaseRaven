@@ -1,5 +1,5 @@
 use crate::error::{AppError, AppResult};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -27,13 +27,6 @@ pub enum DocumentSource {
     },
 }
 
-#[derive(Serialize)]
-pub struct TextPair {
-    pub path: String,
-    pub before: String,
-    pub after: String,
-}
-
 impl DocumentSource {
     pub fn files(&self, limit: usize) -> AppResult<FilePair> {
         match self {
@@ -56,19 +49,6 @@ impl DocumentSource {
                 })
             }
         }
-    }
-
-    pub fn text(&self) -> AppResult<TextPair> {
-        let files = self.files(2 * 1024 * 1024)?;
-        let text = |bytes: Option<Vec<u8>>| {
-            String::from_utf8(bytes.unwrap_or_default())
-                .map_err(|_| AppError::msg("Text comparison requires UTF-8 files."))
-        };
-        Ok(TextPair {
-            path: files.path,
-            before: text(files.before)?,
-            after: text(files.after)?,
-        })
     }
 }
 
