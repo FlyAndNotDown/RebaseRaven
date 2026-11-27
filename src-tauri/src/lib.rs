@@ -72,6 +72,22 @@ where
     result
 }
 
+/// Native object reads only need the selected worktree as their current directory.
+async fn with_workdir<T: Send + 'static>(
+    path: String,
+    read: impl FnOnce(&Path) -> AppResult<T> + Send + 'static,
+) -> AppResult<T> {
+    blocking(move || {
+        let path = std::path::PathBuf::from(git::strip_verbatim_prefix(&path));
+        if path.join(".git").exists() {
+            read(&path)
+        } else {
+            read(git::open_at(&path)?.workdir())
+        }
+    })
+    .await
+}
+
 async fn with_repo_diagnostic<T, F>(path: String, code: diagnostics::Code, f: F) -> AppResult<T>
 where
     T: Send + 'static,
@@ -247,19 +263,49 @@ async fn refresh_git_status(repo_path: String) -> AppResult<git::StatusSnapshot>
     with_repo_async(repo_path, |repo| git::status_snapshot(repo)).await
 }
 
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum HistoryFilter {
+    Text(String),
+    Search {
+        query: String,
+        rid: tauri::ResourceId,
+    },
+}
+
+#[tauri::command]
+fn open_git_history_search(webview: tauri::Webview) -> tauri::ResourceId {
+    webview
+        .resources_table()
+        .add_arc(git::HistoryReader::search())
+}
+
 #[tauri::command]
 async fn get_commits(
     repo_path: String,
     limit: Option<usize>,
     skip: Option<usize>,
-    query: Option<String>,
+    query: Option<HistoryFilter>,
     rev: Option<Vec<String>>,
     preview: Option<tauri::ipc::JavaScriptChannelId>,
     webview: tauri::Webview,
 ) -> AppResult<Vec<CommitSummary>> {
+    let (query, reader) = match query {
+        Some(HistoryFilter::Search { query, rid }) => {
+            let reader = webview
+                .resources_table()
+                .get::<git::HistoryReader>(rid)
+                .map_err(|_| AppError::cancelled())?;
+            (Some(query), Some(reader))
+        }
+        Some(HistoryFilter::Text(query)) => (Some(query), None),
+        None => (None, None),
+    };
     let preview = preview.map(|id| id.channel_on(webview));
     with_repo_diagnostic(repo_path, diagnostics::Code::GitHistory, move |repo| {
-        git::commits(
+        let reader = reader.unwrap_or_else(|| git::HistoryReader::for_root(repo.workdir()));
+        git::read_commits(
+            &reader,
             repo,
             limit.unwrap_or(80),
             skip.unwrap_or(0),
@@ -303,8 +349,28 @@ async fn list_directory(repo_path: String, path: String) -> AppResult<Vec<DirEnt
 }
 
 #[tauri::command]
-async fn search_files(repo_path: String, query: String) -> AppResult<git::FileSearch> {
-    with_repo_async(repo_path, move |repo| git::search_files(repo, &query)).await
+async fn open_git_file_search(
+    webview: tauri::Webview,
+    repo_path: String,
+) -> AppResult<tauri::ResourceId> {
+    let repo = blocking(move || git::open_at(Path::new(&repo_path))).await?;
+    Ok(webview
+        .resources_table()
+        .add(git::FileSearchIndex::new(repo)))
+}
+
+#[tauri::command]
+async fn search_files(
+    webview: tauri::Webview,
+    rid: tauri::ResourceId,
+    query: String,
+    generation: u32,
+) -> AppResult<git::FileSearch> {
+    let index = webview
+        .resources_table()
+        .get::<git::FileSearchIndex>(rid)
+        .map_err(|_| AppError::cancelled())?;
+    blocking(move || index.page(&query, generation)).await
 }
 
 #[tauri::command]
@@ -332,7 +398,7 @@ async fn file_commits(
 
 #[tauri::command]
 async fn get_commit_details(repo_path: String, oid: String) -> AppResult<CommitDetails> {
-    with_repo_async(repo_path, move |repo| git::commit_details(repo, &oid)).await
+    with_workdir(repo_path, move |root| git::commit_details(root, &oid)).await
 }
 
 #[tauri::command]
@@ -365,8 +431,8 @@ async fn get_commit_diff(
     ignore_whitespace: Option<bool>,
 ) -> AppResult<FileDiff> {
     let ignore_whitespace = ignore_whitespace.unwrap_or(false);
-    with_repo_async(repo_path, move |repo| {
-        git::commit_file_diff(repo, &oid, &path, ignore_whitespace)
+    with_workdir(repo_path, move |root| {
+        git::commit_file_diff(root, &oid, &path, ignore_whitespace)
     })
     .await
 }
@@ -2608,6 +2674,7 @@ pub fn run() {
             open_repository,
             refresh_workspace,
             refresh_git_status,
+            open_git_history_search,
             get_commits,
             get_branches,
             get_workdir_diff,
@@ -2616,6 +2683,7 @@ pub fn run() {
             get_git_repository_settings,
             set_git_repository_settings,
             list_directory,
+            open_git_file_search,
             search_files,
             read_file,
             file_blame,

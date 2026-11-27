@@ -252,6 +252,28 @@ impl LoggedChild {
             None,
         );
     }
+    /// The caller has received the entire requested prefix.
+    pub(crate) fn finish_preview(&mut self) {
+        self.stop(Status::Success);
+    }
+    pub(crate) fn cancel(&mut self) {
+        self.stop(Status::Cancelled);
+    }
+    fn stop(&mut self, outcome: Status) {
+        if !matches!(self.child.try_wait(), Ok(Some(_))) {
+            crate::platform::kill_process_tree(self.child.id());
+            let _ = self.child.kill();
+        }
+        let status = self.child.wait().ok();
+        self.trace.finish(
+            outcome,
+            CommandOutput {
+                status,
+                ..Default::default()
+            },
+            None,
+        );
+    }
     pub(crate) fn wait(&mut self) -> io::Result<ExitStatus> {
         let status = self.child.wait()?;
         self.completed(status);
@@ -311,17 +333,7 @@ impl Drop for LoggedChild {
             self.completed(status);
             return;
         }
-        crate::platform::kill_process_tree(self.child.id());
-        let _ = self.child.kill();
-        let status = self.child.wait().ok();
-        self.trace.finish(
-            Status::Cancelled,
-            CommandOutput {
-                status,
-                ..Default::default()
-            },
-            None,
-        );
+        self.cancel();
     }
 }
 

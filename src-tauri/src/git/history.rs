@@ -66,7 +66,28 @@ pub enum HistoryPreview<'a> {
     Commits(&'a [CommitSummary]),
 }
 
+#[cfg(test)]
 pub fn commits(
+    repo: &Repository,
+    limit: usize,
+    skip: usize,
+    query: Option<&str>,
+    revs: &[String],
+    preview: impl FnMut(HistoryPreview<'_>),
+) -> AppResult<Vec<CommitSummary>> {
+    read_commits(
+        &HistoryReader::for_root(repo.workdir()),
+        repo,
+        limit,
+        skip,
+        query,
+        revs,
+        preview,
+    )
+}
+
+pub fn read_commits(
+    reader: &HistoryReader,
     repo: &Repository,
     limit: usize,
     skip: usize,
@@ -74,14 +95,11 @@ pub fn commits(
     revs: &[String],
     mut preview: impl FnMut(HistoryPreview<'_>),
 ) -> AppResult<Vec<CommitSummary>> {
+    reader.processes.active()?;
     let query = query.map(str::trim).filter(|value| !value.is_empty());
     let root = workdir(repo)?;
     let selected = normalize_revs(revs);
-    let cached = if query.is_none() {
-        history_stream_refs(root, skip, &selected)
-    } else {
-        None
-    };
+    let cached = history_stream_refs(reader, skip, &selected, query);
     let catalog = match cached {
         Some(catalog) => catalog,
         None => Arc::new(refs::RefCatalog::read(repo, true)?),
@@ -94,39 +112,49 @@ pub fn commits(
             catalog.branch_list(current, detached),
         ));
     }
-    if let Some(query) = query {
-        let mut items = search_commits(repo, limit, skip, query, &revs, &labels)?;
-        preview(HistoryPreview::Commits(&items));
-        mark_on_current_branch(repo, &tips, &mut items)?;
-        return Ok(items);
-    }
-    // Committer-date order, unlike author-date order, lets git stream from
-    // the commit-graph instead of sorting all of history first.
-    let args = git_log_args(
-        &revs,
-        &["-c", "log.showSignature=false", "log", "--date-order"],
-    );
+    let (args, needle) = if let Some(query) = query {
+        let parsed = parse_search_query(query);
+        (
+            git_search_log_args(&revs, &parsed),
+            parsed.text.to_lowercase(),
+        )
+    } else {
+        (
+            git_log_args(
+                &revs,
+                &["-c", "log.showSignature=false", "log", "--date-order"],
+            ),
+            String::new(),
+        )
+    };
     // With all branch tips in the log, its existing child-before-parent walk
     // can carry both membership bits across pages without a second process.
-    let in_log = revs.is_empty()
+    let in_log = query.is_none()
+        && revs.is_empty()
         && tips.head.iter().chain(&tips.upstream).all(|tip| {
             labels
                 .get(tip)
                 .is_some_and(|refs| refs.iter().any(|r| r.kind == "branch"))
         });
     let mut items = log_page(
-        root,
-        &args,
+        reader,
+        LogQuery {
+            root,
+            args: &args,
+            selected,
+            query,
+            needle: &needle,
+            labels: &labels,
+            tips: in_log.then_some(&tips),
+            refs: catalog,
+        },
         skip,
         limit,
-        in_log.then_some(&tips),
-        selected,
-        catalog,
     )?;
     apply_ref_labels(&mut items, &labels);
     if !in_log {
         preview(HistoryPreview::Commits(&items));
-        mark_on_current_branch(repo, &tips, &mut items)?;
+        mark_on_current_branch(&reader.processes, repo, &tips, &mut items)?;
     }
     Ok(items)
 }
@@ -268,50 +296,6 @@ pub(super) fn git_search_log_args(revs: &[String], query: &SearchQuery) -> Vec<S
     args
 }
 
-pub(super) fn search_commits(
-    repo: &Repository,
-    limit: usize,
-    skip: usize,
-    query: &str,
-    revs: &[String],
-    labels: &HashMap<String, Vec<CommitRefLabel>>,
-) -> AppResult<Vec<CommitSummary>> {
-    let parsed = parse_search_query(query);
-    let needle = parsed.text.to_lowercase();
-    let mut items = Vec::new();
-    let mut skipped = 0usize;
-
-    if let Ok(root) = workdir(repo) {
-        let args = git_search_log_args(revs, &parsed);
-        let argv: Vec<&str> = args.iter().map(String::as_str).collect();
-        let mut child = spawn_git_stdout(root, &argv)?;
-        if let Some(stdout) = child.stdout.take() {
-            let mut reader = BufReader::new(stdout);
-            let mut record = Vec::new();
-            while read_git_line(&mut reader, &mut record)? {
-                let Some(commit) = parse_search_record(&record) else {
-                    continue;
-                };
-                if !commit_matches(&commit, &needle, labels) {
-                    continue;
-                }
-                if skipped < skip {
-                    skipped += 1;
-                    continue;
-                }
-                items.push(commit);
-                if items.len() >= limit {
-                    break;
-                }
-            }
-        }
-        stop_child(&mut child);
-    }
-
-    apply_ref_labels(&mut items, labels);
-    Ok(items)
-}
-
 pub(super) fn parse_search_record(bytes: &[u8]) -> Option<CommitSummary> {
     let text = String::from_utf8_lossy(bytes);
     let mut fields = text.split('\0');
@@ -443,6 +427,7 @@ pub(super) fn propagate_membership<'a>(
 }
 
 fn mark_on_current_branch(
+    processes: &ReadProcesses,
     repo: &Repository,
     tips: &BranchTips,
     commits: &mut [CommitSummary],
@@ -452,7 +437,7 @@ fn mark_on_current_branch(
     // answers as soon as we encounter them, even on unrelated branches.
     for page in commits.chunks_mut(80) {
         let ids = page.iter().map(|c| c.id.as_str()).collect::<Vec<_>>();
-        let membership = page_membership(repo, tips, &ids)?;
+        let membership = page_membership(processes, repo, tips, &ids)?;
         for commit in page {
             let mask = membership.get(&commit.id).copied().unwrap_or_default();
             commit.on_current_branch = mask & 1 != 0;
@@ -463,6 +448,7 @@ fn mark_on_current_branch(
 }
 
 pub(super) fn page_membership(
+    processes: &ReadProcesses,
     repo: &Repository,
     tips: &BranchTips,
     ids: &[&str],
@@ -479,6 +465,7 @@ pub(super) fn page_membership(
     args.extend(wanted.iter().copied());
     let mut child = spawn_git_stdout(repo.workdir(), &args)?;
     let mut reader = BufReader::new(child.stdout.take().expect("piped Git output"));
+    let child = processes.track(child)?;
     let mut line = Vec::new();
     while read_git_line(&mut reader, &mut line)? {
         let row = String::from_utf8_lossy(&line);
@@ -492,8 +479,12 @@ pub(super) fn page_membership(
             }
         }
     }
-    if !wanted.is_empty() && !child.wait()?.success() {
-        return Err(AppError::msg("Could not read commit ancestry"));
+    processes.active()?;
+    let mut child = child.lock().unwrap_or_else(|e| e.into_inner());
+    if wanted.is_empty() {
+        child.finish_preview();
+    } else {
+        child.wait_checked("Could not read commit ancestry")?;
     }
     Ok(result)
 }

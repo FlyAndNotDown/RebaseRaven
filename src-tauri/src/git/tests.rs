@@ -1,6 +1,6 @@
 use super::*;
 
-fn temp_repo() -> (PathBuf, Repository) {
+pub(super) fn temp_repo() -> (PathBuf, Repository) {
     // Tests run in parallel and the clock is too coarse to tell them apart.
     static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
@@ -51,14 +51,16 @@ fn file_browser_marks_gitlinks_and_effective_lfs_attributes_without_reading_file
     assert!(nested
         .iter()
         .any(|entry| entry.name == "plain.bin" && entry.kind == GitFileKind::Regular));
-    let hits = search_files(&repo, "tool").unwrap();
+    let hits = FileSearchIndex::new(repo.clone()).page("tool", 1).unwrap();
     assert!(hits
         .hits
         .iter()
         .any(|hit| hit.path == "modules[shared]/tool"
             && hit.dir
             && hit.kind == GitFileKind::Submodule));
-    let hits = search_files(&repo, "sample").unwrap();
+    let hits = FileSearchIndex::new(repo.clone())
+        .page("sample", 1)
+        .unwrap();
     assert!(hits
         .hits
         .iter()
@@ -720,13 +722,24 @@ fn merge_commit_lists_files_against_first_parent() {
 
     let head = commit_info(&repo, "HEAD").unwrap();
     assert_eq!(head.parent_count(), 2);
-    let details = commit_details(&repo, head.id()).unwrap();
+    let details = commit_details(repo.workdir(), head.id()).unwrap();
     let paths: Vec<_> = details
         .files
         .iter()
         .map(|file| file.path.as_str())
         .collect();
     assert_eq!(paths, vec!["side.txt"]);
+    let patch = commit_file_diff(repo.workdir(), head.id(), "side.txt", false).unwrap();
+    assert!(patch
+        .lines
+        .iter()
+        .any(|line| line.kind == "add" && line.content == "side"));
+    assert!(
+        commit_file_diff(repo.workdir(), head.id(), "main.txt", false)
+            .unwrap()
+            .lines
+            .is_empty()
+    );
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -735,8 +748,13 @@ fn commit_details_preserve_wrapped_subjects_and_message_paragraphs() {
     let (root, repo) = temp_repo();
     let message = "feat: describe navigation\ncontinued subject\n\n- Keep indentation\n  on this line\n\nFinal paragraph.";
     commit_file(&repo, &root, "navigation.txt", "routes\n", message);
-    let details = commit_details(&repo, "HEAD").unwrap();
+    let details = commit_details(repo.workdir(), "HEAD").unwrap();
     assert_eq!(details.message, message);
+    let patch = commit_file_diff(repo.workdir(), "HEAD", "navigation.txt", false).unwrap();
+    assert!(patch
+        .lines
+        .iter()
+        .any(|line| line.kind == "add" && line.content == "routes"));
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -1085,7 +1103,9 @@ fn status_and_search_keep_literal_backslashes_through_file_actions() {
         .find(|file| file.path == literal)
         .unwrap();
     assert!(status.unstaged.iter().any(|file| file.path == nested));
-    let search = search_files(&repo, "note.txt").unwrap();
+    let search = FileSearchIndex::new(repo.clone())
+        .page("note.txt", 1)
+        .unwrap();
     assert!(search.hits.iter().any(|hit| hit.path == literal));
     assert!(search.hits.iter().any(|hit| hit.path == nested));
     let diff = workdir_diff(&repo, &selected.path, false, false)
@@ -1180,6 +1200,7 @@ fn page_membership_respects_changing_shallow_boundaries() {
 
     let membership = || {
         page_membership(
+            &ReadProcesses::default(),
             &repo,
             &BranchTips {
                 head: Some(third.clone()),
@@ -1209,6 +1230,7 @@ fn page_membership_respects_repository_specific_replacements() {
     let tip = head_id(&repo);
     assert_eq!(
         page_membership(
+            &ReadProcesses::default(),
             &repo,
             &BranchTips {
                 head: Some(tip.clone()),
@@ -1229,6 +1251,7 @@ fn page_membership_respects_repository_specific_replacements() {
     run_git_stdout(&other_root, &["replace", "--graft", &tip]).unwrap();
     assert_eq!(
         page_membership(
+            &ReadProcesses::default(),
             &other_repo,
             &BranchTips {
                 head: Some(tip.clone()),
@@ -1241,6 +1264,7 @@ fn page_membership_respects_repository_specific_replacements() {
     );
     assert_eq!(
         page_membership(
+            &ReadProcesses::default(),
             &repo,
             &BranchTips {
                 head: Some(tip.clone()),
@@ -1402,7 +1426,22 @@ fn failed_history_command_surfaces_git_diagnostics_and_can_be_retried() {
     let missing_ref = "refs/heads/history-command-fixture";
     let args = ["log", missing_ref, "--"].map(str::to_string);
     let refs = Arc::new(refs::RefCatalog::read(&repo, true).unwrap());
-    let error = log_page(repo.workdir(), &args, 0, 10, None, Vec::new(), refs).unwrap_err();
+    let error = log_page(
+        &HistoryReader::for_root(repo.workdir()),
+        LogQuery {
+            root: repo.workdir(),
+            args: &args,
+            selected: Vec::new(),
+            query: None,
+            needle: "",
+            labels: &HashMap::new(),
+            tips: None,
+            refs,
+        },
+        0,
+        10,
+    )
+    .unwrap_err();
     assert!(error.to_string().contains(missing_ref), "{error}");
     let rows = commits(&repo, 10, 0, None, &[], |_| {}).unwrap();
     assert_eq!(rows[0].summary, "base");
@@ -2582,6 +2621,27 @@ fn history_search_filters_by_author_path_and_content() {
     assert_eq!(summaries("path:b.txt"), vec!["alice edits b", "bob adds b"]);
     assert_eq!(summaries("content:needle"), vec!["bob adds b"]);
     assert_eq!(summaries("author:alice edits"), vec!["alice edits b"]);
+    let search = HistoryReader::search();
+    let first = read_commits(&search, &repo, 1, 0, Some("alice"), &[], |_| {}).unwrap();
+    assert_eq!(first[0].summary, "alice edits b");
+    let history = HistoryReader::for_root(repo.workdir());
+    let ordinary = read_commits(&history, &repo, 1, 0, None, &[], |_| {}).unwrap();
+    assert_eq!(ordinary[0].id, first[0].id);
+    let next = read_commits(&search, &repo, 1, 1, Some("alice"), &[], |_| {}).unwrap();
+    assert_eq!(next[0].summary, "alice adds a");
+    assert!(
+        read_commits(&search, &repo, 1, 2, Some("alice"), &[], |_| {})
+            .unwrap()
+            .is_empty()
+    );
+    tauri::Resource::close(search.clone());
+    assert!(read_commits(&search, &repo, 1, 0, Some("bob"), &[], |_| {})
+        .unwrap_err()
+        .is_cancelled());
+    assert_eq!(
+        read_commits(&history, &repo, 1, 1, None, &[], |_| {}).unwrap()[0].summary,
+        "bob adds b"
+    );
     let _ = fs::remove_dir_all(&root);
 }
 

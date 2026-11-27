@@ -313,6 +313,7 @@ fn image_with_cache(
 struct ImageReader<'a> {
     repo: &'a Repository,
     media: OnceCell<Option<PathBuf>>,
+    blobs: objects::BlobReader<'a>,
 }
 
 impl ImageReader<'_> {
@@ -332,36 +333,11 @@ fn oversized_image(size: u64) -> ImageSide {
     }
 }
 
-fn blob_at(reader: &ImageReader<'_>, path: &str, spec: &str) -> Option<ImageSide> {
-    let repo = reader.repo;
-    let size = run_git_stdout(repo.workdir(), &["cat-file", "-s", spec]).ok()?;
-    let size: u64 = String::from_utf8_lossy(&size).trim().parse().ok()?;
-    if size > MAX_IMAGE_BYTES as u64 {
-        return Some(oversized_image(size));
+fn blob_at(reader: &mut ImageReader<'_>, path: &str, spec: &str) -> Option<ImageSide> {
+    match reader.blobs.read(spec, MAX_IMAGE_BYTES)? {
+        objects::Blob::Bytes(bytes) => Some(reader.side(path, &bytes)),
+        objects::Blob::Oversized(size) => Some(oversized_image(size)),
     }
-    let mut child = spawn_git_stdout(repo.workdir(), &["cat-file", "blob", spec]).ok()?;
-    let Some(stdout) = child.stdout.take() else {
-        stop_child(&mut child);
-        return None;
-    };
-    let mut bytes = Vec::new();
-    if stdout
-        .take(MAX_IMAGE_BYTES as u64 + 1)
-        .read_to_end(&mut bytes)
-        .is_err()
-    {
-        stop_child(&mut child);
-        return None;
-    }
-    if bytes.len() > MAX_IMAGE_BYTES {
-        stop_child(&mut child);
-        return Some(oversized_image(size.max(bytes.len() as u64)));
-    }
-    child
-        .wait()
-        .ok()
-        .filter(|status| status.success())
-        .map(|_| reader.side(path, &bytes))
 }
 
 fn worktree_side(
@@ -388,22 +364,23 @@ fn worktree_side(
 }
 
 pub fn image_pair(repo: &Repository, source: &FileSource) -> AppResult<ImagePair> {
-    let reader = ImageReader {
+    let mut reader = ImageReader {
         repo,
         media: OnceCell::new(),
+        blobs: objects::BlobReader::new(repo.workdir()),
     };
     let (before, after) = match source {
         FileSource::Workdir { path, staged } => {
             let rel = safe_repo_path(path)?;
             if *staged {
                 (
-                    blob_at(&reader, &rel, &format!("HEAD:{rel}")),
-                    blob_at(&reader, &rel, &format!(":0:{rel}")),
+                    blob_at(&mut reader, &rel, &format!("HEAD:{rel}")),
+                    blob_at(&mut reader, &rel, &format!(":0:{rel}")),
                 )
             } else {
                 let full = ensure_inside_workdir(repo, &rel)?;
                 (
-                    blob_at(&reader, &rel, &format!(":0:{rel}")),
+                    blob_at(&mut reader, &rel, &format!(":0:{rel}")),
                     worktree_side(&reader, &rel, &full)?,
                 )
             }
@@ -418,8 +395,8 @@ pub fn image_pair(repo: &Repository, source: &FileSource) -> AppResult<ImagePair
             let commit = peel_commit(repo, oid)?;
             let parent = commit.parents.first();
             (
-                parent.and_then(|parent| blob_at(&reader, &old, &format!("{parent}:{old}"))),
-                blob_at(&reader, &rel, &format!("{}:{rel}", commit.id)),
+                parent.and_then(|parent| blob_at(&mut reader, &old, &format!("{parent}:{old}"))),
+                blob_at(&mut reader, &rel, &format!("{}:{rel}", commit.id)),
             )
         }
         FileSource::Compare {
@@ -433,24 +410,25 @@ pub fn image_pair(repo: &Repository, source: &FileSource) -> AppResult<ImagePair
             let base = peel_commit(repo, base)?.id().to_string();
             let head = peel_commit(repo, head)?.id().to_string();
             (
-                blob_at(&reader, &old, &format!("{base}:{old}")),
-                blob_at(&reader, &rel, &format!("{head}:{rel}")),
+                blob_at(&mut reader, &old, &format!("{base}:{old}")),
+                blob_at(&mut reader, &rel, &format!("{head}:{rel}")),
             )
         }
         FileSource::Stash { oid, path } => {
             let rel = safe_repo_path(path)?;
             let stash = peel_commit(repo, oid)?;
-            let current = blob_at(&reader, &rel, &format!("{}:{rel}", stash.id)).or_else(|| {
-                stash
-                    .parents
-                    .get(2)
-                    .and_then(|parent| blob_at(&reader, &rel, &format!("{parent}:{rel}")))
-            });
+            let current =
+                blob_at(&mut reader, &rel, &format!("{}:{rel}", stash.id)).or_else(|| {
+                    stash
+                        .parents
+                        .get(2)
+                        .and_then(|parent| blob_at(&mut reader, &rel, &format!("{parent}:{rel}")))
+                });
             (
                 stash
                     .parents
                     .first()
-                    .and_then(|parent| blob_at(&reader, &rel, &format!("{parent}:{rel}"))),
+                    .and_then(|parent| blob_at(&mut reader, &rel, &format!("{parent}:{rel}"))),
                 current,
             )
         }

@@ -363,6 +363,7 @@ fn note_change(
     repo: &str,
     paths: &[PathBuf],
     rules: &Arc<IgnoreRules>,
+    rescan: bool,
 ) {
     let mut map = pending.lock().unwrap_or_else(|err| err.into_inner());
     let slot = map.entry(repo.to_string()).or_insert_with(|| Pending {
@@ -374,6 +375,10 @@ fn note_change(
     });
     slot.generation = slot.generation.wrapping_add(1);
     slot.at = Instant::now();
+    if rescan {
+        slot.overflow = true;
+        slot.paths.clear();
+    }
     if slot.overflow {
         return;
     }
@@ -397,7 +402,13 @@ fn event_handler(
     rules: Arc<IgnoreRules>,
 ) -> impl Fn(Result<Event, notify::Error>) + Send + 'static {
     move |result| {
-        let Ok(mut event) = result else { return };
+        let mut event = match result {
+            Ok(event) if !event.need_rescan() => event,
+            _ => {
+                note_change(&pending, &path, &[], &rules, true);
+                return;
+            }
+        };
         if !matches!(
             event.kind,
             EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
@@ -418,7 +429,7 @@ fn event_handler(
                 }
             }
         }
-        note_change(pending.as_ref(), &path, &event.paths, &rules);
+        note_change(&pending, &path, &event.paths, &rules, false);
     }
 }
 
