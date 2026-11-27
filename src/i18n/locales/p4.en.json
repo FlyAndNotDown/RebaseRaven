@@ -426,7 +426,7 @@
     "selected": "{{count}} / {{total}} files selected",
     "mapping": "Override stream mapping",
     "mappingHint": "Child stream for a whole-shelf restore using its parent mapping",
-    "hint": "Preview where the selected files will open in this workspace. The original shelf is kept.",
+    "hint": "Open selected files in this workspace and keep the original shelf.",
     "restore_one": "Restore {{count}} file",
     "restore_other": "Restore {{count}} files"
   },

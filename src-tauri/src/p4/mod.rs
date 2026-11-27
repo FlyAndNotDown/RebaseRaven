@@ -41,7 +41,7 @@ mod switch;
 pub use review::{apply_reconcile, preview_reconcile, P4ReconcilePreview};
 pub use shelves::{
     list_shelves, pending_shelf_detail, preview_unshelve, restore_shelf, shelf_detail,
-    unshelve_files, P4UnshelveRequest,
+    P4UnshelveRequest,
 };
 pub use streams::{apply_stream, preview_stream, P4StreamPreview, P4StreamRequest};
 pub use switch::{apply_switch, P4SwitchRequest};

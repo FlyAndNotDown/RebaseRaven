@@ -1993,16 +1993,6 @@ async fn p4_shelve(
 }
 
 #[tauri::command]
-async fn p4_unshelve(
-    connection: p4::P4Connection,
-    change_id: String,
-    target: String,
-    files: Vec<String>,
-) -> AppResult<Vec<String>> {
-    blocking(move || p4::unshelve_files(&connection, change_id, target, files)).await
-}
-
-#[tauri::command]
 async fn p4_delete_shelf(connection: p4::P4Connection, change_id: String) -> AppResult<()> {
     blocking(move || p4::delete_shelf(&connection, &change_id)).await
 }
@@ -2203,9 +2193,9 @@ async fn p4_preview_unshelve(
 async fn p4_restore_shelf(
     connection: p4::P4Connection,
     request: p4::P4UnshelveRequest,
-    fingerprint: String,
-) -> AppResult<String> {
-    blocking(move || p4::restore_shelf(&connection, &request, &fingerprint)).await
+    fingerprint: Option<String>,
+) -> AppResult<Vec<String>> {
+    blocking(move || p4::restore_shelf(&connection, &request, fingerprint.as_deref())).await
 }
 
 #[tauri::command]
@@ -2781,7 +2771,6 @@ pub fn run() {
             p4_revert_unchanged,
             p4_submit_shelf,
             p4_shelve,
-            p4_unshelve,
             p4_delete_shelf,
             p4_resolve_view,
             p4_manual_resolve_view,

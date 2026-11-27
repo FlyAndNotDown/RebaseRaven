@@ -1,4 +1,5 @@
 import { RestoreShelfDialog } from "./p4-restore-shelf-dialog";
+import { P4StreamName, ShelfFilePath } from "./p4-path-labels";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArchiveRestoreIcon, GitBranchIcon, RefreshCwIcon } from "lucide-react";
 import { useTranslation } from "@/i18n";
@@ -13,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { HoverTip } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
-import { changeSummary, p4ActionStatus } from "@/lib/p4";
+import { changeSummary, p4ActionStatus, sharedDepotDirectory } from "@/lib/p4";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import { cn } from "@/lib/utils";
 import { useP4 } from "@/state/p4-context";
@@ -50,6 +51,7 @@ function ShelfBrowser() {
   const loaded = useRef({ users: false, clientsFor: "" });
   const invalidateRequests = useCallback(() => { ++generation.current; ++detailGeneration.current; }, []);
   const detailId = detail?.id ?? "";
+  const directory = useMemo(() => sharedDepotDirectory(detail?.files ?? []), [detail?.files]);
   const diffKey = detailId && file ? JSON.stringify([detailId, file]) : "";
   const diff = diffResult.key === diffKey ? diffResult.value : null;
   const needle = query.trim().replace(/^#(?=\d+$)/, "").toLowerCase();
@@ -160,8 +162,15 @@ function ShelfBrowser() {
                   <CommitMessage key={detail.id} message={detail.description} className="px-0 py-0" />
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto">
-                  {detail.shelvedStream ? <button type="button" className="flex h-8 w-full items-center gap-2 border-b px-3 text-left text-xs hover:bg-muted/50" onClick={() => setStreamDiff({kind:"shelf", path:detail.shelvedStream!.path, change:detail.id})}><GitBranchIcon className="size-3.5 text-muted-foreground" />{t("p4.streamWork.shelved")}</button> : null}
-                  {detail.files.map(entry => <button key={entry.depotPath} type="button" onClick={() => setFile(entry.depotPath)} className={cn("flex h-7 w-full items-center gap-2 px-3 text-left text-xs hover:bg-muted/50", file === entry.depotPath && "bg-muted/60")}><FileStatusIcon status={p4ActionStatus(entry.action)} /><span className="min-w-0 flex-1 truncate font-mono text-[11px]" title={entry.depotPath}>{entry.depotPath}</span></button>)}
+                  {detail.shelvedStream ? <button type="button" className="flex h-8 w-full items-center gap-2 border-b px-3 text-left text-xs hover:bg-muted/50" onClick={() => setStreamDiff({kind:"shelf", path:detail.shelvedStream!.path, change:detail.id})}>
+                    <GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate">{t("p4.streamWork.shelved")}</span>
+                    <P4StreamName path={detail.shelvedStream.path} />
+                  </button> : null}
+                  {detail.files.map(entry => <button key={entry.depotPath} type="button" aria-label={entry.depotPath} onClick={() => setFile(entry.depotPath)} className={cn("flex h-7 w-full items-center gap-2 px-3 text-left text-xs hover:bg-muted/50", file === entry.depotPath && "bg-muted/60")}>
+                    <FileStatusIcon status={p4ActionStatus(entry.action)} />
+                    <ShelfFilePath path={entry.depotPath} directory={directory} />
+                  </button>)}
                 </div>
               </div>
             </ResizablePanel>

@@ -9,7 +9,9 @@ use crate::error::{AppError, AppResult};
 use crate::p4::history::exact_depot;
 use crate::p4::operations::P4OperationPreview;
 use crate::p4::parse::{parse_ztag, spec_field, ZtagRecord};
-use crate::p4::review::{hash_file, number, pending_change, run, run_files, STALE};
+use crate::p4::review::{
+    hash_file, number, pending_change, run, run_files, workspace_file_metadata, STALE,
+};
 use crate::p4::workspace::P4Connection;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -217,29 +219,30 @@ fn plan(
     ))
 }
 
-fn review(
+fn prepare_restore(
     connection: &P4Connection,
     request: &P4UnshelveRequest,
-) -> AppResult<(RestorePlan, P4OperationPreview)> {
+    mut fingerprint: Option<&mut DefaultHasher>,
+) -> AppResult<(RestorePlan, String)> {
     let (mut plan, shelf) = plan(connection, request)?;
     let (output, targets) = plan.execute(connection, true)?;
-    let mut hash = DefaultHasher::new();
-    (
-        &connection.root,
-        &connection.port,
-        &connection.user,
-        &connection.client,
-        &plan.options,
-        &plan.files,
-        &shelf,
-        &output,
-    )
-        .hash(&mut hash);
     let targets = Vec::from_iter(targets);
-    run_files(connection, &["-ztag".into(), "opened".into()], &targets)?.hash(&mut hash);
+    if let Some(hash) = fingerprint.as_deref_mut() {
+        (
+            &connection.root,
+            &connection.port,
+            &connection.user,
+            &connection.client,
+            &plan.options,
+            &plan.files,
+            &shelf,
+            &output,
+        )
+            .hash(hash);
+        run_files(connection, &["-ztag".into(), "opened".into()], &targets)?.hash(hash);
+    }
     let mut seen = BTreeSet::new();
     for record in where_records(connection, &targets)? {
-        record.hash(&mut hash);
         let (Some(path), Some(local)) = (record.get("depotFile"), record.get("path")) else {
             continue;
         };
@@ -248,7 +251,12 @@ fn review(
                 "Choose a file mapped once by this workspace view.",
             ));
         }
-        hash_file(&connection.root, Path::new(local), &mut hash)?;
+        if let Some(hash) = fingerprint.as_deref_mut() {
+            record.hash(hash);
+            hash_file(&connection.root, Path::new(local), hash)?;
+        } else {
+            workspace_file_metadata(&connection.root, Path::new(local))?;
+        }
     }
     if seen.iter().ne(targets.iter()) {
         return Err(AppError::msg(NOT_MAPPED));
@@ -256,50 +264,34 @@ fn review(
     // Restrict apply to the exact destinations reported by the dry run, even
     // when Perforce expanded the whole-shelf mapping itself.
     plan.files = targets;
-    Ok((
-        plan,
-        P4OperationPreview {
-            output,
-            fingerprint: format!("{:016x}", hash.finish()),
-            target: connection.root.clone(),
-        },
-    ))
+    Ok((plan, output))
 }
 
 pub fn preview_unshelve(
     connection: &P4Connection,
     request: &P4UnshelveRequest,
 ) -> AppResult<P4OperationPreview> {
-    review(connection, request).map(|(_, preview)| preview)
+    let mut hash = DefaultHasher::new();
+    let (_, output) = prepare_restore(connection, request, Some(&mut hash))?;
+    Ok(P4OperationPreview {
+        output,
+        fingerprint: format!("{:016x}", hash.finish()),
+        target: connection.root.clone(),
+    })
 }
 
 pub fn restore_shelf(
     connection: &P4Connection,
     request: &P4UnshelveRequest,
-    fingerprint: &str,
-) -> AppResult<String> {
-    let (plan, preview) = review(connection, request)?;
-    if preview.fingerprint != fingerprint {
-        return Err(AppError::StaleReview(STALE));
-    }
-    plan.execute(connection, false).map(|(output, _)| output)
-}
-
-pub fn unshelve_files(
-    connection: &P4Connection,
-    change_id: String,
-    target: String,
-    files: Vec<String>,
+    fingerprint: Option<&str>,
 ) -> AppResult<Vec<String>> {
-    let request = P4UnshelveRequest {
-        change_id,
-        target,
-        files,
-        stream: String::new(),
-    };
-    let (mut plan, _) = plan(connection, &request)?;
-    let (_, reviewed) = plan.execute(connection, true)?;
-    plan.files = Vec::from_iter(reviewed);
+    let mut hash = fingerprint.map(|_| DefaultHasher::new());
+    let (plan, _) = prepare_restore(connection, request, hash.as_mut())?;
+    if let Some((expected, actual)) = fingerprint.zip(hash) {
+        if format!("{:016x}", actual.finish()) != expected {
+            return Err(AppError::StaleReview(STALE));
+        }
+    }
     let (_, paths) = plan.execute(connection, false)?;
     Ok(Vec::from_iter(paths))
 }
