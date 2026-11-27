@@ -5,6 +5,7 @@ import { P4ManualResolve } from "@/components/p4/p4-manual-resolve";
 import { P4Diff } from "@/components/p4/p4-diff";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { PathLabel } from "@/components/path-label";
 import { HoverTip } from "@/components/ui/tooltip";
 import { errorMessage } from "@/lib/git";
 import { depotBase } from "@/lib/p4";
@@ -67,7 +68,7 @@ export function P4Resolve({ path, onClose }: { path: string; onClose: () => void
       <DialogContent className="flex h-[min(52rem,92dvh)] w-[96vw] flex-col sm:max-w-[min(88rem,96vw)]" showCloseButton={!busy}>
         <DialogHeader>
           <DialogTitle>{t("p4.resolveFile", { file: depotBase(path) })}</DialogTitle>
-          <DialogDescription className="truncate font-mono text-xs" title={path}>{path}</DialogDescription>
+          <DialogDescription className="text-xs"><PathLabel path={path} /></DialogDescription>
         </DialogHeader>
         {view?.summary ? <p className="truncate text-xs text-muted-foreground" title={p4DisplayText(view.summary)}>{p4DisplayText(view.summary)}</p> : null}
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border">

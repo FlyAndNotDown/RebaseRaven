@@ -1,4 +1,5 @@
 import { DiffToolbar } from "@/components/diff-toolbar";
+import { PathLabel } from "@/components/path-label";
 import { useMemo } from "react";
 import { useP4Pick } from "@/state/p4-context";
 import type { TextPair, DiffToolSource } from "@/lib/diff-tools";
@@ -89,10 +90,10 @@ export function P4Diff({
         <div className="flex h-10 shrink-0 items-center justify-between gap-3 border-b px-3">
           <button
             type="button"
-            className="min-w-0 truncate text-left font-mono text-sm hover:underline"
+            className="min-w-0 text-left font-mono text-sm hover:underline"
             onClick={() => void copyPath(diff.path)}
           >
-            {diff.path || t("p4.diff")}
+            {diff.path ? <PathLabel path={diff.path} /> : t("p4.diff")}
           </button>
           <DiffToolbar textual={!diff.binary && !image} source={source} line={diff.lines.find(line => line.newLineno)?.newLineno ?? null} split={sideBySide} />
         </div>
@@ -100,8 +101,8 @@ export function P4Diff({
       <DiffSearchBar />
       {captions && sideBySide && !diff.binary && !image ? (
         <div className="grid shrink-0 grid-cols-2 border-b text-xs text-muted-foreground">
-          <div className="px-3 py-1.5">{captions[0]}</div>
-          <div className="border-l px-3 py-1.5">{captions[1]}</div>
+          <PathLabel path={captions[0]} className="px-3 py-1.5 font-sans" />
+          <PathLabel path={captions[1]} className="border-l px-3 py-1.5 font-sans" />
         </div>
       ) : null}
       {error ? <p role="alert" className="p-3 text-sm text-destructive">{error}</p> : loading ? <div className="relative min-h-0 flex-1"><DiffSkeleton fill /></div> : fileSource && image ? <P4ImageDiff source={fileSource} refreshIdentity={diff} captions={captions} /> : diff.binary ? (

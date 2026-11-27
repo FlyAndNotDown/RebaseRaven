@@ -5,6 +5,7 @@ import { CommitMessage } from "@/components/commit-message";
 import { AuthorAvatar } from "@/components/author-avatar";
 import { FileRowsSkeleton } from "@/components/skeletons";
 import { FileStatusIcon } from "@/components/p4/file-status-icon";
+import { P4StreamName } from "./p4-path-labels";
 import { HoverTip } from "@/components/ui/tooltip";
 import { t, useTranslation } from "@/i18n";
 import { formatAbsoluteTime, formatExactTime } from "@/lib/format";
@@ -77,7 +78,11 @@ export function P4ChangeFiles({ detail, summary, file, loading = false, binaryPa
       <div className="relative min-h-0 flex-1">
         {loading ? <FileRowsSkeleton fill /> : null}
         <div className={cn("absolute inset-0 overflow-auto px-1 py-1", loading && "hidden")}>
-        {detail?.stream && onStream ? <button type="button" className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted/70" onClick={onStream}><GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 truncate">{t("p4.streamWork.title")}</span><span className="font-mono text-[11px] text-muted-foreground">{depotBase(detail.stream.path)}</span></button> : null}
+        {detail?.stream && onStream ? <button type="button" className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted/70" onClick={onStream}>
+          <GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1 truncate">{t("p4.streamWork.title")}</span>
+          <P4StreamName path={detail.stream.path} />
+        </button> : null}
         {detail?.files.map((item) => (
           <button
             key={item.depotPath}

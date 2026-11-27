@@ -4,6 +4,7 @@ import { useTranslation } from "@/i18n";
 import { ConflictTextEditor } from "@/components/conflict-editor";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { PathLabel } from "@/components/path-label";
 import { depotBase } from "@/lib/p4";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import { hasConflictMarkers, threeWayText } from "@/lib/three-way-text";
@@ -92,7 +93,7 @@ export function P4ManualResolve({ path, onClose, onBack, external = false }: { p
       <DialogContent className="flex h-[min(52rem,92dvh)] w-[96vw] flex-col sm:max-w-[min(88rem,96vw)]" showCloseButton={!busy && !workspaceBusy}>
         <DialogHeader>
           <DialogTitle>{t("p4.manual.title", { file: depotBase(path) })}</DialogTitle>
-          <DialogDescription className="truncate font-mono text-xs" title={path}>{path}</DialogDescription>
+          <DialogDescription className="text-xs"><PathLabel path={path} /></DialogDescription>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border">
           {view ? <ConflictTextEditor path={path} key={`${view.fingerprint}:${externalResult !== null}`} initialText={externalResult ?? initial} current={t("p4.manual.yours")} incoming={t("p4.manual.theirs")} onExternal={runExternal} disabled={busy || workspaceBusy} onTextChange={setEdited} displayError={displayError} />

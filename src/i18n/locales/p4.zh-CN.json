@@ -205,7 +205,6 @@
   },
   "createdChange": "已创建变更列表 {{id}}",
   "deletedChange": "已删除变更列表 {{id}}",
-  "streamName": "流 {{name}}",
   "ticketExpired": "{{target}} 的登录凭据缺失或已过期。",
   "workspaceDescription": "{{client}} 的本地文件夹和流。",
   "thisClient": "此客户端",

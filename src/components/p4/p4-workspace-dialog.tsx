@@ -13,6 +13,7 @@ import { errorMessage } from "@/lib/git";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import { useP4 } from "@/state/p4-context";
 import { P4MappingsEditor } from "@/components/p4/p4-mappings-editor";
+import { PathLabel } from "@/components/path-label";
 import type { P4WorkspaceEdit, P4WorkspaceSettings } from "@/types/p4";
 
 function draft(value: P4WorkspaceEdit): P4WorkspaceEdit {
@@ -62,8 +63,14 @@ export function P4WorkspaceDialog() {
       {edit && loaded ? <>
         <SegmentedControl label={t("p4.workspaceSettings.section")} value={tab} onChange={setTab} options={[{value:"general",label:t("p4.workspaceSettings.general")},{value:"mapping",label:t("p4.workspaceSettings.mapping")}]} />
         <div className="min-h-0 overflow-auto py-1">
-          {tab === "general" ? <div className="grid gap-4">
-            {loaded.stream ? <div className="grid gap-2"><Label>{t("p4.switchStream.current")}</Label><div className="flex min-w-0 items-center gap-2 rounded-lg border px-2.5 py-1.5"><GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 truncate font-mono text-xs" title={loaded.stream}>{loaded.stream}</span><HoverTip label={dirty ? t("p4.workspaceSettings.saveBeforeSwitch") : t("p4.switchStream.title")}><span className="shrink-0"><Button variant="ghost" size="xs" disabled={blocked || Boolean(dirty)} onClick={() => {p4.setWorkspaceOpen(false); p4.switchStream();}}><ArrowRightLeftIcon />{t("p4.switchStream.title")}</Button></span></HoverTip></div></div> : null}
+          {tab === "general" ? <div className="grid grid-cols-1 gap-4">
+            {loaded.stream ? <div className="grid grid-cols-1 gap-2"><Label>{t("p4.switchStream.current")}</Label>
+              <div className="flex min-w-0 items-center gap-2 rounded-lg border px-2.5 py-1.5">
+                <GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                <PathLabel path={loaded.stream} className="flex-1 text-xs" />
+                <HoverTip label={dirty ? t("p4.workspaceSettings.saveBeforeSwitch") : t("p4.switchStream.title")}><span className="shrink-0"><Button variant="ghost" size="xs" disabled={blocked || Boolean(dirty)} onClick={() => {p4.setWorkspaceOpen(false); p4.switchStream();}}><ArrowRightLeftIcon />{t("p4.switchStream.title")}</Button></span></HoverTip>
+              </div>
+            </div> : null}
             <div className="grid gap-2"><div className="flex items-center gap-2"><Label htmlFor="edit-p4-root">{t("p4.folder")}</Label><HoverTip label={t("p4.workspaceSettings.rootHint")}><InfoIcon className="size-3.5 text-muted-foreground" /></HoverTip></div><div className="flex gap-2"><Input id="edit-p4-root" value={edit.root} disabled={blocked} className="font-mono text-xs" onChange={(event) => change("root",event.target.value)} /><Button variant="outline" disabled={blocked} onClick={() => void browse()}>{t("p4.browse")}</Button></div></div>
             <div className="grid grid-cols-[1fr_auto] items-center gap-3"><Label>{t("p4.workspaceSettings.lineEnd")}</Label><DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" disabled={blocked}>{t(`p4.workspaceSettings.lineEnds.${edit.lineEnd}`)}<ChevronDownIcon /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">{(["local","unix","win","share","mac"] as const).map((value) => <DropdownMenuItem key={value} onClick={() => change("lineEnd",value)}>{t(`p4.workspaceSettings.lineEnds.${value}`)}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu></div>
           </div> : <div className="grid gap-3">

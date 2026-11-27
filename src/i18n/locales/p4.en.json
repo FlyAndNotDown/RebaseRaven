@@ -205,7 +205,6 @@
   },
   "createdChange": "Created change {{id}}",
   "deletedChange": "Deleted change {{id}}",
-  "streamName": "Stream {{name}}",
   "ticketExpired": "The ticket for {{target}} is missing or expired.",
   "workspaceDescription": "Local folder and stream for {{client}}.",
   "thisClient": "this client",

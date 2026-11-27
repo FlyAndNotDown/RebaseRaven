@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { P4StreamSelect } from "@/components/p4/p4-stream-select";
+import { PathLabel } from "@/components/path-label";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import { useP4 } from "@/state/p4-context";
 import type { P4StreamOption } from "@/types/p4";
@@ -40,9 +41,9 @@ export function P4SwitchDialog({ initialTarget, onClose }: { initialTarget: stri
   return <Dialog open onOpenChange={open => { if (!open && !busy) onClose(); }}>
     <DialogContent className="sm:max-w-lg" showCloseButton={!busy}>
       <DialogHeader><DialogTitle>{t("p4.switchStream.title")}</DialogTitle><DialogDescription className="font-mono text-xs">{connection?.client}</DialogDescription></DialogHeader>
-      <div className="grid gap-2 rounded-lg border p-3">
+      <div className="grid grid-cols-1 gap-2 rounded-lg border p-3">
         <Label className="text-xs text-muted-foreground">{t("p4.switchStream.current")}</Label>
-        <span className="truncate font-mono text-xs" title={connection?.stream ?? ""}>{connection?.stream}</span>
+        <PathLabel path={connection?.stream ?? ""} className="text-xs" />
         <ArrowDownIcon className="my-1 size-4 text-muted-foreground" />
         <Label className="text-xs text-muted-foreground">{t("p4.switchStream.target")}</Label>
         <P4StreamSelect streams={streams?.filter(stream => stream.path !== connection?.stream) ?? null} value={target} onChange={value => { setTarget(value); setError(null); }} disabled={blocked} label={t("p4.switchStream.target")} />
@@ -64,7 +65,7 @@ export function P4SwitchUpdateDialog({ stream, disabled, onClose, onUpdate }: {
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
     <DialogContent className="sm:max-w-lg">
       <DialogHeader><DialogTitle>{t("p4.switchStream.updateTitle")}</DialogTitle><DialogDescription>{t("p4.switchStream.updateHint")}</DialogDescription></DialogHeader>
-      <p className="truncate font-mono text-xs" title={stream}>{stream}</p>
+      <PathLabel path={stream} className="text-xs" />
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>{t("p4.switchStream.notNow")}</Button>
         <Button disabled={disabled} onClick={onUpdate}>{t("p4.getLatest")}</Button>

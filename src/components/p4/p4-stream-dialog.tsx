@@ -5,6 +5,7 @@ import { P4ChangeSelect } from "@/components/p4/p4-change-select";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { P4StreamSelect } from "@/components/p4/p4-stream-select";
+import { PathLabel } from "@/components/path-label";
 import { Label } from "@/components/ui/label";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { P4IntegrationFiles } from "@/components/p4/p4-integration-files";
@@ -69,11 +70,12 @@ export function P4StreamDialog({ onClose, initial }: { onClose: () => void; init
     <DialogContent className="flex max-h-[88vh] flex-col sm:max-w-2xl" showCloseButton={busy !== "apply"}>
       <DialogHeader><DialogTitle>{t("p4.streams.title")}</DialogTitle><DialogDescription className="truncate font-mono text-xs">{p4.connection?.client}</DialogDescription></DialogHeader>
       <SegmentedControl label={t("p4.streams.operation")} value={mode} disabled={blocked || !streams} onChange={(value) => edit(() => setMode(value))} options={[{ value: "merge", label: t("p4.streams.merge") }, { value: "copy", label: t("p4.streams.copy") }]} />
-      <div className="grid gap-2 rounded-lg border p-3">
+      <div className="grid grid-cols-1 gap-2 rounded-lg border p-3">
         <Label className="text-xs text-muted-foreground">{t("p4.streams.source")}</Label>
-        {mode === "copy" && children.length ? <P4StreamSelect streams={children} value={source} onChange={(value) => edit(() => setChild(value))} disabled={blocked} label={t("p4.streams.source")} /> : <p className="break-all font-mono text-xs">{source || t(streams ? "p4.streams.noSource" : "p4.streams.loading")}</p>}
+        {mode === "copy" && children.length ? <P4StreamSelect streams={children} value={source} onChange={(value) => edit(() => setChild(value))} disabled={blocked} label={t("p4.streams.source")} />
+          : source ? <PathLabel path={source} className="text-xs" /> : <p className="text-xs">{t(streams ? "p4.streams.noSource" : "p4.streams.loading")}</p>}
         <ArrowDownIcon className="size-4 text-muted-foreground" />
-        <Label className="text-xs text-muted-foreground">{t("p4.streams.target")}</Label><p className="break-all font-mono text-xs">{target}</p>
+        <Label className="text-xs text-muted-foreground">{t("p4.streams.target")}</Label><PathLabel path={target} className="text-xs" />
       </div>
       <div className="flex items-center justify-between gap-3"><Label>{t("p4-operations.pendingChange")}</Label><P4ChangeSelect value={changeId} onChange={(value) => edit(() => setChangeId(value))} disabled={blocked} /></div>
       <P4IntegrationFiles root={p4.connection?.root ?? ""} files={preview?.value.files ?? []} previewed={Boolean(preview)} loading={busy === "preview"} />
