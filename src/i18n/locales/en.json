@@ -15,6 +15,7 @@
     }
   },
   "common": {
+    "loadMore": "Load more",
     "cancel": "Cancel",
     "close": "Close",
     "retry": "Retry",

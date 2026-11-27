@@ -65,7 +65,7 @@ pub(super) fn number(value: &str) -> AppResult<String> {
         .ok_or_else(|| AppError::msg("Choose a numbered changelist."))
 }
 
-pub(super) fn hash_file(root: &str, path: &Path, hash: &mut DefaultHasher) -> AppResult<()> {
+pub(super) fn workspace_file_metadata(root: &str, path: &Path) -> AppResult<Option<fs::Metadata>> {
     crate::activity::check_cancelled()?;
     if !path.is_absolute() {
         return Err(AppError::msg("Choose a local workspace file."));
@@ -79,26 +79,33 @@ pub(super) fn hash_file(root: &str, path: &Path, hash: &mut DefaultHasher) -> Ap
         .find(|p| p.exists())
         .ok_or_else(|| AppError::msg("Path is outside the workspace."))?;
     workspace_directory_path(Path::new(root), ancestor.to_path_buf())?;
-    path.hash(hash);
     match fs::symlink_metadata(path) {
-        Ok(meta) if meta.file_type().is_file() => {
-            meta.len().hash(hash);
-            meta.modified()?.hash(hash);
-            meta.permissions().readonly().hash(hash);
-            let mut file = fs::File::open(path)?;
-            let mut buffer = [0u8; 65_536];
-            loop {
-                crate::activity::check_cancelled()?;
-                let count = file.read(&mut buffer)?;
-                if count == 0 {
-                    break;
-                }
-                buffer[..count].hash(hash);
-            }
+        Ok(meta) if meta.is_file() => Ok(Some(meta)),
+        Ok(_) => Err(AppError::msg("Choose a regular workspace file.")),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+pub(super) fn hash_file(root: &str, path: &Path, hash: &mut DefaultHasher) -> AppResult<()> {
+    let metadata = workspace_file_metadata(root, path)?;
+    path.hash(hash);
+    let Some(meta) = metadata else {
+        false.hash(hash);
+        return Ok(());
+    };
+    meta.len().hash(hash);
+    meta.modified()?.hash(hash);
+    meta.permissions().readonly().hash(hash);
+    let mut file = fs::File::open(path)?;
+    let mut buffer = [0u8; 65_536];
+    loop {
+        crate::activity::check_cancelled()?;
+        let count = file.read(&mut buffer)?;
+        if count == 0 {
+            break;
         }
-        Ok(_) => return Err(AppError::msg("Choose a regular workspace file.")),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false.hash(hash),
-        Err(error) => return Err(error.into()),
+        buffer[..count].hash(hash);
     }
     Ok(())
 }

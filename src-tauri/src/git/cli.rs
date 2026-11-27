@@ -49,6 +49,45 @@ pub(super) fn stop_child(child: &mut std::process::Child) {
     let _ = child.wait();
 }
 
+/// Streams take ownership of stdout. Keep a separate handle so closing a view
+/// can interrupt a read even when its worker is waiting for the first byte.
+#[derive(Default)]
+pub(super) struct ReadProcesses {
+    closed: AtomicBool,
+    children: Mutex<Vec<std::sync::Weak<Mutex<LoggedChild>>>>,
+}
+
+impl ReadProcesses {
+    pub(super) fn active(&self) -> AppResult<()> {
+        if self.closed.load(Ordering::Acquire) {
+            Err(AppError::cancelled())
+        } else {
+            Ok(())
+        }
+    }
+
+    pub(super) fn track(&self, child: LoggedChild) -> AppResult<Arc<Mutex<LoggedChild>>> {
+        let mut children = self.children.lock().unwrap_or_else(|e| e.into_inner());
+        self.active()?;
+        let child = Arc::new(Mutex::new(child));
+        children.retain(|entry| entry.strong_count() > 0);
+        children.push(Arc::downgrade(&child));
+        Ok(child)
+    }
+
+    pub(super) fn close(&self) {
+        self.closed.store(true, Ordering::Release);
+        let children =
+            std::mem::take(&mut *self.children.lock().unwrap_or_else(|e| e.into_inner()));
+        for child in children.into_iter().filter_map(|weak| weak.upgrade()) {
+            let mut child = child.lock().unwrap_or_else(|e| e.into_inner());
+            if matches!(child.try_wait(), Ok(None)) {
+                child.cancel();
+            }
+        }
+    }
+}
+
 pub(super) fn git_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
     crate::platform::background_command(program)
 }
@@ -1031,13 +1070,22 @@ pub(super) fn spawn_git_stdout_env(
     args: &[&str],
     env: &[(&str, &str)],
 ) -> AppResult<LoggedChild> {
+    spawn_git_stream(root, args, env, Stdio::null())
+}
+
+pub(super) fn spawn_git_stream(
+    root: &Path,
+    args: &[&str],
+    env: &[(&str, &str)],
+    stdin: Stdio,
+) -> AppResult<LoggedChild> {
     let git = require_git()?;
     let mut command = git_command(git);
     command.arg("-C").arg(root).args(args);
     command.env("GIT_TERMINAL_PROMPT", "0");
     command.envs(env.iter().copied());
     command
-        .stdin(Stdio::null())
+        .stdin(stdin)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let code = diagnostic_command(args, false).map_or(Code::GitMetadata, |(code, _)| code);

@@ -4,6 +4,7 @@ import { GitBranchIcon, LoaderCircleIcon, PencilIcon, RefreshCwIcon } from "luci
 import { useTranslation } from "@/i18n";
 import { P4Diff } from "@/components/p4/p4-diff";
 import { P4StreamSpecDialog } from "@/components/p4/p4-stream-spec-dialog";
+import { PathLabel } from "@/components/path-label";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -82,7 +83,12 @@ export function P4StreamWorkDialog({ onClose, restore, removeShelf, onNavigate }
     catch (caught) {diffError = p4DisplayError(caught);}
   }
   return <Dialog open onOpenChange={open => {if (!open && !busy) onClose();}}><DialogContent className="flex h-[min(760px,85vh)] max-h-[85vh] flex-col gap-3 sm:max-w-5xl" showCloseButton={!busy}>
-    <DialogHeader><DialogTitle className="flex items-center gap-2"><GitBranchIcon className="size-4 text-muted-foreground" />{t("p4.streamWork.title")}</DialogTitle><DialogDescription className="break-all font-mono text-xs">{work?.spec.path ?? p4.connection?.stream ?? ""}</DialogDescription></DialogHeader>
+    <DialogHeader><DialogTitle className="flex items-center gap-2"><GitBranchIcon className="size-4 text-muted-foreground" />{t("p4.streamWork.title")}</DialogTitle>
+      <DialogDescription className="font-mono text-xs">
+        {approved && (operation === "revert" || operation === "deleteShelf") ? <span className="select-text">{work?.spec.path}</span>
+          : <PathLabel path={work?.spec.path ?? p4.connection?.stream ?? ""} />}
+      </DialogDescription>
+    </DialogHeader>
     {work ? <>
       <div className="flex flex-wrap items-center gap-2"><span className="mr-auto text-xs text-muted-foreground">{work.opened ? t("p4.streamWork.privateChange", {change: work.opened.change === "default" ? t("p4.defaultChange") : `#${work.opened.change}`}) : t("p4.streamWork.publicRevision", {change:work.headChange})}</span><HoverTip label={t("p4.refresh")}><Button variant="ghost" size="icon-xs" aria-label={t("p4.refresh")} disabled={blocked} onClick={reload}><RefreshCwIcon /></Button></HoverTip><Button variant="outline" size="sm" disabled={blocked || !work.opened} onClick={() => setEditing(true)}><PencilIcon />{t("p4.streamWork.edit")}</Button></div>
       {work.unresolved ? <p role="alert" className="text-xs text-destructive">{t("p4.streamWork.unresolved")}</p> : null}
@@ -117,5 +123,10 @@ export function P4StreamDiffDialog({ target, onClose }: {target: P4StreamDiffReq
     void streamSpecs.changeDiff(target).then(value => {if (live) setDiff(value);}).catch((caught: unknown) => {if (live) setError(p4DisplayError(caught));});
     return () => {live = false;};
   }, [streamSpecs, target, attempt]);
-  return <Dialog open onOpenChange={open => {if (!open) onClose();}}><DialogContent className="flex h-[min(700px,85vh)] flex-col sm:max-w-5xl"><DialogHeader><DialogTitle>{t("p4.streamWork.title")}</DialogTitle><DialogDescription className="break-all font-mono text-xs">{target.path} · #{target.change}</DialogDescription></DialogHeader><div className="relative min-h-32 flex-1 overflow-hidden rounded-lg border"><P4Diff fileSource={{kind:"stream",request:target}} diff={diff} loading={!diff && !error} empty={t("p4.streamWork.noChanges")} /></div>{error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}<DialogFooter>{error ? <Button variant="ghost" onClick={() => {setError(null); setDiff(null); setAttempt(value => value + 1);}}>{t("common.retry")}</Button> : null}{target.kind === "shelf" && p4.connection?.stream === target.path ? <><Button variant="ghost" disabled={p4.busy} onClick={() => setRemoving(true)}>{t("p4.streamWork.actions.deleteShelf")}</Button><Button variant="outline" disabled={p4.busy} onClick={() => setRestoring(true)}>{t("p4.streamWork.actions.unshelve")}</Button></> : null}<Button variant="outline" onClick={onClose}>{t("common.close")}</Button></DialogFooter>{restoring || removing ? <P4StreamWorkDialog restore={restoring ? target.change : undefined} removeShelf={removing ? target.change : undefined} onClose={() => {setRestoring(false); setRemoving(false);}} onNavigate={onClose} /> : null}</DialogContent></Dialog>;
+  return <Dialog open onOpenChange={open => {if (!open) onClose();}}><DialogContent className="flex h-[min(700px,85vh)] flex-col sm:max-w-5xl"><DialogHeader>
+    <DialogTitle>{t("p4.streamWork.title")}</DialogTitle>
+    <DialogDescription className="flex items-baseline gap-2 font-mono text-xs">
+      <PathLabel path={target.path} /><span className="shrink-0">#{target.change}</span>
+    </DialogDescription>
+  </DialogHeader><div className="relative min-h-32 flex-1 overflow-hidden rounded-lg border"><P4Diff fileSource={{kind:"stream",request:target}} diff={diff} loading={!diff && !error} empty={t("p4.streamWork.noChanges")} /></div>{error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}<DialogFooter>{error ? <Button variant="ghost" onClick={() => {setError(null); setDiff(null); setAttempt(value => value + 1);}}>{t("common.retry")}</Button> : null}{target.kind === "shelf" && p4.connection?.stream === target.path ? <><Button variant="ghost" disabled={p4.busy} onClick={() => setRemoving(true)}>{t("p4.streamWork.actions.deleteShelf")}</Button><Button variant="outline" disabled={p4.busy} onClick={() => setRestoring(true)}>{t("p4.streamWork.actions.unshelve")}</Button></> : null}<Button variant="outline" onClick={onClose}>{t("common.close")}</Button></DialogFooter>{restoring || removing ? <P4StreamWorkDialog restore={restoring ? target.change : undefined} removeShelf={removing ? target.change : undefined} onClose={() => {setRestoring(false); setRemoving(false);}} onNavigate={onClose} /> : null}</DialogContent></Dialog>;
 }

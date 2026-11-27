@@ -5,7 +5,7 @@ use super::{
 use crate::error::{AppError, AppResult};
 use crate::git::FileDiff;
 use crate::p4::cli::{self, P4Env};
-use crate::p4::parse::{file_type_is_binary, parse_single_diff, parse_ztag, valid_depot_path};
+use crate::p4::parse::{file_type_is_binary, parse_ztag, valid_depot_path};
 use serde::Serialize;
 use std::fs;
 use std::io::Read;
@@ -561,13 +561,13 @@ fn resolve_diff(
     let incoming = incoming_resolve_spec(facts);
     let unified = cli::unified_diff(ignore_whitespace);
     if depot == facts.from_file {
-        if let Ok(text) = cli::run_p4_diff(env, &["diff", unified, "-f", &incoming]) {
-            return (parse_single_diff(&text, &depot), true, true);
+        if let Ok(diff) = cli::preview_diff(env, &["diff", unified, "-f", &incoming], &depot) {
+            return (diff, true, true);
         }
     }
     let have = format!("{depot}#have");
-    match cli::run_p4_diff(env, &["diff2", unified, &have, &incoming]) {
-        Ok(text) => (parse_single_diff(&text, &depot), true, false),
+    match cli::preview_diff(env, &["diff2", unified, &have, &incoming], &depot) {
+        Ok(diff) => (diff, true, false),
         Err(_) => (empty_diff(&depot), false, false),
     }
 }

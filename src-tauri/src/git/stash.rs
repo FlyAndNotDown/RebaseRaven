@@ -135,7 +135,7 @@ pub fn stash_file_diff(
     ignore_whitespace: bool,
 ) -> AppResult<FileDiff> {
     let info = commit_info(repo, oid)?;
-    let tracked = commit_file_diff(repo, &info.id, path, ignore_whitespace)?;
+    let tracked = commit_file_diff(repo.workdir(), &info.id, path, ignore_whitespace)?;
     if tracked.binary || !tracked.lines.is_empty() {
         return Ok(tracked);
     }

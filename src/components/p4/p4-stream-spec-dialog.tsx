@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Textarea } from "@/components/ui/textarea";
 import { HoverTip } from "@/components/ui/tooltip";
+import { PathLabel } from "@/components/path-label";
 import { errorMessage } from "@/lib/git";
 import { p4DisplayError, P4_STREAM_SPEC_STALE } from "@/lib/p4-operation-preview";
 import { useP4 } from "@/state/p4-context";
@@ -90,7 +91,13 @@ export function P4StreamSpecDialog({target, onClose, onChanged}: {
   const valid = deleting ? Boolean(loaded && confirmation === loaded.path) : edit ? Boolean(edit.name.trim() && edit.owner.trim() && edit.paths.some(line => line.trim())) : Boolean(creating && setup.path.trim() && (setup.kind === "mainline" || setup.parent.startsWith("//")));
   return <Dialog open onOpenChange={open => {if (!open && !busy) onClose();}}>
     <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-2xl" showCloseButton={!busy}>
-      <DialogHeader><DialogTitle>{t(deleting ? "p4.streamSpec.delete" : creating ? "p4.streamSpec.create" : loaded?.opened ? "p4.streamWork.edit" : "p4.streamSpec.edit")}</DialogTitle><DialogDescription className={loaded ? "break-all font-mono text-xs" : undefined}>{loaded?.path ?? t("p4.streamSpec.setupHint")}{loaded?.opened ? <span className="mt-1 block font-sans">{t("p4.streamWork.privateHint")}</span> : null}</DialogDescription></DialogHeader>
+      <DialogHeader>
+        <DialogTitle>{t(deleting ? "p4.streamSpec.delete" : creating ? "p4.streamSpec.create" : loaded?.opened ? "p4.streamWork.edit" : "p4.streamSpec.edit")}</DialogTitle>
+        <DialogDescription className={loaded ? "text-xs" : undefined}>
+          {loaded ? deleting ? <span className="font-mono select-text">{loaded.path}</span> : <PathLabel path={loaded.path} /> : t("p4.streamSpec.setupHint")}
+          {loaded?.opened && <span className="mt-1 block">{t("p4.streamWork.privateHint")}</span>}
+        </DialogDescription>
+      </DialogHeader>
       {deleting ? loaded ? <div className="grid gap-3 py-1"><p className="text-sm text-muted-foreground">{t("p4.streamSpec.deleteHint")}</p><Label htmlFor="p4-delete-stream">{t("p4.streamSpec.path")}</Label><Input id="p4-delete-stream" value={confirmation} disabled={blocked} className="font-mono text-xs" onChange={event => setConfirmation(event.target.value)} /></div> : !error ? <Loading /> : null : edit ? <>
         <SegmentedControl label={t("p4.streamSpec.section")} value={tab} onChange={setTab} options={[{value:"general", label:t("p4.workspaceSettings.general")}, {value:"mapping", label:t("p4.workspaceSettings.mapping")}]} />
         <div className="grid min-h-0 gap-4 overflow-auto py-1">

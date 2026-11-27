@@ -94,8 +94,7 @@ pub fn stream_work(connection: &P4Connection) -> AppResult<P4StreamWork> {
         &["stream", "-o", &format!("{path}@{head_change}")],
     )?;
     let (diff, resolve_output) = if opened.is_some() {
-        let text = cli::run_p4_diff(&env_for(connection), &["diff", "-As", "-du"])?;
-        let mut diff = parse_single_diff(&text, &path);
+        let mut diff = cli::preview_diff(&env_for(connection), &["diff", "-As", "-du"], &path)?;
         diff.path = path.clone();
         (diff, run(connection, &["stream", "resolve", "-n"])?)
     } else {
@@ -490,7 +489,7 @@ pub fn stream_change_diff(
         let text = run(connection, &["stream", "-o", &before])?;
         return Ok(definition_diff(&request.path, &text, true));
     }
-    let text = cli::run_p4_diff(
+    let preview = cli::preview_diff(
         &env_for(connection),
         &[
             "diff2",
@@ -499,9 +498,10 @@ pub fn stream_change_diff(
             &before,
             &after,
         ],
+        &request.path,
     );
-    let mut diff = match text {
-        Ok(text) => parse_single_diff(&text, &request.path),
+    let mut diff = match preview {
+        Ok(diff) => diff,
         Err(error) if request.kind == "submitted" && missing_revision(&error.to_string()) => {
             let text = run(connection, &["stream", "-o", &after])?;
             definition_diff(&request.path, &text, false)

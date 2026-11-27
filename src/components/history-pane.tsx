@@ -164,7 +164,8 @@ export function HistoryPane() {
   const [search, setSearch] = useState<{ key: string; items: CommitSummary[]; hasMore: boolean } | null>(
     null,
   );
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadingPageFor, setLoadingPageFor] = useState<string | null>(null);
+  const pendingPage = useRef<number | null>(null);
   const [branchCommit, setBranchCommit] = useState<CommitSummary | null>(null);
   const [tagCommit, setTagCommit] = useState<CommitSummary | null>(null);
   const [confirm, setConfirm] = useState<{ kind: "revert" | "cherry-pick"; commits: CommitSummary[] } | null>(
@@ -188,12 +189,13 @@ export function HistoryPane() {
   const searchRevsKey = expandHistoryRevs(historyRevs, snapshot?.branches.local).join("\0");
   const searchRevs = useMemo(() => (searchRevsKey ? searchRevsKey.split("\0") : []), [searchRevsKey]);
   const searchGeneration = useRef(0);
+  const searchReader = useRef<ReturnType<typeof gitApi.openHistorySearch> | null>(null);
   const repoPath = snapshot?.repo.path;
   const searchKey = `${repoPath ?? ""}\0${applied}\0${searchRevsKey}`;
   const answered = applied && search?.key === searchKey ? search : null;
   const results = answered?.items ?? null;
   const searchHasMore = answered?.hasMore ?? false;
-  const searching = Boolean(applied) && (!answered || loadingMore);
+  const searching = Boolean(applied) && (!answered || loadingPageFor === searchKey);
   const searchingMode = Boolean(applied);
   const visible = searchingMode ? (results ?? NO_COMMITS) : commits;
   const graph = useMemo(
@@ -333,10 +335,14 @@ export function HistoryPane() {
     if (!applied || !repoPath) return;
     const key = searchKey;
     const generation = ++searchGeneration.current;
-    void gitApi
-      .getCommits(repoPath, COMMIT_PAGE, 0, applied, searchRevs, (items) => {
+    const reader = gitApi.openHistorySearch();
+    searchReader.current = reader;
+    void reader.then(handle => {
+      if (searchGeneration.current !== generation) return [];
+      return gitApi.getCommits(repoPath, COMMIT_PAGE, 0, { query: applied, rid: handle.rid }, searchRevs, (items) => {
         if (searchGeneration.current === generation) setSearch({ key, items, hasMore: false });
-      })
+      });
+    })
       .then((items) => {
         if (searchGeneration.current !== generation) return;
         setSearch({ key, items, hasMore: items.length === COMMIT_PAGE });
@@ -348,6 +354,8 @@ export function HistoryPane() {
       });
     return () => {
       searchGeneration.current += 1;
+      searchReader.current = null;
+      void reader.then(handle => handle.close()).catch(() => {});
     };
   }, [applied, repoPath, searchKey, searchRevs]);
 
@@ -355,25 +363,32 @@ export function HistoryPane() {
     if (!repoPath || !applied || searching || !searchHasMore || !results) return;
     const key = searchKey;
     const generation = searchGeneration.current;
-    setLoadingMore(true);
+    if (pendingPage.current === generation) return;
+    pendingPage.current = generation;
+    setLoadingPageFor(key);
     try {
+      const handle = await searchReader.current;
+      if (!handle || generation !== searchGeneration.current) return;
       const more = await gitApi.getCommits(
         repoPath,
         COMMIT_PAGE,
         results.length,
-        applied,
+        { query: applied, rid: handle.rid },
         searchRevs,
       );
       if (searchGeneration.current !== generation) return;
       setSearch((current) =>
-        current?.key === key
+        current?.key === key && current.items.length === results.length
           ? { key, items: [...current.items, ...more], hasMore: more.length === COMMIT_PAGE }
           : current,
       );
     } catch (error) {
       if (searchGeneration.current === generation) toast.error(errorMessage(error));
     } finally {
-      setLoadingMore(false);
+      if (pendingPage.current === generation) {
+        pendingPage.current = null;
+        setLoadingPageFor(null);
+      }
     }
   }
 

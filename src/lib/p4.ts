@@ -2,6 +2,7 @@ import { p4ComparisonDiff, type P4Comparison } from "@/lib/p4-comparison";
 import { Channel, Resource, invoke } from "@tauri-apps/api/core";
 import { t } from "@/i18n";
 import type {
+  P4File,
   P4FileApproval,
   P4CleanRequest,
   P4CleanPreview,
@@ -113,6 +114,7 @@ export const p4Api = {
   detectRepository: (path: string) => call<RepoDetection>("detect_repository", { path }),
   open: (path: string, onPreview?: (partial: Extract<P4OpenResult, {status: "ready"}>) => void) =>
     readWithPreview<P4OpenResult, Extract<P4OpenResult, {status: "ready"}>>("p4_open", { path }, onPreview),
+  pendingFiles: (connection: P4Connection, paths: string[]) => call<{ change: string; file: P4File }[]>("p4_pending_files", { connection, paths }),
   refreshPending: (connection: P4Connection, onPreview?: (partial: P4Changelist[]) => void) =>
     readWithPreview<P4Changelist[], P4Changelist[]>("p4_refresh_pending", { connection }, onPreview),
   submitted: (
@@ -163,8 +165,8 @@ export const p4Api = {
     call<P4ChangePage>("p4_path_history", {connection, path, request}),
   locate: (connection: P4Connection, path: string) =>
     call<P4Location>("p4_locate", { connection, path }),
-  listDir: (connection: P4Connection, relative: string) =>
-    call<P4DirEntry[]>("p4_list_dir", { connection, relative }),
+  listDir: (connection: P4Connection, relative: string, onNames?: (entries: P4DirEntry[]) => void) =>
+    readWithPreview<P4DirEntry[], P4DirEntry[]>("p4_list_dir", { connection, relative }, onNames),
   listDepot: (connection: P4Connection, path: string) =>
     call<P4DirEntry[]>("p4_list_depot", { connection, path }),
   listingStatus: (connection: P4Connection, directory: string, depot: boolean) =>
@@ -208,8 +210,6 @@ export const p4Api = {
   submitShelf: (connection: P4Connection, changeId: string, description: string) => call<void>("p4_submit_shelf", {connection, changeId, description}),
   shelve: (connection: P4Connection, changeId: string, files?: string[]) =>
     call<void>("p4_shelve", { connection, changeId, files: files ?? null }),
-  unshelve: (connection: P4Connection, changeId: string, target: string, files: string[]) =>
-    call<string[]>("p4_unshelve", { connection, changeId, target, files }),
   deleteShelf: (connection: P4Connection, changeId: string) =>
     call<void>("p4_delete_shelf", { connection, changeId }),
   manualResolveView: (connection: P4Connection, path: string) =>
@@ -228,7 +228,8 @@ export const p4Api = {
   listShelves: (connection: P4Connection, user: string, client: string, before: number | null) => call<P4ChangePage>("p4_list_shelves", { connection, user, client, before }),
   shelfDetail: (connection: P4Connection, changeId: string, pending = false) => call<P4Changelist>("p4_shelf_detail", { connection, changeId, pending }),
   previewUnshelve: (connection: P4Connection, request: P4UnshelveRequest) => call<P4OperationPreview>("p4_preview_unshelve", { connection, request }),
-  restoreShelf: (connection: P4Connection, request: P4UnshelveRequest, fingerprint: string) => call<string>("p4_restore_shelf", { connection, request, fingerprint }),
+  restoreShelf: (connection: P4Connection, request: P4UnshelveRequest, fingerprint?: string) =>
+    call<string[]>("p4_restore_shelf", { connection, request, fingerprint: fingerprint ?? null }),
   previewStream: (connection: P4Connection, request: P4StreamRequest) => call<P4StreamPreview>("p4_preview_stream", { connection, request }),
   applyStream: (connection: P4Connection, request: P4StreamRequest, fingerprint: string) => call<string>("p4_apply_stream", { connection, request, fingerprint }),
   previewIntegrate: (connection: P4Connection, request: P4IntegrateRequest) =>
@@ -315,6 +316,19 @@ export function p4ActionStatus(action: string): string {
 export function depotBase(path: string): string {
   const slash = path.lastIndexOf("/");
   return slash >= 0 ? path.slice(slash + 1) : path;
+}
+
+export function sharedDepotDirectory(files: readonly { depotPath: string }[]): string {
+  const first = files[0]?.depotPath ?? "";
+  let prefix = first.slice(0, first.lastIndexOf("/") + 1);
+  for (const { depotPath } of files) {
+    while (prefix.length > 2 && !depotPath.startsWith(prefix)) {
+      const parent = prefix.slice(0, -1);
+      prefix = parent.slice(0, parent.lastIndexOf("/") + 1);
+    }
+    if (prefix.length <= 2) return "";
+  }
+  return prefix;
 }
 
 export function relativeToRoot(root: string, path: string, ignoreCase = pathsIgnoreCase()): string {

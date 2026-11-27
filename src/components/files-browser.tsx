@@ -22,7 +22,7 @@ import { formatAbsoluteTime, formatBlameWhen } from "@/lib/format";
 import { errorMessage, gitApi } from "@/lib/git";
 import { type SearchNode } from "@/lib/file-search";
 import { dirsToReload, touchesFile } from "@/lib/repo-paths";
-import { useFileQuery } from "@/lib/use-file-query";
+import { useGitFileSearch } from "@/state/use-git-file-search";
 import { useWindowedRows } from "@/lib/use-windowed-rows";
 import { cn } from "@/lib/utils";
 import { useGitPick, useGitSelect } from "@/state/git-context";
@@ -50,19 +50,7 @@ export function FilesBrowser() {
   );
   const [path, setPath] = useState<string | null>(fileFocus?.path ?? null);
   const [query, setQuery] = useState("");
-  const searchFiles = useCallback(
-    async (needle: string) => {
-      if (!repoPath) return { hits: [], truncated: false };
-      try {
-        return await gitApi.searchFiles(repoPath, needle);
-      } catch (error) {
-        toast.error(errorMessage(error));
-        throw error;
-      }
-    },
-    [repoPath],
-  );
-  const fileQuery = useFileQuery(repoPath, query, searchFiles);
+  const fileQuery = useGitFileSearch(repoPath, query);
   const searchNodes = useMemo<SearchNode[]>(
     () => (fileQuery.result?.hits ?? []).map((hit) => ({ relative: hit.path, dir: hit.dir, kind: hit.kind })),
     [fileQuery.result],
@@ -140,6 +128,7 @@ export function FilesBrowser() {
   }, [loadDir, open]);
 
   useRepoChanged(repoPath, (changed) => {
+    fileQuery.invalidate();
     for (const dir of dirsToReload(repoPath, changed, Object.keys(entriesRef.current))) {
       const pending = directoryLoads.current.get(dir);
       // A watcher event can arrive while a listing is in flight. Refresh once
@@ -215,32 +204,39 @@ export function FilesBrowser() {
               fileQuery.searching ? (
                 <FileTreeSkeleton fill />
               ) : (
-                <FilteredFileTree
-                  key={JSON.stringify([repoPath, query.trim()])}
-                  nodes={searchNodes}
-                  toPath={relativePath}
-                  selected={path}
-                  menu={fileMenu}
-                  onOpenFile={(next) => {
-                    setPath(next);
-                    setPin(null);
-                  }}
-                  onLoadDir={async (dir) => {
-                    try {
-                      const items = await gitApi.listDirectory(repoPath, dir);
-                      return items.map((item) => ({
-                        path: item.path,
-                        name: item.name,
-                        dir: item.dir,
-                        ignored: item.ignored,
-                        kind: item.kind,
-                      }));
-                    } catch (error) {
-                      toast.error(errorMessage(error));
-                      return null;
-                    }
-                  }}
-                />
+                <>
+                  <FilteredFileTree
+                    key={JSON.stringify([repoPath, query.trim()])}
+                    nodes={searchNodes}
+                    toPath={relativePath}
+                    selected={path}
+                    menu={fileMenu}
+                    onOpenFile={(next) => {
+                      setPath(next);
+                      setPin(null);
+                    }}
+                    onLoadDir={async (dir) => {
+                      try {
+                        const items = await gitApi.listDirectory(repoPath, dir);
+                        return items.map((item) => ({
+                          path: item.path,
+                          name: item.name,
+                          dir: item.dir,
+                          ignored: item.ignored,
+                          kind: item.kind,
+                        }));
+                      } catch (error) {
+                        toast.error(errorMessage(error));
+                        return null;
+                      }
+                    }}
+                  />
+                  {fileQuery.result?.truncated && (
+                    <Button size="xs" variant="ghost" disabled={!fileQuery.next} onClick={fileQuery.next}>
+                      {t("common.loadMore")}
+                    </Button>
+                  )}
+                </>
               )
             ) : null}
           </div>

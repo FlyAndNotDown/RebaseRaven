@@ -1,4 +1,4 @@
-//! Server-wide shelf discovery and previewed restoration into a workspace.
+//! Server-wide shelf discovery and restoration into a workspace.
 
 mod restore;
 use super::parse::{indexed_groups, parse_ztag};
@@ -8,7 +8,7 @@ use super::workspace::{
     P4Connection,
 };
 use crate::error::{AppError, AppResult};
-pub use restore::{preview_unshelve, restore_shelf, unshelve_files, P4UnshelveRequest};
+pub use restore::{preview_unshelve, restore_shelf, P4UnshelveRequest};
 
 pub fn list_shelves(
     connection: &P4Connection,

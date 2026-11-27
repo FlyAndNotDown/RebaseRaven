@@ -1,5 +1,5 @@
 import { errorCode } from "./native-error";
-import { Channel, invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { Channel, Resource, invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type { LfsState, LfsAction, LfsOutcome } from "@/types/lfs";
 import type { SparseCheckoutState, SparseCheckoutRequest, SparseCheckoutPreview, SparseCheckoutOutcome } from "@/types/sparse-checkout";
 import type {
@@ -123,7 +123,8 @@ export const gitApi = {
   refreshWorkspace: (repoPath: string, includeRemote = false) =>
     call<WorkspaceSnapshot>("refresh_workspace", { repoPath, includeRemote }),
   refreshStatus: (repoPath: string) => call<StatusSnapshot>("refresh_git_status", { repoPath }),
-  getCommits: async (repoPath: string, limit = 80, skip = 0, query?: string, revs?: string[] | null, onPreview?: (items: CommitSummary[]) => void, onBranches?: (branches: BranchList) => void) => {
+  openHistorySearch: async () => new Resource(await call<number>("open_git_history_search")),
+  getCommits: async (repoPath: string, limit = 80, skip = 0, query?: string | {query: string; rid: number}, revs?: string[] | null, onPreview?: (items: CommitSummary[]) => void, onBranches?: (branches: BranchList) => void) => {
     const preview = onPreview || onBranches
       ? new Channel<{ kind: "commits"; value: CommitSummary[] } | { kind: "branches"; value: BranchList }>()
       : null;
@@ -144,7 +145,14 @@ export const gitApi = {
     call<FileDiff>("get_workdir_diff", { repoPath, path, staged, ignoreWhitespace }),
   listDirectory: (repoPath: string, path: string) =>
     call<DirEntry[]>("list_directory", { repoPath, path }),
-  searchFiles: (repoPath: string, query: string) => call<FileSearch>("search_files", { repoPath, query }),
+  openFileSearch: async (repoPath: string) => {
+    const rid = await call<number>("open_git_file_search", { repoPath });
+    const resource = new Resource(rid);
+    return {
+      page: (query: string, generation: number) => call<FileSearch>("search_files", { rid, query, generation }),
+      close: () => resource.close(),
+    };
+  },
   readFile: (repoPath: string, path: string) => call<FileText>("read_file", { repoPath, path }),
   fileBlame: (repoPath: string, path: string) => call<BlameHunk[]>("file_blame", { repoPath, path }),
   fileCommits: (repoPath: string, path: string, limit: number, skip: number) =>

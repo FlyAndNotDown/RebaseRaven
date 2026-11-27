@@ -1,7 +1,8 @@
 //! Workspace and depot browsing, ignore rules, and file status.
 use super::{
     env_for, field, find_config, read_config, run_ok, unescape_p4_path, workspace_directory,
-    workspace_file_spec, P4Changelist, P4Connection, P4DirEntry, P4EntryStatus, P4FileSearch,
+    workspace_file_spec, P4Changelist, P4Connection, P4DirEntry, P4EntryStatus, P4File,
+    P4FileSearch,
 };
 use crate::error::{AppError, AppResult};
 use crate::git::strip_verbatim_prefix;
@@ -14,7 +15,11 @@ use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub fn list_dir(connection: &P4Connection, relative: &str) -> AppResult<Vec<P4DirEntry>> {
+pub fn list_dir(
+    connection: &P4Connection,
+    relative: &str,
+    names: impl FnOnce(&[P4DirEntry]),
+) -> AppResult<Vec<P4DirEntry>> {
     let root = PathBuf::from(&connection.root);
     let dir = workspace_directory(&root, relative)?;
     let mut entries = Vec::new();
@@ -37,12 +42,8 @@ pub fn list_dir(connection: &P4Connection, relative: &str) -> AppResult<Vec<P4Di
             detail: String::new(),
         });
     }
-    entries.sort_by(|left, right| {
-        right
-            .dir
-            .cmp(&left.dir)
-            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
-    });
+    entries.sort_by_cached_key(|entry| (!entry.dir, entry.name.to_lowercase()));
+    names(&entries);
     annotate_ignored(&env_for(connection), &mut entries);
     // Icons come from a later fstat so the names can paint without a server round trip.
     Ok(entries)
@@ -88,6 +89,8 @@ fn ignore_file_setting(directory: &Path, native: Option<&str>) -> String {
     ".p4ignore;p4ignore.txt".to_string()
 }
 
+const IGNORE_ARG_BUDGET: usize = 14 * 1024;
+
 fn annotate_ignored_with(
     entries: &mut [P4DirEntry],
     run: &mut impl FnMut(&[&str]) -> AppResult<String>,
@@ -99,7 +102,21 @@ fn annotate_ignored_with(
             .iter_mut()
             .filter(|entry| entry.dir == directories)
             .collect::<Vec<_>>();
-        for chunk in targets.chunks_mut(40) {
+        let mut remaining = targets.as_mut_slice();
+        while !remaining.is_empty() {
+            // Keep room for the executable, connection flags, and Windows quoting.
+            // UTF-8 byte length also bounds the number of UTF-16 code units.
+            let mut bytes = 0;
+            let count = remaining
+                .iter()
+                .take_while(|entry| {
+                    bytes += entry.path.len() + 4;
+                    bytes <= IGNORE_ARG_BUDGET
+                })
+                .count()
+                .max(1);
+            let (chunk, rest) = remaining.split_at_mut(count);
+            remaining = rest;
             let paths = chunk
                 .iter()
                 .map(|entry| {
@@ -519,7 +536,7 @@ pub fn listing_status(
 }
 
 fn statuses_from(env: &P4Env, paths: &[String], depot: bool) -> Vec<P4EntryStatus> {
-    let records = fstat_records(env, paths);
+    let records = fstat_records(env, paths, None);
     let mut rows = Vec::new();
     let mut depots = Vec::new();
     let mut locals = Vec::new();
@@ -679,7 +696,7 @@ pub(super) fn annotate_paths(connection: &P4Connection, files: &mut [P4DirEntry]
         .map(|file| workspace_file_spec(&connection.root, &file.path))
         .collect();
     for chunk in paths.chunks(40) {
-        for record in fstat_records(&env, chunk) {
+        for record in fstat_records(&env, chunk, connection.stream.as_deref()) {
             let client_file = field(&record, "clientFile");
             if client_file.is_empty() {
                 continue;
@@ -749,20 +766,27 @@ pub(super) fn local_path_key(path: &str) -> String {
 }
 
 pub(in crate::p4) fn annotate_pending(connection: &P4Connection, changes: &mut [P4Changelist]) {
+    annotate_open_files(
+        connection,
+        changes
+            .iter_mut()
+            .flat_map(|change| &mut change.files)
+            .collect(),
+    );
+}
+
+pub(super) fn annotate_open_files(connection: &P4Connection, mut files: Vec<&mut P4File>) {
     let env = env_for(connection);
-    let mut paths = Vec::new();
-    for change in changes.iter() {
-        for file in &change.files {
-            if file.depot_path.starts_with("//") {
-                paths.push(file.depot_path.clone());
-            }
-        }
-    }
+    let mut paths: Vec<_> = files
+        .iter()
+        .filter(|file| file.depot_path.starts_with("//"))
+        .map(|file| file.depot_path.clone())
+        .collect();
     paths.sort();
     paths.dedup();
     let mut known = HashMap::new();
     for chunk in cli::file_batches(&paths) {
-        for record in fstat_records(&env, chunk) {
+        for record in fstat_records(&env, chunk, connection.stream.as_deref()) {
             let depot = field(&record, "depotFile");
             if depot.is_empty() {
                 continue;
@@ -770,41 +794,31 @@ pub(in crate::p4) fn annotate_pending(connection: &P4Connection, changes: &mut [
             known.insert(depot, record);
         }
     }
-    for change in changes.iter_mut() {
-        for file in &mut change.files {
-            let record = known.get(&file.depot_path);
-            if !file.shelved {
-                if let Some(local) = record.and_then(|record| record.get("clientFile")) {
-                    if Path::new(local).is_absolute() {
-                        file.local_path.clone_from(local);
-                    }
-                }
-            }
-            let (status, detail) = combine_status(record.map(status_of), &file.action);
-            file.status = status;
-            file.detail = detail;
-        }
-    }
     let mut edits = Vec::new();
-    for change in changes.iter() {
-        for file in &change.files {
-            if !file.shelved && file.status == "edit" && file.depot_path.starts_with("//") {
-                edits.push(file.depot_path.clone());
+    for file in &mut files {
+        let record = known.get(&file.depot_path);
+        if !file.shelved {
+            if let Some(local) = record
+                .and_then(|r| r.get("clientFile"))
+                .filter(|local| Path::new(local).is_absolute())
+            {
+                file.local_path.clone_from(local);
             }
+        }
+        (file.status, file.detail) = combine_status(record.map(status_of), &file.action);
+        if !file.shelved && file.status == "edit" && file.depot_path.starts_with("//") {
+            edits.push(file.depot_path.clone());
         }
     }
     let same = unchanged_opened(&env, &edits);
     if same.is_empty() {
         return;
     }
-    for change in changes.iter_mut() {
-        for file in &mut change.files {
-            if file.shelved
-                || file.status != "edit"
-                || !path_is_unchanged(&same, &file.depot_path, &file.local_path)
-            {
-                continue;
-            }
+    for file in files {
+        if !file.shelved
+            && file.status == "edit"
+            && path_is_unchanged(&same, &file.depot_path, &file.local_path)
+        {
             mark_clean_checkout(&mut file.status, &mut file.detail);
         }
     }
@@ -846,9 +860,12 @@ const FSTAT_FIELDS: &str = "clientFile depotFile haveRev headRev action change o
 const FSTAT_FIELDS_BASIC: &str =
     "clientFile depotFile haveRev headRev action change otherOpen otherLock unresolved";
 
-fn fstat_records(env: &P4Env, paths: &[String]) -> Vec<ZtagRecord> {
+fn fstat_records(env: &P4Env, paths: &[String], stream: Option<&str>) -> Vec<ZtagRecord> {
     if paths.is_empty() {
         return Vec::new();
+    }
+    if let Some(records) = cli::read_session::fstat(env, stream, FSTAT_FIELDS, paths) {
+        return records;
     }
     let stdout = fstat_stdout(env, FSTAT_FIELDS, paths)
         .or_else(|| fstat_stdout(env, FSTAT_FIELDS_BASIC, paths))
@@ -1220,16 +1237,26 @@ mod tests {
 
     #[test]
     fn ignore_queries_are_bounded_and_never_invent_matches_on_failure() {
-        let mut entries = (0..81)
-            .map(|index| plain_dir(&index.to_string(), &PathBuf::from(index.to_string())))
+        let mut entries = (0..400)
+            .map(|index| {
+                plain_dir(
+                    "asset",
+                    &PathBuf::from(format!("{}/asset {index}", "\u{03bb}".repeat(60))),
+                )
+            })
             .collect::<Vec<_>>();
         let mut calls = 0;
+        let mut paths = 0;
         annotate_ignored_with(&mut entries, &mut |args| {
             calls += 1;
-            assert!(args.len() <= 42);
+            paths += args.len() - 2;
+            assert!(
+                args[2..].iter().map(|path| path.len() + 3).sum::<usize>() <= IGNORE_ARG_BUDGET
+            );
             Err(AppError::msg("Ignore rules unavailable"))
         });
-        assert_eq!(calls, 3);
+        assert!(calls > 1 && calls < 10);
+        assert_eq!(paths, entries.len());
         assert!(entries.iter().all(|entry| !entry.ignored));
     }
 

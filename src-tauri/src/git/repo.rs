@@ -187,12 +187,16 @@ pub(super) fn peel_commit(repo: &Repository, spec: &str) -> AppResult<CommitInfo
 }
 
 pub(super) fn commit_info(repo: &Repository, spec: &str) -> AppResult<CommitInfo> {
+    commit_info_at(repo.workdir(), spec)
+}
+
+pub(super) fn commit_info_at(root: &Path, spec: &str) -> AppResult<CommitInfo> {
     let spec = spec.trim();
     if spec.is_empty() {
         return Err(AppError::msg("Commit is required"));
     }
     let stdout = run_git_stdout(
-        repo.workdir(),
+        root,
         &[
             "-c",
             "i18n.logOutputEncoding=utf-8",
@@ -313,14 +317,6 @@ pub(super) fn object_exists(repo: &Repository, spec: &str) -> bool {
     run_git(repo.workdir(), &["cat-file", "-e", spec])
         .ok()
         .is_some_and(|output| output.status.success())
-}
-
-pub(super) fn cat_blob(repo: &Repository, spec: &str) -> Option<Vec<u8>> {
-    let output = run_git(repo.workdir(), &["cat-file", "blob", spec]).ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    Some(output.stdout)
 }
 
 pub(super) fn config_get(repo: &Repository, key: &str) -> Option<String> {

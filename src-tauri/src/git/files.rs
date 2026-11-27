@@ -110,37 +110,7 @@ pub struct FileSearch {
     pub truncated: bool,
 }
 
-pub fn search_files(repo: &Repository, query: &str) -> AppResult<FileSearch> {
-    let needle = query.trim().to_lowercase();
-    if needle.is_empty() {
-        return Ok(FileSearch {
-            hits: Vec::new(),
-            truncated: false,
-        });
-    }
-    let root = workdir(repo)?;
-    let bytes = run_git_stdout(root, &["ls-files", "-co", "--exclude-standard", "-z"])?;
-    let paths = bytes
-        .split(|byte| *byte == 0)
-        .filter(|raw| !raw.is_empty())
-        .map(|raw| String::from_utf8_lossy(raw).into_owned());
-    let mut result = hits_from_paths(paths, &needle);
-    let paths = result
-        .hits
-        .iter()
-        .map(|hit| (hit.path.as_str(), hit.dir))
-        .collect::<Vec<_>>();
-    let kinds = file_kinds(repo, &paths).unwrap_or_default();
-    for hit in &mut result.hits {
-        hit.kind = kinds.get(&hit.path).copied().unwrap_or_default();
-        if hit.kind == GitFileKind::Submodule {
-            hit.dir = true;
-        }
-    }
-    Ok(result)
-}
-
-fn file_kinds(
+pub(super) fn file_kinds(
     repo: &Repository,
     paths: &[(&str, bool)],
 ) -> AppResult<HashMap<String, GitFileKind>> {
@@ -215,48 +185,6 @@ fn file_kinds(
         }
     }
     Ok(kinds)
-}
-
-fn hits_from_paths(paths: impl Iterator<Item = String>, needle: &str) -> FileSearch {
-    let mut files = Vec::new();
-    let mut dirs = BTreeSet::new();
-    for path in paths {
-        if path.is_empty() {
-            continue;
-        }
-        let name = path.rsplit('/').next().unwrap_or(&path);
-        if name.to_lowercase().contains(needle) {
-            files.push(FileSearchHit {
-                kind: GitFileKind::Regular,
-                path: path.clone(),
-                dir: false,
-            });
-        }
-        collect_matching_dirs(&path, needle, &mut dirs);
-    }
-    let mut hits = files;
-    for dir in dirs {
-        hits.push(FileSearchHit {
-            kind: GitFileKind::Regular,
-            path: dir,
-            dir: true,
-        });
-    }
-    FileSearch {
-        hits,
-        truncated: false,
-    }
-}
-
-fn collect_matching_dirs(path: &str, needle: &str, dirs: &mut BTreeSet<String>) {
-    let mut rest = path;
-    while let Some((parent, _)) = rest.rsplit_once('/') {
-        let name = parent.rsplit('/').next().unwrap_or(parent);
-        if name.to_lowercase().contains(needle) {
-            dirs.insert(parent.to_string());
-        }
-        rest = parent;
-    }
 }
 
 pub fn read_file(repo: &Repository, path: &str) -> AppResult<FileText> {
@@ -396,48 +324,4 @@ pub(super) fn blame_header(line: &str) -> Option<String> {
         return None;
     }
     Some(oid.to_string())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::hits_from_paths;
-
-    #[test]
-    fn file_names_match_without_case_and_folder_names_stay_folders() {
-        let page = hits_from_paths(
-            [
-                "src/components/Button.tsx",
-                "src/lib/button.ts",
-                "readme.md",
-            ]
-            .into_iter()
-            .map(str::to_string),
-            "button",
-        );
-        let files: Vec<_> = page
-            .hits
-            .iter()
-            .filter(|hit| !hit.dir)
-            .map(|hit| hit.path.as_str())
-            .collect();
-        assert_eq!(
-            files,
-            vec!["src/components/Button.tsx", "src/lib/button.ts"]
-        );
-        assert!(page.hits.iter().all(|hit| !hit.dir));
-        assert!(!page.truncated);
-    }
-
-    #[test]
-    fn a_folder_name_is_a_directory_hit_and_not_every_file_inside_it() {
-        let page = hits_from_paths(
-            ["components/button.tsx", "components/icon.tsx"]
-                .into_iter()
-                .map(str::to_string),
-            "components",
-        );
-        assert_eq!(page.hits.len(), 1);
-        assert!(page.hits[0].dir);
-        assert_eq!(page.hits[0].path, "components");
-    }
 }

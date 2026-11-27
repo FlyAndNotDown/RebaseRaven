@@ -1,7 +1,7 @@
 //! Explicit file versions shared by text, image and workspace comparisons.
 
 use super::cli;
-use super::parse::{file_type_is_binary, parse_single_diff, parse_ztag, valid_depot_path};
+use super::parse::{file_type_is_binary, parse_ztag, valid_depot_path};
 use super::review::run;
 use super::workspace::{
     content_file_diff, env_for, workspace_directory_path, workspace_file_spec, P4Connection,
@@ -334,13 +334,12 @@ pub fn compare_files(
         });
     }
     if let (Some(before), Some(after)) = (&base.spec, &head.spec) {
-        let text = cli::run_p4_diff(
+        let diff = cli::preview_diff(
             &env_for(connection),
             &["diff2", cli::unified_diff(ignore_whitespace), before, after],
+            path,
         )?;
-        return Ok(P4Comparison::Diff {
-            diff: parse_single_diff(&text, path),
-        });
+        return Ok(P4Comparison::Diff { diff });
     }
     if base.size.is_some_and(|size| size > TEXT_LIMIT as u64)
         || head.size.is_some_and(|size| size > TEXT_LIMIT as u64)

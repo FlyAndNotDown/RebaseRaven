@@ -19,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useP4 } from "@/state/p4-context";
+import { PathLabel } from "@/components/path-label";
 
 
 
@@ -98,9 +99,9 @@ const charsets = [
       >
         <DialogHeader>
           <DialogTitle>{t("p4.editConnection")}</DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="flex items-baseline gap-1.5">
             {connection?.stream
-              ? t("p4.streamName", { name: connection.stream })
+              ? <><span className="shrink-0">{t("p4.stream")}</span><PathLabel path={connection.stream} className="text-xs" /></>
               : t("p4.serverUserAndClientForThisWorkspace")}
           </DialogDescription>
         </DialogHeader>

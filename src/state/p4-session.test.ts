@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { emptyBinaryDiff } from "@/lib/git";
 import type { P4Changelist, P4File } from "@/types/p4";
-import { defaultChange, fileKey, finishPendingShelf, pendingChangeDescription, refreshPendingSession, savePendingDescription, sameP4Connection, showP4OperationResult, shownFile, updateP4Session, usableP4Session, type P4Session } from "./p4-session";
+import { defaultChange, fileKey, finishPendingShelf, mergeOpenedFiles, pendingChangeDescription, refreshPendingSession, savePendingDescription, sameP4Connection, showP4OperationResult, shownFile, updateP4Session, usableP4Session, type P4Session } from "./p4-session";
 
 function file(name: string): P4File {
   return {
@@ -78,6 +78,20 @@ describe("previewed Perforce operation results", () => {
 });
 
 describe("pending workspace refreshes", () => {
+  it("moves only the refreshed opened file and preserves its shelf and unrelated conflict", () => {
+    const opened = file("note.txt");
+    const shelved = { ...opened, shelved: true };
+    const conflict = { ...file("other.txt"), status: "conflict" };
+    const initial = [change("42", "", [opened, shelved]), change("43", "", [conflict]), change("44", "", [])];
+    const paths = new Set([opened.depotPath]);
+    const result = mergeOpenedFiles(initial, paths, [{ change: "43", file: opened }])!;
+    expect(result[0].files).toEqual([shelved]);
+    expect(result[1].files).toEqual([opened, conflict]);
+    expect(result[2]).toBe(initial[2]);
+    expect(mergeOpenedFiles(result, paths, [])?.[1].files).toEqual([conflict]);
+    expect(mergeOpenedFiles(initial, paths, [{ change: "45", file: opened }])).toBeNull();
+    expect(mergeOpenedFiles(initial, paths, [{ change: "43", file: { ...opened, action: "move/add" } }])).toBeNull();
+  });
   it("preserves a user's valid empty selection when other changelists have content", () => {
     const empty = change("default", "", []);
     const current = { ...session(), pending: [empty, change()], selectedChange: "default", selectedFile: null, description: "", diff: null };

@@ -37,8 +37,8 @@ use crate::git::{strip_verbatim_prefix, FileDiff};
 use crate::p4::cli::{self, P4Env};
 use crate::p4::parse::{
     blank_change_spec, classic_client_spec, created_change_id, file_type_is_binary, indexed_groups,
-    known_p4_value, normalize_charset, parse_p4_set, parse_p4config, parse_single_diff, parse_ztag,
-    path_depth, path_is_within, read_description, set_description, set_spec_field, spec_field,
+    known_p4_value, normalize_charset, parse_p4_set, parse_p4config, parse_ztag, path_depth,
+    path_is_within, read_description, set_description, set_spec_field, spec_field,
     valid_client_name, valid_depot_path, ZtagRecord,
 };
 
@@ -328,6 +328,43 @@ pub fn refresh_pending(
     preview(&changes);
     annotate_pending(connection, &mut changes);
     Ok(changes)
+}
+
+#[derive(Serialize)]
+pub struct OpenedFile {
+    change: String,
+    file: P4File,
+}
+
+/// An exact-path refresh after a file mutation. Changelist and stream mutations
+/// use the full summary because they can affect paths outside the selection.
+pub fn pending_files(connection: &P4Connection, paths: &[String]) -> AppResult<Vec<OpenedFile>> {
+    if paths.is_empty()
+        || paths.iter().any(|path| {
+            !valid_depot_path(path) || path.contains("...") || path.contains(['*', '@', '#'])
+        })
+    {
+        return Err(AppError::msg("Choose individual depot files."));
+    }
+    let env = env_for(connection);
+    let mut rows = Vec::new();
+    for chunk in cli::file_batches(paths) {
+        let stdout = cli::run_p4_ok_files(&env, &["-ztag", "opened"], chunk)?;
+        for record in parse_ztag(&stdout) {
+            if !record.contains_key("depotFile") {
+                continue;
+            }
+            rows.push(OpenedFile {
+                change: field(&record, "change"),
+                file: file_from_opened(connection, &record),
+            });
+        }
+    }
+    browse::annotate_open_files(
+        connection,
+        rows.iter_mut().map(|row| &mut row.file).collect(),
+    );
+    Ok(rows)
 }
 
 pub fn submitted(
@@ -635,11 +672,11 @@ pub fn shelf_diff(
             deleted,
         );
     }
-    let text = cli::run_p4_diff(
+    cli::preview_diff(
         &env,
         &["diff2", cli::unified_diff(ignore_whitespace), &have, &shelf],
-    )?;
-    Ok(parse_single_diff(&text, depot_path))
+        depot_path,
+    )
 }
 
 pub fn revision_diff(
@@ -1598,41 +1635,15 @@ pub(super) fn connection_after_create(
 
 fn load_pending_summary(connection: &P4Connection) -> AppResult<Vec<P4Changelist>> {
     let env = env_for(connection);
-    let changes = |status| {
-        run_ok(
-            &env,
-            &[
-                "-ztag",
-                "changes",
-                "-s",
-                status,
-                "-c",
-                &connection.client,
-                "-L",
-            ],
-            None,
-        )
-    };
-    let (pending_text, shelved_text, opened, default_description) = std::thread::scope(|scope| {
-        let pending = scope.spawn(|| changes("pending"));
-        let shelves = scope.spawn(|| super::review::allow_empty(changes("shelved")));
-        let description = scope.spawn(|| {
-            run_ok(&env, &["change", "-o"], None)
-                .map(|spec| read_description(&spec))
-                .unwrap_or_default()
-        });
-        let opened = parse_ztag(&run_ok(&env, &["-ztag", "opened"], None)?);
-        Ok::<_, AppError>((
-            pending
-                .join()
-                .map_err(|_| AppError::msg("Could not read pending changelists"))??,
-            shelves
-                .join()
-                .map_err(|_| AppError::msg("Could not read shelved changelists"))??,
-            opened,
-            description.join().unwrap_or_default(),
-        ))
+    let rows = cli::read_session::pending(&env, connection.stream.as_deref(), || {
+        pending_cli_rows(&env, connection)
     })?;
+    let cli::read_session::PendingRows {
+        pending,
+        shelved,
+        opened,
+        description: default_description,
+    } = rows;
     let open_stream = opened.iter().find_map(|record| {
         stream_from_record(record).map(|stream| {
             let change = field(record, "change");
@@ -1676,7 +1687,7 @@ fn load_pending_summary(connection: &P4Connection) -> AppResult<Vec<P4Changelist
         stream: None,
         shelved_stream: None,
     }];
-    let numbered = pending_summaries(connection, &pending_text, &shelved_text, by_change);
+    let numbered = pending_summaries(connection, pending, shelved, by_change);
     changes.extend(numbered);
     for change in &mut changes {
         change
@@ -1690,18 +1701,65 @@ fn load_pending_summary(connection: &P4Connection) -> AppResult<Vec<P4Changelist
     Ok(changes)
 }
 
+fn pending_cli_rows(
+    env: &P4Env,
+    connection: &P4Connection,
+) -> AppResult<cli::read_session::PendingRows> {
+    let changes = |status| {
+        run_ok(
+            env,
+            &[
+                "-ztag",
+                "changes",
+                "-s",
+                status,
+                "-c",
+                &connection.client,
+                "-L",
+            ],
+            None,
+        )
+    };
+    let (pending_text, shelved_text, opened, default_description) = std::thread::scope(|scope| {
+        let pending = scope.spawn(|| changes("pending"));
+        let shelves = scope.spawn(|| super::review::allow_empty(changes("shelved")));
+        let description = scope.spawn(|| {
+            run_ok(env, &["change", "-o"], None)
+                .map(|spec| read_description(&spec))
+                .unwrap_or_default()
+        });
+        let opened = parse_ztag(&run_ok(env, &["-ztag", "opened"], None)?);
+        Ok::<_, AppError>((
+            pending
+                .join()
+                .map_err(|_| AppError::msg("Could not read pending changelists"))??,
+            shelves
+                .join()
+                .map_err(|_| AppError::msg("Could not read shelved changelists"))??,
+            opened,
+            description.join().unwrap_or_default(),
+        ))
+    })?;
+    Ok(cli::read_session::PendingRows {
+        pending: parse_ztag(&pending_text),
+        shelved: parse_ztag(&shelved_text),
+        opened,
+        description: default_description,
+    })
+}
+
 fn pending_summaries(
     connection: &P4Connection,
-    pending: &str,
-    shelves: &str,
+    pending: Vec<ZtagRecord>,
+    shelves: Vec<ZtagRecord>,
     mut opened: BTreeMap<String, Vec<P4File>>,
 ) -> Vec<P4Changelist> {
-    let mut shelves: BTreeMap<_, _> = parse_ztag(shelves)
+    let mut shelves: BTreeMap<_, _> = shelves
         .into_iter()
         .filter_map(|record| Some((record.get("change")?.clone(), record)))
         .collect();
     let mut changes = Vec::new();
-    for record in parse_ztag(pending) {
+    for record in pending {
         let Some(id) = record.get("change") else {
             continue;
         };
@@ -2380,8 +2438,8 @@ mod tests {
             .collect();
         let changes = pending_summaries(
             &connection,
-            "... change 100\n... status pending\n",
-            &shelves,
+            parse_ztag("... change 100\n... status pending\n"),
+            parse_ztag(&shelves),
             BTreeMap::new(),
         );
         assert_eq!(changes.len(), 46);
@@ -3010,8 +3068,11 @@ mod tests {
             stream: None,
             server: String::new(),
         };
-        assert_eq!(list_dir(&connection, "src").unwrap()[0].name, "file.txt");
-        assert!(list_dir(&connection, "../outside").is_err());
+        assert_eq!(
+            list_dir(&connection, "src", |_| {}).unwrap()[0].name,
+            "file.txt"
+        );
+        assert!(list_dir(&connection, "../outside", |_| {}).is_err());
     }
 
     #[test]

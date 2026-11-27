@@ -20,6 +20,7 @@ mod cli;
 mod conflicts;
 mod diff;
 mod external;
+mod file_search;
 mod files;
 mod history;
 mod identity;
@@ -27,6 +28,7 @@ mod images;
 mod initialize;
 mod lfs;
 mod log_stream;
+mod objects;
 mod operations;
 mod partial;
 mod push_urls;
@@ -57,6 +59,7 @@ pub use cli::{
 pub use conflicts::*;
 pub use diff::*;
 pub use external::editor_file;
+pub use file_search::FileSearchIndex;
 pub use files::*;
 pub use history::*;
 pub use identity::*;
@@ -80,7 +83,7 @@ pub use tools::*;
 
 pub(crate) use repo::open_for_detection;
 use repo::{
-    cat_blob, commit_info, config_get, config_get_file, config_get_global, config_get_local,
+    commit_info, config_get, config_get_file, config_get_global, config_get_local,
     config_get_system, config_set_file, config_set_global, config_set_local, config_unset_file,
     config_unset_global, config_unset_local, head_oid, identity_configured, index_matches_head,
     object_exists, peel_commit, ref_exists, remote_names, rev_parse, symbolic_branch, CommitInfo,

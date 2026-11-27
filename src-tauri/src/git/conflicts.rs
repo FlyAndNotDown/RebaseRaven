@@ -33,8 +33,9 @@ pub fn conflict_view(repo: &Repository, path: &str) -> AppResult<ConflictView> {
             }
         }
     }
-    let ours = stage_text(repo, &path, 2);
-    let theirs = stage_text(repo, &path, 3);
+    let mut blobs = objects::BlobReader::new(repo.workdir());
+    let ours = stage_text(&mut blobs, &path, 2);
+    let theirs = stage_text(&mut blobs, &path, 3);
     if ours.is_none() && theirs.is_none() {
         return Ok(ConflictView {
             path,
@@ -98,8 +99,10 @@ pub(super) fn with_trailing_newline(text: String) -> String {
     }
 }
 
-pub(super) fn stage_text(repo: &Repository, path: &str, stage: i32) -> Option<String> {
-    let bytes = cat_blob(repo, &format!(":{stage}:{path}"))?;
+fn stage_text(blobs: &mut objects::BlobReader<'_>, path: &str, stage: i32) -> Option<String> {
+    let objects::Blob::Bytes(bytes) = blobs.read(&format!(":{stage}:{path}"), usize::MAX)? else {
+        return None;
+    };
     if bytes.contains(&0) {
         return None;
     }

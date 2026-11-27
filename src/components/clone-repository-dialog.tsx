@@ -30,6 +30,7 @@ import { errorMessage } from "@/lib/git";
 import { createExclusiveAction, createLatestRequest } from "@/lib/async-scope";
 import { p4Api } from "@/lib/p4";
 import type { P4Auth, P4ClientOption, P4DepotEntry, P4StreamOption } from "@/types/p4";
+import { PathLabel } from "@/components/path-label";
 import { useActivities, useGitPick } from "@/state/git-context";
 
 function repoNameFromUrl(url: string) {
@@ -534,9 +535,8 @@ function P4CloneForm({
                     <FolderTreeIcon />
                     <span className="flex min-w-0 flex-col">
                       <span className="truncate font-mono">{item.name}</span>
-                      <span className="truncate font-mono text-[11px] text-muted-foreground">
-                        {item.stream || item.root}
-                      </span>
+                      {item.stream ? <PathLabel path={item.stream} className="text-[11px] text-muted-foreground" />
+                        : <span className="truncate font-mono text-[11px] text-muted-foreground" title={item.root}>{item.root}</span>}
                     </span>
                   </DropdownMenuItem>
                 ))}
@@ -660,7 +660,7 @@ function CreateClientForm({ auth, cloning, onOpenChange, onCreate }: CreateClien
                 {t("desktop.cloneRepositoryDialog.depot_path")}</label>
             </div>
             {mapping === "stream" ? (
-              <div className="grid gap-2">
+              <div className="grid min-w-0 grid-cols-1 gap-2">
                 <Input
                   className="font-mono"
                   disabled={cloning}
@@ -683,7 +683,7 @@ function CreateClientForm({ auth, cloning, onOpenChange, onCreate }: CreateClien
                         className={`flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted/70 ${stream === item.path ? "bg-muted" : ""}`}
                         onClick={() => setStream(item.path)}
                       >
-                        <span className="min-w-0 flex-1 truncate font-mono">{item.path}</span>
+                        <PathLabel path={item.path} className="flex-1" />
                         {item.kind ? <span className="shrink-0 text-muted-foreground">{item.kind}</span> : null}
                       </button>
                     ))

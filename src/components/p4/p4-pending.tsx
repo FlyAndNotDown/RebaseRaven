@@ -1,4 +1,5 @@
 import { PendingRestoreShelfDialog } from "./p4-restore-shelf-dialog";
+import { P4StreamName } from "./p4-path-labels";
 import { P4StreamWorkDialog, P4StreamDiffDialog } from "@/components/p4/p4-stream-work";
 import { PendingShelfGroup, ShelfReadError } from "@/components/p4/p4-pending-shelf";
 import type { P4StreamDiffRequest } from "@/types/p4-stream-specs";
@@ -28,7 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
-import { changeSummary, depotBase, p4ActionStatus } from "@/lib/p4";
+import { changeSummary, p4ActionStatus } from "@/lib/p4";
 import { cn } from "@/lib/utils";
 import { useP4Pick } from "@/state/p4-context";
 import { useP4PendingExpansion } from "@/state/use-p4-pending-expansion";
@@ -54,7 +55,7 @@ export function P4Pending() {
   const [deleteFailed, setDeleteFailed] = useState(false);
   const {openChanges, shelvedOpen, setExpanded, setShelvedOpen} = useP4PendingExpansion(p4.connection?.root ?? "", p4.selectedChange);
   const [revertRequest, setRevertRequest] = useState<RevertRequest | null>(null);
-  const [restore, setRestore] = useState<{id: string; target: string; files?: string[]; detail?: P4Changelist; connection: string} | null>(null);
+  const [restore, setRestore] = useState<{id: string; files?: string[]; detail?: P4Changelist; connection: string} | null>(null);
   const connectionKey = JSON.stringify(p4.connection);
   const restoring = restore?.connection === connectionKey ? restore : null;
   const [deletingShelf, setDeletingShelf] = useState(false);
@@ -81,9 +82,9 @@ export function P4Pending() {
     if (selected && needsShelf && !selectedShelf) void loadPendingShelf(selected.id);
   }, [loadPendingShelf, needsShelf, selected, selectedShelf]);
 
-  function openRestore(id: string, target = "default", files?: string[]) {
+  function openRestore(id: string, files?: string[]) {
     const shelf = p4.pendingShelves[id];
-    setRestore({id, target, files, detail: shelf?.status === "ready" ? shelf.detail : undefined, connection: connectionKey});
+    setRestore({id, files, detail: shelf?.status === "ready" ? shelf.detail : undefined, connection: connectionKey});
   }
 
   function openChangeDialog(change: P4Changelist, mode: ChangeDialogRequest["mode"]) {
@@ -220,7 +221,7 @@ export function P4Pending() {
       if (ev.pointerId !== pointerId) return;
       stop();
       const files = dragFiles.current;
-      const target = dragging ? zoneAt(ev.clientX, ev.clientY) : null;
+      const target = dragging && ev.type === "pointerup" ? zoneAt(ev.clientX, ev.clientY) : null;
       dragFiles.current = null;
       setDragKind(null);
       setDropTarget(null);
@@ -235,11 +236,7 @@ export function P4Pending() {
         setExpanded((current) => new Set(current ?? openChanges).add(target.change));
       }
       setPicked(new Set());
-      if (!target.shelf && files[0].shelved && files.every(file => file.change === files[0].change)) {
-        openRestore(files[0].change, target.change, files.map(file => file.path));
-      } else {
-        void p4.placeFiles(files, target.change, target.shelf);
-      }
+      void p4.placeFiles(files, target.change, target.shelf);
     };
 
     const stop = () => {
@@ -451,7 +448,11 @@ export function P4Pending() {
                           data-drop="open"
                           data-change={change.id}
                         >
-                          {change.stream ? <button type="button" className="flex w-full items-center gap-2 rounded-md py-1.5 pl-9 pr-2 text-left text-xs hover:bg-muted/70" onClick={() => {p4.selectChange(change.id); setStreamWorkOpen(true);}}><GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 truncate">{t("p4.streamWork.title")}</span><span className="truncate font-mono text-[11px] text-muted-foreground">{depotBase(change.stream.path)}</span></button> : null}
+                          {change.stream ? <button type="button" className="flex w-full items-center gap-2 rounded-md py-1.5 pl-9 pr-2 text-left text-xs hover:bg-muted/70" onClick={() => {p4.selectChange(change.id); setStreamWorkOpen(true);}}>
+                            <GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                            <span className="min-w-0 flex-1 truncate">{t("p4.streamWork.title")}</span>
+                            <P4StreamName path={change.stream.path} />
+                          </button> : null}
                           <PendingFiles
                             changeId={change.id}
                             files={changeOpened}
@@ -496,7 +497,7 @@ export function P4Pending() {
                                 onSelect={(event, path) => pickFile(event, { change: change.id, path, shelved: true })}
                                 menu={(_, file) => <ContextMenuContent><ContextMenuItem disabled={p4.busy} onSelect={() => {
                                   const paths = picked.has(rowKey(file)) ? rowsInOrder().filter(row => row.shelved && row.change === change.id && picked.has(rowKey(row))).map(row => row.path) : [file.path];
-                                  openRestore(change.id, "default", paths);
+                                  openRestore(change.id, paths);
                                 }}><ArchiveRestoreIcon />{t("p4.unshelve")}</ContextMenuItem></ContextMenuContent>}
                               />
                             </PendingShelfGroup>
@@ -526,7 +527,7 @@ export function P4Pending() {
         </ResizablePanel>
       </ResizablePanelGroup>
       {restoring && <PendingRestoreShelfDialog key={restoring.id} id={restoring.id} cached={restoring.detail}
-        initialTarget={restoring.target} initialFiles={restoring.files} onClose={() => setRestore(null)} />}
+        initialTarget="default" initialFiles={restoring.files} onClose={() => setRestore(null)} />}
       {resolvingPath ? <P4Resolve key={resolvingPath} path={resolvingPath} onClose={closeResolution} /> : null}
       {streamWorkOpen ? <P4StreamWorkDialog onClose={() => setStreamWorkOpen(false)} /> : null}
       {streamDiff ? <P4StreamDiffDialog target={streamDiff} onClose={() => setStreamDiff(null)} /> : null}

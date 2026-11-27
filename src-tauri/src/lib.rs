@@ -72,6 +72,22 @@ where
     result
 }
 
+/// Native object reads only need the selected worktree as their current directory.
+async fn with_workdir<T: Send + 'static>(
+    path: String,
+    read: impl FnOnce(&Path) -> AppResult<T> + Send + 'static,
+) -> AppResult<T> {
+    blocking(move || {
+        let path = std::path::PathBuf::from(git::strip_verbatim_prefix(&path));
+        if path.join(".git").exists() {
+            read(&path)
+        } else {
+            read(git::open_at(&path)?.workdir())
+        }
+    })
+    .await
+}
+
 async fn with_repo_diagnostic<T, F>(path: String, code: diagnostics::Code, f: F) -> AppResult<T>
 where
     T: Send + 'static,
@@ -247,19 +263,49 @@ async fn refresh_git_status(repo_path: String) -> AppResult<git::StatusSnapshot>
     with_repo_async(repo_path, |repo| git::status_snapshot(repo)).await
 }
 
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum HistoryFilter {
+    Text(String),
+    Search {
+        query: String,
+        rid: tauri::ResourceId,
+    },
+}
+
+#[tauri::command]
+fn open_git_history_search(webview: tauri::Webview) -> tauri::ResourceId {
+    webview
+        .resources_table()
+        .add_arc(git::HistoryReader::search())
+}
+
 #[tauri::command]
 async fn get_commits(
     repo_path: String,
     limit: Option<usize>,
     skip: Option<usize>,
-    query: Option<String>,
+    query: Option<HistoryFilter>,
     rev: Option<Vec<String>>,
     preview: Option<tauri::ipc::JavaScriptChannelId>,
     webview: tauri::Webview,
 ) -> AppResult<Vec<CommitSummary>> {
+    let (query, reader) = match query {
+        Some(HistoryFilter::Search { query, rid }) => {
+            let reader = webview
+                .resources_table()
+                .get::<git::HistoryReader>(rid)
+                .map_err(|_| AppError::cancelled())?;
+            (Some(query), Some(reader))
+        }
+        Some(HistoryFilter::Text(query)) => (Some(query), None),
+        None => (None, None),
+    };
     let preview = preview.map(|id| id.channel_on(webview));
     with_repo_diagnostic(repo_path, diagnostics::Code::GitHistory, move |repo| {
-        git::commits(
+        let reader = reader.unwrap_or_else(|| git::HistoryReader::for_root(repo.workdir()));
+        git::read_commits(
+            &reader,
             repo,
             limit.unwrap_or(80),
             skip.unwrap_or(0),
@@ -303,8 +349,28 @@ async fn list_directory(repo_path: String, path: String) -> AppResult<Vec<DirEnt
 }
 
 #[tauri::command]
-async fn search_files(repo_path: String, query: String) -> AppResult<git::FileSearch> {
-    with_repo_async(repo_path, move |repo| git::search_files(repo, &query)).await
+async fn open_git_file_search(
+    webview: tauri::Webview,
+    repo_path: String,
+) -> AppResult<tauri::ResourceId> {
+    let repo = blocking(move || git::open_at(Path::new(&repo_path))).await?;
+    Ok(webview
+        .resources_table()
+        .add(git::FileSearchIndex::new(repo)))
+}
+
+#[tauri::command]
+async fn search_files(
+    webview: tauri::Webview,
+    rid: tauri::ResourceId,
+    query: String,
+    generation: u32,
+) -> AppResult<git::FileSearch> {
+    let index = webview
+        .resources_table()
+        .get::<git::FileSearchIndex>(rid)
+        .map_err(|_| AppError::cancelled())?;
+    blocking(move || index.page(&query, generation)).await
 }
 
 #[tauri::command]
@@ -332,7 +398,7 @@ async fn file_commits(
 
 #[tauri::command]
 async fn get_commit_details(repo_path: String, oid: String) -> AppResult<CommitDetails> {
-    with_repo_async(repo_path, move |repo| git::commit_details(repo, &oid)).await
+    with_workdir(repo_path, move |root| git::commit_details(root, &oid)).await
 }
 
 #[tauri::command]
@@ -365,8 +431,8 @@ async fn get_commit_diff(
     ignore_whitespace: Option<bool>,
 ) -> AppResult<FileDiff> {
     let ignore_whitespace = ignore_whitespace.unwrap_or(false);
-    with_repo_async(repo_path, move |repo| {
-        git::commit_file_diff(repo, &oid, &path, ignore_whitespace)
+    with_workdir(repo_path, move |root| {
+        git::commit_file_diff(root, &oid, &path, ignore_whitespace)
     })
     .await
 }
@@ -1518,6 +1584,14 @@ async fn p4_refresh_pending(
 }
 
 #[tauri::command]
+async fn p4_pending_files(
+    connection: p4::P4Connection,
+    paths: Vec<String>,
+) -> AppResult<Vec<p4::OpenedFile>> {
+    blocking(move || p4::pending_files(&connection, &paths)).await
+}
+
+#[tauri::command]
 async fn p4_submitted(
     connection: p4::P4Connection,
     user: Option<String>,
@@ -1651,8 +1725,18 @@ async fn p4_locate(connection: p4::P4Connection, path: String) -> AppResult<p4::
 async fn p4_list_dir(
     connection: p4::P4Connection,
     relative: String,
+    preview: Option<tauri::ipc::JavaScriptChannelId>,
+    webview: tauri::Webview,
 ) -> AppResult<Vec<p4::P4DirEntry>> {
-    blocking(move || p4::list_dir(&connection, &relative)).await
+    let preview = preview.map(|id| id.channel_on(webview));
+    blocking(move || {
+        p4::list_dir(&connection, &relative, |entries| {
+            if let Some(channel) = preview {
+                let _ = channel.send(entries.to_vec());
+            }
+        })
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1993,16 +2077,6 @@ async fn p4_shelve(
 }
 
 #[tauri::command]
-async fn p4_unshelve(
-    connection: p4::P4Connection,
-    change_id: String,
-    target: String,
-    files: Vec<String>,
-) -> AppResult<Vec<String>> {
-    blocking(move || p4::unshelve_files(&connection, change_id, target, files)).await
-}
-
-#[tauri::command]
 async fn p4_delete_shelf(connection: p4::P4Connection, change_id: String) -> AppResult<()> {
     blocking(move || p4::delete_shelf(&connection, &change_id)).await
 }
@@ -2096,7 +2170,8 @@ async fn p4_sync(
     auto_resolve: bool,
     app: AppHandle,
 ) -> AppResult<p4::P4SyncResult> {
-    blocking(move || {
+    let started = std::time::Instant::now();
+    let result = blocking(move || {
         activity::with_cancel(activity_id.as_deref(), || {
             p4::sync(
                 &connection,
@@ -2106,7 +2181,25 @@ async fn p4_sync(
             )
         })
     })
-    .await
+    .await;
+    let status = match &result {
+        Ok(sync)
+            if sync.output.failed
+                || sync
+                    .auto_resolve
+                    .as_ref()
+                    .is_some_and(|resolve| resolve.failed) =>
+        {
+            diagnostics::Status::Failure
+        }
+        _ => diagnostics::Status::of(&result),
+    };
+    diagnostics::record(
+        diagnostics::Code::PerforceGetLatest,
+        status,
+        Some(started.elapsed()),
+    );
+    result
 }
 
 #[tauri::command]
@@ -2203,9 +2296,9 @@ async fn p4_preview_unshelve(
 async fn p4_restore_shelf(
     connection: p4::P4Connection,
     request: p4::P4UnshelveRequest,
-    fingerprint: String,
-) -> AppResult<String> {
-    blocking(move || p4::restore_shelf(&connection, &request, &fingerprint)).await
+    fingerprint: Option<String>,
+) -> AppResult<Vec<String>> {
+    blocking(move || p4::restore_shelf(&connection, &request, fingerprint.as_deref())).await
 }
 
 #[tauri::command]
@@ -2618,6 +2711,7 @@ pub fn run() {
             open_repository,
             refresh_workspace,
             refresh_git_status,
+            open_git_history_search,
             get_commits,
             get_branches,
             get_workdir_diff,
@@ -2626,6 +2720,7 @@ pub fn run() {
             get_git_repository_settings,
             set_git_repository_settings,
             list_directory,
+            open_git_file_search,
             search_files,
             read_file,
             file_blame,
@@ -2730,6 +2825,7 @@ pub fn run() {
             detect_repository,
             p4_open,
             p4_refresh_pending,
+            p4_pending_files,
             p4_submitted,
             p4_list_users,
             p4_list_clients,
@@ -2781,7 +2877,6 @@ pub fn run() {
             p4_revert_unchanged,
             p4_submit_shelf,
             p4_shelve,
-            p4_unshelve,
             p4_delete_shelf,
             p4_resolve_view,
             p4_manual_resolve_view,

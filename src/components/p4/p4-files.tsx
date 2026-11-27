@@ -303,7 +303,7 @@ export function P4Files() {
                         menu={fileMenu}
                       />
                       )}
-                      {mode === "workspace" && fileQuery.result?.truncated && <Button size="xs" variant="ghost" disabled={!workspaceQuery.next} onClick={workspaceQuery.next}>{t("p4.loadMoreRevisions")}</Button>}
+                      {mode === "workspace" && fileQuery.result?.truncated && <Button size="xs" variant="ghost" disabled={!workspaceQuery.next} onClick={workspaceQuery.next}>{t("common.loadMore")}</Button>}
                     </>
                   )
                   }
@@ -368,6 +368,7 @@ function WorkspaceTree({
   const [open, setOpen] = useState<Set<string>>(() => new Set(cached?.open ?? []));
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState<ReadonlySet<string>>(() => new Set());
+  const loadingNames = useMemo(() => new Set([...loading].filter(path => !entries[path])), [entries, loading]);
   const pending = useRef(new Set<string>());
   const openRef = useRef(open);
   const epochRef = useRef(cached?.epoch ?? filesEpoch);
@@ -387,7 +388,7 @@ function WorkspaceTree({
 
   useEffect(() => {
     let live = true;
-    void publishDirectory("", false, connection, () => listDir(""), setEntries, () => live && liveRef.current).catch(
+    void publishDirectory("", false, connection, names => listDir("", names), setEntries, () => live && liveRef.current).catch(
       () => {
         if (live) setFailed(true);
       },
@@ -407,7 +408,7 @@ function WorkspaceTree({
         dir,
         false,
         connection,
-        () => listDir(dir ? relativeToRoot(root, dir) : ""),
+        names => listDir(dir ? relativeToRoot(root, dir) : "", names),
         setEntries,
         () => live && liveRef.current,
       ).catch(() => {});
@@ -428,7 +429,6 @@ function WorkspaceTree({
   });
 
   async function toggle(path: string) {
-    if (pending.current.has(path)) return;
     if (open.has(path)) {
       setOpen((current) => {
         const next = new Set(current);
@@ -437,25 +437,35 @@ function WorkspaceTree({
       });
       return;
     }
-    if (!entries[path]) {
-      pending.current.add(path);setLoading(current => new Set(current).add(path));
+    setOpen(current => new Set(current).add(path));
+    if (!entries[path] && !pending.current.has(path)) {
+      pending.current.add(path);
+      setLoading(current => new Set(current).add(path));
       try {
         await publishDirectory(
           path,
           false,
           connection,
-          () => listDir(relativeToRoot(root, path)),
+          names => listDir(relativeToRoot(root, path), names),
           setEntries,
           () => liveRef.current,
         );
       } catch {
+        if (liveRef.current) setOpen(current => {
+          const next = new Set(current);
+          next.delete(path);
+          return next;
+        });
         return;
       } finally {
         pending.current.delete(path);
-        if (liveRef.current) setLoading(current => {const next=new Set(current);next.delete(path);return next;});
+        if (liveRef.current) setLoading(current => {
+          const next = new Set(current);
+          next.delete(path);
+          return next;
+        });
       }
     }
-    if (liveRef.current) setOpen((current) => new Set(current).add(path));
   }
 
   if (!entries[""]) {
@@ -475,7 +485,7 @@ function WorkspaceTree({
       onToggle={(path) => void toggle(path)}
       onOpenFile={onSelect}
       onOpenDirectory={onSelectDirectory}
-      loading={loading}
+      loading={loadingNames}
       menu={menu}
     />
   );
@@ -736,11 +746,15 @@ function publishDirectory(
   directory: string,
   depot: boolean,
   connection: P4Connection | null,
-  load: () => Promise<P4DirEntry[]>,
+  load: (onNames: (names: P4DirEntry[]) => void) => Promise<P4DirEntry[]>,
   setEntries: Dispatch<SetStateAction<Record<string, P4TreeEntry[]>>>,
   live: () => boolean,
 ) {
-  return load().then((next) => {
+  return load(names => {
+    if (!live()) return;
+    // Existing rows keep their known status while a background refresh runs.
+    setEntries(current => current[directory] ? current : { ...current, [directory]: names.map(presentFile) });
+  }).then((next) => {
     if (!live()) return;
     const shown = next.map(presentFile);
     setEntries((current) => ({ ...current, [directory]: keepKnownStatus(current[directory], shown) }));

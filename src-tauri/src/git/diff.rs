@@ -105,9 +105,9 @@ pub(super) fn untracked_diff_bytes(
     Ok((bytes, truncated))
 }
 
-pub fn commit_details(repo: &Repository, oid: &str) -> AppResult<CommitDetails> {
-    let info = commit_info(repo, oid)?;
-    let files = commit_files_from_git(workdir(repo)?, &info.id)?;
+pub fn commit_details(root: &Path, oid: &str) -> AppResult<CommitDetails> {
+    let info = repo::commit_info_at(root, oid)?;
+    let files = commit_files_from_git(root, &info.id)?;
     Ok(CommitDetails {
         commit: summary_from_info(&info),
         message: info.message,
@@ -210,18 +210,25 @@ pub fn compare_file_diff(
 }
 
 pub fn commit_file_diff(
-    repo: &Repository,
+    root: &Path,
     oid: &str,
     path: &str,
     ignore_whitespace: bool,
 ) -> AppResult<FileDiff> {
-    let info = commit_info(repo, oid.trim())?;
-    let parent = info
-        .parents
-        .first()
-        .map(String::as_str)
-        .unwrap_or(EMPTY_TREE);
-    diff_between(repo, parent, &info.id, path, ignore_whitespace)
+    let path = to_git_path(path);
+    let mut args = patch_args("diff-tree", ignore_whitespace);
+    args.extend([
+        "--root",
+        "--diff-merges=first-parent",
+        "-r",
+        "-p",
+        "--no-commit-id",
+        "--end-of-options",
+        oid.trim(),
+        "--",
+        &path,
+    ]);
+    Ok(patch_preview(root, &args, &path, false, false)?.diff)
 }
 
 pub(super) fn diff_between(
@@ -243,18 +250,33 @@ fn tracked_diff_preview(
     path: &str,
 ) -> AppResult<WorkdirDiff> {
     let args = tracked_diff_args(revisions, staged, ignore_whitespace, path);
-    let mut child = spawn_git_stdout(workdir(repo)?, &args)?;
+    patch_preview(
+        repo.workdir(),
+        &args,
+        path,
+        staged,
+        revisions.is_empty() && !ignore_whitespace,
+    )
+}
+
+fn patch_preview(
+    root: &Path,
+    args: &[&str],
+    path: &str,
+    staged: bool,
+    fingerprint: bool,
+) -> AppResult<WorkdirDiff> {
+    let mut child = spawn_git_stdout(root, args)?;
     let reader = child
         .stdout
         .take()
         .ok_or_else(|| AppError::msg("Could not read Git diff"))?;
-    let result = read_diff_preview(
-        reader,
-        path,
-        staged,
-        revisions.is_empty() && !ignore_whitespace,
-    )?;
-    child.wait_checked("Could not read Git diff")?;
+    let (result, stopped_early) = read_diff_preview(reader, path, staged, fingerprint)?;
+    if stopped_early {
+        child.finish_preview();
+    } else {
+        child.wait_checked("Could not read Git diff")?;
+    }
     Ok(result)
 }
 
@@ -265,7 +287,7 @@ fn read_diff_preview(
     path: &str,
     staged: bool,
     fingerprint: bool,
-) -> AppResult<WorkdirDiff> {
+) -> AppResult<(WorkdirDiff, bool)> {
     let mut digest = fingerprint.then(|| fingerprint_hasher(path, staged));
     let mut preview = Vec::new();
     let mut buffer = [0u8; 32 * 1024];
@@ -302,13 +324,17 @@ fn read_diff_preview(
             preview.extend_from_slice(part);
             lines += usize::from(part.ends_with(b"\n"));
         }
+        if truncated && !fingerprint {
+            break;
+        }
     }
     let mut diff = file_diff_from_parsed(&parse_unified_diff(&preview, path), path);
     diff.truncated |= truncated;
+    let stopped_early = truncated && !fingerprint;
     let fingerprint = digest
         .filter(|_| !diff.binary)
         .map(|digest| format!("{:x}", digest.finalize()));
-    Ok(WorkdirDiff { diff, fingerprint })
+    Ok((WorkdirDiff { diff, fingerprint }, stopped_early))
 }
 
 pub(super) fn git_diff_bytes(
@@ -341,6 +367,10 @@ fn tracked_diff_args<'a>(
 }
 
 fn diff_args(ignore_whitespace: bool) -> Vec<&'static str> {
+    patch_args("diff", ignore_whitespace)
+}
+
+fn patch_args(command: &'static str, ignore_whitespace: bool) -> Vec<&'static str> {
     let mut args = vec![
         "--literal-pathspecs",
         "-c",
@@ -349,7 +379,7 @@ fn diff_args(ignore_whitespace: bool) -> Vec<&'static str> {
         "diff.mnemonicPrefix=false",
         "-c",
         "diff.noprefix=false",
-        "diff",
+        command,
         "--full-index",
         "--no-color",
         "--no-ext-diff",
@@ -633,10 +663,18 @@ mod tests {
         for _ in 0..400_000 {
             patch.extend_from_slice(b"+example setting is enabled\n");
         }
-        let preview =
+        let (preview, stopped) =
             super::read_diff_preview(patch.as_slice(), "example.txt", false, true).unwrap();
+        assert!(!stopped);
         assert_eq!(preview.diff.lines.len(), super::MAX_DIFF_LINES);
         assert!(preview.diff.truncated);
+        let mut reader = std::io::Cursor::new(&patch);
+        let (history, stopped) =
+            super::read_diff_preview(&mut reader, "example.txt", false, false).unwrap();
+        assert!(stopped && history.diff.truncated);
+        assert!(reader.position() < patch.len() as u64);
+        assert_eq!(history.diff.lines.len(), preview.diff.lines.len());
+        assert!(history.fingerprint.is_none());
         assert_eq!(
             preview.fingerprint.as_deref(),
             Some(super::diff_fingerprint("example.txt", false, &patch).as_str())

@@ -3,7 +3,7 @@ import { ArchiveRestoreIcon, ChevronDownIcon, GitBranchIcon, Trash2Icon } from "
 import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { useTranslation } from "@/i18n";
-import { depotBase } from "@/lib/p4";
+import { P4StreamName } from "./p4-path-labels";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
 import { cn } from "@/lib/utils";
 import type { PendingShelf } from "@/state/p4-session";
@@ -55,7 +55,7 @@ export function PendingShelfGroup({ id, exists, shelf, open, busy, load, onToggl
           <button type="button" className="flex w-full items-center gap-2 rounded-md py-1.5 pl-9 pr-2 text-left text-xs hover:bg-muted/70" onClick={() => onStream(stream.path)}>
             <GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="min-w-0 flex-1 truncate">{t("p4.streamWork.shelved")}</span>
-            <span className="truncate font-mono text-[11px] text-muted-foreground">{depotBase(stream.path)}</span>
+            <P4StreamName path={stream.path} />
           </button>
         </ContextMenuTrigger>
         <ContextMenuContent><ContextMenuItem variant="destructive" disabled={busy} onClick={onDelete}><Trash2Icon />{t("p4.delete")}</ContextMenuItem></ContextMenuContent>

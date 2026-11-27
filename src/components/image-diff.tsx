@@ -1,3 +1,4 @@
+import { PathLabel } from "@/components/path-label";
 import { formatBytes, t, useTranslation } from "@/i18n";
 import { useEffect, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { RefreshCwIcon } from "lucide-react";
@@ -175,10 +176,10 @@ function ImagePanel({
         ? t("desktop.imageDiff.tooLarge", { size: formatBytes(side.size) })
         : null;
   return (
-    <div className="flex min-h-0 flex-col gap-1.5">
-      <div className="flex items-baseline justify-between text-xs">
-        <span className="font-medium">{label}</span>
-        <span className="text-[11px] text-muted-foreground">{side ? describe(side, size) : ""}</span>
+    <div className="flex min-h-0 min-w-0 flex-col gap-1.5">
+      <div className="flex items-baseline justify-between gap-2 text-xs">
+        <PathLabel path={label} className="font-sans font-medium" />
+        <span className="shrink-0 text-[11px] text-muted-foreground">{side ? describe(side, size) : ""}</span>
       </div>
       <div
         className={cn(

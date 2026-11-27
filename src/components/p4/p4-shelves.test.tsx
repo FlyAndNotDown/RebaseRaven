@@ -3,13 +3,19 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { P4Shelves } from "./p4-shelves";
+import { P4Pending } from "./p4-pending";
 import { PendingRestoreShelfDialog, RestoreShelfDialog } from "./p4-restore-shelf-dialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { setLanguagePreference } from "@/i18n";
 import type { P4Changelist } from "@/types/p4";
 
-const calls = vi.hoisted(() => ({listShelves:vi.fn(),shelfDetail:vi.fn(),shelfDiff:vi.fn(),listUsers:vi.fn(),listClients:vi.fn(),previewUnshelve:vi.fn(),restoreShelf:vi.fn(),setView:vi.fn(),closed:vi.fn()}));
-vi.mock("@/state/p4-context", () => ({useP4:() => ({...calls,connection:{root:"/workspace",port:"example:1666",user:"alice",client:"main",stream:"//project/dev"},selectedChange:"default",busy:false})}));
+const calls = vi.hoisted(() => ({listShelves:vi.fn(),shelfDetail:vi.fn(),shelfDiff:vi.fn(),listUsers:vi.fn(),listClients:vi.fn(),previewUnshelve:vi.fn(),restoreShelf:vi.fn(),placeFiles:vi.fn(),selectFile:vi.fn(),setView:vi.fn(),closed:vi.fn()}));
+vi.mock("@/state/p4-context", () => {
+  const model = () => ({...calls,connection:{root:"/workspace",port:"example:1666",user:"alice",client:"main",stream:"//project/dev"},selectedChange:"default",busy:false,
+    pending:[{...shelf,id:"default",shelved:false,files:[]},{...shelf,files:[]}],pendingShelves:{[shelf.id]:{status:"ready",detail:shelf}}});
+  return {useP4:model, useP4Pick:model};
+});
+vi.mock("@/state/git-context", () => ({useGitPick:() => ({p4PendingExpanded:{"/workspace":["change:120","shelf:120"]}})}));
 vi.mock("@/components/p4/p4-diff", () => ({P4Diff:() => <div>Diff</div>}));
 vi.mock("@/components/p4/p4-stream-work", () => ({P4StreamDiffDialog:() => null}));
 vi.mock("@/components/revision-meta", () => ({AuthorName:({name}:{name:string}) => <span>{name}</span>}));
@@ -34,6 +40,33 @@ beforeEach(() => {
   container=document.createElement("div");document.body.append(container);root=createRoot(container);
 });
 afterEach(async () => {await act(async () => root.unmount());container.remove();});
+
+it("places a shelf selection at its drop target once and ignores cancelled drags", async () => {
+  await act(async () => root.render(<TooltipProvider><P4Pending /></TooltipProvider>));
+  const file = button("app.ts");
+  const target = container.querySelector<HTMLElement>('[data-drop="open"][data-change="default"]')!;
+  Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => target });
+  async function drag(end: "pointerup" | "pointercancel") {
+    await act(async () => {
+      file.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, button: 0 }));
+      window.dispatchEvent(new PointerEvent("pointermove", { pointerId: 1, clientX: 20, buttons: 1 }));
+      window.dispatchEvent(new PointerEvent(end, { pointerId: 1, clientX: 20 }));
+    });
+  }
+  try {
+    await act(async () => { file.click(); button("theme.ts").dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: true })); });
+    await drag("pointercancel");
+    expect(calls.placeFiles).not.toHaveBeenCalled();
+    await drag("pointerup");
+    expect(calls.placeFiles).toHaveBeenCalledExactlyOnceWith(shelf.files.map(entry => ({
+      path: entry.depotPath, change: shelf.id, shelved: true,
+    })), "default", false);
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(calls.previewUnshelve).not.toHaveBeenCalled();
+  } finally {
+    Reflect.deleteProperty(document, "elementFromPoint");
+  }
+});
 
 it("browses shelves without selecting restore files and moves restoration into a modal", async () => {
   await render();expect(calls.listShelves).toHaveBeenCalledWith("","",null);
@@ -61,38 +94,98 @@ it("ignores an earlier shelf response after the filters change", async () => {
   expect(document.body.textContent).toContain("Filtered shelf");expect(document.body.textContent).not.toContain("Improve settings");
 });
 
-it("restores only reviewed files to the selected pending changelist", async () => {
-  await render(true);await toggle("//depot/theme.ts");await field('select[aria-label="Pending changelist"]',"121",true);
-  expect(button("Restore 1 file").disabled).toBe(true);
-  await click("Preview");expect(calls.previewUnshelve).toHaveBeenLastCalledWith({changeId:"120",target:"121",files:["//depot/app.ts"],stream:""});
-  await click("Restore 1 file");expect(calls.restoreShelf).toHaveBeenCalledWith({changeId:"120",target:"121",files:["//depot/app.ts"],stream:""},preview);
+it("restores the selected files to their destination without requiring a preview", async () => {
+  await render(true);
+  await toggle("//depot/theme.ts");
+  await field('select[aria-label="Pending changelist"]', "121", true);
+  await click("Restore 1 file");
+  expect(calls.restoreShelf).toHaveBeenCalledExactlyOnceWith({
+    changeId: "120", target: "121", files: ["//depot/app.ts"], stream: "",
+  }, undefined);
+  expect(calls.previewUnshelve).not.toHaveBeenCalled();
   expect(calls.closed).toHaveBeenCalledOnce();
 });
 
-it("invalidates a preview when the destination changes and requires all files for stream mapping", async () => {
-  await render(true);await toggle("//depot/theme.ts");await click("Preview");expect(button("Restore 1 file").disabled).toBe(false);
-  await field('#shelf-stream-mapping',"//depot/dev");expect(button("Restore 2 files").disabled).toBe(true);
+it("shows the shared shelf directory once and disambiguates matching filenames", async () => {
+  const directory = "//depot/render/";
+  const files = ["surface-pass", "surface-cache"].map(folder => ({
+    ...shelf.files[0], depotPath: directory + folder + "/shader.txt",
+  }));
+  await act(async () => root.render(<TooltipProvider><RestoreShelfDialog detail={{ ...shelf, files }} onClose={calls.closed} /></TooltipProvider>));
+  expect(document.querySelectorAll(`[title="${directory}"]`)).toHaveLength(1);
+  for (const file of files) {
+    const checkbox = document.querySelector(`[role="checkbox"][aria-label="${file.depotPath}"]`)!;
+    const row = checkbox.closest("label")!;
+    expect(row.textContent).toBe("shader.txt" + file.depotPath.split("/").at(-2));
+    expect(row.querySelector(`[title="${file.depotPath}"]`)).not.toBeNull();
+  }
+});
+
+it("disables restore for an empty selection and while a restore is running", async () => {
+  let finish!: () => void;
+  calls.restoreShelf.mockReturnValueOnce(new Promise<void>(resolve => { finish = resolve; }));
+  await render(true);
+  await toggle("//depot/theme.ts");
+  await toggle("//depot/app.ts");
+  expect(button("Preview").disabled).toBe(true);
+  expect(button("Restore 0 files").disabled).toBe(true);
+  await toggle("//depot/theme.ts");
+  await click("Restore 1 file");
+  expect(button("Restore 1 file").disabled).toBe(true);
+  await click("Restore 1 file");
+  expect(calls.restoreShelf).toHaveBeenCalledTimes(1);
+  await act(async () => finish());
+  expect(calls.closed).toHaveBeenCalledOnce();
+});
+
+it("invalidates the preview when the selection, mapping or destination changes", async () => {
+  await render(true);
+  await click("Preview");
+  expect(document.querySelector("pre")?.textContent).toBe(preview.output);
+  await toggle("//depot/theme.ts");
+  expect(document.querySelector("pre")).toBeNull();
+  await click("Preview");
+  await field("#shelf-stream-mapping", "//depot/dev");
+  expect(document.querySelector("pre")).toBeNull();
   expect([...document.querySelectorAll<HTMLButtonElement>('[role="checkbox"]')].every(node => node.disabled)).toBe(true);
-  await click("Preview");expect(calls.previewUnshelve).toHaveBeenLastCalledWith({changeId:"120",target:"default",files:shelf.files.map(file => file.depotPath),stream:"//depot/dev"});
-  await field('select[aria-label="Pending changelist"]',"121",true);expect(button("Restore 2 files").disabled).toBe(true);
+  await click("Preview");
+  await field('select[aria-label="Pending changelist"]', "121", true);
+  expect(document.querySelector("pre")).toBeNull();
+  await click("Restore 2 files");
+  expect(calls.restoreShelf).toHaveBeenCalledWith({
+    changeId: "120", target: "121", files: shelf.files.map(file => file.depotPath), stream: "//depot/dev",
+  }, undefined);
 });
 
-it("keeps the dialog open and requires another preview after restore fails", async () => {
-  calls.restoreShelf.mockRejectedValueOnce(new Error("The workspace changed. Preview again."));
-  await render(true);await click("Preview");await click("Restore 2 files");expect(document.querySelector('[role="alert"]')?.textContent).toContain("workspace changed");expect(button("Restore 2 files").disabled).toBe(true);expect(calls.closed).not.toHaveBeenCalled();expect(calls.setView).not.toHaveBeenCalled();
+it("checks an optional preview at restore time and keeps a rejected restore open", async () => {
+  const stale = new Error("The workspace changed. Preview again.");
+  calls.restoreShelf.mockRejectedValueOnce(stale).mockRejectedValueOnce(stale);
+  await render(true);
+  await click("Preview");
+  await click("Restore 2 files");
+  expect(calls.restoreShelf).toHaveBeenCalledExactlyOnceWith({
+    changeId: "120", target: "default", files: shelf.files.map(file => file.depotPath), stream: "",
+  }, preview);
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain("workspace changed");
+  expect(calls.closed).not.toHaveBeenCalled();
+  expect(document.querySelector("pre")).toBeNull();
+  await click("Restore 2 files");
+  expect(calls.restoreShelf.mock.lastCall?.[1]).toBe(preview);
+  const updated = { ...preview, fingerprint: "updated" };
+  calls.previewUnshelve.mockResolvedValueOnce(updated);
+  await click("Preview");
+  await click("Restore 2 files");
+  expect(calls.restoreShelf.mock.lastCall?.[1]).toBe(updated);
+  expect(calls.closed).toHaveBeenCalledOnce();
 });
 
-it("opens a pending shelf by its explicit id and previews the dropped selection in the current stream", async () => {
+it("opens the pending shelf from its menu and restores only the selected files in the current stream", async () => {
   const source = {...shelf, files: shelf.files.map(file => ({...file, depotPath: file.depotPath.replace("//depot/", "//project/main/")}))};
   calls.shelfDetail.mockResolvedValue(source);
-  await act(async () => root.render(<TooltipProvider><PendingRestoreShelfDialog id="120" initialTarget="121"
+  await act(async () => root.render(<TooltipProvider><PendingRestoreShelfDialog id="120" initialTarget="default"
     initialFiles={["//project/main/app.ts"]} onClose={calls.closed} /></TooltipProvider>));
   expect(calls.shelfDetail).toHaveBeenCalledExactlyOnceWith("120");
   expect(document.body.textContent).toContain("//project/dev");
-  expect(button("Restore 1 file").disabled).toBe(true);
-  expect(calls.restoreShelf).not.toHaveBeenCalled();
-  await click("Preview");
-  expect(calls.previewUnshelve).toHaveBeenCalledWith({changeId:"120",target:"121",files:["//project/main/app.ts"],stream:""});
   await click("Restore 1 file");
-  expect(calls.restoreShelf).toHaveBeenCalledWith({changeId:"120",target:"121",files:["//project/main/app.ts"],stream:""},preview);
+  expect(calls.restoreShelf).toHaveBeenCalledWith({changeId:"120",target:"default",files:["//project/main/app.ts"],stream:""}, undefined);
 });
