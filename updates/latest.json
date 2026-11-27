@@ -1,15 +1,15 @@
 {
-  "version": "0.1.25",
-  "notes": "- Keep Git History available when a saved branch or tag is deleted outside RebaseRaven.\n- Load Git History and diffs with fewer Git calls. Share reference data with the branch list and reuse it across history pages.\n- Update Git file changes sooner after staging, unstaging, or working tree edits. Give foreground changes priority over automatic fetches.\n- Show Perforce pending changelists sooner and fill in locks, conflicts, and unchanged states afterward. Keep existing status indicators visible during refresh.\n- Keep large Perforce changelists responsive when scrolling and reuse recent results when switching tabs.\n- Apply Ignore Whitespace during the first Perforce diff for opened, shelved, and submitted files.\n",
-  "pub_date": "2026-11-25T09:07:48.013Z",
+  "version": "0.1.26",
+  "notes": "- Restore shelved Perforce files by dragging them onto a pending changelist. The Restore dialog also lets you restore selected files without running Preview first.\n- Keep long Perforce stream names and depot paths readable in workspace views, file lists, and stream dialogs.\n- Reduce repeated Git history and file reads when switching between commits, diffs, and file previews.\n- Reuse Perforce read connections and refresh only the affected workspace data after changes.\n",
+  "pub_date": "2026-11-27T08:49:22.800Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUK0hSbWZEbkU5REZtQ0hnQU1ETlFnL29BQjJJTlN3SSt6SlBiODM1L2xqM0w4eDdVSDhwdTBsbGhRdWRYRUVIcG1tSGprV1pDcFBjUUlUUW5PaWtEMko3UG9tNDBjY2dnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1NTk3NjQ2CWZpbGU6UmViYXNlUmF2ZW5fMC4xLjI1X3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjEuMjUKY2N1NHIyL2F4ZmMrekRNdTYvdVRNVG0vMGVwalRXd09aSFNscXVTZDhWcmdKNHA4R2tUOE8yY3ZiY0dibHgydGhMVU5BUUd2OUJWenBUR1lwTDBiQnc9PQo=",
-      "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v0.1.25/RebaseRaven_v0.1.25_windows_x64.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUK0hSbWZEbkU5RFB3THZRYXhhaGdBeDYyWE9EK2tDcTFkRE5naEdPNFBHNkU4UWVSenUvblBhSS9GV3dFaDlOMGI2N0dhZDlGeHNmUkJUVDJESld1bTNKVDhLc0hqbXdNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1NzY5MzQzCWZpbGU6UmViYXNlUmF2ZW5fMC4xLjI2X3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjEuMjYKYTh2Um1zM0Z3M3MwSExGTVRhNC9nMUlPVjl2VUxpK2hrN3JCVkIrN0dHdkFkVk1BcURmcHQ2RkZybVYvYTlOS3hrS1I1RXVSaS81Q2JiWFJCS1gzRFE9PQo=",
+      "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v0.1.26/RebaseRaven_v0.1.26_windows_x64.exe"
     },
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUK0hSbWZEbkU5REJBWXZBUUdiM1Bya0x1c1J2Z0w0S3Fzb0dTNGUzTk5FMklWaVQvYlkrM2VoRTRMSG9VempkRHU0Rm0vTWJockZjRitGQlFsOE1OVkp4T1RGUEV2TmcwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1NTk3NTYwCWZpbGU6UmViYXNlUmF2ZW4uYXBwLnRhci5negl2ZXJzaW9uOjAuMS4yNQpCVGQvWVNWclF6bGY2d3R1S2dsdUxIWVdmYUcrdkU4RFlrMDBRZENDZlZNRGFMbTMzbldEb1pxQkhoRkJaTi9XN0lpN0RLOUFkNzF0cjI4Zks3eUVCZz09Cg==",
-      "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v0.1.25/RebaseRaven_v0.1.25_macos_arm64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUK0hSbWZEbkU5REhLZEVrSU1YeGQrNUZ0S0pVUjNpMWhIYUkyTjNEeFhlUC85ZDVBNUhJRFl3SnJGOEowdENWTTVjK2tZVnlJUHkrZ1pKeGdWZzc2L0FCbWh1ejFIMmdrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1NzY5MTkyCWZpbGU6UmViYXNlUmF2ZW4uYXBwLnRhci5negl2ZXJzaW9uOjAuMS4yNgpIc0lwb2RITzdJUklFMTdoVy9QaHF1OTIya296T2dLWnlBanNzWG1yeWVSUlJvaVFBSytVNTNYWjhEZ2hldEVpeTZFb1g1OU1ON2cwS1pUTVVYdE9DQT09Cg==",
+      "url": "https://github.com/FlyAndNotDown/RebaseRaven/releases/download/v0.1.26/RebaseRaven_v0.1.26_macos_arm64.app.tar.gz"
     }
   }
 }
