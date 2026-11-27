@@ -8,7 +8,7 @@ use std::path::{Component, Path, PathBuf};
 
 use crate::git::{strip_verbatim_prefix, DiffLine, FileDiff};
 
-const MAX_DIFF_LINES: usize = 4000;
+pub(super) const MAX_DIFF_LINES: usize = 4000;
 
 pub type ZtagRecord = BTreeMap<String, String>;
 
@@ -136,7 +136,7 @@ pub fn read_description(spec: &str) -> String {
         let line = raw.trim_end_matches('\r');
         if reading {
             if is_indented(line) {
-                lines.push(line.trim_start_matches(['\t', ' ']));
+                lines.push(line);
                 continue;
             }
             if line.is_empty() {
@@ -148,11 +148,19 @@ pub fn read_description(spec: &str) -> String {
             reading = true;
         }
     }
-    let text = lines.join("\n").trim().to_string();
+    normalize_description(lines.into_iter())
+}
+
+pub(super) fn normalize_description<'a>(lines: impl Iterator<Item = &'a str>) -> String {
+    let text = lines
+        .map(|line| line.trim_start_matches(['\t', ' ']))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let text = text.trim();
     if text == "<enter description here>" {
         String::new()
     } else {
-        text
+        text.to_owned()
     }
 }
 

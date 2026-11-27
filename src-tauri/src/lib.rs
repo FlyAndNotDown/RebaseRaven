@@ -1584,6 +1584,14 @@ async fn p4_refresh_pending(
 }
 
 #[tauri::command]
+async fn p4_pending_files(
+    connection: p4::P4Connection,
+    paths: Vec<String>,
+) -> AppResult<Vec<p4::OpenedFile>> {
+    blocking(move || p4::pending_files(&connection, &paths)).await
+}
+
+#[tauri::command]
 async fn p4_submitted(
     connection: p4::P4Connection,
     user: Option<String>,
@@ -1717,8 +1725,18 @@ async fn p4_locate(connection: p4::P4Connection, path: String) -> AppResult<p4::
 async fn p4_list_dir(
     connection: p4::P4Connection,
     relative: String,
+    preview: Option<tauri::ipc::JavaScriptChannelId>,
+    webview: tauri::Webview,
 ) -> AppResult<Vec<p4::P4DirEntry>> {
-    blocking(move || p4::list_dir(&connection, &relative)).await
+    let preview = preview.map(|id| id.channel_on(webview));
+    blocking(move || {
+        p4::list_dir(&connection, &relative, |entries| {
+            if let Some(channel) = preview {
+                let _ = channel.send(entries.to_vec());
+            }
+        })
+    })
+    .await
 }
 
 #[tauri::command]
@@ -2152,7 +2170,8 @@ async fn p4_sync(
     auto_resolve: bool,
     app: AppHandle,
 ) -> AppResult<p4::P4SyncResult> {
-    blocking(move || {
+    let started = std::time::Instant::now();
+    let result = blocking(move || {
         activity::with_cancel(activity_id.as_deref(), || {
             p4::sync(
                 &connection,
@@ -2162,7 +2181,25 @@ async fn p4_sync(
             )
         })
     })
-    .await
+    .await;
+    let status = match &result {
+        Ok(sync)
+            if sync.output.failed
+                || sync
+                    .auto_resolve
+                    .as_ref()
+                    .is_some_and(|resolve| resolve.failed) =>
+        {
+            diagnostics::Status::Failure
+        }
+        _ => diagnostics::Status::of(&result),
+    };
+    diagnostics::record(
+        diagnostics::Code::PerforceGetLatest,
+        status,
+        Some(started.elapsed()),
+    );
+    result
 }
 
 #[tauri::command]
@@ -2788,6 +2825,7 @@ pub fn run() {
             detect_repository,
             p4_open,
             p4_refresh_pending,
+            p4_pending_files,
             p4_submitted,
             p4_list_users,
             p4_list_clients,

@@ -162,6 +162,25 @@ it("selects folder history on a single click and expands only with an arrow or d
   expect(actions.listDir.mock.calls.filter(([path])=>path==="cache")).toHaveLength(1);
 });
 
+it("shows names while ignore rules load and honors a collapse during that read", async () => {
+  let finish!: (entries: P4DirEntry[]) => void;
+  actions.listDir.mockImplementation((relative: string, names: (entries: P4DirEntry[]) => void) => {
+    if (!relative) return Promise.resolve([entry("cache", true)]);
+    names([entry("cache/local.tmp")]);
+    return new Promise<P4DirEntry[]>(resolve => { finish = resolve; });
+  });
+  await render();
+  const arrow = () => container.querySelector<HTMLButtonElement>('button[aria-label="Expand cache"],button[aria-label="Collapse cache"]')!;
+  await act(async () => arrow().click());
+  expect(rows("/workspace/cache/local.tmp")).toHaveLength(1);
+  await act(async () => arrow().click());
+  await act(async () => finish([entry("cache/local.tmp", false, true)]));
+  expect(rows("/workspace/cache/local.tmp")).toHaveLength(0);
+  await act(async () => arrow().click());
+  expect(rows("/workspace/cache/local.tmp")[0].classList.contains("text-muted-foreground")).toBe(true);
+  expect(actions.listDir.mock.calls.filter(([path]) => path === "cache")).toHaveLength(1);
+});
+
 it("shows the workspace root above its children and opens its full history without reloading on collapse", async () => {
   await render();
   const folder = rows("/workspace")[0];

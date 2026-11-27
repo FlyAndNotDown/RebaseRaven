@@ -3,6 +3,8 @@
 //! Flags on the command line carry the workspace (`-p`, `-u`, `-c`), so an
 //! inherited `P4CONFIG` cannot silently switch servers mid-command.
 
+pub(in crate::p4) mod read_session;
+
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
@@ -665,12 +667,81 @@ pub fn run_p4_diff(env: &P4Env, args: &[&str]) -> AppResult<String> {
 
 /// File previews are bounded independently of normal command and progress output.
 pub fn read_file_prefix(env: &P4Env, spec: &str, limit: usize) -> AppResult<(Vec<u8>, bool)> {
-    let mut command = prepared(require_p4()?, env, &["print", "-q", spec]);
+    read_p4_prefix(env, &["print", "-q", spec], limit, None)
+}
+
+pub(super) fn preview_diff(
+    env: &P4Env,
+    args: &[&str],
+    path: &str,
+) -> AppResult<crate::git::FileDiff> {
+    if activity::current_cancel().is_some() {
+        return Ok(super::parse::parse_single_diff(
+            &run_p4_diff(env, args)?,
+            path,
+        ));
+    }
+    let (mut bytes, truncated) = read_p4_prefix(
+        env,
+        args,
+        2_000_000,
+        Some(super::parse::MAX_DIFF_LINES * 2 + 16),
+    )?;
+    if truncated && !bytes.ends_with(b"\n") {
+        bytes.truncate(bytes.iter().rposition(|b| *b == b'\n').map_or(0, |i| i + 1));
+    }
+    let mut diff = super::parse::parse_single_diff(&String::from_utf8_lossy(&bytes), path);
+    diff.truncated |= truncated;
+    Ok(diff)
+}
+
+fn read_prefix(
+    mut reader: impl BufRead,
+    limit: usize,
+    line_limit: Option<usize>,
+) -> std::io::Result<(Vec<u8>, bool)> {
+    let mut bytes = Vec::new();
+    let mut lines = 0;
+    loop {
+        let chunk = reader.fill_buf()?;
+        if chunk.is_empty() {
+            return Ok((bytes, false));
+        }
+        let mut count = chunk.len().min(limit - bytes.len());
+        if let Some(max) = line_limit {
+            if lines == max {
+                return Ok((bytes, true));
+            }
+            for (index, byte) in chunk[..count].iter().enumerate() {
+                if *byte == b'\n' {
+                    lines += 1;
+                    if lines == max {
+                        count = index + 1;
+                        break;
+                    }
+                }
+            }
+        }
+        bytes.extend_from_slice(&chunk[..count]);
+        if count < chunk.len() {
+            return Ok((bytes, true));
+        }
+        reader.consume(count);
+    }
+}
+
+fn read_p4_prefix(
+    env: &P4Env,
+    args: &[&str],
+    limit: usize,
+    line_limit: Option<usize>,
+) -> AppResult<(Vec<u8>, bool)> {
+    let mut command = prepared(require_p4()?, env, args);
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut trace = CommandTrace::new(Code::PerforceOperation, &command);
+    let mut trace = CommandTrace::new(diagnostic_code(args), &command);
     let mut child = command
         .spawn()
         .map_err(|err| trace.failed(p4_start_error(command.get_program(), err)))?;
@@ -683,23 +754,25 @@ pub fn read_file_prefix(env: &P4Env, spec: &str, limit: usize) -> AppResult<(Vec
         }
         bytes
     });
-    let mut bytes = Vec::new();
-    let read = child
-        .stdout
-        .take()
-        .expect("piped stdout")
-        .take((limit as u64).saturating_add(1))
-        .read_to_end(&mut bytes);
-    let truncated = bytes.len() > limit;
+    let read = read_prefix(
+        BufReader::new(child.stdout.take().expect("piped stdout")),
+        limit,
+        line_limit,
+    );
+    let truncated = matches!(&read, Ok((_, true)));
     if truncated || read.is_err() {
         kill_pid(child.id());
     }
     let status = child.wait();
     let stderr = errors.join().unwrap_or_default();
     let native_status = status.as_ref().ok().copied();
-    let result = read.map(|_| ()).and_then(|_| status.map(|_| ()));
+    let (bytes, _) = read?;
+    let status = status?;
+    let is_diff = line_limit.is_some();
+    let valid_patch = is_diff && looks_like_diff(&String::from_utf8_lossy(&bytes));
+    let success = status.success() || valid_patch || truncated && !is_diff;
     trace.finish(
-        if truncated || native_status.is_some_and(|status| status.success()) && result.is_ok() {
+        if success {
             Status::Success
         } else {
             Status::Failure
@@ -711,16 +784,17 @@ pub fn read_file_prefix(env: &P4Env, spec: &str, limit: usize) -> AppResult<(Vec
         },
         None,
     );
-    result?;
-    let status = native_status.expect("successful wait");
-    if !truncated {
+    if !success {
         finish_parts(
-            status.success(),
-            String::new(),
-            String::from_utf8_lossy(&stderr).into_owned(),
+            false,
+            if is_diff {
+                decode_p4_text(&bytes).into_owned()
+            } else {
+                String::new()
+            },
+            decode_p4_text(&stderr).into_owned(),
         )?;
     }
-    bytes.truncate(limit);
     Ok((bytes, truncated))
 }
 
@@ -1114,6 +1188,27 @@ fn looks_like_diff(text: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn preview_prefix_distinguishes_an_exact_end_from_omitted_content() {
+        use super::read_prefix;
+        let bytes = b"one\r\ntwo\nthree";
+        assert_eq!(
+            read_prefix(&bytes[..], 100, Some(1)).unwrap(),
+            (b"one\r\n".to_vec(), true)
+        );
+        assert_eq!(
+            read_prefix(&bytes[..], 6, None).unwrap(),
+            (b"one\r\nt".to_vec(), true)
+        );
+        assert_eq!(
+            read_prefix(&bytes[..], bytes.len(), Some(3)).unwrap(),
+            (bytes.to_vec(), false)
+        );
+        assert_eq!(
+            read_prefix(&b"one\n"[..], 4, Some(1)).unwrap(),
+            (b"one\n".to_vec(), false)
+        );
+    }
     #[cfg(unix)]
     use super::collect_activity_output;
     use super::{

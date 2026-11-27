@@ -2,6 +2,7 @@ import { p4ComparisonDiff, type P4Comparison } from "@/lib/p4-comparison";
 import { Channel, Resource, invoke } from "@tauri-apps/api/core";
 import { t } from "@/i18n";
 import type {
+  P4File,
   P4FileApproval,
   P4CleanRequest,
   P4CleanPreview,
@@ -113,6 +114,7 @@ export const p4Api = {
   detectRepository: (path: string) => call<RepoDetection>("detect_repository", { path }),
   open: (path: string, onPreview?: (partial: Extract<P4OpenResult, {status: "ready"}>) => void) =>
     readWithPreview<P4OpenResult, Extract<P4OpenResult, {status: "ready"}>>("p4_open", { path }, onPreview),
+  pendingFiles: (connection: P4Connection, paths: string[]) => call<{ change: string; file: P4File }[]>("p4_pending_files", { connection, paths }),
   refreshPending: (connection: P4Connection, onPreview?: (partial: P4Changelist[]) => void) =>
     readWithPreview<P4Changelist[], P4Changelist[]>("p4_refresh_pending", { connection }, onPreview),
   submitted: (
@@ -163,8 +165,8 @@ export const p4Api = {
     call<P4ChangePage>("p4_path_history", {connection, path, request}),
   locate: (connection: P4Connection, path: string) =>
     call<P4Location>("p4_locate", { connection, path }),
-  listDir: (connection: P4Connection, relative: string) =>
-    call<P4DirEntry[]>("p4_list_dir", { connection, relative }),
+  listDir: (connection: P4Connection, relative: string, onNames?: (entries: P4DirEntry[]) => void) =>
+    readWithPreview<P4DirEntry[], P4DirEntry[]>("p4_list_dir", { connection, relative }, onNames),
   listDepot: (connection: P4Connection, path: string) =>
     call<P4DirEntry[]>("p4_list_depot", { connection, path }),
   listingStatus: (connection: P4Connection, directory: string, depot: boolean) =>

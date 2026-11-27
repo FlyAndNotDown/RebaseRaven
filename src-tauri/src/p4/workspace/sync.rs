@@ -6,6 +6,7 @@ use super::{
     env_for, field, file_spec, revision_file_spec, run_ok, run_owned, workspace_file_spec,
     P4Connection,
 };
+use crate::diagnostics::{record, Code, Status};
 use crate::error::{AppError, AppResult};
 use crate::p4::cli::{self, P4Env};
 #[cfg(not(windows))]
@@ -427,6 +428,7 @@ fn sync_paths(
     mut progress: impl FnMut(&str),
     output: &mut SyncOutput,
 ) -> AppResult<bool> {
+    let started = Instant::now();
     progress("Counting files");
     #[cfg(windows)]
     let plan = locked::plan(env, paths, flags, _revision, output)?;
@@ -438,11 +440,23 @@ fn sync_paths(
         Err(error) if error.is_cancelled() => return Err(error),
         Err(_) => None,
     };
+    record(
+        Code::PerforceSyncPlan,
+        Status::Success,
+        Some(started.elapsed()),
+    );
     if total.is_some_and(|count| count > 0) {
         progress("0% Syncing");
     }
     let mut transfer = TransferProgress::default();
     let mut emit = |line: &str, count: u64| {
+        if count == 1 {
+            record(
+                Code::PerforceSyncFirstFile,
+                Status::Success,
+                Some(started.elapsed()),
+            );
+        }
         let line = crate::error::redact_credentials(line);
         if let Some(total) = total.filter(|n| *n > 0) {
             progress(&format!(

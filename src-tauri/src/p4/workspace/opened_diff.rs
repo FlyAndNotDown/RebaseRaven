@@ -51,8 +51,11 @@ pub fn opened_diff(
         )
         .map(P4OpenedDiff::File);
     }
-    let text = cli::run_p4_diff(&env, &["diff", cli::unified_diff(ignore_whitespace), &spec])?;
-    let mut diff = parse_single_diff(&text, path);
+    let mut diff = cli::preview_diff(
+        &env,
+        &["diff", cli::unified_diff(ignore_whitespace), &spec],
+        path,
+    )?;
     diff.binary |= file_type_is_binary(&field(&record, "type"));
     Ok(P4OpenedDiff::File(diff))
 }

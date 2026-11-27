@@ -101,6 +101,32 @@ export function savePendingDescription(
   };
 }
 
+/** Apply authoritative rows for exact paths. Move pairs and new changelists need a full read. */
+export function mergeOpenedFiles(pending: P4Changelist[], paths: Set<string>, rows: { change: string; file: P4File }[]) {
+  const replacements = new Map<string, P4File[]>();
+  const ids = new Set(pending.map(change => change.id));
+  for (const {change, file} of rows) {
+    if (!ids.has(change) || !paths.has(file.depotPath) || file.action.startsWith("move/")) return null;
+    const group = replacements.get(change) ?? [];
+    group.push(file);
+    replacements.set(change, group);
+  }
+  const result: P4Changelist[] = [];
+  for (const change of pending) {
+    const removed = change.files.filter(file => !file.shelved && paths.has(file.depotPath));
+    if (removed.some(file => file.action.startsWith("move/"))) return null;
+    const added = replacements.get(change.id);
+    if (!removed.length && !added) { result.push(change); continue; }
+    const files = change.files.filter(file => file.shelved || !paths.has(file.depotPath)).concat(added ?? []);
+    files.sort((a, b) => {
+      const left = a.depotPath.toLowerCase(), right = b.depotPath.toLowerCase();
+      return left < right ? -1 : left > right ? 1 : 0;
+    });
+    result.push({ ...change, files });
+  }
+  return result;
+}
+
 export function refreshPendingSession(
   current: P4Session,
   pending: P4Changelist[],

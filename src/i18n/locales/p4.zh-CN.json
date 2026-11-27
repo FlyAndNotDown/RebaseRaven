@@ -682,7 +682,6 @@
   "beforeChangelist": "此变更之前",
   "selectRevisionValue": "选择{{kind}}",
   "revisionBrowseSearch": "按名称、编号或描述筛选",
-  "loadMoreRevisions": "加载更多",
   "emptyRevisionTargets": "添加要获取的文件或目录。",
   "revisionTargetsLoading": "正在加载变更文件…",
   "noRevisionMatches": "没有匹配项",

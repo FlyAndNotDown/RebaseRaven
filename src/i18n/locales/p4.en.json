@@ -682,7 +682,6 @@
   "beforeChangelist": "Before changelist",
   "selectRevisionValue": "Select {{kind}}",
   "revisionBrowseSearch": "Filter by name, number or description",
-  "loadMoreRevisions": "Load more",
   "emptyRevisionTargets": "Add a file or folder to get.",
   "revisionTargetsLoading": "Loading changelist files…",
   "noRevisionMatches": "No matches",

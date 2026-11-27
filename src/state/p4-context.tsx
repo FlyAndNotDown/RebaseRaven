@@ -25,7 +25,7 @@ import { notifyP4Error, p4SyncNotice } from "@/lib/p4-output-notice";
 import { sameRepoPath } from "@/lib/format";
 import { useGitPick } from "@/state/git-context";
 import { repoTabId, type RepoTab } from "@/state/session";
-import { defaultChange, fileKey, finishPendingShelf, pendingChangeDescription, refreshPendingSession, savePendingDescription, sameP4Connection, showP4OperationResult, shownFile, updateP4Session, usableP4Session, type PendingShelf, type P4ResolveRequest, type P4Session as Session, type P4View } from "@/state/p4-session";
+import { defaultChange, fileKey, finishPendingShelf, mergeOpenedFiles, pendingChangeDescription, refreshPendingSession, savePendingDescription, sameP4Connection, showP4OperationResult, shownFile, updateP4Session, usableP4Session, type PendingShelf, type P4ResolveRequest, type P4Session as Session, type P4View } from "@/state/p4-session";
 import { p4ReadRequest, pendingDiffRequest, pendingRefreshRequest, withP4Login } from "@/state/p4-requests";
 import { acquireP4Mutation, invalidateP4Session } from "@/state/p4-mutations";
 import { p4DisplayError } from "@/lib/p4-operation-preview";
@@ -168,7 +168,7 @@ interface P4ContextValue {
   listClients: (user: string) => Promise<string[]>;
   listStreams: () => Promise<P4StreamOption[]>;
   selectSubmitted: (id: string) => void;
-  listDir: (relative: string) => Promise<P4DirEntry[]>;
+  listDir: (relative: string, onNames?: (entries: P4DirEntry[]) => void) => Promise<P4DirEntry[]>;
   listDepot: (path: string) => Promise<P4DirEntry[]>;
   searchDepot: (query: string) => Promise<P4FileSearch | null>;
   filelog: (path: string, cursor?: P4HistoryCursor | null) => Promise<P4RevisionPage>;
@@ -255,6 +255,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
   const generation = useRef(0);
   const diffTokens = useRef(new Map<string, number>());
   const pendingTokens = useRef(new Map<string, number>());
+  const pendingInFlight = useRef(new Map<string, number>());
   const submittedTokens = useRef(new Map<string, number>());
   const refreshing = useRef(new Set<string>());
   const sessionRef = useRef(session);
@@ -402,28 +403,44 @@ export function P4Provider({ children }: { children: ReactNode }) {
     if (current?.view === "pending") requestDiff(current);
   }, [ignoreWhitespace, requestDiff]);
 
-  const reloadPending = useCallback(async (target: Session, selectId?: string, quiet = false) => {
+  const reloadPending = useCallback(async (target: Session, selectId?: string, quiet = false, touched?: string[]) => {
     const owner = cache.current.get(target.tabId);
     if (!owner || !sameP4Connection(owner.connection, target.connection)) return;
+    const overlapsRead = pendingInFlight.current.has(target.tabId);
     const token = nextToken(pendingTokens.current, target.tabId);
-    const publish = (pending: P4Changelist[], enriching: boolean) => {
+    pendingInFlight.current.set(target.tabId, token);
+    const publish = (pending: P4Changelist[], enriching: boolean, partial = false) => {
       if (pendingTokens.current.get(target.tabId) !== token) return;
       const latest = cache.current.get(target.tabId);
       if (!latest || !sameP4Connection(latest.connection, target.connection)) return;
       if (!enriching) nextToken(diffTokens.current, target.tabId);
       const next = updateSession(target.tabId, (current) => ({
         ...refreshPendingSession(current, pending, selectId, target.selectedChange, enriching),
-        pendingRefreshedAt: enriching ? current.pendingRefreshedAt : Date.now(),
+        ...(partial ? { pendingShelves: current.pendingShelves } : {}),
+        pendingRefreshedAt: enriching || partial ? current.pendingRefreshedAt : Date.now(),
       }));
       if (next && !enriching) requestDiff(next, quiet);
     };
     try {
+      const fresh = Date.now() - (owner.pendingRefreshedAt ?? 0) < PENDING_REUSE_MS;
+      if (!overlapsRead && fresh && !owner.pendingEnriching && (!selectId || owner.pending.some(change => change.id === selectId)) &&
+          owner.pending.length && touched?.length && touched.length <= 200 &&
+          touched.every(path => path.startsWith("//") && !path.includes("...") && !/[*@#]/.test(path))) {
+        const paths = new Set(touched);
+        const rows = await p4Api.pendingFiles(target.connection, [...paths]).catch(() => null);
+        if (pendingTokens.current.get(target.tabId) !== token) return;
+        const latest = cache.current.get(target.tabId);
+        if (!latest || !sameP4Connection(latest.connection, target.connection)) return;
+        const patched = rows && mergeOpenedFiles(latest.pending, paths, rows);
+        if (patched) { publish(patched, false, true); return; }
+      }
       const pending = await pendingRefreshRequest(
         target.connection, quiet, (request) => guard(target.connection, request),
         (partial) => publish(partial, true),
       );
       publish(pending, false);
     } finally {
+      if (pendingInFlight.current.get(target.tabId) === token) pendingInFlight.current.delete(target.tabId);
       if (pendingTokens.current.get(target.tabId) === token && cache.current.get(target.tabId)?.pendingEnriching) {
         updateSession(target.tabId, (current) => ({ ...current, pendingEnriching: false }));
       }
@@ -1003,11 +1020,13 @@ export function P4Provider({ children }: { children: ReactNode }) {
       const release = lockMutation(current, label);
       if (!release) return;
       const id = beginActivity(label, targetChange);
+      let movedPaths: string[] | undefined;
       try {
         await guard(current.connection, async () => {
           if (!shelved && !shelf) {
             const paths = files.filter((file) => file.change !== targetChange).map((file) => file.path);
             await p4Api.reopen(current.connection, targetChange, paths);
+            movedPaths = paths;
             return;
           }
           if (!shelved && shelf) {
@@ -1038,7 +1057,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
       } catch (caught) {
         report(caught);
       } finally {
-        await reloadPending(current, targetChange).catch(report);
+        await reloadPending(current, targetChange, false, movedPaths).catch(report);
         if (shelved && activeTabRef.current.id === current.tabId) bumpFiles();
         endActivity(id);
         release();
@@ -1057,7 +1076,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
       try {
         await guard(current.connection, () => p4Api.revert(current.connection, paths, wipe));
         toast.success(t("p4.reverted"));
-        await reloadPending(current).catch(report);
+        await reloadPending(current, undefined, false, [...paths, ...wipe]).catch(report);
         return true;
       } catch (caught) {
         await reloadPending(current).catch(() => {});
@@ -1156,7 +1175,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
       try {
         await guard(current.connection, () => p4Api.resolveAccept(current.connection, path, mode));
         toast.success(mode === "merge" ? t("p4.merged") : mode === "yours" ? t("p4.acceptedYours") : t("p4.acceptedTheirs"));
-        await reloadPending(current, current.selectedChange);
+        await reloadPending(current, current.selectedChange, false, [path]);
         bumpFiles();
         return true;
       } catch (caught) {
@@ -1365,7 +1384,7 @@ export function P4Provider({ children }: { children: ReactNode }) {
       const id = beginActivity(label);
       try {
         await guard(current.connection, () => p4Api.fileAction(current.connection, action, paths));
-        await reloadPending(current, "default");
+        await reloadPending(current, "default", false, paths);
         bumpFiles();
       } catch (caught) {
         report(caught);
@@ -1508,10 +1527,10 @@ export function P4Provider({ children }: { children: ReactNode }) {
   );
 
   const listDir = useCallback(
-    async (relative: string) => {
+    async (relative: string, onNames?: (entries: P4DirEntry[]) => void) => {
       const current = sessionRef.current;
       if (!current) return [];
-      return guard(current.connection, () => p4Api.listDir(current.connection, relative));
+      return guard(current.connection, () => p4Api.listDir(current.connection, relative, onNames));
     },
     [guard],
   );
